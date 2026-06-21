@@ -1,0 +1,482 @@
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+*.env
+secrets/
+config/secrets.yaml
+
+# =============================================================================
+# Python Backend
+# =============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+backend/venv/
+backend/env/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# =============================================================================
+# Node.js Frontend
+# =============================================================================
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Vue.js
+frontend/dist/
+frontend/.tmp/
+frontend/.nuxt/
+
+# =============================================================================
+# Database
+# =============================================================================
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL
+*.dump
+*.sql
+
+# Database dumps
+db_dumps/
+backups/
+
+# =============================================================================
+# Docker & Containers
+# =============================================================================
+# Docker volumes
+docker-volumes/
+.docker/
+
+# Docker Compose override files
+docker-compose.override.yml
+docker-compose.local.yml
+docker-compose.test.yml
+
+# =============================================================================
+# IDE & Editors
+# =============================================================================
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*~
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# Operating System
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Logs & Runtime
+# =============================================================================
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# =============================================================================
+# Cache & Temporary Files
+# =============================================================================
+# Cache directories
+.cache/
+.tmp/
+.temp/
+cache/
+tmp/
+temp/
+
+# Package managers
+.yarn/
+.pnp.*
+
+# =============================================================================
+# CI/CD & Deployment
+# =============================================================================
+# CI artifacts
+!.github/
+!.github/workflows/
+!.github/ISSUE_TEMPLATE/
+!.github/PULL_REQUEST_TEMPLATE.md
+
+# Deployment files
+k8s/secrets.yaml
+k8s/production/
+deployment/secrets/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+
+# =============================================================================
+# Monitoring & Analytics
+# =============================================================================
+# Performance monitoring
+performance-results.json
+benchmark-results/
+
+# Error tracking
+sentry.properties
+
+# =============================================================================
+# Documentation
+# =============================================================================
+# Generated docs
+docs/_build/
+docs/build/
+site/
+
+# =============================================================================
+# Testing
+# =============================================================================
+# Test results
+test-results.xml
+test-report.html
+screenshots/
+videos/
+
+# E2E testing
+test-results/
+playwright-report/
+playwright/.cache/
+
+# =============================================================================
+# Security
+# =============================================================================
+# Security scan results
+security-scan-results/
+vulnerability-report.json
+trivy-results.sarif
+
+# Certificates
+*.pem
+*.key
+*.crt
+*.csr
+ssl/
+certs/
+
+# =============================================================================
+# Project Specific
+# =============================================================================
+# Package data cache
+package_cache/
+dependency_cache/
+
+# System scan results
+system_scans/
+
+# Export files
+exports/
+generated_configs/
+
+# User uploads
+uploads/
+user_files/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Migration backups
+alembic/versions/*.backup
+
+# =============================================================================
+# Cloud & Infrastructure
+# =============================================================================
+# AWS
+.aws/
+
+# Google Cloud
+gcloud/
+.gcp/
+
+# Azure
+.azure/
+
+# Heroku
+.heroku/
+
+# =============================================================================
+# Development Tools
+# =============================================================================
+# Profiling
+*.prof
+*.profile
+
+# Debug files
+debug/
+*.debug
+
+# Memory dumps
+*.hprof
+heapdump*
+
+# JetBrains
+.idea/
+
+#zencoder
+.zencoder/

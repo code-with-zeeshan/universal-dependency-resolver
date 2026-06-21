@@ -1,0 +1,66 @@
+# monitoring/alert_rules.yml
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # Performance alerts
+      - alert: HighResponseTime
+        expr: http_request_duration_seconds{quantile="0.95"} > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time on {{ $labels.endpoint }}"
+          
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate: {{ $value | humanizePercentage }}"
+          
+      # Resource alerts
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Process using more than 500MB RAM"
+          
+      - alert: DatabaseConnectionPoolExhausted
+        expr: database_pool_size - database_pool_in_use < 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool almost exhausted"
+          
+      # Free tier specific alerts
+      - alert: ApproachingRenderLimit
+        expr: render_compute_hours_used > 600
+        for: 1m
+        labels:
+          severity: warning
+          tier: free
+        annotations:
+          summary: "Approaching Render.com free tier limit (750 hours)"
+          
+      - alert: UpstashRedisLimit
+        expr: upstash_commands_daily > 8000
+        for: 1m
+        labels:
+          severity: warning
+          tier: free
+        annotations:
+          summary: "Approaching Upstash daily command limit (10k)"
+          
+      - alert: NeonStorageLimit
+        expr: neon_storage_gb > 2.5
+        for: 1m
+        labels:
+          severity: warning
+          tier: free
+        annotations:
+          summary: "Approaching Neon storage limit (3GB)"

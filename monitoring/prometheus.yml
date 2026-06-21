@@ -1,0 +1,29 @@
+# monitoring/prometheus.yml
+# For local development or self-hosted Prometheus
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+scrape_configs:
+  - job_name: 'udr-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+    
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+      
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+# For Grafana Cloud (free tier) - uncomment if using
+# remote_write:
+#   - url: https://prometheus-prod.grafana.net/api/prom/push
+#     basic_auth:
+#       username: ${GRAFANA_CLOUD_USER}
+#       password: ${GRAFANA_CLOUD_API_KEY}

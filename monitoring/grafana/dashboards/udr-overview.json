@@ -1,0 +1,46 @@
+{
+  "dashboard": {
+    "title": "Universal Dependency Resolver Overview",
+    "panels": [
+      {
+        "title": "Request Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])"
+          }
+        ]
+      },
+      {
+        "title": "Response Time (95th percentile)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, http_request_duration_seconds_bucket)"
+          }
+        ]
+      },
+      {
+        "title": "Error Rate",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status=~\"5..\"}[5m])"
+          }
+        ]
+      },
+      {
+        "title": "Free Tier Usage",
+        "panels": [
+          {
+            "title": "Render Compute Hours",
+            "targets": [{"expr": "render_compute_hours_used"}],
+            "thresholds": [600, 700, 750]
+          },
+          {
+            "title": "Upstash Commands",
+            "targets": [{"expr": "upstash_commands_daily"}],
+            "thresholds": [8000, 9000, 10000]
+          }
+        ]
+      }
+    ]
+  }
+}
