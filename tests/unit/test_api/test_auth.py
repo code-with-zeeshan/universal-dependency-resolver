@@ -13,4 +13,30 @@ from backend.api.auth import (
     get_password_hash,
     create_access_token,
     create_refresh_token,
-    get_
+    get_current_user,
+)
+
+
+class TestAuthService:
+    @pytest.fixture
+    def auth_service(self):
+        return AuthService()
+
+    def test_verify_password(self):
+        hashed = get_password_hash("testpassword")
+        assert verify_password("testpassword", hashed)
+        assert not verify_password("wrongpassword", hashed)
+
+    def test_create_access_token(self):
+        data = {"sub": "testuser"}
+        token = create_access_token(data)
+        decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+        assert decoded["sub"] == "testuser"
+        assert "exp" in decoded
+
+    def test_create_refresh_token(self):
+        data = {"sub": "testuser"}
+        token = create_refresh_token(data)
+        decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+        assert decoded["sub"] == "testuser"
+        assert decoded["type"] == "refresh"

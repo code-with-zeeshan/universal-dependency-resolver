@@ -1,6 +1,6 @@
 # backend/api/routes/system.py
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 from pydantic import BaseModel, Field
 import json
 import tempfile
@@ -9,7 +9,9 @@ import re
 import logging
 
 from backend.core.system_scanner import SystemScanner
-from backend.api.main import get_system_scanner, limiter
+from backend.api.dependencies import get_system_scanner, limiter
+from backend.api.auth import get_current_user
+from backend.database.models import User
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +25,8 @@ system_scanner = SystemScanner()
 # Keep all your existing models
 class SystemRequirement(BaseModel):
     type: str  # 'gpu', 'cpu', 'os', 'memory', 'disk', 'python', 'compiler'
-    minimum: Optional[Dict] = Field(default_factory=dict)
-    recommended: Optional[Dict] = Field(default_factory=dict)
+    minimum: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    recommended: Optional[Dict[str, Any]] = Field(default_factory=dict)
     required: bool = True
 
 class SystemCheckRequest(BaseModel):
@@ -34,9 +36,9 @@ class SystemCheckRequest(BaseModel):
 class EnvironmentAnalysis(BaseModel):
     filename: str
     type: str
-    packages: List[Dict]
-    system_requirements: Dict
-    potential_conflicts: List[Dict]
+    packages: List[Dict[str, Any]]
+    system_requirements: Dict[str, Any]
+    potential_conflicts: List[Dict[str, Any]]
     estimated_size: Optional[int] = None
     python_version_required: Optional[str] = None
 
@@ -46,7 +48,8 @@ class EnvironmentAnalysis(BaseModel):
 async def get_system_info(
     request: Request,
     scanner: SystemScanner = Depends(get_system_scanner),
-    detailed: bool = False):
+    detailed: bool = False,
+    current_user: User = Depends(get_current_user)) -> dict:
     """Get current system information"""
     try:
         info = scanner.scan_all()
@@ -74,7 +77,11 @@ async def get_system_info(
 
 # Keep all your existing endpoints exactly as they were
 @router.post("/check-compatibility")
-async def check_system_compatibility(request: SystemCheckRequest):
+@limiter.limit("10/minute")
+async def check_system_compatibility(
+    request: Request,
+    check_request: SystemCheckRequest,
+    current_user: User = Depends(get_current_user)) -> dict:
     """Check if system meets specified requirements"""
     try:
         system_info = system_scanner.scan_all()  # Uses the module-level system_scanner
@@ -86,7 +93,7 @@ async def check_system_compatibility(request: SystemCheckRequest):
             "recommendations": []
         }
         
-        for req in request.requirements:
+        for req in check_request.requirements:
             check_result = _check_requirement_comprehensive(system_info, req)
             results["checks"].append(check_result)
             
@@ -101,7 +108,7 @@ async def check_system_compatibility(request: SystemCheckRequest):
                 results["recommendations"].append(check_result["recommendation"])
         
         # Check package-specific requirements if provided
-        if request.packages:
+        if check_request.packages:
             package_checks = await _check_package_requirements(request.packages, system_info)
             results["package_compatibility"] = package_checks
         
@@ -110,7 +117,10 @@ async def check_system_compatibility(request: SystemCheckRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/gpu/info")
-async def get_gpu_info():
+@limiter.limit("30/minute")
+async def get_gpu_info(
+    request: Request,
+    current_user: User = Depends(get_current_user)) -> dict:
     """Get detailed GPU information"""
     try:
         gpu_info = system_scanner.detect_gpu_info()  # Uses the module-level system_scanner
@@ -131,7 +141,11 @@ async def get_gpu_info():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/runtime/{runtime}")
-async def get_runtime_info(runtime: str):
+@limiter.limit("30/minute")
+async def get_runtime_info(
+    request: Request,
+    runtime: str,
+    current_user: User = Depends(get_current_user)) -> dict:
     """Get information about a specific runtime (python, node, java, etc.)"""
     try:
         runtime_versions = system_scanner.detect_runtime_versions()  # Uses the module-level system_scanner
@@ -172,7 +186,11 @@ async def get_runtime_info(runtime: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/analyze-environment")
-async def analyze_environment_file(file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+async def analyze_environment_file(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)) -> dict:
     """Analyze an environment file (requirements.txt, package.json, etc.)"""
     try:
         content = await file.read()
@@ -239,7 +257,11 @@ async def analyze_environment_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/benchmarks")
-async def run_system_benchmarks(comprehensive: bool = False):
+@limiter.limit("30/minute")
+async def run_system_benchmarks(
+    request: Request,
+    comprehensive: bool = False,
+    current_user: User = Depends(get_current_user)) -> dict:
     """Run system benchmarks"""
     try:
         benchmarks = {}
@@ -269,7 +291,7 @@ async def run_system_benchmarks(comprehensive: bool = False):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def _check_requirement_comprehensive(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_requirement_comprehensive(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Comprehensively check if system meets a specific requirement"""
     result = {
         "type": requirement.type,
@@ -301,7 +323,7 @@ def _check_requirement_comprehensive(system_info: Dict, requirement: SystemRequi
     
     return result
 
-def _check_gpu_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_gpu_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check GPU requirements"""
     result = {"details": {}}
     
@@ -351,7 +373,7 @@ def _check_gpu_requirement(system_info: Dict, requirement: SystemRequirement) ->
     
     return result
 
-def _check_cpu_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_cpu_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check CPU requirements"""
     result = {"details": {}}
     
@@ -387,7 +409,7 @@ def _check_cpu_requirement(system_info: Dict, requirement: SystemRequirement) ->
     
     return result
 
-def _check_memory_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_memory_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check memory requirements"""
     import psutil
     result = {"details": {}}
@@ -418,7 +440,7 @@ def _check_memory_requirement(system_info: Dict, requirement: SystemRequirement)
     
     return result
 
-def _check_disk_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_disk_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check disk space requirements"""
     import psutil
     result = {"details": {}}
@@ -441,7 +463,7 @@ def _check_disk_requirement(system_info: Dict, requirement: SystemRequirement) -
     
     return result
 
-def _check_os_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_os_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check OS requirements"""
     result = {"details": {}}
     
@@ -465,7 +487,7 @@ def _check_os_requirement(system_info: Dict, requirement: SystemRequirement) -> 
     
     return result
 
-def _check_python_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_python_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check Python requirements"""
     result = {"details": {}}
     
@@ -482,7 +504,7 @@ def _check_python_requirement(system_info: Dict, requirement: SystemRequirement)
     
     return result
 
-def _check_compiler_requirement(system_info: Dict, requirement: SystemRequirement) -> Dict:
+def _check_compiler_requirement(system_info: Dict[str, Any], requirement: SystemRequirement) -> Dict[str, Any]:
     """Check compiler requirements"""
     result = {"details": {}}
     
@@ -500,7 +522,7 @@ def _check_compiler_requirement(system_info: Dict, requirement: SystemRequiremen
     
     return result
 
-def _parse_requirements_txt_comprehensive(content: str) -> List[Dict]:
+def _parse_requirements_txt_comprehensive(content: str) -> List[Dict[str, Any]]:
     """Comprehensive parsing of requirements.txt"""
     packages = []
     current_line_num = 0
@@ -578,7 +600,7 @@ def _parse_requirements_txt_comprehensive(content: str) -> List[Dict]:
     
     return packages
 
-def _parse_requirements_txt_basic(content: str) -> List[Dict]:
+def _parse_requirements_txt_basic(content: str) -> List[Dict[str, Any]]:
     """Basic requirements.txt parsing fallback"""
     packages = []
     
@@ -600,7 +622,7 @@ def _parse_requirements_txt_basic(content: str) -> List[Dict]:
     
     return packages
 
-def _parse_pipfile(content: str) -> List[Dict]:
+def _parse_pipfile(content: str) -> List[Dict[str, Any]]:
     """Parse Pipfile"""
     try:
         import toml
@@ -630,7 +652,7 @@ def _parse_pipfile(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_pipfile_lock(content: str) -> List[Dict]:
+def _parse_pipfile_lock(content: str) -> List[Dict[str, Any]]:
     """Parse Pipfile.lock"""
     try:
         data = json.loads(content)
@@ -654,7 +676,7 @@ def _parse_pipfile_lock(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_pyproject_toml(content: str) -> List[Dict]:
+def _parse_pyproject_toml(content: str) -> List[Dict[str, Any]]:
     """Parse pyproject.toml (Poetry/PEP 517)"""
     try:
         import toml
@@ -705,7 +727,7 @@ def _parse_pyproject_toml(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_pep508_dependency(dep_str: str) -> Dict:
+def _parse_pep508_dependency(dep_str: str) -> Dict[str, Any]:
     """Parse PEP 508 dependency specification"""
     try:
         from packaging.requirements import Requirement
@@ -727,7 +749,7 @@ def _parse_pep508_dependency(dep_str: str) -> Dict:
         
         return {"name": dep_str, "version": "*"}
 
-def _parse_package_json_comprehensive(content: str) -> List[Dict]:
+def _parse_package_json_comprehensive(content: str) -> List[Dict[str, Any]]:
     """Comprehensive package.json parsing"""
     try:
         data = json.loads(content)
@@ -788,7 +810,7 @@ def _parse_package_json_comprehensive(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_package_lock_json(content: str) -> List[Dict]:
+def _parse_package_lock_json(content: str) -> List[Dict[str, Any]]:
     """Parse package-lock.json"""
     try:
         data = json.loads(content)
@@ -832,7 +854,7 @@ def _parse_package_lock_json(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_yarn_lock(content: str) -> List[Dict]:
+def _parse_yarn_lock(content: str) -> List[Dict[str, Any]]:
     """Parse yarn.lock"""
     packages = []
     current_package = None
@@ -871,7 +893,7 @@ def _parse_yarn_lock(content: str) -> List[Dict]:
     
     return packages
 
-def _parse_conda_env_comprehensive(content: str) -> List[Dict]:
+def _parse_conda_env_comprehensive(content: str) -> List[Dict[str, Any]]:
     """Comprehensive conda environment.yml parsing"""
     try:
         import yaml
@@ -917,7 +939,7 @@ def _parse_conda_env_comprehensive(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_conda_dependency(dep: str) -> Dict:
+def _parse_conda_dependency(dep: str) -> Dict[str, Any]:
     """Parse conda dependency string"""
     # Handle different conda dependency formats
     # package
@@ -943,12 +965,12 @@ def _parse_conda_dependency(dep: str) -> Dict:
     else:
         return {"name": dep, "version": "*"}
 
-def _parse_pip_dependency(dep: str) -> Dict:
+def _parse_pip_dependency(dep: str) -> Dict[str, Any]:
     """Parse pip dependency from conda env"""
     # Reuse the PEP 508 parser
     return _parse_pep508_dependency(dep)
 
-def _parse_cargo_toml_comprehensive(content: str) -> List[Dict]:
+def _parse_cargo_toml_comprehensive(content: str) -> List[Dict[str, Any]]:
     """Comprehensive Cargo.toml parsing"""
     try:
         import toml
@@ -1010,7 +1032,7 @@ def _parse_cargo_toml_comprehensive(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_cargo_lock(content: str) -> List[Dict]:
+def _parse_cargo_lock(content: str) -> List[Dict[str, Any]]:
     """Parse Cargo.lock"""
     try:
         import toml
@@ -1035,7 +1057,7 @@ def _parse_cargo_lock(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_go_mod(content: str) -> List[Dict]:
+def _parse_go_mod(content: str) -> List[Dict[str, Any]]:
     """Parse go.mod"""
     packages = []
     
@@ -1060,7 +1082,7 @@ def _parse_go_mod(content: str) -> List[Dict]:
     
     return packages
 
-def _parse_composer_json(content: str) -> List[Dict]:
+def _parse_composer_json(content: str) -> List[Dict[str, Any]]:
     """Parse composer.json (PHP)"""
     try:
         data = json.loads(content)
@@ -1082,7 +1104,7 @@ def _parse_composer_json(content: str) -> List[Dict]:
     except Exception:
         return []
 
-def _parse_gemfile(content: str) -> List[Dict]:
+def _parse_gemfile(content: str) -> List[Dict[str, Any]]:
     """Parse Gemfile (Ruby)"""
     packages = []
     
@@ -1169,7 +1191,7 @@ async def _analyze_package_requirements(analysis: EnvironmentAnalysis) -> Enviro
     
     return analysis
 
-def _detect_package_conflicts(packages: List[Dict]) -> List[Dict]:
+def _detect_package_conflicts(packages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Detect potential package conflicts"""
     conflicts = []
     
@@ -1192,7 +1214,7 @@ def _detect_package_conflicts(packages: List[Dict]) -> List[Dict]:
     
     return conflicts
 
-async def _estimate_installation_size(packages: List[Dict]) -> int:
+async def _estimate_installation_size(packages: List[Dict[str, Any]]) -> int:
     """Estimate total installation size in MB"""
     # This would ideally fetch actual package sizes
     # For now, use rough estimates
@@ -1225,7 +1247,7 @@ async def _estimate_installation_size(packages: List[Dict]) -> int:
     
     return total_size
 
-async def _get_detailed_gpu_info() -> List[Dict]:
+async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
     """Get detailed GPU information using nvidia-smi"""
     gpu_details = []
     
@@ -1275,7 +1297,7 @@ async def _get_detailed_gpu_info() -> List[Dict]:
     
     return gpu_details
 
-def _check_gpu_compute_capabilities() -> Dict:
+def _check_gpu_compute_capabilities() -> Dict[str, Any]:
     """Check GPU compute capabilities for various frameworks"""
     capabilities = {}
     
@@ -1303,7 +1325,7 @@ def _check_gpu_compute_capabilities() -> Dict:
     
     return capabilities
 
-def _check_gpu_framework_support() -> Dict:
+def _check_gpu_framework_support() -> Dict[str, Any]:
     """Check which deep learning frameworks can use the GPU"""
     support = {}
     
@@ -1324,7 +1346,7 @@ def _check_gpu_framework_support() -> Dict:
     
     return support
 
-async def _check_docker() -> Dict:
+async def _check_docker() -> Dict[str, Any]:
     """Check Docker installation and version"""
     try:
         result = subprocess.run(
@@ -1363,7 +1385,7 @@ async def _check_docker() -> Dict:
     
     return {'available': False}
 
-async def _check_rust() -> Dict:
+async def _check_rust() -> Dict[str, Any]:
     """Check Rust installation"""
     rust_info = {'available': False}
     
@@ -1407,7 +1429,7 @@ async def _check_rust() -> Dict:
     
     return rust_info
 
-async def _check_go() -> Dict:
+async def _check_go() -> Dict[str, Any]:
     """Check Go installation"""
     try:
         result = subprocess.run(
@@ -1442,7 +1464,7 @@ async def _check_go() -> Dict:
     
     return {'available': False}
 
-async def _check_julia() -> Dict:
+async def _check_julia() -> Dict[str, Any]:
     """Check Julia installation"""
     try:
         result = subprocess.run(
@@ -1462,7 +1484,7 @@ async def _check_julia() -> Dict:
     
     return {'available': False}
 
-async def _check_r() -> Dict:
+async def _check_r() -> Dict[str, Any]:
     """Check R installation"""
     try:
         result = subprocess.run(
@@ -1486,7 +1508,7 @@ async def _check_r() -> Dict:
     
     return {'available': False}
 
-async def _check_dotnet() -> Dict:
+async def _check_dotnet() -> Dict[str, Any]:
     """Check .NET installation"""
     try:
         result = subprocess.run(
@@ -1523,7 +1545,7 @@ async def _check_dotnet() -> Dict:
     
     return {'available': False}
 
-async def _check_ruby() -> Dict:
+async def _check_ruby() -> Dict[str, Any]:
     """Check Ruby installation"""
     try:
         result = subprocess.run(
@@ -1556,7 +1578,7 @@ async def _check_ruby() -> Dict:
     
     return {'available': False}
 
-async def _check_php() -> Dict:
+async def _check_php() -> Dict[str, Any]:
     """Check PHP installation"""
     try:
         result = subprocess.run(
@@ -1589,7 +1611,7 @@ async def _check_php() -> Dict:
     
     return {'available': False}
 
-async def _check_kotlin() -> Dict:
+async def _check_kotlin() -> Dict[str, Any]:
     """Check Kotlin installation"""
     try:
         result = subprocess.run(
@@ -1609,7 +1631,7 @@ async def _check_kotlin() -> Dict:
     
     return {'available': False}
 
-async def _check_scala() -> Dict:
+async def _check_scala() -> Dict[str, Any]:
     """Check Scala installation"""
     try:
         result = subprocess.run(
@@ -1646,7 +1668,7 @@ def _get_npm_version() -> Optional[str]:
     
     return None
 
-async def _get_python_packages() -> List[Dict]:
+async def _get_python_packages() -> List[Dict[str, Any]]:
     """Get list of installed Python packages"""
     try:
         result = subprocess.run(
@@ -1681,7 +1703,7 @@ async def _get_npm_global_packages() -> List[str]:
     
     return []
 
-def _detect_virtual_env() -> Dict:
+def _detect_virtual_env() -> Dict[str, Any]:
     """Detect if running in a virtual environment"""
     import sys
     import os
@@ -1712,7 +1734,7 @@ def _detect_virtual_env() -> Dict:
     
     return venv_info
 
-async def _check_package_requirements(packages: List[str], system_info: Dict) -> Dict:
+async def _check_package_requirements(packages: List[str], system_info: Dict[str, Any]) -> Dict[str, Any]:
     """Check system requirements for specific packages"""
     results = {}
     
@@ -1858,7 +1880,7 @@ def _get_compiler_version(compiler: str) -> Optional[str]:
     
     return None
 
-async def _benchmark_cpu() -> Dict:
+async def _benchmark_cpu() -> Dict[str, Any]:
     """Run CPU benchmark"""
     import time
     import numpy as np
@@ -1893,7 +1915,7 @@ async def _benchmark_cpu() -> Dict:
     
     return results
 
-def _benchmark_memory() -> Dict:
+def _benchmark_memory() -> Dict[str, Any]:
     """Run memory benchmark"""
     import psutil
     
@@ -1911,7 +1933,7 @@ def _benchmark_memory() -> Dict:
         }
     }
 
-async def _benchmark_disk() -> Dict:
+async def _benchmark_disk() -> Dict[str, Any]:
     """Run disk benchmark"""
     import psutil
     import tempfile
@@ -1957,7 +1979,7 @@ async def _benchmark_disk() -> Dict:
     
     return results
 
-async def _benchmark_gpu() -> Dict:
+async def _benchmark_gpu() -> Dict[str, Any]:
     """Run GPU benchmark"""
     results = {}
     
@@ -2025,7 +2047,7 @@ async def _benchmark_gpu() -> Dict:
     
     return results
 
-async def _benchmark_cpu_multicore() -> Dict:
+async def _benchmark_cpu_multicore() -> Dict[str, Any]:
     """Run multi-core CPU benchmark"""
     import concurrent.futures
     import time
@@ -2058,7 +2080,7 @@ async def _benchmark_cpu_multicore() -> Dict:
     
     return results
 
-async def _benchmark_network() -> Dict:
+async def _benchmark_network() -> Dict[str, Any]:
     """Run network benchmark"""
     import aiohttp
     import time
@@ -2095,7 +2117,7 @@ async def _benchmark_network() -> Dict:
     
     return results
 
-async def _benchmark_python() -> Dict:
+async def _benchmark_python() -> Dict[str, Any]:
     """Run Python-specific benchmarks"""
     import time
     
@@ -2130,7 +2152,7 @@ async def _benchmark_python() -> Dict:
     
     return results
 
-def _compare_benchmark_results(benchmarks: Dict) -> Dict:
+def _compare_benchmark_results(benchmarks: Dict[str, Any]) -> Dict[str, Any]:
     """Compare benchmark results with typical values"""
     typical_values = {
         'cpu': {

@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from pydantic import BaseSettings, validator, Field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -61,9 +61,17 @@ SENTRY_ENVIRONMENT = os.getenv('SENTRY_ENVIRONMENT', os.getenv('ENV', 'developme
 SENTRY_TRACES_SAMPLE_RATE = float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', 0.1))
 
 # OpenTelemetry
-OTEL_ENABLED = os.getenv('OTEL_ENABLED', 'false').lower() == 'true'
-OTEL_EXPORTER_ENDPOINT = os.getenv('OTEL_EXPORTER_ENDPOINT', 'http://localhost:4317')
-OTEL_SERVICE_NAME = os.getenv('OTEL_SERVICE_NAME', 'universal-dependency-resolver')
+OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() == "true"
+OTEL_EXPORTER_OTLP_PROTOCOL = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+OTEL_EXPORTER_OTLP_HEADERS = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+OTEL_EXPORTER_OTLP_COMPRESSION = os.getenv("OTEL_EXPORTER_OTLP_COMPRESSION", "gzip")
+OTEL_EXPORTER_OTLP_TIMEOUT = int(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "10"))
+OTEL_SAMPLER_TYPE = os.getenv("OTEL_SAMPLER_TYPE", "parentbased_traceidratio")
+OTEL_SAMPLER_ARG = os.getenv("OTEL_SAMPLER_ARG", "0.1")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "universal-dependency-resolver")
+OTEL_SERVICE_VERSION = os.getenv("OTEL_SERVICE_VERSION", "1.0.0")
+OTEL_RESOURCE_ATTRIBUTES = os.getenv("OTEL_RESOURCE_ATTRIBUTES", "")
 
 # =============================================================================
 # NEW: File Upload Configuration
@@ -218,11 +226,16 @@ COMPATIBILITY_CACHE_TTL = int(os.getenv('COMPATIBILITY_CACHE_TTL', CACHE_TTL_LON
 # =============================================================================
 # Rate Limiting Configuration
 # =============================================================================
+MAX_REQUEST_SIZE = int(os.getenv('MAX_REQUEST_SIZE', 10 * 1024 * 1024))  # 10MB default
 RATE_LIMIT_ENABLED = os.getenv('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
 RATE_LIMIT_DELAY = float(os.getenv('RATE_LIMIT_DELAY', 0.1))  # Seconds between requests
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', 3))
 RETRY_BACKOFF_FACTOR = float(os.getenv('RETRY_BACKOFF_FACTOR', 2.0))
 RETRY_MAX_DELAY = float(os.getenv('RETRY_MAX_DELAY', 60.0))
+
+# Circuit Breaker Configuration
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = int(os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
+CIRCUIT_BREAKER_OPEN_TIME = int(os.getenv("CIRCUIT_BREAKER_OPEN_TIME", "30"))
 
 # Per-service rate limits (requests per minute)
 RATE_LIMITS = {
@@ -356,8 +369,9 @@ THREAD_POOL_SIZE = int(os.getenv('THREAD_POOL_SIZE', 20))
 # =============================================================================
 # Feature Flags
 # =============================================================================
+ENABLE_CACHE = os.getenv('ENABLE_CACHE', 'true').lower() == 'true'
 FEATURES = {
-    'ENABLE_CACHE': os.getenv('ENABLE_CACHE', 'true').lower() == 'true',
+    'ENABLE_CACHE': ENABLE_CACHE,
     'ENABLE_ASYNC': os.getenv('ENABLE_ASYNC', 'true').lower() == 'true',
     'ENABLE_METRICS': os.getenv('ENABLE_METRICS', 'true').lower() == 'true',
     'ENABLE_PROFILING': os.getenv('ENABLE_PROFILING', 'false').lower() == 'true',
@@ -479,6 +493,11 @@ if DEBUG:
     LOG_LEVEL = 'DEBUG'
     ENABLE_REQUEST_LOGGING = True
     ENABLE_CACHE_LOGGING = True
+
+# =============================================================================
+# Settings namespace for backward-compatible imports
+# =============================================================================
+settings = {k: v for k, v in globals().items() if k.isupper()}
 
 # =============================================================================
 # Helper Functions

@@ -1,17 +1,18 @@
 # backend/api/main.py
 import os
 import logging
+import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from typing import List, Dict, Optional
+from typing import Dict, Optional
+from starlette.responses import Response
 
-from fastapi import FastAPI, HTTPException, Depends, Request, status
+import structlog
+
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, validator
-import re
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -30,29 +31,21 @@ except ImportError:
     PROMETHEUS_AVAILABLE = False
 
 # Use absolute imports
-from backend.core.system_scanner import SystemScanner
-from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
-from backend.core.export_generator import ExportGenerator
-from backend.database.compatibility_db import CompatibilityDB
-from backend.settings import settings
+from backend.api.dependencies import limiter
+from backend.api.schemas import PackageRequest, ResolveRequest, ExportRequest, SystemInfo
 from backend.api.routes import packages, system
 from backend.api.routes import auth
 from backend.api.middleware import setup_middleware
+from backend.logging_config import setup_logging
+from backend.tracing_config import setup_tracing
+from backend.database.models import engine
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+setup_logging()
+logger = structlog.get_logger(__name__)
 
-# Initialize rate limiter with Redis storage if available
-redis_url = os.getenv("REDIS_URL")
-if redis_url:
-    limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
-else:
-    limiter = Limiter(key_func=get_remote_address)
+# Keep stdlib logger for backward compatibility
+_stdlib_logger = logging.getLogger(__name__)
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -60,7 +53,11 @@ async def lifespan(app: FastAPI):
     """Handle application lifecycle events"""
     # Startup
     logger.info("Starting Universal Dependency Resolver API...")
-    
+
+    # Configure OpenTelemetry tracing
+    setup_tracing(app=app)
+    logger.info("OpenTelemetry tracing configured")
+
     # Validate environment
     try:
         await validate_environment()
@@ -68,11 +65,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Environment validation failed: {e}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Universal Dependency Resolver API...")
+    
+    # Dispose of database connections
+    try:
+        engine.dispose()
+        logger.info("Database connections disposed")
+    except Exception as e:
+        logger.warning(f"Error disposing database connections: {e}")
 
 # Create FastAPI app with lifespan events
 app = FastAPI(
@@ -119,9 +123,17 @@ app.add_middleware(
 
 # Global exception handler
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle all unhandled exceptions consistently"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    log = structlog.get_logger("backend.api.main.exception")
+    log.error(
+        "Unhandled exception",
+        error=str(exc),
+        exc_info=True,
+        path=request.url.path,
+        method=request.method,
+        request_id=getattr(request.state, "request_id", None),
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -135,7 +147,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Custom HTTPException handler for consistent error format
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Handle HTTP exceptions with consistent format"""
     return JSONResponse(
         status_code=exc.status_code,
@@ -149,54 +161,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         }
     )
 
-# Dependency factories
-def get_system_scanner() -> SystemScanner:
-    return SystemScanner()
-
-def get_data_aggregator() -> DataAggregator:
-    return DataAggregator()
-
-def get_conflict_resolver() -> ConflictResolver:
-    return ConflictResolver()
-
-def get_export_generator() -> ExportGenerator:
-    return ExportGenerator()
-
-def get_compatibility_db() -> CompatibilityDB:
-    return CompatibilityDB()
-
-# Request/Response Models
-class PackageRequest(BaseModel):
-    name: str
-    ecosystem: Optional[str] = None
-    version: Optional[str] = None
-
-    @validator('name')
-    def validate_name(cls, v):
-        if not re.match(r'^[a-zA-Z0-9\-_\.]+$', v):
-            raise ValueError('Invalid package name')
-        return v
-
-class SystemInfo(BaseModel):
-    gpu: Optional[Dict] = None
-    os: Optional[Dict] = None
-    cpu: Optional[Dict] = None
-    runtime_versions: Optional[Dict] = None
-
-class ResolveRequest(BaseModel):
-    packages: List[PackageRequest]
-    system_info: Optional[SystemInfo] = None
-    auto_detect_system: bool = True
-    prefer_compatibility: bool = True
-
-class ExportRequest(BaseModel):
-    resolved_packages: Dict
-    format: str
-    system_info: Optional[Dict] = None
-    options: Optional[Dict] = None
-
 # Environment validation function
-async def validate_environment():
+async def validate_environment() -> None:
     """Validate environment configuration on startup"""
     required_env_vars = [
         "DATABASE_URL",
@@ -244,10 +210,24 @@ async def validate_environment():
         except Exception as e:
             logger.warning(f"Redis connection failed: {e}. Falling back to in-memory cache.")
 
+# Shutdown handler for graceful tracer shutdown
+@app.on_event("shutdown")
+async def shutdown_tracing():
+    """Gracefully shut down the OpenTelemetry tracer provider."""
+    try:
+        from opentelemetry import trace as otel_trace
+        provider = otel_trace.get_tracer_provider()
+        if hasattr(provider, "shutdown"):
+            provider.shutdown()
+        logger.info("OpenTelemetry tracer provider shut down")
+    except Exception as e:
+        logger.warning(f"Error shutting down tracer: {e}")
+
+
 # Root endpoint
 @app.get("/", tags=["General"])
 @limiter.limit("10/minute")
-async def root(request: Request):
+async def root(request: Request) -> dict:
     """Get API information and available endpoints"""
     return {
         "name": "Universal Dependency Resolver API",
@@ -269,7 +249,7 @@ async def root(request: Request):
 # Health check endpoint with dependency checks
 @app.get("/api/v1/health", tags=["General"])
 @limiter.limit("30/minute")
-async def health_check(request: Request):
+async def health_check(request: Request) -> dict:
     """
     Health check endpoint that verifies all critical dependencies.
     Returns detailed status of each component.
@@ -330,7 +310,7 @@ app.include_router(
 
 # Optional: Add middleware for request ID tracking
 @app.middleware("http")
-async def add_request_id(request: Request, call_next):
+async def add_request_id(request: Request, call_next) -> Response:
     """Add request ID for tracking"""
     import uuid
     request_id = str(uuid.uuid4())
@@ -342,7 +322,7 @@ async def add_request_id(request: Request, call_next):
 
 # Optional: Add middleware for response time tracking
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+async def add_process_time_header(request: Request, call_next) -> Response:
     """Add response time header"""
     import time
     start_time = time.time()
@@ -352,6 +332,59 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
+# Structlog request/response logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log each request and response with structured logging."""
+    start_time = time.time()
+    log = structlog.get_logger("backend.api.main.request")
+
+    import uuid
+    method = request.method
+    path = request.url.path
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    if not hasattr(request.state, "request_id"):
+        request.state.request_id = request_id
+
+    log.info(
+        "Request started",
+        method=method,
+        path=path,
+        request_id=request_id,
+        query_params=dict(request.query_params),
+        client_host=request.client.host if request.client else None,
+    )
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = (time.time() - start_time) * 1000
+        log.error(
+            "Request failed",
+            method=method,
+            path=path,
+            request_id=request_id,
+            duration_ms=round(duration_ms, 2),
+            error=str(exc),
+            exc_info=True,
+        )
+        raise
+
+    duration_ms = (time.time() - start_time) * 1000
+    log.info(
+        "Request completed",
+        method=method,
+        path=path,
+        request_id=request_id,
+        status_code=response.status_code,
+        duration_ms=round(duration_ms, 2),
+    )
+
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Process-Time"] = f"{duration_ms / 1000:.3f}"
+    return response
+
 
 if __name__ == "__main__":
     import uvicorn

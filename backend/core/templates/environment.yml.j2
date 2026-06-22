@@ -1,0 +1,38 @@
+name: {{ options.env_name|default('myenv') }}
+channels:
+{% set channels = ['defaults', 'conda-forge'] %}
+{% set package_names = ecosystems.get('conda', []) | map(attribute='name') | list %}
+{% if 'cuda' in package_names or 'torch' in package_names %}
+{% set _ = channels.extend(['pytorch', 'nvidia']) %}
+{% endif %}
+{% for channel in channels %}
+  - {{ channel }}
+{% endfor %}
+dependencies:
+{% if system_info.runtime_versions.python.version %}
+  - python={{ system_info.runtime_versions.python.version.split('.')[:2] | join('.') }}
+{% endif %}
+{% for pkg in ecosystems.get('conda', []) | sort(attribute='name') %}
+{% if options.pin_versions != false %}
+  - {{ pkg.name }}={{ pkg.version }}
+{% else %}
+  - {{ pkg.name }}>={{ pkg.version }}
+{% endif %}
+{% endfor %}
+{% set pip_pkgs = ecosystems.get('pypi', []) | sort(attribute='name') %}
+{% if pip_pkgs %}
+  - pip:
+{% for pkg in pip_pkgs %}
+{% if options.pin_versions != false %}
+      - {{ pkg.name }}=={{ pkg.version }}
+{% else %}
+      - {{ pkg.name }}>={{ pkg.version }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if options.include_platforms %}
+platforms:
+  - linux-64
+  - osx-64
+  - win-64
+{% endif %}

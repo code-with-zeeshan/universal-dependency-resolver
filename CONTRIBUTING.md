@@ -451,34 +451,18 @@ class TestConflictResolver:
 ```bash
 // Component test example
 import { mount } from '@vue/test-utils'
-import PackageCard from '@/components/PackageCard.vue'
+import PackageSearch from '@/components/PackageSearch.vue'
 
-describe('PackageCard.vue', () => {
-  const mockPackage = {
-    name: 'vue',
-    ecosystem: 'npm',
-    version: '3.3.0',
-    description: 'The progressive JavaScript framework'
-  }
-
-  it('renders package information correctly', () => {
-    const wrapper = mount(PackageCard, {
-      props: { package: mockPackage }
-    })
-    
-    expect(wrapper.find('.package-name').text()).toBe('vue')
-    expect(wrapper.find('.ecosystem-badge').text()).toBe('NPM')
+describe('PackageSearch.vue', () => {
+  it('renders search input', () => {
+    const wrapper = mount(PackageSearch)
+    expect(wrapper.find('input[type="text"]').exists()).toBe(true)
   })
 
-  it('emits click event when clicked', async () => {
-    const wrapper = mount(PackageCard, {
-      props: { package: mockPackage }
-    })
-    
-    await wrapper.trigger('click')
-    
-    expect(wrapper.emitted('click')).toBeTruthy()
-    expect(wrapper.emitted('click')[0]).toEqual([mockPackage])
+  it('emits search event on submit', async () => {
+    const wrapper = mount(PackageSearch)
+    await wrapper.find('form').trigger('submit.prevent')
+    expect(wrapper.emitted('search')).toBeTruthy()
   })
 })
 ```

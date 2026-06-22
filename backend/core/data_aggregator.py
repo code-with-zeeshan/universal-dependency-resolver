@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
+from backend.core.cache import cache_manager, CacheKeys
 from backend.core.utils import normalize_package_name, sanitize_ecosystem_name, parse_version, is_compatible_version, hash_system_info
 import json
 import hashlib
@@ -117,7 +118,6 @@ class DataAggregator:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.cache_ttl = cache_ttl
         self.enable_caching = enable_caching
-        self._cache: Dict[str, Tuple[Any, datetime]] = {}
         self._ecosystem_cache: Dict[str, List[Ecosystem]] = {}
         
     async def __aenter__(self):
@@ -153,24 +153,6 @@ class DataAggregator:
         key_str = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()
     
-    async def _get_cached(self, cache_key: str) -> Optional[Any]:
-        """Get cached data if available and not expired"""
-        if not self.enable_caching:
-            return None
-            
-        if cache_key in self._cache:
-            data, timestamp = self._cache[cache_key]
-            if (datetime.now() - timestamp).total_seconds() < self.cache_ttl:
-                return data
-            else:
-                del self._cache[cache_key]
-        return None
-    
-    def _set_cache(self, cache_key: str, data: Any):
-        """Set cache data"""
-        if self.enable_caching:
-            self._cache[cache_key] = (data, datetime.now())
-    
     async def get_package_info(self, 
                              package_name: str, 
                              ecosystem: Optional[Union[str, Ecosystem]] = None,
@@ -190,7 +172,7 @@ class DataAggregator:
             include_dependencies,
             include_versions
         )
-        cached_result = await self._get_cached(cache_key)
+        cached_result = await cache_manager.get(cache_key)
         if cached_result:
             return cached_result
         
@@ -291,7 +273,7 @@ class DataAggregator:
         }
 
         # Cache the result
-        self._set_cache(cache_key, aggregated_info)
+        await cache_manager.set(cache_key, aggregated_info, ttl=self.cache_ttl)
         
         return aggregated_info
     

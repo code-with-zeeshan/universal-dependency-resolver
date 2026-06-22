@@ -1,71 +1,19 @@
-// frontend/src/services/packageService.js
-import axios from 'axios';
-
-// Base URL for the API - can be configured via environment variable
-const API_BASE_URL = process.env.VUE_APP_API_URL || 'http://localhost:8000';
-const API_VERSION = 'v1';
-
-// Create axios instance with default config
-const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api/${API_VERSION}`,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 30000, // 30 seconds
-});
-
-// Add request interceptor for authentication (future use)
-apiClient.interceptors.request.use(
-  (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Handle rate limiting
-    if (error.response?.status === 429) {
-      console.error('Rate limit exceeded. Please try again later.');
-      // Could implement retry logic here
-    }
-    
-    // Handle authentication errors
-    if (error.response?.status === 401) {
-      // Redirect to login or refresh token
-      localStorage.removeItem('authToken');
-      // window.location.href = '/login';
-    }
-    
-    return Promise.reject(error);
-  }
-);
+import apiClient from './apiClient'
 
 export default {
-  // Search packages across ecosystems
   async searchPackages(query, ecosystems = null, options = {}) {
     try {
       const params = {
         q: query,
         ...options
       };
-      
+
       if (ecosystems && ecosystems.length > 0) {
         params.ecosystems = ecosystems.join(',');
       }
-      
+
       const response = await apiClient.get('/packages/search', { params });
-      
-      // Add flattening logic if needed
+
       if (options.flatten && response.data.results) {
         const results = [];
         for (const [eco, packages] of Object.entries(response.data.results)) {
@@ -85,7 +33,6 @@ export default {
     }
   },
 
-  // Get package information - UPDATED ENDPOINT
   async getPackageInfo(ecosystem, packageName) {
     try {
       const response = await apiClient.get(`/packages/${ecosystem}/${packageName}`);
@@ -96,7 +43,6 @@ export default {
     }
   },
 
-  // Get package versions
   async getPackageVersions(ecosystem, packageName, options = {}) {
     try {
       const response = await apiClient.get(`/packages/${ecosystem}/${packageName}/versions`, {
@@ -109,13 +55,12 @@ export default {
     }
   },
 
-  // Get package dependencies
   async getPackageDependencies(ecosystem, packageName, version = null, recursive = false) {
     try {
       const params = {};
       if (version) params.version = version;
       if (recursive) params.recursive = recursive;
-      
+
       const response = await apiClient.get(`/packages/${ecosystem}/${packageName}/dependencies`, {
         params
       });
@@ -126,12 +71,11 @@ export default {
     }
   },
 
-  // Get package compatibility
   async getPackageCompatibility(ecosystem, packageName, version = null) {
     try {
       const params = {};
       if (version) params.version = version;
-      
+
       const response = await apiClient.get(`/packages/${ecosystem}/${packageName}/compatibility`, {
         params
       });
@@ -142,7 +86,6 @@ export default {
     }
   },
 
-  // Report compatibility
   async reportCompatibility(ecosystem, packageName, version, systemInfo, works, notes = null) {
     try {
       const data = {
@@ -151,7 +94,7 @@ export default {
         works,
         notes
       };
-      
+
       const response = await apiClient.post(
         `/packages/${ecosystem}/${packageName}/compatibility/report`,
         data
@@ -163,14 +106,13 @@ export default {
     }
   },
 
-  // Compare packages
   async comparePackages(packages, aspects = 'all') {
     try {
       const params = {
         packages: packages.join(','),
         aspects
       };
-      
+
       const response = await apiClient.get('/packages/compare', { params });
       return response.data;
     } catch (error) {
@@ -179,7 +121,6 @@ export default {
     }
   },
 
-  // Resolve dependencies - UPDATED ENDPOINT
   async resolveDependencies(packages, systemInfo = null, options = {}) {
     try {
       const data = {
@@ -192,7 +133,7 @@ export default {
         auto_detect_system: options.autoDetectSystem !== false,
         prefer_compatibility: options.preferCompatibility !== false
       };
-      
+
       const response = await apiClient.post('/packages/resolve', data);
       return response.data;
     } catch (error) {
@@ -201,7 +142,6 @@ export default {
     }
   },
 
-  // Export configuration - UPDATED ENDPOINT
   async exportConfiguration(resolvedPackages, format, systemInfo = null, options = {}) {
     try {
       const data = {
@@ -210,7 +150,7 @@ export default {
         system_info: systemInfo,
         options: options
       };
-      
+
       const response = await apiClient.post('/packages/export', data);
       return response.data;
     } catch (error) {
@@ -219,7 +159,6 @@ export default {
     }
   },
 
-  // Get export formats - UPDATED ENDPOINT
   async getExportFormats() {
     try {
       const response = await apiClient.get('/packages/export-formats');
@@ -227,33 +166,6 @@ export default {
     } catch (error) {
       console.error('Error fetching export formats:', error);
       throw error;
-    }
-  },
-
-  // Helper method to handle errors consistently
-  handleError(error) {
-    if (error.response) {
-      // Server responded with error
-      const errorData = error.response.data?.error || error.response.data;
-      return {
-        message: errorData.message || 'An error occurred',
-        status: error.response.status,
-        type: errorData.type || 'unknown'
-      };
-    } else if (error.request) {
-      // Request made but no response
-      return {
-        message: 'No response from server. Please check your connection.',
-        status: 0,
-        type: 'network_error'
-      };
-    } else {
-      // Something else happened
-      return {
-        message: error.message || 'An unexpected error occurred',
-        status: 0,
-        type: 'client_error'
-      };
     }
   }
 };

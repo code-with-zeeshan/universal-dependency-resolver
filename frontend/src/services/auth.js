@@ -1,34 +1,10 @@
-// frontend/src/services/auth.js
-import axios from 'axios'
-
-const API_BASE = process.env.VUE_APP_API_URL || 'http://localhost:8000'
-const API_VERSION = 'v1'
+import apiClient from './apiClient'
+import jwt_decode from 'jwt-decode'
 
 class AuthService {
   constructor() {
-    this.client = axios.create({
-      baseURL: `${API_BASE}/api/${API_VERSION}`,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
+    this.client = apiClient
 
-    // Add request interceptor to include auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = this.getToken()
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
-        }
-        return config
-      },
-      (error) => {
-        return Promise.reject(error)
-      }
-    )
-
-    // Add response interceptor for token refresh
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
@@ -42,8 +18,7 @@ class AuthService {
             if (refreshToken) {
               const newTokens = await this.refreshAccessToken(refreshToken)
               this.setTokens(newTokens.access_token, newTokens.refresh_token)
-              
-              // Retry original request with new token
+
               originalRequest.headers.Authorization = `Bearer ${newTokens.access_token}`
               return this.client(originalRequest)
             }
@@ -58,7 +33,6 @@ class AuthService {
     )
   }
 
-  // Token management
   getToken() {
     return localStorage.getItem('access_token')
   }
@@ -79,7 +53,6 @@ class AuthService {
     localStorage.removeItem('refresh_token')
   }
 
-  // User management
   getUser() {
     const userStr = localStorage.getItem('user')
     return userStr ? JSON.parse(userStr) : null
@@ -93,14 +66,12 @@ class AuthService {
     localStorage.removeItem('user')
   }
 
-  // Check if user is authenticated
   isAuthenticated() {
     const token = this.getToken()
     if (!token) return false
 
     try {
-      // Check if token is expired
-      const payload = JSON.parse(atob(token.split('.')[1]))
+      const payload = jwt_decode(token)
       const currentTime = Date.now() / 1000
       return payload.exp > currentTime
     } catch {
@@ -108,7 +79,6 @@ class AuthService {
     }
   }
 
-  // Authentication methods
   async login(credentials) {
     try {
       const response = await this.client.post('/auth/login', credentials)
@@ -125,7 +95,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -141,7 +111,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -153,21 +123,17 @@ class AuthService {
       })
       return response.data
     } catch (error) {
-      throw this.handleError(error)
+      throw error
     }
   }
 
   logout() {
     this.removeTokens()
     this.removeUser()
-    
-    // Optional: Call logout endpoint to invalidate tokens on server
-    this.client.post('/auth/logout').catch(() => {
-      // Ignore errors on logout
-    })
+
+    this.client.post('/auth/logout').catch(() => {})
   }
 
-  // API Key management
   async getApiKeys() {
     try {
       const response = await this.client.get('/auth/api-keys')
@@ -178,7 +144,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -193,7 +159,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -205,12 +171,11 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
 
-  // User profile methods
   async getProfile() {
     try {
       const response = await this.client.get('/auth/profile')
@@ -221,7 +186,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -231,7 +196,7 @@ class AuthService {
       const response = await this.client.put('/auth/profile', profileData)
       const updatedUser = response.data.user
       this.setUser(updatedUser)
-      
+
       return {
         success: true,
         user: updatedUser
@@ -239,7 +204,7 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
@@ -254,12 +219,11 @@ class AuthService {
     } catch (error) {
       return {
         success: false,
-        error: this.handleError(error)
+        error: error.response?.data?.message || error.message || 'An error occurred'
       }
     }
   }
 
-  // Permission checking
   hasScope(requiredScope) {
     const user = this.getUser()
     if (!user || !user.scopes) return false
@@ -278,39 +242,14 @@ class AuthService {
     return requiredScopes.every(scope => user.scopes.includes(scope))
   }
 
-  // Helper methods
-  handleError(error) {
-    if (error.response) {
-      const errorData = error.response.data?.error || error.response.data
-      return {
-        message: errorData.message || 'An error occurred',
-        status: error.response.status,
-        type: errorData.type || 'unknown'
-      }
-    } else if (error.request) {
-      return {
-        message: 'No response from server. Please check your connection.',
-        status: 0,
-        type: 'network_error'
-      }
-    } else {
-      return {
-        message: error.message || 'An unexpected error occurred',
-        status: 0,
-        type: 'client_error'
-      }
-    }
-  }
-
-  // Initialize auth state from storage
   initializeAuth() {
     const user = this.getUser()
     const token = this.getToken()
-    
+
     if (user && token && this.isAuthenticated()) {
       return { authenticated: true, user }
     } else {
-      this.logout() // Clean up invalid state
+      this.logout()
       return { authenticated: false, user: null }
     }
   }

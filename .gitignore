@@ -10,6 +10,9 @@
 *.env
 secrets/
 config/secrets.yaml
+.idx/
+.kilo/
+.kilo.*
 
 # =============================================================================
 # Python Backend
@@ -387,6 +390,9 @@ sentry.properties
 docs/_build/
 docs/build/
 site/
+
+# Internal assessment
+weaknesses.md
 
 # =============================================================================
 # Testing

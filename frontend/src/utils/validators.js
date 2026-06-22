@@ -1,240 +1,140 @@
-// frontend/src/utils/validators.js
+import { required as _required, email as _email, minLength as _minLength, maxLength as _maxLength, minValue as _minValue, maxValue as _maxValue, numeric as _numeric, integer as _integer, url as _url, helpers } from '@vuelidate/validators'
+import { computed, ref } from 'vue'
 
-/**
- * Validation utilities for form inputs
- */
+export const required = helpers.withMessage('This field is required', _required)
 
-// Basic validation functions
-export const required = (value) => {
-  if (value === null || value === undefined || value === '') {
-    return 'This field is required'
-  }
-  if (Array.isArray(value) && value.length === 0) {
-    return 'This field is required'
-  }
-  return true
+export const email = helpers.withMessage('Please enter a valid email address', _email)
+
+export const minLength = (min) => helpers.withMessage(`Must be at least ${min} characters long`, _minLength(min))
+
+export const maxLength = (max) => helpers.withMessage(`Must be no more than ${max} characters long`, _maxLength(max))
+
+export const minValue = (min) => helpers.withMessage(`Must be at least ${min}`, _minValue(min))
+
+export const maxValue = (max) => helpers.withMessage(`Must be no more than ${max}`, _maxValue(max))
+
+export const numeric = helpers.withMessage('Must be a valid number', _numeric)
+
+export const integer = helpers.withMessage('Must be a whole number', _integer)
+
+export const url = helpers.withMessage('Please enter a valid URL', _url)
+
+export const pattern = (regex, message = 'Invalid format') => helpers.withMessage(message, helpers.regex(regex))
+
+const packagePatterns = {
+  pypi: /^[a-zA-Z0-9]([a-zA-Z0-9._-])*[a-zA-Z0-9]$/,
+  npm: /^(?:@[a-zA-Z0-9-]+\/)?[a-zA-Z0-9-]+$/,
+  maven: /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+$/,
+  crates: /^[a-zA-Z0-9_-]+$/,
+  conda: /^[a-zA-Z0-9_-]+$/,
+  gomodules: /^[a-zA-Z0-9._/-]+$/,
+  apt: /^[a-z0-9][a-z0-9+.-]+$/,
+  apk: /^[a-z0-9][a-z0-9+.-]+$/,
+  cocoapods: /^[a-zA-Z0-9_-]+$/,
+  rubygems: /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/,
+  packagist: /^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9]([_.-]?[a-z0-9]+)*$/,
+  nuget: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+  homebrew: /^[a-z0-9][a-z0-9+.-]+$/
 }
 
-export const email = (value) => {
-  if (!value) return true // Let required handle empty values
-  
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(value)) {
-    return 'Please enter a valid email address'
+export const packageName = (ecosystem) => helpers.withMessage(
+  `Invalid package name format for ${ecosystem}`,
+  (value) => {
+    if (!value) return true
+    const ecosystemPattern = packagePatterns[ecosystem?.toLowerCase()]
+    if (!ecosystemPattern) return true
+    return ecosystemPattern.test(value)
   }
-  return true
-}
+)
 
-export const minLength = (min) => (value) => {
-  if (!value) return true // Let required handle empty values
-  
-  if (value.length < min) {
-    return `Must be at least ${min} characters long`
-  }
-  return true
-}
-
-export const maxLength = (max) => (value) => {
+export const versionSpec = helpers.withMessage('Invalid version specification', (value) => {
   if (!value) return true
-  
-  if (value.length > max) {
-    return `Must be no more than ${max} characters long`
-  }
-  return true
-}
 
-export const minValue = (min) => (value) => {
-  if (value === null || value === undefined || value === '') return true
-  
-  const numValue = Number(value)
-  if (isNaN(numValue) || numValue < min) {
-    return `Must be at least ${min}`
-  }
-  return true
-}
-
-export const maxValue = (max) => (value) => {
-  if (value === null || value === undefined || value === '') return true
-  
-  const numValue = Number(value)
-  if (isNaN(numValue) || numValue > max) {
-    return `Must be no more than ${max}`
-  }
-  return true
-}
-
-export const numeric = (value) => {
-  if (!value) return true
-  
-  if (isNaN(Number(value))) {
-    return 'Must be a valid number'
-  }
-  return true
-}
-
-export const integer = (value) => {
-  if (!value) return true
-  
-  const numValue = Number(value)
-  if (isNaN(numValue) || !Number.isInteger(numValue)) {
-    return 'Must be a whole number'
-  }
-  return true
-}
-
-export const url = (value) => {
-  if (!value) return true
-  
-  try {
-    new URL(value)
-    return true
-  } catch {
-    return 'Please enter a valid URL'
-  }
-}
-
-export const pattern = (regex, message = 'Invalid format') => (value) => {
-  if (!value) return true
-  
-  if (!regex.test(value)) {
-    return message
-  }
-  return true
-}
-
-// Package-specific validators
-export const packageName = (ecosystem) => (value) => {
-  if (!value) return true
-  
-  const patterns = {
-    pypi: /^[a-zA-Z0-9]([a-zA-Z0-9._-])*[a-zA-Z0-9]$/,
-    npm: /^(?:@[a-zA-Z0-9-]+\/)?[a-zA-Z0-9-]+$/,
-    maven: /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+$/,
-    crates: /^[a-zA-Z0-9_-]+$/,
-    conda: /^[a-zA-Z0-9_-]+$/,
-    gomodules: /^[a-zA-Z0-9._/-]+$/,
-    apt: /^[a-z0-9][a-z0-9+.-]+$/,
-    apk: /^[a-z0-9][a-z0-9+.-]+$/,
-    cocoapods: /^[a-zA-Z0-9_-]+$/,
-    rubygems: /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/,
-    packagist: /^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9]([_.-]?[a-z0-9]+)*$/,
-    nuget: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
-    homebrew: /^[a-z0-9][a-z0-9+.-]+$/
-  }
-  
-  const ecosystemPattern = patterns[ecosystem?.toLowerCase()]
-  if (!ecosystemPattern) {
-    return true // Unknown ecosystem, allow any format
-  }
-  
-  if (!ecosystemPattern.test(value)) {
-    return `Invalid package name format for ${ecosystem}`
-  }
-  return true
-}
-
-export const versionSpec = (value) => {
-  if (!value) return true
-  
-  // Basic version specification patterns
   const versionPatterns = [
-    /^\d+(\.\d+)*$/, // Simple version: 1.2.3
-    /^[><=~^!]*\d+(\.\d+)*$/, // With operators: >=1.2.3, ~1.2.0
-    /^\d+(\.\d+)*(\s*,\s*[><=~^!]*\d+(\.\d+)*)*$/, // Multiple specs: >=1.0,<2.0
-    /^\*$/, // Wildcard
-    /^latest$/, // Latest keyword
+    /^\d+(\.\d+)*$/,
+    /^[><=~^!]*\d+(\.\d+)*$/,
+    /^\d+(\.\d+)*(\s*,\s*[><=~^!]*\d+(\.\d+)*)*$/,
+    /^\*$/,
+    /^latest$/
   ]
-  
-  const isValid = versionPatterns.some(pattern => pattern.test(value.trim()))
-  if (!isValid) {
-    return 'Invalid version specification'
-  }
-  return true
-}
 
-export const systemSpec = (value) => {
-  if (!value) return true
-  
-  // System specification format: key=value,key=value
-  const specPattern = /^[a-zA-Z_][a-zA-Z0-9_]*=[^,=]+(,[a-zA-Z_][a-zA-Z0-9_]*=[^,=]+)*$/
-  if (!specPattern.test(value)) {
-    return 'Invalid system specification format. Use: key=value,key=value'
+  return versionPatterns.some(pattern => pattern.test(value.trim()))
+})
+
+export const systemSpec = helpers.withMessage(
+  'Invalid system specification format. Use: key=value,key=value',
+  (value) => {
+    if (!value) return true
+    return /^[a-zA-Z_][a-zA-Z0-9_]*=[^,=]+(,[a-zA-Z_][a-zA-Z0-9_]*=[^,=]+)*$/.test(value)
   }
-  return true
-}
+)
 
 export const filename = (value) => {
   if (!value) return true
-  
-  // Check for invalid filename characters
-  const invalidChars = /[<>:"/\\|?*]/
-  if (invalidChars.test(value)) {
+
+  if (/[<>:"/\\|?*]/.test(value)) {
     return 'Filename contains invalid characters'
   }
-  
-  // Check length
+
   if (value.length > 255) {
     return 'Filename is too long'
   }
-  
+
   return true
 }
 
 export const apiKey = (value) => {
   if (!value) return true
-  
-  // API key format validation
+
   if (!/^[a-zA-Z0-9_-]+$/.test(value) || value.length < 20) {
     return 'Invalid API key format'
   }
   return true
 }
 
-// Composite validators
 export const password = (value) => {
   if (!value) return true
-  
+
   const errors = []
-  
+
   if (value.length < 8) {
     errors.push('at least 8 characters')
   }
-  
-  if (!/[a-z]/.test(value)) {
+
+  if (!helpers.regex(/[a-z]/)(value)) {
     errors.push('one lowercase letter')
   }
-  
-  if (!/[A-Z]/.test(value)) {
+
+  if (!helpers.regex(/[A-Z]/)(value)) {
     errors.push('one uppercase letter')
   }
-  
-  if (!/\d/.test(value)) {
+
+  if (!helpers.regex(/\d/)(value)) {
     errors.push('one number')
   }
-  
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(value)) {
+
+  if (!helpers.regex(/[!@#$%^&*(),.?":{}|<>]/)(value)) {
     errors.push('one special character')
   }
-  
+
   if (errors.length > 0) {
     return `Password must contain ${errors.join(', ')}`
   }
-  
+
   return true
 }
 
-export const confirmPassword = (originalPassword) => (value) => {
-  if (!value) return true
-  
-  if (value !== originalPassword) {
-    return 'Passwords do not match'
+export const confirmPassword = (originalPassword) => {
+  const validator = (value, siblings) => {
+    if (!value) return true
+    return value === (siblings?.password ?? originalPassword)
   }
-  return true
+  return helpers.withMessage('Passwords do not match', validator)
 }
 
 export const fileSize = (maxSizeMB) => (file) => {
   if (!file) return true
-  
+
   const maxSizeBytes = maxSizeMB * 1024 * 1024
   if (file.size > maxSizeBytes) {
     return `File size must be less than ${maxSizeMB}MB`
@@ -244,33 +144,30 @@ export const fileSize = (maxSizeMB) => (file) => {
 
 export const fileType = (allowedTypes) => (file) => {
   if (!file) return true
-  
+
   const fileType = file.type || ''
   const fileName = file.name || ''
   const extension = fileName.split('.').pop()?.toLowerCase()
-  
+
   const isTypeAllowed = allowedTypes.some(type => {
     if (type.startsWith('.')) {
-      // Extension check
       return extension === type.slice(1)
     } else {
-      // MIME type check
       return fileType.includes(type)
     }
   })
-  
+
   if (!isTypeAllowed) {
     return `File type not allowed. Allowed types: ${allowedTypes.join(', ')}`
   }
   return true
 }
 
-// Validation utility functions
 export const validateField = (value, validators) => {
   for (const validator of validators) {
     const result = validator(value)
     if (result !== true) {
-      return result // Return first error message
+      return result
     }
   }
   return true
@@ -279,24 +176,23 @@ export const validateField = (value, validators) => {
 export const validateForm = (formData, validationRules) => {
   const errors = {}
   let isValid = true
-  
+
   for (const [field, rules] of Object.entries(validationRules)) {
     const fieldValue = formData[field]
     const fieldResult = validateField(fieldValue, rules)
-    
+
     if (fieldResult !== true) {
       errors[field] = fieldResult
       isValid = false
     }
   }
-  
+
   return { isValid, errors }
 }
 
-// Async validators
 export const uniqueUsername = (checkFunction) => async (value) => {
   if (!value) return true
-  
+
   try {
     const isUnique = await checkFunction(value)
     if (!isUnique) {
@@ -310,7 +206,7 @@ export const uniqueUsername = (checkFunction) => async (value) => {
 
 export const uniqueEmail = (checkFunction) => async (value) => {
   if (!value) return true
-  
+
   try {
     const isUnique = await checkFunction(value)
     if (!isUnique) {
@@ -324,7 +220,7 @@ export const uniqueEmail = (checkFunction) => async (value) => {
 
 export const packageExists = (checkFunction) => async (value, ecosystem) => {
   if (!value) return true
-  
+
   try {
     const exists = await checkFunction(value, ecosystem)
     if (!exists) {
@@ -336,7 +232,6 @@ export const packageExists = (checkFunction) => async (value, ecosystem) => {
   }
 }
 
-// Validation presets for common forms
 export const authValidation = {
   username: [required, minLength(3), maxLength(50), pattern(/^[a-zA-Z0-9_-]+$/, 'Only letters, numbers, underscores, and hyphens allowed')],
   email: [required, email],
@@ -361,42 +256,37 @@ export const exportValidation = {
   packages: [required]
 }
 
-// Vue.js integration helper
 export const createVuelidateRules = (validationRules) => {
   const rules = {}
-  
+
   for (const [field, validators] of Object.entries(validationRules)) {
     rules[field] = {}
-    
+
     validators.forEach((validator, index) => {
       const ruleName = validator.name || `rule${index}`
       rules[field][ruleName] = validator
     })
   }
-  
+
   return rules
 }
 
-// Real-time validation helper
 export const createRealtimeValidator = (validationRules, debounceMs = 300) => {
   let timeouts = {}
-  
+
   return (field, value, callback) => {
-    // Clear existing timeout for this field
     if (timeouts[field]) {
       clearTimeout(timeouts[field])
     }
-    
-    // Set new timeout
+
     timeouts[field] = setTimeout(async () => {
       const rules = validationRules[field] || []
-      
+
       try {
-        // Handle async validators
         const results = await Promise.all(
           rules.map(rule => Promise.resolve(rule(value)))
         )
-        
+
         const error = results.find(result => result !== true)
         callback(field, error || null)
       } catch (err) {
@@ -407,7 +297,6 @@ export const createRealtimeValidator = (validationRules, debounceMs = 300) => {
 }
 
 export default {
-  // Basic validators
   required,
   email,
   minLength,
@@ -418,32 +307,22 @@ export default {
   integer,
   url,
   pattern,
-  
-  // Package-specific validators
   packageName,
   versionSpec,
   systemSpec,
   filename,
   apiKey,
-  
-  // Composite validators
   password,
   confirmPassword,
   fileSize,
   fileType,
-  
-  // Async validators
   uniqueUsername,
   uniqueEmail,
   packageExists,
-  
-  // Validation utilities
   validateField,
   validateForm,
   createVuelidateRules,
   createRealtimeValidator,
-  
-  // Presets
   authValidation,
   packageSearchValidation,
   systemRequirementValidation,

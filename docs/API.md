@@ -2,6 +2,8 @@
 
 Comprehensive API documentation for the Universal Dependency Resolver.
 
+> **Note**: The auto-generated OpenAPI/Swagger docs at `http://localhost:8000/docs` are the authoritative reference. This document provides a conceptual overview and usage examples.
+
 ## 📋 Table of Contents
 
 - [Overview](#overview)
@@ -12,10 +14,7 @@ Comprehensive API documentation for the Universal Dependency Resolver.
 - [Package Endpoints](#package-endpoints)
 - [System Endpoints](#system-endpoints)
 - [Utility Endpoints](#utility-endpoints)
-- [WebSocket API](#websocket-api)
-- [SDK & Libraries](#sdk--libraries)
-- [Examples](#examples)
-- [Testing](#testing)
+- [WebSocket / SocketIO API](#websocket--socketio-api)
 
 ## 🔍 Overview
 
@@ -976,357 +975,50 @@ GET /
 }
 ```
 
-## 🌐 WebSocket API
+## 🌐 WebSocket / SocketIO API
 
-### For real-time updates during long-running operations:
+### For real-time updates during long-running operations, the API uses SocketIO:
 
 #### Connection
 
-```bash
-const ws = new WebSocket('wss://api.yourdomain.com/api/v1/ws');
+```javascript
+import { io } from 'socket.io-client';
 
-ws.onopen = function() {
-    console.log('Connected to WebSocket');
-    
-    // Subscribe to dependency resolution updates
-    ws.send(JSON.stringify({
-        type: 'subscribe',
-        channel: 'dependency_resolution',
-        resolution_id: 'res_123456789'
-    }));
-};
-
-ws.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    console.log('Update:', data);
-};
-```
-
-#### Message Types
-
-Type	Description	Data
-resolution_progress	Dependency resolution progress	{progress: 45, stage: 'resolving_conflicts'}
-resolution_complete	Resolution finished	{resolution_id: 'res_123', status: 'success'}
-system_scan_progress	System scan progress	{progress: 75, component: 'gpu_detection'}
-error	Error occurred	{error: 'connection_failed', message: '...'}
-
-## 📚 SDK & Libraries
-
-> 🚧 **Status: Coming Soon** - SDKs are planned for future release. For now, please use the REST API directly.
-
-### Planned SDKs (Q2 2026)
-
-We're planning to release official SDKs for the following languages:
-
-#### Python SDK (Planned)
-```python
-# Coming Soon!
-from udr_client import UniversalDependencyResolver
-
-# Initialize client
-client = UniversalDependencyResolver(
-    api_key="your-api-key",
-    base_url="https://api.yourdomain.com/api/v1"
-)
-
-# Example usage (planned interface)
-# Search packages
-results = client.search_packages(
-    query="web framework",
-    ecosystems=["pypi", "npm"],
-    limit=10
-)
-
-# Get package details
-package = client.get_package("pypi", "flask")
-
-# Resolve dependencies
-resolution = client.resolve_dependencies([
-    {"name": "flask", "ecosystem": "pypi", "version": ">=2.0.0"},
-    {"name": "numpy", "ecosystem": "pypi", "version": ">=1.20.0"}
-])
-
-# Export to requirements.txt
-content = client.export_configuration(
-    resolution.resolved,
-    format="requirements.txt"
-)
-```
-
-#### JavaScript/TypeScript SDK (Planned)
-
-```java
-// Coming Soon!
-import { UniversalDependencyResolver } from '@udr/client';
-
-const client = new UniversalDependencyResolver({
-    apiKey: 'your-api-key',
-    baseUrl: 'https://api.yourdomain.com/api/v1'
+const socket = io('wss://api.yourdomain.com', {
+  path: '/api/v1/ws',
+  transports: ['websocket']
 });
 
-// Example usage (planned interface)
-// Search packages
-const results = await client.searchPackages({
-    query: 'web framework',
-    ecosystems: ['pypi', 'npm'],
-    limit: 10
+socket.on('connect', () => {
+  console.log('Connected');
+
+  // Subscribe to a resolution job
+  socket.emit('subscribe', { resolution_id: 'res_123456789' });
 });
 
-// Get package details
-const package = await client.getPackage('npm', 'express');
+socket.on('progress', (data) => {
+  console.log(`Progress: ${data.progress}% - ${data.stage}`);
+});
 
-// Resolve dependencies
-const resolution = await client.resolveDependencies([
-    { name: 'express', ecosystem: 'npm', version: '^4.18.0' },
-    { name: 'lodash', ecosystem: 'npm', version: '^4.17.0' }
-]);
+socket.on('complete', (data) => {
+  console.log('Resolution complete:', data);
+});
+
+socket.on('error', (data) => {
+  console.error('Error:', data.message);
+});
 ```
 
-#### CLI Tool (Planned)
+#### Events
 
-```bash
-# Coming Soon!
-# Install: 
-pip install udr-cli
+| Event | Direction | Payload |
+|-------|-----------|---------|
+| `subscribe` | Client → Server | `{ resolution_id }` |
+| `progress` | Server → Client | `{ progress, stage, resolution_id }` |
+| `complete` | Server → Client | `{ resolution_id, status, resolved }` |
+| `error` | Server → Client | `{ message, code }` |
 
-# Search packages 
-# Usage:
-udr search "package-name" --ecosystems pypi,npm
-
-# Get package info
-udr info pypi flask
-
-# Resolve dependencies from file
-udr resolve requirements.txt --output resolved.json
-
-# Export to different format
-udr export resolved.json --format package.json
-```
-#### Current Alternative: Direct API Usage
-Until SDKs are available, you can use any HTTP client:
-
-```python
-# Python example using requests
-import requests
-
-base_url = "https://api.yourdomain.com/api/v1"
-response = requests.get(f"{base_url}/packages/search", params={"q": "tensorflow"})
-data = response.json()
-```
-```java
-// JavaScript example using fetch
-const response = await fetch('https://api.yourdomain.com/api/v1/packages/search?q=tensorflow');
-const data = await response.json();
-```
-Want to Contribute?
-We welcome community contributions! If you'd like to help build SDKs:
-
-* Check our Contributing Guidelines
-* Join the discussion in Issue #SDK-001 (comming soon)
-
-## 💡 Examples
-
-### Complete Workflow Example
-
-```bash
-import asyncio
-from udr_client import UniversalDependencyResolver
-
-async def complete_workflow():
-    client = UniversalDependencyResolver(api_key="your-api-key")
-    
-    # 1. Search for packages
-    search_results = await client.search_packages(
-        query="machine learning",
-        ecosystems=["pypi"],
-        limit=5
-    )
-    
-    print(f"Found {len(search_results['pypi'])} packages")
-    
-    # 2. Select packages for resolution
-    packages = [
-        {"name": "scikit-learn", "ecosystem": "pypi", "version": ">=1.0.0"},
-        {"name": "pandas", "ecosystem": "pypi", "version": ">=1.5.0"},
-        {"name": "numpy", "ecosystem": "pypi", "version": ">=1.24.0"}
-    ]
-    
-    # 3. Get system info
-    system_info = await client.get_system_info(detailed=True)
-    print(f"System: {system_info['os']['system']} {system_info['os']['release']}")
-    
-    # 4. Resolve dependencies
-    resolution = await client.resolve_dependencies(
-        packages=packages,
-        system_info=system_info,
-        options={"prefer_compatibility": True}
-    )
-    
-    if resolution['status'] == 'success':
-        print(f"Resolved {len(resolution['resolved'])} packages")
-        
-        # 5. Export to requirements.txt
-        export_result = await client.export_configuration(
-            resolved_packages=resolution['resolved'],
-            format="requirements.txt",
-            options={"include_comments": True, "pin_versions": True}
-        )
-        
-        # 6. Save to file
-        with open("requirements.txt", "w") as f:
-            f.write(export_result['content'])
-        
-        print("Requirements saved to requirements.txt")
-    else:
-        print("Resolution failed:", resolution['error'])
-
-# Run the workflow
-asyncio.run(complete_workflow())
-```
-
-### Batch Processing Example
-
-```bash
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-
-async def process_multiple_environments():
-    client = UniversalDependencyResolver(api_key="your-api-key")
-    
-    # List of environment files to process
-    files = [
-        "requirements-dev.txt",
-        "requirements-prod.txt", 
-        "requirements-test.txt"
-    ]
-    
-    async def process_file(filename):
-        # Analyze environment file
-        with open(filename, 'rb') as f:
-            analysis = await client.analyze_environment_file(f)
-        
-        # Resolve dependencies
-        packages = [
-            {"name": pkg["name"], "ecosystem": "pypi", "version": pkg["version"]}
-            for pkg in analysis["packages"]
-        ]
-        
-        resolution = await client.resolve_dependencies(packages)
-        
-        # Export optimized requirements
-        if resolution['status'] == 'success':
-            export_result = await client.export_configuration(
-                resolved_packages=resolution['resolved'],
-                format="requirements.txt",
-                options={"pin_versions": True}
-            )
-            
-            output_file = f"optimized-{filename}"
-            with open(output_file, "w") as f:
-                f.write(export_result['content'])
-            
-            print(f"Processed {filename} -> {output_file}")
-        
-        return resolution
-    
-    # Process files concurrently
-    results = await asyncio.gather(*[
-        process_file(filename) for filename in files
-    ])
-    
-    return results
-
-# Run batch processing
-results = asyncio.run(process_multiple_environments())
-```
-
-## 🧪 Testing
-
-### Testing Your Integration
-
-```bash
-import pytest
-from udr_client import UniversalDependencyResolver
-
-@pytest.fixture
-def client():
-    return UniversalDependencyResolver(
-        api_key="test-api-key",
-        base_url="https://api-staging.yourdomain.com/api/v1"
-    )
-
-@pytest.mark.asyncio
-async def test_search_packages(client):
-    results = await client.search_packages(
-        query="test framework",
-        ecosystems=["pypi"],
-        limit=5
-    )
-    
-    assert results['status'] == 'success'
-    assert len(results['data']['results']['pypi']) <= 5
-    
-    # Test specific package appears in results
-    package_names = [pkg['name'] for pkg in results['data']['results']['pypi']]
-    assert any('pytest' in name.lower() for name in package_names)
-
-@pytest.mark.asyncio
-async def test_dependency_resolution(client):
-    packages = [
-        {"name": "pytest", "ecosystem": "pypi", "version": ">=7.0.0"}
-    ]
-    
-    resolution = await client.resolve_dependencies(packages)
-    
-    assert resolution['status'] == 'success'
-    assert 'pytest' in resolution['data']['resolved']
-    assert len(resolution['data']['resolved']) >= 1
-
-@pytest.mark.asyncio
-async def test_export_functionality(client):
-    resolved_packages = {
-        "pytest": "7.4.0",
-        "pluggy": "1.3.0"
-    }
-    
-    export_result = await client.export_configuration(
-        resolved_packages=resolved_packages,
-        format="requirements.txt"
-    )
-    
-    assert export_result['status'] == 'success'
-    assert 'pytest==7.4.0' in export_result['data']['content']
-    assert 'pluggy==1.3.0' in export_result['data']['content']
-```
-
-### Load Testing
-
-```bash
-import asyncio
-import aiohttp
-import time
-
-async def load_test():
-    async def make_request(session, url):
-        start_time = time.time()
-        async with session.get(url) as response:
-            await response.json()
-            return time.time() - start_time
-    
-    url = "https://api.yourdomain.com/api/v1/packages/search?q=test"
-    
-    async with aiohttp.ClientSession() as session:
-        # Make 100 concurrent requests
-        tasks = [make_request(session, url) for _ in range(100)]
-        response_times = await asyncio.gather(*tasks)
-    
-    print(f"Average response time: {sum(response_times) / len(response_times):.2f}s")
-    print(f"Max response time: {max(response_times):.2f}s")
-    print(f"Min response time: {min(response_times):.2f}s")
-
-# Run load test
-asyncio.run(load_test())
-```
+> **Note**: See `docs/SDK_ROADMAP.md` for the SDK roadmap.
 
 ## 📧 Need Help?
 

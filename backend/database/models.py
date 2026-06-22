@@ -8,6 +8,7 @@ from sqlalchemy.orm import relationship, sessionmaker, validates
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
 from contextlib import contextmanager
+from typing import Dict, Any, Optional
 import os
 import sys
 
@@ -66,7 +67,7 @@ class PackageVersion(Base):
     dependencies = Column(JSON)  # {required: {...}, optional: {...}, dev: {...}}
     
     # Metadata
-    metadata = Column(JSON)
+    metadata_json = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships

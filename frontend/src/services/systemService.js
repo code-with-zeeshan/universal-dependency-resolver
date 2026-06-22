@@ -1,85 +1,40 @@
-// frontend/src/services/systemService.js
-import axios from 'axios'
-
-const API_BASE = process.env.VUE_APP_API_URL || 'http://localhost:8000'
-const API_VERSION = 'v1'
+import apiClient from './apiClient'
+import filesize from 'filesize'
+import { satisfies } from 'semver'
 
 class SystemService {
   constructor() {
-    this.client = axios.create({
-      baseURL: `${API_BASE}/api/${API_VERSION}`,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    // Add request interceptor for authentication
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('access_token'); 
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
-        }
-        return config
-      },
-      (error) => {
-        return Promise.reject(error)
-      }
-    )
-    
-    // Add response interceptor for error handling
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        // Handle rate limiting
-        if (error.response?.status === 429) {
-          console.error('Rate limit exceeded. Please try again later.')
-          // Could implement retry logic here
-        }
-        
-        // Handle authentication errors
-        if (error.response?.status === 401) {
-          localStorage.removeItem('authToken')
-          // window.location.href = '/login'
-        }
-        
-        return Promise.reject(error)
-      }
-    )
-    
-    // Cache system info for 5 minutes
+    this.client = apiClient
+
     this.cache = {
       systemInfo: null,
       timestamp: null,
-      ttl: 5 * 60 * 1000 // 5 minutes
+      ttl: 5 * 60 * 1000
     }
   }
 
   async getSystemInfo(detailed = false, forceRefresh = false) {
     try {
-      // Check cache
       if (!forceRefresh && this.cache.systemInfo && this.cache.timestamp) {
         const age = Date.now() - this.cache.timestamp
         if (age < this.cache.ttl) {
           return this.cache.systemInfo
         }
       }
-      
+
       const response = await this.client.get('/system/info', {
         params: { detailed }
       })
-      
-      const systemInfo = response.data.data // || response.data.system
-      
-      // Update cache
+
+      const systemInfo = response.data.data
+
       this.cache.systemInfo = systemInfo
       this.cache.timestamp = Date.now()
-      
+
       return systemInfo
     } catch (error) {
       console.error('Get system info error:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -88,16 +43,16 @@ class SystemService {
       const data = {
         requirements
       }
-      
+
       if (packages) {
         data.packages = packages
       }
-      
+
       const response = await this.client.post('/system/check-compatibility', data)
       return response.data.results || response.data
     } catch (error) {
       console.error('Check compatibility error:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -107,7 +62,7 @@ class SystemService {
       return response.data.gpu || response.data
     } catch (error) {
       console.error('Get GPU info error:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -117,7 +72,7 @@ class SystemService {
       return response.data.info || response.data
     } catch (error) {
       console.error(`Get ${runtime} info error:`, error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -125,17 +80,17 @@ class SystemService {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      
+
       const response = await this.client.post('/system/analyze-environment', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
-      
+
       return response.data.analysis || response.data
     } catch (error) {
       console.error('Analyze environment file error:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -145,17 +100,16 @@ class SystemService {
       if (comprehensive) {
         params.comprehensive = true
       }
-      
-      // Benchmarks may take longer, so increase timeout
+
       const response = await this.client.get('/system/benchmarks', {
         params,
-        timeout: 60000 // 60 seconds for benchmarks
+        timeout: 60000
       })
-      
+
       return response.data.benchmarks || response.data
     } catch (error) {
       console.error('Run benchmarks error:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
@@ -165,14 +119,13 @@ class SystemService {
       return response.data
     } catch (error) {
       console.error('Error fetching health status:', error)
-      throw this.handleError(error)
+      throw error
     }
   }
 
-  // Helper method to format system requirements from system info
   formatSystemRequirements(systemInfo) {
     const requirements = []
-    
+
     if (systemInfo.gpu?.available) {
       requirements.push({
         type: 'gpu',
@@ -185,7 +138,7 @@ class SystemService {
         }
       })
     }
-    
+
     if (systemInfo.runtime_versions?.python) {
       requirements.push({
         type: 'python',
@@ -196,7 +149,7 @@ class SystemService {
         }
       })
     }
-    
+
     if (systemInfo.os) {
       requirements.push({
         type: 'os',
@@ -209,7 +162,7 @@ class SystemService {
         }
       })
     }
-    
+
     if (systemInfo.cpu) {
       requirements.push({
         type: 'cpu',
@@ -222,31 +175,29 @@ class SystemService {
         }
       })
     }
-    
+
     if (systemInfo.memory) {
       requirements.push({
         type: 'memory',
         name: 'RAM',
-        value: this.formatBytes(systemInfo.memory.total),
+        value: filesize(systemInfo.memory.total),
         metadata: {
           total: systemInfo.memory.total,
           available: systemInfo.memory.available
         }
       })
     }
-    
+
     return requirements
   }
 
-  // Compare system requirements with package requirements
   compareSystemRequirements(systemInfo, requirements) {
     const comparison = {
       compatible: true,
       issues: [],
       warnings: []
     }
-    
-    // Check GPU requirements
+
     if (requirements.gpu) {
       if (!systemInfo.gpu?.available) {
         comparison.compatible = false
@@ -254,7 +205,7 @@ class SystemService {
       } else if (requirements.gpu.cuda) {
         const systemCuda = parseFloat(systemInfo.gpu.cuda || '0')
         const requiredCuda = parseFloat(requirements.gpu.cuda)
-        
+
         if (systemCuda < requiredCuda) {
           comparison.compatible = false
           comparison.issues.push(
@@ -262,21 +213,19 @@ class SystemService {
           )
         }
       }
-      
-      // Check GPU memory if specified
+
       if (requirements.gpu.memory && systemInfo.gpu.devices?.[0]?.memory) {
         const systemMemory = systemInfo.gpu.devices[0].memory
         const requiredMemory = requirements.gpu.memory
-        
+
         if (systemMemory < requiredMemory) {
           comparison.warnings.push(
-            `GPU memory ${this.formatBytes(requiredMemory)} recommended, but ${this.formatBytes(systemMemory)} available`
+            `GPU memory ${filesize(requiredMemory)} recommended, but ${filesize(systemMemory)} available`
           )
         }
       }
     }
-    
-    // Check Python version
+
     if (requirements.python) {
       const systemPython = systemInfo.runtime_versions?.python?.version
       if (!systemPython) {
@@ -288,21 +237,20 @@ class SystemService {
           requirements.python,
           requirements.python_max
         )
-        
+
         if (!compatible.compatible) {
           comparison.compatible = false
           comparison.issues.push(compatible.message)
         }
       }
     }
-    
-    // Check OS requirements
+
     if (requirements.os) {
       const systemOS = systemInfo.os?.system?.toLowerCase()
-      const requiredOS = Array.isArray(requirements.os) 
+      const requiredOS = Array.isArray(requirements.os)
         ? requirements.os.map(os => os.toLowerCase())
         : [requirements.os.toLowerCase()]
-      
+
       if (!requiredOS.includes(systemOS)) {
         comparison.compatible = false
         comparison.issues.push(
@@ -310,84 +258,36 @@ class SystemService {
         )
       }
     }
-    
-    // Check memory requirements
+
     if (requirements.memory && systemInfo.memory) {
       const systemMemory = systemInfo.memory.total
       const requiredMemory = requirements.memory
-      
+
       if (systemMemory < requiredMemory) {
         comparison.warnings.push(
-          `${this.formatBytes(requiredMemory)} RAM recommended, but ${this.formatBytes(systemMemory)} available`
+          `${filesize(requiredMemory)} RAM recommended, but ${filesize(systemMemory)} available`
         )
       }
     }
-    
+
     return comparison
   }
 
-  // Helper method to check version compatibility
   checkVersionCompatibility(systemVersion, minVersion, maxVersion = null) {
-    const result = {
-      compatible: true,
-      message: ''
+    let range = `>=${minVersion}`
+    if (maxVersion) {
+      range += ` <=${maxVersion}`
     }
-    
-    const systemParts = systemVersion.split('.').map(Number)
-    const minParts = minVersion.split('.').map(Number)
-    
-    // Check minimum version
-    for (let i = 0; i < Math.max(systemParts.length, minParts.length); i++) {
-      const sys = systemParts[i] || 0
-      const min = minParts[i] || 0
-      
-      if (sys < min) {
-        result.compatible = false
-        result.message = `Version ${minVersion} or higher required, but ${systemVersion} found`
-        break
-      } else if (sys > min) {
-        break
-      }
+    const compatible = satisfies(systemVersion, range)
+    return {
+      compatible,
+      message: compatible ? '' : `Version ${range} required, but ${systemVersion} found`
     }
-    
-    // Check maximum version if specified
-    if (maxVersion && result.compatible) {
-      const maxParts = maxVersion.split('.').map(Number)
-      
-      for (let i = 0; i < Math.max(systemParts.length, maxParts.length); i++) {
-        const sys = systemParts[i] || 0
-        const max = maxParts[i] || 0
-        
-        if (sys > max) {
-          result.compatible = false
-          result.message = `Version ${maxVersion} or lower required, but ${systemVersion} found`
-          break
-        } else if (sys < max) {
-          break
-        }
-      }
-    }
-    
-    return result
   }
 
-  // Helper method to format bytes to human readable
-  formatBytes(bytes, decimals = 2) {
-    if (bytes === 0) return '0 Bytes'
-    
-    const k = 1024
-    const dm = decimals < 0 ? 0 : decimals
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB']
-    
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
-  }
-
-  // Helper method to format system info for display
   formatSystemInfo(systemInfo) {
     if (!systemInfo) return null
-    
+
     return {
       os: {
         name: `${systemInfo.os.system} ${systemInfo.os.release}`,
@@ -412,12 +312,12 @@ class SystemService {
         available: false
       },
       memory: {
-        total: this.formatBytes(systemInfo.memory?.total || 0),
-        available: this.formatBytes(systemInfo.memory?.available || 0),
-        used: this.formatBytes(
+        total: filesize(systemInfo.memory?.total || 0),
+        available: filesize(systemInfo.memory?.available || 0),
+        used: filesize(
           (systemInfo.memory?.total || 0) - (systemInfo.memory?.available || 0)
         ),
-        percentage: systemInfo.memory?.total 
+        percentage: systemInfo.memory?.total
           ? Math.round(((systemInfo.memory.total - systemInfo.memory.available) / systemInfo.memory.total) * 100)
           : 0
       },
@@ -430,35 +330,6 @@ class SystemService {
     }
   }
 
-  // Helper method to handle errors consistently
-  handleError(error) {
-    if (error.response) {
-      // Server responded with error
-      const errorData = error.response.data?.error || error.response.data
-      return {
-        message: errorData.message || 'An error occurred',
-        status: error.response.status,
-        type: errorData.type || 'unknown',
-        details: errorData.details || null
-      }
-    } else if (error.request) {
-      // Request made but no response
-      return {
-        message: 'No response from server. Please check your connection.',
-        status: 0,
-        type: 'network_error'
-      }
-    } else {
-      // Something else happened
-      return {
-        message: error.message || 'An unexpected error occurred',
-        status: 0,
-        type: 'client_error'
-      }
-    }
-  }
-
-  // Clear cache
   clearCache() {
     this.cache.systemInfo = null
     this.cache.timestamp = null

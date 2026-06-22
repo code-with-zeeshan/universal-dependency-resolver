@@ -1,6 +1,6 @@
 """Custom exception classes for structured error handling"""
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 class DependencyResolverError(Exception):

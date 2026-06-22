@@ -1,0 +1,73 @@
+{
+  "search_numpy": {
+    "status": "ok",
+    "total": 1,
+    "results": [
+      {
+        "name": "numpy",
+        "version": "1.26.0",
+        "channel": "conda-forge",
+        "subchannel": "main",
+        "platforms": [
+          "linux-64",
+          "win-64",
+          "osx-64",
+          "osx-arm64",
+          "linux-aarch64"
+        ],
+        "license": "BSD-3-Clause",
+        "license_family": "BSD",
+        "summary": "Array processing for numbers, strings, records, and objects.",
+        "description": "NumPy is the fundamental package for scientific computing with Python.",
+        "home": "https://numpy.org",
+        "dev_url": "https://github.com/numpy/numpy",
+        "doc_url": "https://numpy.org/doc/stable/",
+        "doc_source_url": "https://github.com/numpy/numpy/blob/main/doc/",
+        "tags": [],
+        "track_features": "",
+        "md5": "abc123def456",
+        "sha256": "def789abc012",
+        "size": 7500000,
+        "timestamp": 1696000000000
+      }
+    ]
+  },
+  "numpy": {
+    "name": "numpy",
+    "versions": {
+      "1.26.0": {
+        "name": "numpy",
+        "version": "1.26.0",
+        "build": "py311h1234567_0",
+        "build_number": 0,
+        "depends": [
+          "python >=3.11",
+          "libblas >=3.9.0"
+        ],
+        "license": "BSD-3-Clause",
+        "size": 7500000,
+        "timestamp": 1696000000000
+      },
+      "1.25.2": {
+        "name": "numpy",
+        "version": "1.25.2",
+        "build": "py311h7890123_0",
+        "build_number": 0,
+        "depends": [
+          "python >=3.10",
+          "libblas >=3.9.0"
+        ],
+        "license": "BSD-3-Clause",
+        "size": 7200000,
+        "timestamp": 1693000000000
+      }
+    },
+    "channels": {
+      "conda-forge": ["linux-64", "win-64", "osx-64"]
+    },
+    "files": [
+      "linux-64/numpy-1.26.0-py311h1234567_0.conda",
+      "win-64/numpy-1.26.0-py311h1234567_0.conda"
+    ]
+  }
+}

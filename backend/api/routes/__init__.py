@@ -19,12 +19,7 @@ from .packages import (
     compare_packages
 )
 
-from .system import (
-    get_system_info,
-    scan_system_packages,
-    analyze_system,
-    run_benchmark
-)
+from .system import get_system_info
 
 __all__ = [
     # Route modules
@@ -42,7 +37,5 @@ __all__ = [
     
     # System routes
     "get_system_info",
-    "scan_system_packages", 
-    "analyze_system",
-    "run_benchmark"
+    "check_system_compatibility",
 ]

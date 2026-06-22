@@ -30,29 +30,12 @@ from .middleware import (
 
 # Import exceptions
 from .exceptions import (
-    BaseAPIException,
-    PackageNotFoundException,
-    VersionNotFoundException,
-    EcosystemNotSupportedException,
-    RateLimitExceededException,
-    InvalidVersionSpecException,
-    DependencyResolutionException,
-    ExportFormatNotSupportedException,
-    SystemRequirementNotMetException,
-    FileUploadException,
-    ExternalAPIException,
-    DatabaseException,
-    CacheException,
-    ValidationException,
-    AuthenticationException,
-    AuthorizationException,
-    ConfigurationException,
-    # Exception handlers
-    base_api_exception_handler,
-    generic_exception_handler,
-    validation_exception_handler,
-    handle_external_api_error,
-    validate_package_name
+    DependencyResolverError,
+    ValidationError,
+    PackageNotFoundError,
+    EcosystemNotSupportedError,
+    ConflictResolutionError,
+    RateLimitExceededError
 )
 
 # Import auth components
@@ -105,20 +88,12 @@ __all__ = [
     "MaintenanceModeMiddleware",
     
     # Exceptions
-    "BaseAPIException",
-    "PackageNotFoundException",
-    "VersionNotFoundException",
-    "EcosystemNotSupportedException",
-    "RateLimitExceededException",
-    "InvalidVersionSpecException",
-    "DependencyResolutionException",
-    "ExportFormatNotSupportedException",
-    "SystemRequirementNotMetException",
-    "ExternalAPIException",
-    "DatabaseException",
-    "ValidationException",
-    "AuthenticationException",
-    "AuthorizationException",
+    "DependencyResolverError",
+    "ValidationError",
+    "PackageNotFoundError",
+    "EcosystemNotSupportedError",
+    "ConflictResolutionError",
+    "RateLimitExceededError",
     
     # Auth
     "Token",
@@ -131,8 +106,6 @@ __all__ = [
     "require_scopes",
     
     # Utilities
-    "handle_external_api_error",
-    "validate_package_name",
     "get_client_ip",
     "get_user_agent"
 ]

@@ -337,14 +337,14 @@ class DocumentationScraper:
          # Clean up and validate versions - ENHANCED
         for key in ['cuda_versions', 'cudnn_versions', 'python_versions']:
             if requirements[key]:
-               valid_versions = []
-               for v in requirements[key]:
-                   parsed = parse_version(v)
+                valid_versions = []
+                for v in requirements[key]:
+                    parsed = parse_version(v)
                     if parsed:
                         valid_versions.append(v)
                     else:
                         logger.debug(f"Invalid {key} version found: {v}")
-            
+
                 # Sort versions properly
                 requirements[key] = sorted(
                     list(set(valid_versions)),
@@ -552,15 +552,15 @@ class DocumentationScraper:
             for key, pattern in self.version_patterns.items():
                 matches = re.findall(pattern, full_text)
                 if matches:
-                   # Validate versions
-                   valid_matches = []
+                    # Validate versions
+                    valid_matches = []
                     for m in matches:
                         if parse_version(m):
                             valid_matches.append(m)
-                
+
                     if valid_matches:
                         if key == 'python' and 'python_versions' in requirements:
-                           requirements['python_versions'].extend(valid_matches)
+                            requirements['python_versions'].extend(valid_matches)
                         else:
                             requirements['system_requirements'].append({
                                 'type': key,
@@ -569,8 +569,8 @@ class DocumentationScraper:
         
             # Look for package dependencies
             if 'pip install' in full_text:
-                 # Extract package names from pip install commands
-                 pip_matches = re.findall(r'pip install\s+([\w\-\[\]>=<.,\s]+)', full_text)
+                # Extract package names from pip install commands
+                pip_matches = re.findall(r'pip install\s+([\w\-\[\]>=<.,\s]+)', full_text)
                 for match in pip_matches:
                     packages = re.findall(r'([\w\-]+)(?:\[[\w,]+\])?(?:[>=<]+[\d.]+)?', match)
                     requirements['dependencies'].extend(packages)
@@ -611,59 +611,56 @@ class DocumentationScraper:
         tables = soup.find_all('table')
     
         for table in tables:
-           # Try to identify compatibility tables
-           headers = []
-           header_row = table.find('tr')
-           if header_row:
-              headers = [th.get_text(strip=True).lower() for th in header_row.find_all(['th', 'td'])]
-        
+            # Try to identify compatibility tables
+            headers = []
+            header_row = table.find('tr')
+            if header_row:
+                headers = [th.get_text(strip=True).lower() for th in header_row.find_all(['th', 'td'])]
+
             # Look for version compatibility tables
             if any(term in ' '.join(headers) for term in ['version', 'cuda', 'python', 'compatibility']):
-               rows = table.find_all('tr')[1:]
-            
-               for row in rows:
-                   cells = [td.get_text(strip=True) for td in row.find_all(['td', 'th'])]
-                
-                   # Extract version information
-                   for i, header in enumerate(headers):
-                       if i < len(cells):
-                        cell_text = cells[i]
-                        
-                        # Map headers to requirement keys
-                        if 'cuda' in header:
-                            versions = re.findall(r'(\d+\.?\d*)', cell_text)
-                            # Validate versions
-                            valid_versions = [v for v in versions if parse_version(v)]
-                            if valid_versions:
-                                if 'cuda_versions' not in requirements:
-                                    requirements['cuda_versions'] = []
-                                requirements['cuda_versions'].extend(valid_versions)
-                        
-                        elif 'python' in header:
-                            versions = re.findall(r'(\d+\.?\d*)', cell_text)
-                            # Validate versions
-                            valid_versions = [v for v in versions if parse_version(v)]
-                            if valid_versions:
-                                if 'python_versions' not in requirements:
-                                    requirements['python_versions'] = []
-                                requirements['python_versions'].extend(valid_versions)
-                        
-                        elif 'cudnn' in header:
-                            versions = re.findall(r'(\d+\.?\d*)', cell_text)
-                            # Validate versions
-                            valid_versions = [v for v in versions if parse_version(v)]
-                            if valid_versions:
-                                if 'cudnn_versions' not in requirements:
-                                    requirements['cudnn_versions'] = []
-                                requirements['cudnn_versions'].extend(valid_versions)
+                rows = table.find_all('tr')[1:]
+
+                for row in rows:
+                    cells = [td.get_text(strip=True) for td in row.find_all(['td', 'th'])]
+
+                    # Extract version information
+                    for i, header in enumerate(headers):
+                        if i < len(cells):
+                            cell_text = cells[i]
+
+                            # Map headers to requirement keys
+                            if 'cuda' in header:
+                                versions = re.findall(r'(\d+\.?\d*)', cell_text)
+                                valid_versions = [v for v in versions if parse_version(v)]
+                                if valid_versions:
+                                    if 'cuda_versions' not in requirements:
+                                        requirements['cuda_versions'] = []
+                                    requirements['cuda_versions'].extend(valid_versions)
+
+                            elif 'python' in header:
+                                versions = re.findall(r'(\d+\.?\d*)', cell_text)
+                                valid_versions = [v for v in versions if parse_version(v)]
+                                if valid_versions:
+                                    if 'python_versions' not in requirements:
+                                        requirements['python_versions'] = []
+                                    requirements['python_versions'].extend(valid_versions)
+
+                            elif 'cudnn' in header:
+                                versions = re.findall(r'(\d+\.?\d*)', cell_text)
+                                valid_versions = [v for v in versions if parse_version(v)]
+                                if valid_versions:
+                                    if 'cudnn_versions' not in requirements:
+                                        requirements['cudnn_versions'] = []
+                                    requirements['cudnn_versions'].extend(valid_versions)
     
         # Clean up and sort all versions
         for key in ['cuda_versions', 'python_versions', 'cudnn_versions']:
             if key in requirements:
-               requirements[key] = sorted(
-                   list(set(requirements[key])),
-                   key=lambda x: parse_version(x) or parse_version("0.0.0"),
-                   reverse=True
+                requirements[key] = sorted(
+                    list(set(requirements[key])),
+                    key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                    reverse=True
                 )
     
         return requirements

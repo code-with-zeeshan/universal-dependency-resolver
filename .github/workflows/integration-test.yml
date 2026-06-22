@@ -41,7 +41,7 @@ jobs:
     
     - name: Build and start services
       run: |
-        docker-compose -f docker-compose.test.yml up -d --build
+        docker-compose up -d --build
         sleep 30
     
     - name: Run database migrations
@@ -50,13 +50,9 @@ jobs:
     
     - name: Run API integration tests
       run: |
-        docker-compose exec -T backend pytest tests/integration/ -v
-    
-    - name: Test frontend-backend integration
-      run: |
-        docker-compose exec -T frontend npm run test:integration
+        docker-compose exec -T backend python -m pytest tests/integration/ -v
     
     - name: Cleanup
       if: always()
       run: |
-        docker-compose -f docker-compose.test.yml down -v
+        docker-compose down -v

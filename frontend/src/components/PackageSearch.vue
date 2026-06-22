@@ -94,7 +94,7 @@ export default {
       try {
         const results = await packageService.searchPackages(
           searchQuery.value,
-          selectedEcosystem.value ? [selectedEcosystem.value] : null
+          selectedEcosystem.value ? [selectedEcosystem.value] : null,
           { flatten: true }
         );
         searchResults.value = results;

@@ -14,26 +14,23 @@ from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
 from backend.database.compatibility_db import CompatibilityDB
 from backend.core.system_scanner import SystemScanner
+from backend.api.dependencies import (
+    get_data_aggregator,
+    get_conflict_resolver,
+    get_export_generator,
+    get_compatibility_db,
+    get_system_scanner,
+    limiter
+)
+from backend.api.schemas import PackageRequest, ResolveRequest, ExportRequest, SystemInfo
+from backend.api.auth import get_current_user
+from backend.database.models import User
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Import dependencies from main.py
-from backend.api.main import (
-    get_data_aggregator, 
-    get_conflict_resolver,
-    get_export_generator,
-    get_compatibility_db,
-    get_system_scanner,
-    limiter,
-    PackageRequest,
-    ResolveRequest,
-    ExportRequest,
-    SystemInfo
-)
 
 # Keep all your existing models
 class PackageSearchRequest(BaseModel):
@@ -104,7 +101,8 @@ async def get_package_info(
     request: Request,
     ecosystem: str, 
     name: str, 
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Get package information from specified ecosystem"""
     try:
         info = await aggregator.get_package_info(name, ecosystem)
@@ -126,7 +124,8 @@ async def resolve_dependencies(
     resolve_request: ResolveRequest,
     scanner: SystemScanner = Depends(get_system_scanner),
     aggregator: DataAggregator = Depends(get_data_aggregator),
-    resolver: ConflictResolver = Depends(get_conflict_resolver)):
+    resolver: ConflictResolver = Depends(get_conflict_resolver),
+    current_user: User = Depends(get_current_user)):
     """Resolve dependencies for multiple packages"""
     try:
         # Get system info if needed
@@ -164,7 +163,8 @@ async def resolve_dependencies(
 async def export_configuration(
     request: Request,
     export_request: ExportRequest,
-    generator: ExportGenerator = Depends(get_export_generator)):
+    generator: ExportGenerator = Depends(get_export_generator),
+    current_user: User = Depends(get_current_user)):
     """Export resolved dependencies to various formats"""
     try:
         output = generator.generate(
@@ -188,7 +188,9 @@ async def export_configuration(
 # MOVED FROM main.py - Export formats endpoint
 @router.get("/export-formats")
 @limiter.limit("60/minute")
-async def get_export_formats(request: Request):
+async def get_export_formats(
+    request: Request,
+    current_user: User = Depends(get_current_user)):
     """Get available export formats"""
     try:
         formats = [
@@ -215,13 +217,16 @@ async def get_export_formats(request: Request):
 
 # Keep all your existing endpoints below (search, details, versions, etc.)
 @router.get("/search")
+@limiter.limit("60/minute")
 async def search_packages(
-    q: str = Query(..., description="Search query"),
+    request: Request,
+    q: str = Query(...),
     ecosystems: Optional[str] = Query(None, description="Comma-separated list of ecosystems"),
     limit: int = Query(20, ge=1, le=100),
     sort_by: str = Query("relevance", description="Sort by: relevance, downloads, name, updated"),
     python_version: Optional[str] = Query(None, description="Filter by Python version compatibility"),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Search for packages across multiple ecosystems"""
     try:
         logger.info(f"Searching for packages: query='{q}', ecosystems={ecosystems}")
@@ -300,11 +305,14 @@ async def search_packages(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{ecosystem}/{package_name}")
+@limiter.limit("120/minute")
 async def get_package_details(
+    request: Request,
     ecosystem: str, 
     package_name: str,
     include_metrics: bool = Query(False, description="Include download and usage metrics"),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Get detailed information about a specific package"""
     try:
         logger.info(f"Getting package details: {ecosystem}/{package_name}")
@@ -347,13 +355,16 @@ async def get_package_details(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{ecosystem}/{package_name}/versions")
+@limiter.limit("120/minute")
 async def get_package_versions(
+    request: Request,
     ecosystem: str, 
     package_name: str,
     compatible_with: Optional[str] = Query(None, description="Filter versions compatible with system (e.g., 'os=linux,python=3.9,cuda=11.2')"),
     include_yanked: bool = Query(False, description="Include yanked/deprecated versions"),
     include_prerelease: bool = Query(False, description="Include pre-release versions"),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Get all available versions of a package"""
     try:
         logger.info(f"Getting versions for: {ecosystem}/{package_name}")
@@ -424,13 +435,16 @@ async def get_package_versions(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{ecosystem}/{package_name}/dependencies")
+@limiter.limit("120/minute")
 async def get_package_dependencies(
+    request: Request,
     ecosystem: str,
     package_name: str,
     version: Optional[str] = Query(None, description="Specific version to check"),
     recursive: bool = Query(False, description="Get dependencies recursively"),
     max_depth: int = Query(3, ge=1, le=5, description="Maximum recursion depth"),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Get dependencies for a specific package version"""
     try:
         logger.info(f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}")
@@ -473,12 +487,15 @@ async def get_package_dependencies(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{ecosystem}/{package_name}/compatibility")
+@limiter.limit("120/minute")
 async def get_package_compatibility(
+    request: Request,
     ecosystem: str, 
     package_name: str,
     version: Optional[str] = Query(None, description="Specific version to check"),
     compatibility_db: CompatibilityDB = Depends(get_compatibility_db),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Get known compatibility information for a package"""
     try:
         logger.info(f"Getting compatibility info for: {ecosystem}/{package_name}@{version or 'latest'}")
@@ -521,7 +538,9 @@ async def get_package_compatibility(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/{ecosystem}/{package_name}/compatibility/report")
+@limiter.limit("30/minute")
 async def report_compatibility(
+    request: Request,
     ecosystem: str,
     package_name: str,
     version: str,
@@ -529,7 +548,8 @@ async def report_compatibility(
     works: bool,
     notes: Optional[str] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    compatibility_db: CompatibilityDB = Depends(get_compatibility_db)):
+    compatibility_db: CompatibilityDB = Depends(get_compatibility_db),
+    current_user: User = Depends(get_current_user)):
     """Submit a compatibility report"""
     try:
         logger.info(f"Receiving compatibility report for: {ecosystem}/{package_name}@{version}")
@@ -571,10 +591,13 @@ async def report_compatibility(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/compare")
+@limiter.limit("60/minute")
 async def compare_packages(
+    request: Request,
     packages: str = Query(..., description="Comma-separated list of package:ecosystem pairs"),
     aspects: Optional[str] = Query("all", description="Aspects to compare: all, dependencies, requirements, versions"),
-    aggregator: DataAggregator = Depends(get_data_aggregator)):
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+    current_user: User = Depends(get_current_user)):
     """Compare multiple packages side by side"""
     try:
         logger.info(f"Comparing packages: {packages}")
@@ -981,7 +1004,9 @@ async def _detect_package_ecosystem(package_name: str, aggregator: DataAggregato
 
 @router.get("/ecosystems")
 @limiter.limit("60/minute")
-async def get_supported_ecosystems(request: Request):
+async def get_supported_ecosystems(
+    request: Request,
+    current_user: User = Depends(get_current_user)):
     """Get list of supported package ecosystems with their capabilities"""
     ecosystems = {
         "pypi": {

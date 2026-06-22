@@ -2,7 +2,7 @@
 import logging
 import re
 from packaging import version
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -29,7 +29,7 @@ def normalize_package_name(name: str) -> str:
     """Normalize package name (e.g., convert to lowercase, replace underscores)."""
     return re.sub(r'[-_.]+', '-', name).lower()
 
-def extract_requirements(content: str, file_type: str) -> List[Dict]:
+def extract_requirements(content: str, file_type: str) -> List[Dict[str, Any]]:
     """Extract package requirements from various file formats."""
     requirements = []
     if file_type == 'requirements.txt':
@@ -52,7 +52,7 @@ def extract_requirements(content: str, file_type: str) -> List[Dict]:
             logger.error(f"Failed to parse environment.yml: {e}")
     return requirements
 
-def hash_system_info(system_info: Dict) -> str:
+def hash_system_info(system_info: Dict[str, Any]) -> str:
     """Generate a hash of system info for caching."""
     import hashlib
     import json
@@ -126,7 +126,10 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
     return ecosystem_aliases.get(ecosystem_lower, ecosystem_lower)
 
 def compare_versions(v1: str, v2: str) -> int:
-    """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2."""
+    """Compare two version strings. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2.
+
+    Note: Python 3 users should prefer ``key=lambda v: packaging.version.Version(v)`` in ``sorted()``.
+    """
     try:
         ver1 = version.parse(v1)
         ver2 = version.parse(v2)

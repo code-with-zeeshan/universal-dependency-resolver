@@ -24,6 +24,12 @@ except ImportError:
     HAS_GPUTIL = False
 
 try:
+    from pynvml import nvmlInit, nvmlShutdown, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetName, nvmlDeviceGetMemoryInfo, nvmlDeviceGetUtilizationRates, nvmlDeviceGetTemperature, nvmlDeviceGetCurrPcieLinkWidth, nvmlSystemGetDriverVersion, nvmlSystemGetCudaDriverVersion, NVML_TEMPERATURE_GPU
+    HAS_PYNVML = True
+except ImportError:
+    HAS_PYNVML = False
+
+try:
     import cpuinfo
     HAS_CPUINFO = True
 except ImportError:
@@ -633,12 +639,49 @@ class SystemScanner:
         
         return gpu_data
     
+    def _detect_gpus_pynvml(self) -> List[Dict[str, Any]]:
+        """Detect NVIDIA GPUs using pynvml"""
+        gpus = []
+        try:
+            nvmlInit()
+            device_count = nvmlDeviceGetCount()
+            driver_version = nvmlSystemGetDriverVersion()
+
+            for i in range(device_count):
+                handle = nvmlDeviceGetHandleByIndex(i)
+                name = nvmlDeviceGetName(handle)
+                memory = nvmlDeviceGetMemoryInfo(handle)
+                utilization = nvmlDeviceGetUtilizationRates(handle)
+                temp = nvmlDeviceGetTemperature(handle, NVML_TEMPERATURE_GPU)
+
+                gpu_info = GPUInfo(
+                    id=i,
+                    name=name,
+                    memory_total=int(memory.total / 1024 / 1024),
+                    memory_free=int(memory.free / 1024 / 1024),
+                    memory_used=int(memory.used / 1024 / 1024),
+                    utilization=utilization.gpu,
+                    temperature=float(temp),
+                    driver_version=driver_version
+                )
+                gpus.append({**asdict(gpu_info), 'vendor': 'NVIDIA'})
+
+            nvmlShutdown()
+        except Exception as e:
+            logger.debug(f"pynvml error: {e}")
+
+        return gpus
+
     def _detect_nvidia_gpus(self) -> List[Dict[str, Any]]:
         """Detect NVIDIA GPUs"""
         gpus = []
         
-        # Try GPUtil first
-        if HAS_GPUTIL:
+        # Try pynvml first
+        if HAS_PYNVML:
+            gpus.extend(self._detect_gpus_pynvml())
+        
+        # Then GPUtil
+        if not gpus and HAS_GPUTIL:
             try:
                 gpu_list = GPUtil.getGPUs()
                 for idx, gpu in enumerate(gpu_list):
@@ -754,17 +797,30 @@ class SystemScanner:
         """Detect CUDA installation and version"""
         cuda_info = {}
         
-        # Check nvcc
-        try:
-            nvcc_output = subprocess.check_output(['nvcc', '--version']).decode()
-            version_match = re.search(r'release (\d+\.\d+)', nvcc_output)
-            if version_match:
-                cuda_info['version'] = version_match.group(1)
-                cuda_info['nvcc_path'] = shutil.which('nvcc')
-        except:
-            pass
+        # Try pynvml first for CUDA driver version
+        if HAS_PYNVML:
+            try:
+                nvmlInit()
+                cuda_driver = nvmlSystemGetCudaDriverVersion()
+                nvmlShutdown()
+                if cuda_driver:
+                    cuda_info['version'] = f"{cuda_driver // 100}.{cuda_driver % 100}"
+                    cuda_info['runtime_version'] = cuda_info['version']
+            except:
+                pass
         
-        # Check nvidia-smi for CUDA version
+        # Fallback to nvcc
+        if not cuda_info.get('version'):
+            try:
+                nvcc_output = subprocess.check_output(['nvcc', '--version']).decode()
+                version_match = re.search(r'release (\d+\.\d+)', nvcc_output)
+                if version_match:
+                    cuda_info['version'] = version_match.group(1)
+                    cuda_info['nvcc_path'] = shutil.which('nvcc')
+            except:
+                pass
+        
+        # Fallback to nvidia-smi for CUDA version
         if not cuda_info.get('version'):
             try:
                 smi_output = subprocess.check_output(['nvidia-smi']).decode()

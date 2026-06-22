@@ -20,7 +20,6 @@ from sqlalchemy.pool import StaticPool
 # Import your application
 from backend.api.main import app
 from backend.database.models import Base, get_db
-from backend.settings import settings
 from backend.core.cache import cache_manager
 
 

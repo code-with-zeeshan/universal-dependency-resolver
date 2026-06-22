@@ -42,7 +42,7 @@
         <div v-if="packages.length > 0" class="space-y-2">
           <div 
             v-for="(pkg, index) in packages" 
-            :key="index"
+            :key="pkg.name + '-' + (pkg.ecosystem || 'auto')"
             class="flex items-center justify-between p-3 bg-gray-50 rounded"
           >
             <span>
@@ -236,11 +236,12 @@ export default {
       }
       this.resolving = true;
       try {
-        this.resolvedPackages = await packageService.resolveDependencies(
+          const result = await packageService.resolveDependencies(
           this.packages,
           this.systemInfo,
           { preferCompatibility: true }
         );
+        this.resolvedPackages = result.data || result;
         this.errorMessage = null;
       } catch (error) {
         console.error('Dependency resolution failed:', error);
@@ -291,9 +292,12 @@ export default {
       a.href = url;
       a.download = this.exportPreview.format;
       document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      try {
+        a.click();
+      } finally {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
     }
   }
 };

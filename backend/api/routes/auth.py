@@ -17,7 +17,7 @@ from backend.api.auth import (
     OAuth2PasswordRequestForm
 )
 from backend.database.models import User
-from backend.api.main import limiter
+from backend.api.dependencies import limiter
 
 router = APIRouter()
 
@@ -50,7 +50,7 @@ class PasswordChangeRequest(BaseModel):
 # Routes
 @router.post("/register", response_model=UserResponse)
 @limiter.limit("5/hour")
-async def register(request: Request, user_data: UserCreate):
+async def register(request: Request, user_data: UserCreate) -> UserResponse:
     """Register a new user"""
     user = await AuthService.register_user(user_data)
     return UserResponse(
@@ -64,32 +64,32 @@ async def register(request: Request, user_data: UserCreate):
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
-async def login(request: Request, user_data: UserLogin):
+async def login(request: Request, user_data: UserLogin) -> Token:
     """Login and receive access tokens"""
     return await AuthService.login(user_data)
 
 @router.post("/token", response_model=Token)
 @limiter.limit("10/minute")
-async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
     """OAuth2 compatible token endpoint"""
     return await login_for_access_token(form_data)
 
 @router.post("/refresh", response_model=Token)
 @limiter.limit("30/minute")
-async def refresh_token(request: Request, refresh_token: str):
+async def refresh_token(request: Request, refresh_token: str) -> Token:
     """Refresh access token using refresh token"""
     return await AuthService.refresh_token(refresh_token)
 
 @router.post("/logout")
 @limiter.limit("30/minute")
-async def logout(request: Request, current_user: User = Depends(get_current_user)):
+async def logout(request: Request, current_user: User = Depends(get_current_user)) -> dict:
     """Logout user (client should discard tokens)"""
     # In a more complex system, you might want to blacklist the token
     return {"message": "Successfully logged out"}
 
 @router.get("/profile", response_model=UserResponse)
 @limiter.limit("60/minute")
-async def get_profile(request: Request, current_user: User = Depends(get_current_user)):
+async def get_profile(request: Request, current_user: User = Depends(get_current_user)) -> UserResponse:
     """Get current user profile"""
     return UserResponse(
         id=current_user.id,
@@ -106,7 +106,7 @@ async def update_profile(
     request: Request,
     profile_data: ProfileUpdateRequest,
     current_user: User = Depends(get_current_user)
-):
+) -> UserResponse:
     """Update user profile"""
     from backend.database.models import db_session
     
@@ -149,7 +149,7 @@ async def change_password(
     request: Request,
     password_data: PasswordChangeRequest,
     current_user: User = Depends(get_current_user)
-):
+) -> dict:
     """Change user password"""
     from backend.database.models import db_session
     from backend.api.auth import verify_password, get_password_hash
@@ -175,7 +175,7 @@ async def change_password(
 async def get_api_keys(
     request: Request,
     current_user: User = Depends(get_current_user)
-):
+) -> List[APIKeyResponse]:
     """Get user's API keys"""
     from backend.database.models import db_session, APIKey
     
@@ -204,7 +204,7 @@ async def create_api_key(
     request: Request,
     key_data: APIKeyCreate,
     current_user: User = Depends(get_current_user)
-):
+) -> APIKeyResponse:
     """Create a new API key"""
     api_key = await AuthService.create_api_key(current_user, key_data)
     
@@ -225,7 +225,7 @@ async def revoke_api_key(
     request: Request,
     key_id: int,
     current_user: User = Depends(get_current_user)
-):
+) -> dict:
     """Revoke an API key"""
     success = await AuthService.revoke_api_key(current_user, key_id)
     
@@ -244,7 +244,7 @@ async def revoke_api_key(
 async def verify_token(
     request: Request,
     current_user: User = Depends(get_current_user)
-):
+) -> dict:
     """Verify if current token is valid"""
     return {
         "valid": True,
@@ -254,7 +254,7 @@ async def verify_token(
 
 @router.post("/check-username")
 @limiter.limit("30/minute")
-async def check_username_availability(request: Request, username: str):
+async def check_username_availability(request: Request, username: str) -> dict:
     """Check if username is available"""
     from backend.database.models import db_session
     
@@ -265,7 +265,7 @@ async def check_username_availability(request: Request, username: str):
 
 @router.post("/check-email")
 @limiter.limit("30/minute")
-async def check_email_availability(request: Request, email: str):
+async def check_email_availability(request: Request, email: str) -> dict:
     """Check if email is available"""
     from backend.database.models import db_session
     

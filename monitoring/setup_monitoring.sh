@@ -13,8 +13,14 @@ if [ "$MONITORING_TYPE" = "cloud" ]; then
         exit 1
     fi
     
+    # Back up existing config before overwriting
+    if [ -f prometheus.yml ]; then
+        cp prometheus.yml "prometheus.yml.backup.$(date +%Y%m%d_%H%M%S)"
+        echo "Backed up existing prometheus.yml"
+    fi
+    
     # Use cloud configuration
-    cp prometheus-cloud.yml prometheus.yml
+    cp prometheus-free.yml prometheus.yml
 else
     echo "Using self-hosted monitoring"
     

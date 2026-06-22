@@ -1,0 +1,54 @@
+version: '3.8'
+services:
+  app:
+    build:
+      context: '.'
+      dockerfile: 'Dockerfile'
+    volumes:
+      - '.:/app'
+    environment: {{ options.environment|default([]) }}
+    ports: {{ options.ports|default([]) }}
+    networks:
+      - 'app-network'
+{% if system_info.gpu.available %}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+{% endif %}
+    restart: {{ options.restart_policy|default('unless-stopped') }}
+{% if options.health_check %}
+    healthcheck: {{ options.health_check }}
+{% endif %}
+{% if options.include_redis %}
+  redis:
+    image: 'redis:alpine'
+    networks:
+      - 'app-network'
+    volumes:
+      - 'redis-data:/data'
+{% endif %}
+{% if options.include_postgres %}
+  postgres:
+    image: 'postgres:15-alpine'
+    environment:
+      POSTGRES_DB: {{ options.db_name|default('app') }}
+      POSTGRES_USER: {{ options.db_user|default('postgres') }}
+      POSTGRES_PASSWORD: {{ options.db_password|default('postgres') }}
+    volumes:
+      - 'postgres-data:/var/lib/postgresql/data'
+    networks:
+      - 'app-network'
+{% endif %}
+networks:
+  app-network:
+    driver: bridge
+{% set has_volumes = options.include_redis or options.include_postgres %}
+{% if has_volumes %}
+volumes:{% if options.include_redis %}
+  redis-data: {} {% endif %}{% if options.include_postgres %}
+  postgres-data: {} {% endif %}
+{% endif %}

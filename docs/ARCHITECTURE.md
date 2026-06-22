@@ -8,17 +8,12 @@
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  App.vue                                                │    │
 │  │    ├── components/PackageSearch.vue                     │    │
-│  │    │     ├── components/PackageCard.vue                 │    │
-│  │    │     ├── components/LoadingSpinner.vue              │    │
-│  │    │     ├── components/EmptyState.vue                  │    │
-│  │    │     └── services/packageService.js ─────────┐      │    │
-│  │    ├── components/SystemInfo.vue                 │      │    │
-│  │    │     └── services/systemService.js ──────┐   │      │    │
-│  │    └── components/ErrorBoundary.vue          │   │      │    │
-│  │          └── services/auth.js ───────────┐   │   │      │    │
-│  │                                          │   │   │      │    │
-│  │    utils/validators.js ◄─── used by ─────┴───┴───┘      │    │
-│  │    icons/index.js ◄────── used by components            │    │
+│  │    │     └── services/packageService.js ─────────────┐  │    │
+│  │    ├── components/SystemInfo.vue                     │  │    │
+│  │    │     └── services/systemService.js ──────────┐   │  │    │
+│  │    └── services/auth.js ──────────────────────┐  │   │  │    │
+│  │                                                │  │   │  │    │
+│  │    utils/validators.js ◄─── used by ───────────┴──┴───┘  │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                                                   │
@@ -27,6 +22,8 @@
 │                         API Layer                               │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  api/main.py                                            │    │
+│  │    ├── api/schemas.py                                   │    │
+│  │    ├── api/dependencies.py                              │    │
 │  │    ├── api/middleware.py                                │    │
 │  │    ├── api/auth.py                                      │    │
 │  │    ├── api/exceptions.py                                │    │
@@ -53,6 +50,7 @@
 ┌─────────────────────────────┐ ┌─────────────────────────────────┐
 │      Data Sources           │ │         Database                │
 │  ┌─────────────────────┐    │ │  ┌─────────────────────────┐    │
+│  │ base_client.py      │    │ │  │ database/models.py      │    │
 │  │ pypi_client.py      │    │ │  │ database/models.py      │    │
 │  │ npm_client.py       │    │ │  │database/compatibility_db│    │
 │  │ conda_client.py     │    │ │  └─────────────────────────┘    │
@@ -68,26 +66,23 @@
 | File | Imports/Uses | Imported By | Purpose | External Dependencies |
 |------|--------------|-------------|---------|----------------------|
 | **Frontend** | | | | |
-| `App.vue` | PackageSearch, SystemInfo, ErrorBoundary | - | Main Vue app component | Vue framework |
-| `components/PackageSearch.vue` | packageService, PackageCard, LoadingSpinner, EmptyState | App.vue | Package search UI | Vue |
-| `components/SystemInfo.vue` | systemService, LoadingSpinner | App.vue | System info display | Vue |
-| `components/PackageCard.vue` | icons/index | PackageSearch.vue | Individual package display | Vue |
-| `components/LoadingSpinner.vue` | - | PackageSearch, SystemInfo | Loading state indicator | Vue |
-| `components/EmptyState.vue` | - | PackageSearch | Empty results display | Vue |
-| `components/ErrorBoundary.vue` | - | App.vue | Error handling wrapper | Vue |
+| `App.vue` | PackageSearch, SystemInfo | - | Main Vue app component | Vue framework |
+| `components/PackageSearch.vue` | packageService | App.vue | Package search UI | Vue |
+| `components/SystemInfo.vue` | systemService | App.vue | System info display | Vue |
 | `services/packageService.js` | axios, auth, validators | PackageSearch.vue | API client for packages | axios |
 | `services/systemService.js` | axios, auth, validators | SystemInfo.vue | API client for system info | axios |
 | `services/auth.js` | axios | packageService, systemService | Authentication utilities | axios |
 | `utils/validators.js` | - | All services | Input validation helpers | - |
-| `icons/index.js` | - | PackageCard | Icon components | - |
 | **Backend API** | | | | |
-| `api/main.py` | routes/packages, routes/system, middleware, auth, exceptions, settings | - | FastAPI app entry point | FastAPI, uvicorn |
+| `api/schemas.py` | - | main, dependencies | Pydantic request/response schemas | pydantic |
+| `api/dependencies.py` | schemas, database | main | FastAPI dependency injection | FastAPI |
+| `api/main.py` | schemas, dependencies, routes/packages, routes/system, middleware, auth, exceptions, settings | - | FastAPI app entry point | FastAPI, uvicorn |
 | `api/middleware.py` | exceptions | main.py | Request/response middleware | FastAPI |
 | `api/auth.py` | settings | main.py, routes | Authentication logic | FastAPI, JWT |
 | `api/exceptions.py` | - | middleware, routes | Custom exception handlers | FastAPI |
 | `api/routes/packages.py` | core/data_aggregator, core/conflict_resolver, core/export_generator, database/models, auth | main.py | Package-related endpoints | FastAPI |
 | `api/routes/system.py` | core/system_scanner, database/models, auth | main.py | System scan endpoints | FastAPI |
-| `settings.py` | - | All backend modules | Configuration management | pydantic |
+| `settings.py` | - | All backend modules | Configuration management | os.getenv |
 | **Core Logic** | | | | |
 | `core/conflict_resolver.py` | utils, cache, database/models, database/compatibility_db | routes/packages | Resolves version conflicts | - |
 | `core/data_aggregator.py` | All data_sources/*, utils, cache | routes/packages | Aggregates package data | - |
@@ -96,7 +91,8 @@
 | `core/cache.py` | - | All core modules | Caching layer | Redis/in-memory |
 | `core/utils.py` | - | All core modules | Shared utilities | - |
 | **Data Sources** | | | | |
-| `data_sources/pypi_client.py` | utils, settings | data_aggregator | PyPI API integration | requests, aiohttp |
+| `data_sources/base_client.py` | utils, settings | data_sources/*_client | Base HTTP client with rate limiting | httpx |
+| `data_sources/pypi_client.py` | utils, settings, base_client | data_aggregator | PyPI API integration | requests, aiohttp |
 | `data_sources/npm_client.py` | utils, settings | data_aggregator | NPM API integration | requests, aiohttp |
 | `data_sources/conda_client.py` | utils, settings | data_aggregator | Conda Forge integration | requests, aiohttp |
 | `data_sources/maven_client.py` | utils, settings | data_aggregator | Maven Central integration | requests, aiohttp |
@@ -151,10 +147,17 @@ data_aggregator ────────► compatibility_db
 conflict_resolver  export_generator  system_scanner
      │                   │              │
      └─────────┬─────────┴──────────────┘
-               ▼
-     ┌─── auth.py ───┐
-     │               │
-     ▼               ▼
+                 ▼
+            dependencies.py
+                 │
+          ┌──────┴──────┐
+          ▼              ▼
+     schemas.py     database/
+      │              models.py
+      │                 │
+      ├── auth.py ──────┘
+      │       │
+      ▼       ▼
 routes/packages   routes/system
      │               │
      └───────┬───────┘
@@ -179,20 +182,16 @@ PackageSearch.vue       SystemInfo.vue
      └───────────┬─────────────┘
                  ▼
               App.vue
-         (wrapped by ErrorBoundary)
+          (directly)
 ```
 
 ## Frontend Component Hierarchy
 ```
 App.vue
-├── ErrorBoundary.vue (wraps entire app)
 ├── PackageSearch.vue
-│   ├── LoadingSpinner.vue
-│   ├── EmptyState.vue
-│   └── PackageCard.vue (multiple instances)
-│       └── icons/index.js
+│   └── services/packageService.js
 └── SystemInfo.vue
-    └── LoadingSpinner.vue
+    └── services/systemService.js
 ```
 
 ## Service Layer Flow
@@ -352,8 +351,6 @@ Deployment Pipeline:
 ```
 Frontend Error Handling:
 ┌──────────────────┐
-│  ErrorBoundary   │ ← Catches all Vue errors
-├──────────────────┤
 │  validators.js   │ ← Input validation
 ├──────────────────┤
 │  Service layer   │ ← API error handling
@@ -508,19 +505,20 @@ universal-dependency-resolver/
 ├── backend/                     # Backend application
 │   ├── Dockerfile               # Backend Docker configuration
 │   ├── requirements.txt         # Python dependencies
-│   ├── settings.py              # Application settings
+│   ├── settings.py              # Application settings (os.getenv)
 │   ├── __init__.py
 │   │
 │   ├── api/                     # API layer
 │   │   ├── __init__.py         # API package init
-│   │   ├── auth.py             # Authentication logic (moved to routes/)
+│   │   ├── auth.py             # Authentication logic
+│   │   ├── dependencies.py     # FastAPI dependency injection
 │   │   ├── exceptions.py       # Custom exceptions
 │   │   ├── main.py             # FastAPI application
 │   │   ├── middleware.py       # Middleware components
+│   │   ├── schemas.py          # Pydantic request/response schemas
 │   │   │
 │   │   └── routes/             # API endpoints
 │   │       ├── __init__.py
-│   │       ├── auth.py         # Authentication endpoints (new)
 │   │       ├── packages.py     # Package-related endpoints
 │   │       └── system.py       # System-related endpoints
 │   │
@@ -535,19 +533,12 @@ universal-dependency-resolver/
 │   │
 │   ├── data_sources/          # Package ecosystem clients
 │   │   ├── __init__.py       # Data sources init
+│   │   ├── base_client.py    # Base HTTP client with rate limiting
 │   │   ├── pypi_client.py    # PyPI client
 │   │   ├── npm_client.py     # NPM client
 │   │   ├── conda_client.py   # Conda client
 │   │   ├── maven_client.py   # Maven client
 │   │   ├── crates_client.py  # Crates.io client
-│   │   ├── gomodules_client.py # Go modules client
-│   │   ├── apt_client.py     # APT client
-│   │   ├── apk_client.py     # Alpine APK client
-│   │   ├── cocoapods_client.py # CocoaPods client
-│   │   ├── rubygems_client.py  # RubyGems client
-│   │   ├── packagist_client.py # Packagist client
-│   │   ├── nuget_client.py     # NuGet client
-│   │   ├── homebrew_client.py  # Homebrew client
 │   │   └── documentation_scraper.py # Documentation scraper
 │   │
 │   └── database/              # Database models and operations
@@ -564,15 +555,10 @@ universal-dependency-resolver/
 │       ├── App.vue          # Main Vue component
 │       │
 │       ├── components/      # Vue components
-│       │   ├── EmptyState.vue
-│       │   ├── ErrorBoundary.vue
-│       │   ├── LoadingSpinner.vue
-│       │   ├── PackageCard.vue
+│       │   ├── DependencyList.vue
 │       │   ├── PackageSearch.vue
+│       │   ├── ResultsPanel.vue
 │       │   └── SystemInfo.vue
-│       │
-│       ├── icons/          # Icon components
-│       │   └── index.js
 │       │
 │       ├── services/       # API services
 │       │   ├── auth.js
@@ -591,120 +577,48 @@ universal-dependency-resolver/
 ├── scripts/              # Utility scripts
 │   ├── setup_dev.sh      # Development setup script
 │   ├── run_tests.sh      # Test runner script
-│   ├── full_backup.sh    # Full backup script
-│   ├── restore_database.sh      # Restore Database Script
-│   ├── backup_database.sh       # backup Database Script 
-│   ├── deploy.sh                # Deployment script
-│   ├── check_data_flow.py       # Data flow validation script (new)
-│   ├── validate_env_config.py   # Environment config validator (new)
-│   └── verify_imports.py        # Import verification script (new)
+│   ├── deploy.sh         # Deployment script
+│   ├── backup_database.sh
+│   ├── restore_database.sh
+│   ├── full_backup.sh
+│   ├── check_data_flow.py
+│   └── verify_imports.py
 │
-├── k8s/
-│   └──README.md               # kubernetes Coonfiguration
+├── k8s/                          # Kubernetes manifests
+│   ├── namespace.yaml            # Namespace definition
+│   ├── configmap.yaml            # Non-sensitive env config
+│   ├── secrets.yaml              # Secret definitions (placeholder)
+│   ├── backend.yaml              # Backend Deployment + Service
+│   ├── frontend.yaml             # Frontend Deployment + Service
+│   ├── postgres.yaml             # PostgreSQL StatefulSet + PVC
+│   ├── redis.yaml                # Redis Deployment + PVC
+│   ├── ingress.yaml              # TLS Ingress rules
+│   └── README.md
 │
-├── monitoring/                      # Monitoring 
-│   ├── setup_monitoring.sh          # Setup monitoring metrics
-│   ├── alert_rules.yml              # resource usage alert
-│   ├── prometheus-free.yml          # prometheus configuration (free)
-│   ├── prometheus.yml               # prometheus configuration 
-│   └── grafana/                     # grafana
-│       └── dashboards/              
-│           └── udr-overview.json    # grafana overview 
+├── monitoring/                      # Monitoring stack
+│   ├── setup_monitoring.sh          # Setup script
+│   ├── alert_rules.yml              # Prometheus alert rules
+│   ├── prometheus.yml               # Prometheus config (self-hosted)
+│   ├── prometheus-free.yml          # Prometheus config (Grafana Cloud)
+│   └── grafana/
+│       ├── datasources/
+│       │   └── prometheus.yml       # Auto-provisioned datasource
+│       └── dashboards/
+│           ├── dashboards.yml       # Dashboard provisioning config
+│           └── udr-overview.json    # UDR overview dashboard 
 │
-└── tests/                # Test suite
-    ├── __init__.py
-    ├── conftest.py      # Pytest configuration & fixtures
-    │
-    ├── unit/            # Unit tests
-    │   ├── __init__.py
-    │   ├── test_api/    # API layer tests
-    │   │   ├── __init__.py
-    │   │   ├── test_auth.py         # Auth logic tests
-    │   │   ├── test_exceptions.py   # Exception handling tests
-    │   │   ├── test_middleware.py   # Middleware tests
-    │   │   └── test_routes/
-    │   │       ├── __init__.py
-    │   │       ├── test_auth_routes.py  # Auth endpoint tests
-    │   │       ├── test_packages.py     # Package endpoint tests
-    │   │       └── test_system.py       # System endpoint tests
-    │   │
-    │   ├── test_core/                   # Core logic tests
-    │   │   ├── __init__.py
-    │   │   ├── test_cache.py           # Cache layer tests
-    │   │   ├── test_conflict_resolver.py # Conflict resolution tests
-    │   │   ├── test_data_aggregator.py  # Data aggregation tests
-    │   │   ├── test_export_generator.py # Export generation tests
-    │   │   ├── test_system_scanner.py   # System scanning tests
-    │   │   └── test_utils.py            # Utility function tests
-    │   │
-    │   ├── test_data_sources/          # Data source tests
-    │   │   ├── __init__.py
-    │   │   ├── test_pypi_client.py     # PyPI client tests
-    │   │   ├── test_npm_client.py      # NPM client tests
-    │   │   ├── test_gomodules_client.py # Go modules client tests
-    │   │   ├── test_conda_client.py    # Conda client tests
-    │   │   ├── test_maven_client.py    # Maven client tests
-    │   │   ├── test_crates_client.py   # Crates.io client tests
-    │   │   ├── test_apt_client.py      # APT client tests
-    │   │   ├── test_apk_client.py      # APK client tests
-    │   │   ├── test_cocoapods_client.py # CocoaPods client tests
-    │   │   ├── test_homebrew_client.py  # Homebrew client tests
-    │   │   ├── test_rubygems_client.py  # RubyGems client tests
-    │   │   ├── test_packagist_client.py # Packagist client tests
-    │   │   ├── test_nuget_client.py     # NuGet client tests
-    │   │   └── test_documentation_scraper.py # Doc scraper tests
-    │   │
-    │   └── test_database/              # Database tests
-    │       ├── __init__.py
-    │       ├── test_models.py         # Database model tests
-    │       └── test_compatibility_db.py # Compatibility DB tests
-    │
-    ├── integration/                    # Integration tests
-    │   ├── __init__.py
-    │   ├── test_api_integration.py    # API integration tests
-    │   ├── test_database_integration.py # Database integration tests
-    │   ├── test_full_workflow.py      # Complete workflow tests
-    │   ├── test_package_resolution.py # Package resolution integration
-    │   ├── test_system_scanning.py    # System scanning integration
-    │   └── test_external_apis.py      # External API integration tests
-    │
-    ├── e2e/                           # End-to-end tests
-    │   ├── __init__.py
-    │   ├── test_user_flows.py        # User flow tests
-    │   ├── test_package_search_flow.py # Package search E2E
-    │   ├── test_dependency_resolution_flow.py # Dependency resolution E2E
-    │   └── test_export_flow.py       # Export functionality E2E
-    │
-    ├── performance/                   # Performance tests
-    │   ├── __init__.py
-    │   ├── test_api_performance.py   # API performance tests
-    │   ├── test_search_performance.py # Search performance tests
-    │   ├── test_resolution_performance.py # Resolution performance tests
-    │   └── load_test.js              # K6 load testing script
-    │
-    ├── security/                      # Security tests
-    │   ├── __init__.py
-    │   ├── test_auth_security.py     # Authentication security tests
-    │   ├── test_input_validation.py  # Input validation tests
-    │   ├── test_api_security.py      # API security tests
-    │   └── test_injection_attacks.py # SQL injection, etc. tests
-    │
-    ├── fixtures/                      # Test data fixtures
-    │   ├── __init__.py
-    │   ├── api_responses/            # Mock API response data
-    │   │   ├── pypi_responses.json
-    │   │   ├── npm_responses.json
-    │   │   └── conda_responses.json
-    │   ├── test_packages.json        # Test package data
-    │   ├── test_system_info.json     # Test system information
-    │   └── test_dependencies.json    # Test dependency data
-    │
-    └── utils/                        # Test utilities
-        ├── __init__.py
-        ├── mock_clients.py           # Mock client implementations
-        ├── test_helpers.py           # Test helper functions
-        ├── fixtures_loader.py        # Fixture loading utilities
-        └── api_test_client.py        # API test client wrapper
+└── tests/                # Test suite (7 files, see tests/ directory)
+    ├── conftest.py
+    ├── unit/
+    │   ├── test_api/
+    │   │   └── test_auth.py
+    │   └── test_core/
+    │       ├── test_conflict_resolver.py
+    │       ├── test_data_aggregator.py
+    │       ├── test_export_generator.py
+    │       └── test_system_scanner.py
+    └── integration/
+        └── test_database_integration.py
 
 ```
 

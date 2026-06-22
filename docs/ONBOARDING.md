@@ -121,7 +121,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn api.main:app --reload
+uvicorn backend.api.main:app --reload
 ```
 
 #### Frontend Setup
@@ -137,6 +137,8 @@ npm run serve
 createdb universal_deps
 alembic upgrade head
 ```
+
+> **Note**: Run alembic commands from the `backend/` directory.
 
 ### Basic Usage Workflow
 
@@ -210,8 +212,9 @@ pytest
 cd frontend
 npm run test
 
-# Integration tests
-docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+# Integration tests (Docker)
+docker-compose up -d
+docker-compose exec backend pytest
 ```
 
 ### Code Quality
@@ -305,10 +308,13 @@ npm run lint
 2. **Improve Error Handling**
    ```python
    # Use custom exceptions with error codes
-   class DependencyResolutionError(Exception):
-       def __init__(self, message: str, error_code: str):
+   class DependencyResolverError(Exception):
+       def __init__(self, message: str, error_code: str, status_code: int = 500, details: Optional[Dict] = None):
+           self.message = message
            self.error_code = error_code
-           super().__init__(message)
+           self.status_code = status_code
+           self.details = details or {}
+           super().__init__(self.message)
    ```
 
 3. **Add Monitoring and Observability**
@@ -423,7 +429,7 @@ alembic upgrade head
 ```bash
 # Enable debug logging
 export LOG_LEVEL=DEBUG
-uvicorn api.main:app --reload --log-level debug
+uvicorn backend.api.main:app --reload --log-level debug
 ```
 
 ### Support Resources

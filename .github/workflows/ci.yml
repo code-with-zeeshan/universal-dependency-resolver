@@ -101,14 +101,14 @@ jobs:
         safety check || true
 
     - name: Run tests with pytest
-      working-directory: ./backend
       env:
         DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         REDIS_URL: redis://localhost:6379
         TESTING: true
         SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
       run: |
-        pytest tests/ -v --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing
+        pytest tests/ -v --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -207,28 +207,21 @@ jobs:
 
     - name: Build and run with Docker Compose
       run: |
-        # Use test configuration
-        cp docker-compose.yml docker-compose.test.yml
+        # Start services
+        docker-compose up -d --build
         
-        # Override environment for testing
-        cat >> docker-compose.test.yml << EOF
-        
-        services:
-          backend:
-            environment:
-              - DATABASE_URL=postgresql://testuser:testpass@postgres:5432/testdb
-              - REDIS_URL=redis://redis:6379
-              - TESTING=true
-              - SECRET_KEY=test-secret-key-for-ci
-        EOF
-        
-        docker-compose -f docker-compose.test.yml up -d --build
+        # Inject test environment variables
+        docker-compose exec -T backend sh -c "
+          echo 'DATABASE_URL=postgresql://\${POSTGRES_USER:?}:\${POSTGRES_PASSWORD:?}@postgres:5432/\${POSTGRES_DB:?}' >> /app/.env
+          echo 'TESTING=true' >> /app/.env
+          echo 'SECRET_KEY=test-secret-key-for-ci' >> /app/.env
+        "
         
         # Wait for services to be ready
         sleep 30
         
         # Run database migrations
-        docker-compose -f docker-compose.test.yml exec -T backend alembic upgrade head
+        docker-compose exec -T backend alembic upgrade head
 
     - name: Run API integration tests
       run: |
@@ -252,8 +245,8 @@ jobs:
     - name: Collect logs on failure
       if: failure()
       run: |
-        docker-compose -f docker-compose.test.yml logs
-        docker-compose -f docker-compose.test.yml down
+        docker-compose logs
+        docker-compose down
 
   # Security Scanning
   security-scan:

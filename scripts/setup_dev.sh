@@ -132,16 +132,7 @@ cd ..
 print_success "Database setup complete!"
 
 # Create initial test data (optional)
-read -p "Do you want to create initial test data? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    print_status "Creating initial test data..."
-    cd backend
-    source venv/bin/activate
-    python scripts/create_test_data.py
-    cd ..
-    print_success "Test data created!"
-fi
+print_status "Skipping test data creation (script not available)"
 
 # Build and start all services
 print_status "Building and starting all services..."

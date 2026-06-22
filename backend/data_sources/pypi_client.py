@@ -1,7 +1,6 @@
 # pypi_client.py
-import aiohttp
 import asyncio
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Set
 import json
 from packaging import version
 from packaging.requirements import Requirement
@@ -18,31 +17,25 @@ from ..settings import (
     CACHE_TTL, USER_AGENTS, RATE_LIMITS,
     REQUEST_TIMEOUT, MAX_RETRIES
 )
+from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
 
-class PyPIClient:
+class PyPIClient(BaseDataSourceClient):
     def __init__(self):
-        self.base_url = PYPI_JSON_URL
+        super().__init__(
+            ecosystem='pypi',
+            base_url=PYPI_JSON_URL,
+            cache_ttl=CACHE_TTL,
+            user_agent=USER_AGENTS.get('pypi', USER_AGENTS['default']),
+            rate_limit=RATE_LIMITS.get('pypi', 600),
+            timeout=REQUEST_TIMEOUT,
+            max_retries=MAX_RETRIES,
+        )
         self.search_url = f"{PYPI_URL}/search/"
         self.xmlrpc_url = PYPI_XMLRPC_URL
-        self.session = None
-        self._cache = {}
-        self._cache_ttl = CACHE_TTL
         self._search_cache = {}
         self._search_cache_ttl = CACHE_TTL // 2
-        self.user_agent = USER_AGENTS.get('pypi', USER_AGENTS['default'])
-        self.rate_limit = RATE_LIMITS.get('pypi', 600)
-        self.timeout = REQUEST_TIMEOUT
-        self.max_retries = MAX_RETRIES 
-    
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
     
     def package_exists(self, package_name: str) -> bool:
         """Quick check if package exists on PyPI"""
@@ -54,40 +47,23 @@ class PyPIClient:
         except:
             return False
     
-    async def get_package_info_async(self, package_name: str) -> Dict:
+    async def get_package_info_async(self, package_name: str) -> Optional[Dict[str, Any]]:
         """Get comprehensive package information from PyPI"""
         package_name = normalize_package_name(package_name)
-        if not self.session:
-            self.session = aiohttp.ClientSession()
+        
+        cache_key = f"pypi:{package_name}"
+        data = await self.cached_get(cache_key, f"{self.base_url}/{package_name}/json")
+        if data is None:
+            return None
         
         try:
-            # Check cache
-            cache_key = f"pypi:{package_name}"
-            if cache_key in self._cache:
-                cached_data, timestamp = self._cache[cache_key]
-                if (datetime.now() - timestamp).total_seconds() < self._cache_ttl:
-                    return cached_data
-            
-            # Fetch from PyPI
-            async with self.session.get(f"{self.base_url}/{package_name}/json") as response:
-                if response.status != 200:
-                    return None
-                
-                data = await response.json()
-                
-                # Process the data with enhanced extraction
-                info = await self._process_package_data_enhanced(data)
-                
-                # Cache the result
-                self._cache[cache_key] = (info, datetime.now())
-                
-                return info
-                
+            info = await self._process_package_data_enhanced(data)
+            return info
         except Exception as e:
-            logger.error(f"Error fetching PyPI package {package_name}: {e}")
+            logger.error(f"Error processing PyPI package {package_name}: {e}")
             return None
     
-    def get_package_info(self, package_name: str) -> Dict:
+    def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
         """Synchronous wrapper for get_package_info_async"""
         package_name = normalize_package_name(package_name)
         loop = asyncio.new_event_loop()
@@ -97,7 +73,7 @@ class PyPIClient:
         finally:
             loop.close()
     
-    async def _process_package_data_enhanced(self, data: Dict) -> Dict:
+    async def _process_package_data_enhanced(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process raw PyPI data with enhanced extraction"""
         info = data.get('info', {})
         releases = data.get('releases', {})
@@ -204,7 +180,7 @@ class PyPIClient:
             'project_urls': info.get('project_urls', {})
         }
     
-    def _extract_python_versions_from_wheel(self, filename: str) -> set:
+    def _extract_python_versions_from_wheel(self, filename: str) -> Set[str]:
         """Extract Python versions from wheel filename"""
         python_versions = set()
         
@@ -251,7 +227,7 @@ class PyPIClient:
         return None
     
     async def _extract_dependencies_enhanced(self, requires_dist: List[str], 
-                                           python_requires: Optional[str]) -> Dict:
+                                           python_requires: Optional[str]) -> Dict[str, Any]:
         """Extract and categorize dependencies with enhanced parsing"""
         deps = {
             'required': {},
@@ -363,7 +339,7 @@ class PyPIClient:
         except:
             return True
     
-    def _extract_system_requirements_enhanced(self, info: Dict, urls: List[Dict]) -> Dict:
+    def _extract_system_requirements_enhanced(self, info: Dict[str, Any], urls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract system requirements with enhanced detection"""
         requirements = {}
         
@@ -406,7 +382,7 @@ class PyPIClient:
         return requirements
     
     def _extract_cuda_requirements(self, classifiers: List[str], 
-                                 description: str, package_name: str) -> Optional[Dict]:
+                                 description: str, package_name: str) -> Optional[Dict[str, Any]]:
         """Extract CUDA/GPU requirements"""
         cuda_versions = set()
         cudnn_versions = set()
@@ -447,7 +423,7 @@ class PyPIClient:
         
         return None
     
-    def _extract_os_requirements(self, classifiers: List[str], urls: List[Dict]) -> Dict:
+    def _extract_os_requirements(self, classifiers: List[str], urls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract OS requirements from classifiers and wheel files"""
         supported_os = set()
         
@@ -485,7 +461,7 @@ class PyPIClient:
         return {}
     
     def _extract_architecture_requirements(self, classifiers: List[str], 
-                                         urls: List[Dict]) -> Dict:
+                                         urls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract architecture requirements"""
         architectures = set()
         
@@ -510,7 +486,7 @@ class PyPIClient:
         return {}
     
     def _extract_system_library_requirements(self, description: str, 
-                                           classifiers: List[str]) -> List[Dict]:
+                                           classifiers: List[str]) -> List[Dict[str, Any]]:
         """Extract system library requirements"""
         libraries = []
         
@@ -543,7 +519,7 @@ class PyPIClient:
         return libraries
     
     def _extract_compiler_requirements(self, description: str, 
-                                     classifiers: List[str]) -> Optional[Dict]:
+                                     classifiers: List[str]) -> Optional[Dict[str, Any]]:
         """Extract compiler requirements"""
         compilers = {}
         
@@ -586,7 +562,7 @@ class PyPIClient:
         
         return None
     
-    def _extract_repository_url(self, info: Dict) -> Optional[str]:
+    def _extract_repository_url(self, info: Dict[str, Any]) -> Optional[str]:
         """Extract repository URL from project URLs"""
         project_urls = info.get('project_urls', {})
         
@@ -604,7 +580,7 @@ class PyPIClient:
         
         return None
     
-    def _extract_documentation_url(self, info: Dict) -> Optional[str]:
+    def _extract_documentation_url(self, info: Dict[str, Any]) -> Optional[str]:
         """Extract documentation URL from project URLs"""
         project_urls = info.get('project_urls', {})
         
@@ -638,7 +614,7 @@ class PyPIClient:
                 return classifier.split('::')[1].strip()
         return None
     
-    def _extract_download_stats(self, info: Dict) -> Dict:
+    def _extract_download_stats(self, info: Dict[str, Any]) -> Dict[str, Any]:
         """Extract download statistics"""
         downloads = info.get('downloads', {})
         
@@ -648,12 +624,8 @@ class PyPIClient:
             'last_month': downloads.get('last_month', 0)
         }
     
-    async def search(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Search for packages on PyPI using multiple methods"""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-        
-        # Check cache
         cache_key = f"search:{query}:{limit}"
         if cache_key in self._search_cache:
             cached_data, timestamp = self._search_cache[cache_key]
@@ -681,7 +653,7 @@ class PyPIClient:
             logger.error(f"Error searching PyPI: {e}")
             return []
     
-    async def _search_xmlrpc(self, query: str, limit: int) -> List[Dict]:
+    async def _search_xmlrpc(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Search using PyPI XML-RPC API"""
         try:
             # Use asyncio to run the XML-RPC call in a thread
@@ -714,7 +686,7 @@ class PyPIClient:
             logger.debug(f"XML-RPC search failed: {e}")
             return []
     
-    async def _search_web_scraping(self, query: str, limit: int) -> List[Dict]:
+    async def _search_web_scraping(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Search by scraping PyPI search page"""
         try:
             search_url = f"https://pypi.org/search/"
@@ -723,7 +695,7 @@ class PyPIClient:
                 'o': '',  # Relevance ordering
             }
             
-            async with self.session.get(search_url, params=params) as response:
+            async with self._get_session().get(search_url, params=params) as response:
                 if response.status != 200:
                     return []
                 
@@ -754,7 +726,7 @@ class PyPIClient:
             logger.debug(f"Web scraping search failed: {e}")
             return []
     
-    async def _search_fallback(self, query: str, limit: int) -> List[Dict]:
+    async def _search_fallback(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Fallback search using exact and fuzzy matching"""
         results = []
         
@@ -802,7 +774,7 @@ class PyPIClient:
         
         return results[:limit]
     
-    async def get_versions(self, package_name: str) -> List[Dict]:
+    async def get_versions(self, package_name: str) -> List[Dict[str, Any]]:
         """Get all available versions of a package"""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info_async(package_name)
@@ -830,31 +802,17 @@ class PyPIClient:
         
         return versions
     
-    async def get_dependencies(self, package_name: str, version: Optional[str] = None) -> Dict:
+    async def get_dependencies(self, package_name: str, version: Optional[str] = None) -> Dict[str, Any]:
         """Get dependencies for a specific package version"""
         package_name = normalize_package_name(package_name)
-        if not self.session:
-            self.session = aiohttp.ClientSession()
         
-        try:
-            # If version specified, get that specific version's metadata
-            if version:
-                url = f"{self.base_url}/{package_name}/{version}/json"
-            else:
-                url = f"{self.base_url}/{package_name}/json"
-            
-            async with self.session.get(url) as response:
-                if response.status != 200:
-                    return {}
-                
-                data = await response.json()
-                info = data.get('info', {})
-                
-                return await self._extract_dependencies_enhanced(
-                    info.get('requires_dist', []),
-                    info.get('requires_python')
-                )
-                
-        except Exception as e:
-            logger.error(f"Error fetching dependencies for {package_name}: {e}")
+        url = f"{self.base_url}/{package_name}/{version}/json" if version else f"{self.base_url}/{package_name}/json"
+        data = await self._get(url)
+        if data is None:
             return {}
+        
+        info = data.get('info', {})
+        return await self._extract_dependencies_enhanced(
+            info.get('requires_dist', []),
+            info.get('requires_python')
+        )

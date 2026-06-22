@@ -12,7 +12,7 @@ __author__ = "Universal Dependency Resolver Team"
 __email__ = "team@udr.example.com"
 
 # Import key components for easier access
-from .settings import settings, get_ecosystem_config
+from .settings import get_ecosystem_config
 from .core import (
     DataAggregator,
     ConflictResolver,
@@ -36,7 +36,6 @@ __all__ = [
     "__email__",
     
     # Settings
-    "settings",
     "get_ecosystem_config",
     
     # Core components
