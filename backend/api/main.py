@@ -20,19 +20,26 @@ from slowapi.middleware import SlowAPIMiddleware
 try:
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+
     SENTRY_AVAILABLE = True
 except ImportError:
     SENTRY_AVAILABLE = False
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
+
     PROMETHEUS_AVAILABLE = True
 except ImportError:
     PROMETHEUS_AVAILABLE = False
 
 # Use absolute imports
 from backend.api.dependencies import limiter
-from backend.api.schemas import PackageRequest, ResolveRequest, ExportRequest, SystemInfo
+from backend.api.schemas import (
+    PackageRequest,
+    ResolveRequest,
+    ExportRequest,
+    SystemInfo,
+)
 from backend.api.routes import packages, system
 from backend.api.routes import auth
 from backend.api.middleware import setup_middleware
@@ -46,6 +53,7 @@ logger = structlog.get_logger(__name__)
 
 # Keep stdlib logger for backward compatibility
 _stdlib_logger = logging.getLogger(__name__)
+
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -70,13 +78,14 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Universal Dependency Resolver API...")
-    
+
     # Dispose of database connections
     try:
         engine.dispose()
         logger.info("Database connections disposed")
     except Exception as e:
         logger.warning(f"Error disposing database connections: {e}")
+
 
 # Create FastAPI app with lifespan events
 app = FastAPI(
@@ -86,7 +95,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
-    openapi_url="/api/v1/openapi.json"
+    openapi_url="/api/v1/openapi.json",
 )
 
 # Add rate limiting middleware
@@ -102,12 +111,14 @@ if sentry_dsn and SENTRY_AVAILABLE:
         dsn=sentry_dsn,
         integrations=[FastApiIntegration()],
         traces_sample_rate=1.0,
-        environment=os.getenv("ENVIRONMENT", "development")
+        environment=os.getenv("ENVIRONMENT", "development"),
     )
     logger.info("Sentry monitoring enabled")
 
 if PROMETHEUS_AVAILABLE:
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    Instrumentator().instrument(app).expose(
+        app, endpoint="/metrics", include_in_schema=False
+    )
     logger.info("Prometheus metrics enabled at /metrics")
 
 # Configure CORS
@@ -120,6 +131,7 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=3600,  # Cache preflight requests for 1 hour
 )
+
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -140,10 +152,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             "error": {
                 "message": "An unexpected error occurred",
                 "type": "internal_server_error",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-        }
+        },
     )
+
 
 # Custom HTTPException handler for consistent error format
 @app.exception_handler(HTTPException)
@@ -156,10 +169,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
                 "message": exc.detail,
                 "type": "http_error",
                 "status_code": exc.status_code,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-        }
+        },
     )
+
 
 # Environment validation function
 async def validate_environment() -> None:
@@ -167,25 +181,26 @@ async def validate_environment() -> None:
     required_env_vars = [
         "DATABASE_URL",
     ]
-    
+
     optional_env_vars = [
         "REDIS_URL",
         "ALLOWED_ORIGINS",
         "API_KEY",  # For future auth implementation
     ]
-    
+
     # Check required variables
     missing_vars = []
     for var in required_env_vars:
         if not os.getenv(var):
             missing_vars.append(var)
-    
+
     if missing_vars:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
-    
+
     # Validate critical settings
     try:
         from backend.settings import validate_settings
+
         config_warnings = validate_settings()
         for w in config_warnings:
             logger.warning(f"Configuration issue: {w}")
@@ -198,7 +213,7 @@ async def validate_environment() -> None:
             logger.info(f"Optional variable {var} is configured")
         else:
             logger.warning(f"Optional variable {var} is not set")
-    
+
     # Guard: production must have auth enabled
     env = os.getenv("ENV", "development")
     enable_auth = os.getenv("ENABLE_AUTH", "false").lower() == "true"
@@ -207,26 +222,31 @@ async def validate_environment() -> None:
             "Refusing to start in production mode with ENABLE_AUTH=false. "
             "Set ENABLE_AUTH=true and configure SECRET_KEY."
         )
-    
+
     # Test database connection
     try:
         from backend.database.models import engine
+
         with engine.connect() as conn:
             conn.exec_driver_sql("SELECT 1")
         logger.info("Database connection successful")
     except Exception as e:
         raise RuntimeError(f"Database connection failed: {e}")
-    
+
     # Test Redis connection if configured
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
         try:
             import redis
+
             r = redis.from_url(redis_url)
             r.ping()
             logger.info("Redis connection successful")
         except Exception as e:
-            logger.warning(f"Redis connection failed: {e}. Falling back to in-memory cache.")
+            logger.warning(
+                f"Redis connection failed: {e}. Falling back to in-memory cache."
+            )
+
 
 # Shutdown handler for graceful tracer shutdown
 @app.on_event("shutdown")
@@ -234,6 +254,7 @@ async def shutdown_tracing():
     """Gracefully shut down the OpenTelemetry tracer provider."""
     try:
         from opentelemetry import trace as otel_trace
+
         provider = otel_trace.get_tracer_provider()
         if hasattr(provider, "shutdown"):
             provider.shutdown()
@@ -250,19 +271,17 @@ async def root(request: Request) -> dict:
     return {
         "name": "Universal Dependency Resolver API",
         "version": "1.0.0",
-        "documentation": {
-            "openapi": "/api/v1/docs",
-            "redoc": "/api/v1/redoc"
-        },
+        "documentation": {"openapi": "/api/v1/docs", "redoc": "/api/v1/redoc"},
         "endpoints": {
             "health": "/api/v1/health",
             "system_info": "/api/v1/system/info",
             "package_info": "/api/v1/packages/{ecosystem}/{name}",
             "resolve": "/api/v1/packages/resolve",
             "export": "/api/v1/packages/export",
-            "formats": "/api/v1/packages/export-formats"
-        }
+            "formats": "/api/v1/packages/export-formats",
+        },
     }
+
 
 # Health check endpoint with dependency checks
 @app.get("/api/v1/health", tags=["General"])
@@ -276,12 +295,13 @@ async def health_check(request: Request) -> dict:
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
-        "checks": {}
+        "checks": {},
     }
-    
+
     # Check database with detailed health information
     try:
         from backend.database.models import check_db_health
+
         db_health = check_db_health()
         health_status["checks"]["database"] = db_health
         if db_health["status"] == "unhealthy":
@@ -289,55 +309,48 @@ async def health_check(request: Request) -> dict:
     except Exception as e:
         health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
         health_status["status"] = "unhealthy"
-    
+
     # Check Redis if configured
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
         try:
             import redis
+
             r = redis.from_url(redis_url)
             r.ping()
             health_status["checks"]["redis"] = {"status": "healthy"}
         except Exception as e:
             health_status["checks"]["redis"] = {"status": "unhealthy", "error": str(e)}
             # Redis is optional, so don't mark overall status as unhealthy
-    
+
     # Check external APIs (sample check)
     health_status["checks"]["external_apis"] = {"status": "healthy"}
-    
+
     return health_status
 
+
 # Include routers with versioned prefix
-app.include_router(
-    system.router,
-    prefix="/api/v1/system",
-    tags=["System"]
-)
+app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
-app.include_router(
-    packages.router,
-    prefix="/api/v1/packages", 
-    tags=["Packages"]
-)
+app.include_router(packages.router, prefix="/api/v1/packages", tags=["Packages"])
 
-app.include_router(
-    auth.router,
-    prefix="/api/v1/auth",
-    tags=["Authentication"]
-)
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+
 
 # Optional: Add middleware for response time tracking
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next) -> Response:
     """Add response time header"""
     import time
+
     start_time = time.time()
-    
+
     response = await call_next(request)
-    
+
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
 
 # Structlog request/response logging middleware
 @app.middleware("http")
@@ -349,7 +362,12 @@ async def log_requests(request: Request, call_next):
     method = request.method
     path = request.url.path
     import uuid
-    request_id = getattr(request.state, "correlation_id", None) or getattr(request.state, "request_id", None) or str(uuid.uuid4())
+
+    request_id = (
+        getattr(request.state, "correlation_id", None)
+        or getattr(request.state, "request_id", None)
+        or str(uuid.uuid4())
+    )
     request.state.request_id = request_id
     request.state.correlation_id = request_id
 
@@ -378,7 +396,9 @@ async def log_requests(request: Request, call_next):
         raise
 
     duration_ms = (time.time() - start_time) * 1000
-    effective_id = getattr(request.state, "correlation_id", None) or getattr(request.state, "request_id", request_id)
+    effective_id = getattr(request.state, "correlation_id", None) or getattr(
+        request.state, "request_id", request_id
+    )
     log.info(
         "Request completed",
         method=method,
@@ -394,9 +414,12 @@ async def log_requests(request: Request, call_next):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "backend.api.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True if os.getenv("ENVIRONMENT", "development") == "development" else False
+        reload=True
+        if os.getenv("ENVIRONMENT", "development") == "development"
+        else False,
     )

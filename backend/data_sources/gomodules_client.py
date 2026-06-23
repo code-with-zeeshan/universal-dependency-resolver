@@ -7,57 +7,75 @@ from datetime import datetime
 from urllib.parse import quote
 import re
 from backend.core.cache import cache_manager, cached, CacheKeys
-from backend.core.utils import normalize_package_name, parse_version, compare_versions, run_async
+from backend.core.utils import (
+    normalize_package_name,
+    parse_version,
+    compare_versions,
+    run_async,
+)
 from backend.settings import (
-    CACHE_TTL, USER_AGENTS, RATE_LIMITS,
-    REQUEST_TIMEOUT, MAX_RETRIES,
-    get_ecosystem_config
+    CACHE_TTL,
+    USER_AGENTS,
+    RATE_LIMITS,
+    REQUEST_TIMEOUT,
+    MAX_RETRIES,
+    get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
 
+
 class GoModulesClient(BaseDataSourceClient):
     def __init__(self):
-        go_config = get_ecosystem_config('gomodules')
+        go_config = get_ecosystem_config("gomodules")
 
         super().__init__(
-            ecosystem='gomodules',
-            base_url=go_config.get('url', 'https://proxy.golang.org'),
-            cache_ttl=go_config.get('cache_ttl', CACHE_TTL),
-            user_agent=USER_AGENTS.get('gomodules', USER_AGENTS['default']),
-            rate_limit=go_config.get('rate_limit', RATE_LIMITS.get('gomodules', 600)),
+            ecosystem="gomodules",
+            base_url=go_config.get("url", "https://proxy.golang.org"),
+            cache_ttl=go_config.get("cache_ttl", CACHE_TTL),
+            user_agent=USER_AGENTS.get("gomodules", USER_AGENTS["default"]),
+            rate_limit=go_config.get("rate_limit", RATE_LIMITS.get("gomodules", 600)),
             timeout=REQUEST_TIMEOUT,
             max_retries=MAX_RETRIES,
         )
 
-        self.sum_db_url = go_config.get('sum_db_url', 'https://sum.golang.org')
-        self.pkg_dev_url = 'https://pkg.go.dev'
+        self.sum_db_url = go_config.get("sum_db_url", "https://sum.golang.org")
+        self.pkg_dev_url = "https://pkg.go.dev"
 
     def package_exists(self, package_name: str) -> bool:
         package_name = self._normalize_go_module_path(package_name)
         try:
             import requests
-            response = requests.head(f"{self.base_url}/{package_name}/@v/list", timeout=5)
+
+            response = requests.head(
+                f"{self.base_url}/{package_name}/@v/list", timeout=5
+            )
             return response.status_code == 200
         except Exception:
             return False
 
-    async def search_packages(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    async def search_packages(
+        self, query: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         query = normalize_package_name(query)
 
         search_url = f"{self.pkg_dev_url}/search"
-        params = {'q': query, 'limit': limit}
+        params = {"q": query, "limit": limit}
 
         try:
-            logger.warning("Go package search not fully implemented - requires web scraping")
+            logger.warning(
+                "Go package search not fully implemented - requires web scraping"
+            )
             return []
         except Exception as e:
             logger.error(f"Error searching Go packages: {e}")
             return []
 
     @cached(ttl=CACHE_TTL)
-    async def get_package_info_async(self, package_name: str) -> Optional[Dict[str, Any]]:
+    async def get_package_info_async(
+        self, package_name: str
+    ) -> Optional[Dict[str, Any]]:
         package_name = self._normalize_go_module_path(package_name)
 
         versions_data = await self._get_versions_list(package_name)
@@ -75,20 +93,18 @@ class GoModulesClient(BaseDataSourceClient):
         dependencies = await self._parse_go_mod(module_info)
 
         info = {
-            'name': package_name,
-            'version': latest_version,
-            'versions': versions_data,
-            'description': f'Go module: {package_name}',
-            'homepage': f'https://pkg.go.dev/{package_name}',
-            'repository': f'https://{package_name}',
-            'license': 'See repository',
-            'dependencies': dependencies,
-            'system_requirements': {
-                'go': {
-                    'min_version': self._extract_go_version(module_info)
-                }
+            "name": package_name,
+            "version": latest_version,
+            "versions": versions_data,
+            "description": f"Go module: {package_name}",
+            "homepage": f"https://pkg.go.dev/{package_name}",
+            "repository": f"https://{package_name}",
+            "license": "See repository",
+            "dependencies": dependencies,
+            "system_requirements": {
+                "go": {"min_version": self._extract_go_version(module_info)}
             },
-            'ecosystem': 'gomodules'
+            "ecosystem": "gomodules",
         }
 
         return info
@@ -97,11 +113,13 @@ class GoModulesClient(BaseDataSourceClient):
         package_name = self._normalize_go_module_path(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_package_version(self, package_name: str, version: str) -> Optional[Dict[str, Any]]:
+    async def get_package_version(
+        self, package_name: str, version: str
+    ) -> Optional[Dict[str, Any]]:
         package_name = self._normalize_go_module_path(package_name)
 
-        if not version.startswith('v'):
-            version = f'v{version}'
+        if not version.startswith("v"):
+            version = f"v{version}"
 
         module_info = await self._get_module_info(package_name, version)
         if not module_info:
@@ -110,14 +128,12 @@ class GoModulesClient(BaseDataSourceClient):
         dependencies = await self._parse_go_mod(module_info)
 
         return {
-            'name': package_name,
-            'version': version,
-            'dependencies': dependencies,
-            'system_requirements': {
-                'go': {
-                    'min_version': self._extract_go_version(module_info)
-                }
-            }
+            "name": package_name,
+            "version": version,
+            "dependencies": dependencies,
+            "system_requirements": {
+                "go": {"min_version": self._extract_go_version(module_info)}
+            },
         }
 
     async def get_versions(self, package_name: str) -> List[Dict[str, Any]]:
@@ -130,23 +146,29 @@ class GoModulesClient(BaseDataSourceClient):
         versions = []
         for ver in versions_data:
             ver_info = {
-                'version': ver,
-                'stable': not ('-' in ver or '+incompatible' in ver),
-                'upload_time': None
+                "version": ver,
+                "stable": not ("-" in ver or "+incompatible" in ver),
+                "upload_time": None,
             }
             versions.append(ver_info)
 
-        versions.sort(key=lambda x: parse_version(x['version'].lstrip('v')) or parse_version('0.0.0'), reverse=True)
+        versions.sort(
+            key=lambda x: parse_version(x["version"].lstrip("v"))
+            or parse_version("0.0.0"),
+            reverse=True,
+        )
 
         return versions
 
-    async def get_dependencies(self, package_name: str, version: Optional[str] = None) -> Dict[str, Any]:
+    async def get_dependencies(
+        self, package_name: str, version: Optional[str] = None
+    ) -> Dict[str, Any]:
         package_name = self._normalize_go_module_path(package_name)
 
         if not version:
             version = await self._get_latest_version(package_name)
-        elif not version.startswith('v'):
-            version = f'v{version}'
+        elif not version.startswith("v"):
+            version = f"v{version}"
 
         module_info = await self._get_module_info(package_name, version)
         if not module_info:
@@ -159,7 +181,7 @@ class GoModulesClient(BaseDataSourceClient):
         data = await self._make_request(url)
 
         if data and isinstance(data, str):
-            versions = [v.strip() for v in data.strip().split('\n') if v.strip()]
+            versions = [v.strip() for v in data.strip().split("\n") if v.strip()]
             return versions
         return None
 
@@ -168,10 +190,12 @@ class GoModulesClient(BaseDataSourceClient):
         data = await self._make_request(url)
 
         if data and isinstance(data, dict):
-            return data.get('Version')
+            return data.get("Version")
         return None
 
-    async def _get_module_info(self, package_name: str, version: str) -> Optional[Dict[str, Any]]:
+    async def _get_module_info(
+        self, package_name: str, version: str
+    ) -> Optional[Dict[str, Any]]:
         info_url = f"{self.base_url}/{package_name}/@v/{version}.info"
         info_data = await self._make_request(info_url)
 
@@ -180,12 +204,16 @@ class GoModulesClient(BaseDataSourceClient):
 
         if info_data and mod_data:
             return {
-                'info': info_data if isinstance(info_data, dict) else json.loads(info_data),
-                'go_mod': mod_data if isinstance(mod_data, str) else ''
+                "info": info_data
+                if isinstance(info_data, dict)
+                else json.loads(info_data),
+                "go_mod": mod_data if isinstance(mod_data, str) else "",
             }
         return None
 
-    async def _make_request(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+    async def _make_request(
+        self, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> Optional[Any]:
         session = self._get_session()
         try:
             async with session.get(url, params=params) as response:
@@ -196,8 +224,8 @@ class GoModulesClient(BaseDataSourceClient):
                     logger.error(f"HTTP {response.status} from {url}")
                     return None
 
-                content_type = response.headers.get('Content-Type', '')
-                if 'application/json' in content_type:
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" in content_type:
                     return await response.json()
                 else:
                     return await response.text()
@@ -206,62 +234,64 @@ class GoModulesClient(BaseDataSourceClient):
             return None
 
     async def _parse_go_mod(self, module_info: Dict[str, Any]) -> Dict[str, Any]:
-        dependencies = {
-            'required': {},
-            'indirect': {},
-            'replace': {}
-        }
+        dependencies = {"required": {}, "indirect": {}, "replace": {}}
 
-        go_mod_content = module_info.get('go_mod', '')
+        go_mod_content = module_info.get("go_mod", "")
         if not go_mod_content:
             return dependencies
 
         require_block = False
-        for line in go_mod_content.split('\n'):
+        for line in go_mod_content.split("\n"):
             line = line.strip()
 
-            if line.startswith('require ('):
+            if line.startswith("require ("):
                 require_block = True
                 continue
-            elif line == ')' and require_block:
+            elif line == ")" and require_block:
                 require_block = False
                 continue
 
-            if require_block or line.startswith('require '):
-                match = re.match(r'(?:require\s+)?([^\s]+)\s+([^\s]+)(?:\s+//\s+indirect)?', line)
+            if require_block or line.startswith("require "):
+                match = re.match(
+                    r"(?:require\s+)?([^\s]+)\s+([^\s]+)(?:\s+//\s+indirect)?", line
+                )
                 if match:
                     dep_name = match.group(1)
                     dep_version = match.group(2)
 
-                    if '// indirect' in line:
-                        dependencies['indirect'][dep_name] = dep_version
+                    if "// indirect" in line:
+                        dependencies["indirect"][dep_name] = dep_version
                     else:
-                        dependencies['required'][dep_name] = dep_version
+                        dependencies["required"][dep_name] = dep_version
 
-            if line.startswith('replace '):
-                match = re.match(r'replace\s+([^\s]+)(?:\s+[^\s]+)?\s+=>\s+([^\s]+)\s+([^\s]+)', line)
+            if line.startswith("replace "):
+                match = re.match(
+                    r"replace\s+([^\s]+)(?:\s+[^\s]+)?\s+=>\s+([^\s]+)\s+([^\s]+)", line
+                )
                 if match:
                     old_path = match.group(1)
                     new_path = match.group(2)
                     new_version = match.group(3)
-                    dependencies['replace'][old_path] = f"{new_path}@{new_version}"
+                    dependencies["replace"][old_path] = f"{new_path}@{new_version}"
 
         return dependencies
 
     def _extract_go_version(self, module_info: Dict[str, Any]) -> Optional[str]:
-        go_mod_content = module_info.get('go_mod', '')
+        go_mod_content = module_info.get("go_mod", "")
 
-        match = re.search(r'^\s*go\s+(\d+\.\d+(?:\.\d+)?)', go_mod_content, re.MULTILINE)
+        match = re.search(
+            r"^\s*go\s+(\d+\.\d+(?:\.\d+)?)", go_mod_content, re.MULTILINE
+        )
         if match:
             return match.group(1)
         return None
 
     def _normalize_go_module_path(self, path: str) -> str:
         path = path.strip()
-        if path.startswith('github.com/') or path.startswith('golang.org/'):
+        if path.startswith("github.com/") or path.startswith("golang.org/"):
             return path
 
-        if '/' not in path:
+        if "/" not in path:
             return f"github.com/{path}/{path}"
 
         return path

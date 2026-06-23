@@ -6,9 +6,14 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from backend.settings import (
-    CACHE_TTL, USER_AGENTS, RATE_LIMITS,
-    REQUEST_TIMEOUT, MAX_RETRIES, RETRY_BACKOFF_FACTOR,
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_OPEN_TIME
+    CACHE_TTL,
+    USER_AGENTS,
+    RATE_LIMITS,
+    REQUEST_TIMEOUT,
+    MAX_RETRIES,
+    RETRY_BACKOFF_FACTOR,
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    CIRCUIT_BREAKER_OPEN_TIME,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,12 +37,14 @@ class BaseDataSourceClient:
         self.session: Optional[aiohttp.ClientSession] = None
         self._cache: Dict[str, tuple] = {}
         self._cache_ttl = cache_ttl
-        self.user_agent = user_agent or USER_AGENTS.get(ecosystem, USER_AGENTS['default'])
+        self.user_agent = user_agent or USER_AGENTS.get(
+            ecosystem, USER_AGENTS["default"]
+        )
         self.rate_limit = rate_limit or RATE_LIMITS.get(ecosystem, 600)
         self.timeout = timeout
         self.max_retries = max_retries
         self._request_timestamps: list = []
-        self._circuit_state = 'CLOSED'
+        self._circuit_state = "CLOSED"
         self._circuit_failure_count = 0
         self._circuit_failure_threshold = CIRCUIT_BREAKER_FAILURE_THRESHOLD
         self._circuit_open_time = CIRCUIT_BREAKER_OPEN_TIME
@@ -80,7 +87,9 @@ class BaseDataSourceClient:
         if len(self._request_timestamps) >= self.rate_limit:
             sleep_for = (self._request_timestamps[0] - cutoff).total_seconds()
             if sleep_for > 0:
-                logger.debug(f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s")
+                logger.debug(
+                    f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s"
+                )
                 await asyncio.sleep(sleep_for)
         self._request_timestamps.append(now)
 
@@ -90,60 +99,83 @@ class BaseDataSourceClient:
         """Actual HTTP request without circuit breaker."""
         await self._throttle()
         session = self._get_session()
-        headers = kwargs.pop('headers', {})
-        headers.setdefault('User-Agent', self.user_agent)
+        headers = kwargs.pop("headers", {})
+        headers.setdefault("User-Agent", self.user_agent)
 
         for attempt in range(self.max_retries):
             try:
-                async with session.request(method, url, headers=headers, timeout=self.timeout, **kwargs) as resp:
+                async with session.request(
+                    method, url, headers=headers, timeout=self.timeout, **kwargs
+                ) as resp:
                     if resp.status == 404:
                         return None
                     if resp.status >= 500 and attempt < self.max_retries - 1:
-                        backoff = RETRY_BACKOFF_FACTOR ** attempt
+                        backoff = RETRY_BACKOFF_FACTOR**attempt
                         await asyncio.sleep(backoff)
                         continue
                     resp.raise_for_status()
                     return await resp.json()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if attempt == self.max_retries - 1:
-                    logger.error(f"{self.ecosystem} request failed after {self.max_retries} retries: {e}")
+                    logger.error(
+                        f"{self.ecosystem} request failed after {self.max_retries} retries: {e}"
+                    )
                     return None
-                await asyncio.sleep(RETRY_BACKOFF_FACTOR ** attempt)
+                await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
         return None
 
-    async def _circuit_breaker_call(self, method: str, url: str, **kwargs) -> Optional[Dict]:
+    async def _circuit_breaker_call(
+        self, method: str, url: str, **kwargs
+    ) -> Optional[Dict]:
         """Execute request with circuit breaker pattern."""
         now = datetime.now()
 
-        if self._circuit_state == 'OPEN':
-            if self._circuit_last_open_time and (now - self._circuit_last_open_time).total_seconds() >= self._circuit_open_time:
+        if self._circuit_state == "OPEN":
+            if (
+                self._circuit_last_open_time
+                and (now - self._circuit_last_open_time).total_seconds()
+                >= self._circuit_open_time
+            ):
                 logger.debug(f"Circuit half-opening for {self.ecosystem}")
-                self._circuit_state = 'HALF_OPEN'
+                self._circuit_state = "HALF_OPEN"
                 self._circuit_half_open_successes = 0
             else:
-                logger.warning(f"Circuit OPEN for {self.ecosystem}, skipping request to {url}")
+                logger.warning(
+                    f"Circuit OPEN for {self.ecosystem}, skipping request to {url}"
+                )
                 return None
 
         result = await BaseDataSourceClient._make_request(self, method, url, **kwargs)
 
         if result is None:
             self._circuit_failure_count += 1
-            logger.debug(f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}")
-            if self._circuit_state == 'HALF_OPEN':
-                self._circuit_state = 'OPEN'
+            logger.debug(
+                f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}"
+            )
+            if self._circuit_state == "HALF_OPEN":
+                self._circuit_state = "OPEN"
                 self._circuit_last_open_time = datetime.now()
-                logger.warning(f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure")
+                logger.warning(
+                    f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure"
+                )
             elif self._circuit_failure_count >= self._circuit_failure_threshold:
-                self._circuit_state = 'OPEN'
+                self._circuit_state = "OPEN"
                 self._circuit_last_open_time = datetime.now()
-                logger.warning(f"Circuit OPENED for {self.ecosystem} after {self._circuit_failure_count} failures")
+                logger.warning(
+                    f"Circuit OPENED for {self.ecosystem} after {self._circuit_failure_count} failures"
+                )
         else:
-            if self._circuit_state == 'HALF_OPEN':
+            if self._circuit_state == "HALF_OPEN":
                 self._circuit_half_open_successes += 1
-                if self._circuit_half_open_successes >= self._circuit_half_open_max_successes:
-                    self._circuit_state = 'CLOSED'
+                if (
+                    self._circuit_half_open_successes
+                    >= self._circuit_half_open_max_successes
+                ):
+                    self._circuit_state = "CLOSED"
                     self._circuit_failure_count = 0
-                    logger.info(f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes")
+                    logger.info(
+                        f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes"
+                    )
             else:
                 self._circuit_failure_count = 0
 
@@ -153,9 +185,11 @@ class BaseDataSourceClient:
         return await self._circuit_breaker_call(method, url, **kwargs)
 
     async def _get(self, url: str, **kwargs) -> Optional[Dict]:
-        return await self._request('GET', url, **kwargs)
+        return await self._request("GET", url, **kwargs)
 
-    async def cached_get(self, cache_key: str, url: str, ttl: Optional[int] = None) -> Optional[Dict]:
+    async def cached_get(
+        self, cache_key: str, url: str, ttl: Optional[int] = None
+    ) -> Optional[Dict]:
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -177,7 +211,7 @@ class BaseDataSourceClient:
 
     def reset_circuit(self):
         """Manually reset the circuit breaker."""
-        self._circuit_state = 'CLOSED'
+        self._circuit_state = "CLOSED"
         self._circuit_failure_count = 0
         self._circuit_half_open_successes = 0
         self._circuit_last_open_time = None

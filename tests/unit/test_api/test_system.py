@@ -35,7 +35,6 @@ def mock_scanner():
 
 
 class TestSystemInfo:
-
     def test_get_system_info_success(self, client, mock_scanner):
         response = client.get("/api/v1/system/info")
         assert response.status_code == 200
@@ -83,9 +82,8 @@ class TestSystemInfo:
 
 
 class TestHealthCheck:
-
     def test_health_check_success(self, client):
-        with patch('backend.api.main.check_db_health') as mock_db_health:
+        with patch("backend.api.main.check_db_health") as mock_db_health:
             mock_db_health.return_value = {"status": "healthy"}
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -95,8 +93,11 @@ class TestHealthCheck:
         assert "database" in data["checks"]
 
     def test_health_check_db_unhealthy(self, client):
-        with patch('backend.api.main.check_db_health') as mock_db_health:
-            mock_db_health.return_value = {"status": "unhealthy", "error": "Connection failed"}
+        with patch("backend.api.main.check_db_health") as mock_db_health:
+            mock_db_health.return_value = {
+                "status": "unhealthy",
+                "error": "Connection failed",
+            }
             response = client.get("/api/v1/health")
         assert response.status_code == 200
         data = response.json()
@@ -104,16 +105,18 @@ class TestHealthCheck:
         assert data["checks"]["database"]["status"] == "unhealthy"
 
     def test_health_check_db_exception(self, client):
-        with patch('backend.api.main.check_db_health', side_effect=Exception("DB error")):
+        with patch(
+            "backend.api.main.check_db_health", side_effect=Exception("DB error")
+        ):
             response = client.get("/api/v1/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "unhealthy"
 
     def test_health_check_with_redis(self, client):
-        with patch('backend.api.main.check_db_health') as mock_db_health, \
-             patch.dict('os.environ', {'REDIS_URL': 'redis://localhost:6379'}), \
-             patch('redis.from_url') as mock_redis:
+        with patch("backend.api.main.check_db_health") as mock_db_health, patch.dict(
+            "os.environ", {"REDIS_URL": "redis://localhost:6379"}
+        ), patch("redis.from_url") as mock_redis:
             mock_db_health.return_value = {"status": "healthy"}
             mock_redis_instance = MagicMock()
             mock_redis.return_value = mock_redis_instance
@@ -125,7 +128,6 @@ class TestHealthCheck:
 
 
 class TestSystemCheckCompatibility:
-
     def test_check_compatibility_success(self, client):
         response = client.post(
             "/api/v1/system/check-compatibility",
@@ -169,7 +171,6 @@ class TestSystemCheckCompatibility:
 
 
 class TestGPUInfo:
-
     def test_get_gpu_info_success(self, client):
         response = client.get("/api/v1/system/gpu/info")
         assert response.status_code == 200
@@ -179,7 +180,6 @@ class TestGPUInfo:
 
 
 class TestRuntimeInfo:
-
     def test_get_runtime_info_python(self, client):
         response = client.get("/api/v1/system/runtime/python")
         assert response.status_code == 200
@@ -193,7 +193,6 @@ class TestRuntimeInfo:
 
 
 class TestBenchmarks:
-
     def test_benchmarks_success(self, client):
         response = client.get("/api/v1/system/benchmarks")
         assert response.status_code == 200
@@ -207,7 +206,6 @@ class TestBenchmarks:
 
 
 class TestAnalyzeEnvironment:
-
     def test_analyze_requirements_txt(self, client):
         content = "requests>=2.25.0\nflask==2.3.3\n"
         response = client.post(

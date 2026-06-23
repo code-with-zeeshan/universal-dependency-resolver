@@ -8,10 +8,10 @@ class PackageRequest(BaseModel):
     ecosystem: Optional[str] = None
     version: Optional[str] = None
 
-    @validator('name')
+    @validator("name")
     def validate_name(cls, v):
-        if not re.match(r'^[a-zA-Z0-9\-_\.]+$', v):
-            raise ValueError('Invalid package name')
+        if not re.match(r"^[a-zA-Z0-9\-_\.]+$", v):
+            raise ValueError("Invalid package name")
         return v
 
 

@@ -196,9 +196,7 @@ class TestCompatibilityReport:
         db_session.add(pkg)
         db_session.commit()
 
-        report = CompatibilityReport(
-            package_id=pkg.id, version="0.4.0", works=True
-        )
+        report = CompatibilityReport(package_id=pkg.id, version="0.4.0", works=True)
         db_session.add(report)
         db_session.commit()
 
@@ -240,8 +238,10 @@ class TestConflictRule:
         db_session.commit()
 
         conflict = ConflictRule(
-            package1_id=pkg1.id, package2_id=pkg2.id,
-            conflict_type="incompatible", description="ML framework conflict",
+            package1_id=pkg1.id,
+            package2_id=pkg2.id,
+            conflict_type="incompatible",
+            description="ML framework conflict",
         )
         db_session.add(conflict)
         db_session.commit()
@@ -268,11 +268,15 @@ class TestUserAndAPIKey:
         assert saved.is_active is True
 
     def test_unique_username(self, db_session):
-        db_session.add(User(username="unique_user", email="a@b.com", hashed_password="pw"))
+        db_session.add(
+            User(username="unique_user", email="a@b.com", hashed_password="pw")
+        )
         db_session.commit()
 
         with pytest.raises(IntegrityError):
-            db_session.add(User(username="unique_user", email="c@d.com", hashed_password="pw2"))
+            db_session.add(
+                User(username="unique_user", email="c@d.com", hashed_password="pw2")
+            )
             db_session.commit()
         db_session.rollback()
 
@@ -311,7 +315,9 @@ class TestResolutionCache:
         db_session.add(entry)
         db_session.commit()
 
-        saved = db_session.query(ResolutionCache).filter_by(request_hash="abc123").first()
+        saved = (
+            db_session.query(ResolutionCache).filter_by(request_hash="abc123").first()
+        )
         assert saved is not None
         assert saved.success is True
         assert saved.resolution_time_ms == 150
@@ -344,7 +350,9 @@ class TestSystemBenchmark:
         db_session.add(benchmark)
         db_session.commit()
 
-        saved = db_session.query(SystemBenchmark).filter_by(system_hash="sys_001").first()
+        saved = (
+            db_session.query(SystemBenchmark).filter_by(system_hash="sys_001").first()
+        )
         assert saved is not None
         assert saved.cpu_model == "Intel Core i7"
         assert saved.ram_gb == 32.0
@@ -375,7 +383,9 @@ class TestVerifiedCombination:
         db_session.add(combo)
         db_session.commit()
 
-        saved = db_session.query(VerifiedCombination).filter_by(name="ML Stack v1").first()
+        saved = (
+            db_session.query(VerifiedCombination).filter_by(name="ML Stack v1").first()
+        )
         assert saved is not None
         assert saved.usage_count == 42
         assert saved.success_rate == 0.98
@@ -402,8 +412,7 @@ class TestBulkOperations:
         db_session.commit()
 
         versions = [
-            PackageVersion(package_id=pkg.id, version=f"0.{i}.0")
-            for i in range(50)
+            PackageVersion(package_id=pkg.id, version=f"0.{i}.0") for i in range(50)
         ]
         db_session.add_all(versions)
         db_session.commit()
@@ -416,15 +425,19 @@ class TestBulkOperations:
         db_session.add(pkg)
         db_session.commit()
 
-        db_session.add_all([
-            PackageVersion(package_id=pkg.id, version="1.0.0"),
-            PackageVersion(package_id=pkg.id, version="1.1.0"),
-        ])
+        db_session.add_all(
+            [
+                PackageVersion(package_id=pkg.id, version="1.0.0"),
+                PackageVersion(package_id=pkg.id, version="1.1.0"),
+            ]
+        )
         db_session.commit()
 
-        version_count_before = db_session.query(PackageVersion).filter(
-            PackageVersion.package_id == pkg.id
-        ).count()
+        version_count_before = (
+            db_session.query(PackageVersion)
+            .filter(PackageVersion.package_id == pkg.id)
+            .count()
+        )
         assert version_count_before == 2
 
         db_session.delete(pkg)
@@ -436,8 +449,7 @@ class TestBulkOperations:
     def test_query_by_ecosystem(self, db_session):
         ecosystems = ["pypi", "npm", "pypi", "conda", "npm"]
         packages = [
-            Package(name=f"pkg-{i}", ecosystem=eco)
-            for i, eco in enumerate(ecosystems)
+            Package(name=f"pkg-{i}", ecosystem=eco) for i, eco in enumerate(ecosystems)
         ]
         db_session.add_all(packages)
         db_session.commit()
@@ -448,17 +460,17 @@ class TestBulkOperations:
         assert npm_count == 2
 
     def test_indexed_search_by_name(self, db_session):
-        db_session.add_all([
-            Package(name="tensorflow", ecosystem="pypi"),
-            Package(name="tensorrt", ecosystem="pypi"),
-            Package(name="tensorboard", ecosystem="pypi"),
-            Package(name="pytorch", ecosystem="pypi"),
-        ])
+        db_session.add_all(
+            [
+                Package(name="tensorflow", ecosystem="pypi"),
+                Package(name="tensorrt", ecosystem="pypi"),
+                Package(name="tensorboard", ecosystem="pypi"),
+                Package(name="pytorch", ecosystem="pypi"),
+            ]
+        )
         db_session.commit()
 
-        results = db_session.query(Package).filter(
-            Package.name.like("tensor%")
-        ).all()
+        results = db_session.query(Package).filter(Package.name.like("tensor%")).all()
         assert len(results) == 3
 
 
@@ -478,7 +490,9 @@ class TestHealthCheck:
     @pytest.mark.requires_postgres
     def test_table_count(self, db_session):
         result = db_session.execute(
-            text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+            text(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
+            )
         )
         count = result.scalar()
         assert count >= 9

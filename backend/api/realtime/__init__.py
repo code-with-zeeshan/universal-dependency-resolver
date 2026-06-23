@@ -2,4 +2,4 @@
 from .hybrid_manager import hybrid_manager
 from .progress_mixin import ProgressReporter
 
-__all__ = ['hybrid_manager', 'ProgressReporter']
+__all__ = ["hybrid_manager", "ProgressReporter"]

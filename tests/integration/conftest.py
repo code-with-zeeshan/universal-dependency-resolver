@@ -16,11 +16,17 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
-from backend.database.models import Base, engine as prod_engine, SessionLocal as prod_SessionLocal
+from backend.database.models import (
+    Base,
+    engine as prod_engine,
+    SessionLocal as prod_SessionLocal,
+)
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:15432/depresolver_test")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://user:password@localhost:15432/depresolver_test"
+)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:16379")
 
 
@@ -40,6 +46,7 @@ def _redis_reachable(url: str, timeout: int = 2) -> bool:
     """Check if Redis is reachable."""
     try:
         import redis
+
         r = redis.from_url(url, socket_connect_timeout=timeout, decode_responses=True)
         r.ping()
         r.close()
@@ -133,6 +140,7 @@ def clean_tables(db_session):
 def event_loop():
     """Overrides the default function-scoped event loop for async fixtures."""
     import asyncio
+
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -144,6 +152,7 @@ async def redis_client():
     if not REDIS_AVAILABLE:
         pytest.skip("Redis is not available")
     import redis.asyncio as aioredis
+
     r = aioredis.from_url(REDIS_URL, decode_responses=True)
     await r.flushdb()
     yield r
@@ -213,7 +222,8 @@ def sample_package_data() -> dict:
 def pytest_configure(config):
     """Configure pytest markers."""
     config.addinivalue_line(
-        "markers", "requires_postgres: mark test as requiring PostgreSQL-specific features"
+        "markers",
+        "requires_postgres: mark test as requiring PostgreSQL-specific features",
     )
 
 
@@ -223,4 +233,8 @@ def pytest_collection_modifyitems(config, items):
         return
     for item in items:
         if item.get_closest_marker("requires_postgres"):
-            item.add_marker(pytest.mark.skip(reason="Test requires PostgreSQL but running on SQLite"))
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Test requires PostgreSQL but running on SQLite"
+                )
+            )

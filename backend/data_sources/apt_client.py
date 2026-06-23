@@ -8,39 +8,55 @@ import gzip
 from io import BytesIO
 from backend.core.cache import cache_manager, cached, CacheKeys
 from urllib.parse import quote, urljoin
-from backend.core.utils import normalize_package_name, parse_version, compare_versions, run_async
+from backend.core.utils import (
+    normalize_package_name,
+    parse_version,
+    compare_versions,
+    run_async,
+)
 from backend.settings import (
-    CACHE_TTL, USER_AGENTS, RATE_LIMITS,
-    REQUEST_TIMEOUT, MAX_RETRIES,
-    get_ecosystem_config
+    CACHE_TTL,
+    USER_AGENTS,
+    RATE_LIMITS,
+    REQUEST_TIMEOUT,
+    MAX_RETRIES,
+    get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
 
+
 class APTClient(BaseDataSourceClient):
     def __init__(self):
-        apt_config = get_ecosystem_config('apt')
+        apt_config = get_ecosystem_config("apt")
 
         super().__init__(
-            ecosystem='apt',
-            base_url=apt_config.get('repositories', ['http://deb.debian.org/debian'])[0],
-            cache_ttl=apt_config.get('cache_ttl', CACHE_TTL),
-            user_agent=USER_AGENTS.get('apt', USER_AGENTS['default']),
-            rate_limit=apt_config.get('rate_limit', RATE_LIMITS.get('apt', 600)),
+            ecosystem="apt",
+            base_url=apt_config.get("repositories", ["http://deb.debian.org/debian"])[
+                0
+            ],
+            cache_ttl=apt_config.get("cache_ttl", CACHE_TTL),
+            user_agent=USER_AGENTS.get("apt", USER_AGENTS["default"]),
+            rate_limit=apt_config.get("rate_limit", RATE_LIMITS.get("apt", 600)),
             timeout=REQUEST_TIMEOUT,
             max_retries=MAX_RETRIES,
         )
 
-        self.repositories = apt_config.get('repositories', [
-            'http://deb.debian.org/debian',
-            'http://archive.ubuntu.com/ubuntu',
-            'http://security.debian.org/debian-security'
-        ])
+        self.repositories = apt_config.get(
+            "repositories",
+            [
+                "http://deb.debian.org/debian",
+                "http://archive.ubuntu.com/ubuntu",
+                "http://security.debian.org/debian-security",
+            ],
+        )
 
         self.main_repo = self.repositories[0]
-        self.distributions = apt_config.get('distributions', ['stable', 'testing', 'unstable'])
-        self.components = apt_config.get('components', ['main', 'contrib', 'non-free'])
+        self.distributions = apt_config.get(
+            "distributions", ["stable", "testing", "unstable"]
+        )
+        self.components = apt_config.get("components", ["main", "contrib", "non-free"])
         self._packages_cache: Dict[str, Any] = {}
 
     def package_exists(self, package_name: str) -> bool:
@@ -51,19 +67,23 @@ class APTClient(BaseDataSourceClient):
         query = normalize_package_name(query)
         results = []
 
-        packages = await self._get_packages_list('stable', 'main')
+        packages = await self._get_packages_list("stable", "main")
         if not packages:
             return results
 
         for pkg_name, pkg_info in packages.items():
-            if query in pkg_name or (pkg_info.get('description') and query in pkg_info['description'].lower()):
-                results.append({
-                    'name': pkg_name,
-                    'version': pkg_info.get('version', ''),
-                    'description': pkg_info.get('description', ''),
-                    'section': pkg_info.get('section', ''),
-                    'priority': pkg_info.get('priority', '')
-                })
+            if query in pkg_name or (
+                pkg_info.get("description") and query in pkg_info["description"].lower()
+            ):
+                results.append(
+                    {
+                        "name": pkg_name,
+                        "version": pkg_info.get("version", ""),
+                        "description": pkg_info.get("description", ""),
+                        "section": pkg_info.get("section", ""),
+                        "priority": pkg_info.get("priority", ""),
+                    }
+                )
 
                 if len(results) >= limit:
                     break
@@ -82,12 +102,14 @@ class APTClient(BaseDataSourceClient):
                 packages = await self._get_packages_list(dist, component)
                 if packages and package_name in packages:
                     pkg_data = packages[package_name]
-                    versions_list.append({
-                        'version': pkg_data.get('version', ''),
-                        'distribution': dist,
-                        'component': component,
-                        'architecture': pkg_data.get('architecture', 'all')
-                    })
+                    versions_list.append(
+                        {
+                            "version": pkg_data.get("version", ""),
+                            "distribution": dist,
+                            "component": component,
+                            "architecture": pkg_data.get("architecture", "all"),
+                        }
+                    )
 
                     if not package_data:
                         package_data = pkg_data
@@ -99,20 +121,20 @@ class APTClient(BaseDataSourceClient):
         system_requirements = self._extract_system_requirements(package_data)
 
         info = {
-            'name': package_name,
-            'version': package_data.get('version', ''),
-            'versions': versions_list,
-            'description': package_data.get('description', ''),
-            'homepage': package_data.get('homepage', ''),
-            'maintainer': package_data.get('maintainer', ''),
-            'section': package_data.get('section', ''),
-            'priority': package_data.get('priority', ''),
-            'architecture': package_data.get('architecture', 'all'),
-            'size': package_data.get('size', 0),
-            'installed_size': package_data.get('installed-size', 0),
-            'dependencies': dependencies,
-            'system_requirements': system_requirements,
-            'ecosystem': 'apt'
+            "name": package_name,
+            "version": package_data.get("version", ""),
+            "versions": versions_list,
+            "description": package_data.get("description", ""),
+            "homepage": package_data.get("homepage", ""),
+            "maintainer": package_data.get("maintainer", ""),
+            "section": package_data.get("section", ""),
+            "priority": package_data.get("priority", ""),
+            "architecture": package_data.get("architecture", "all"),
+            "size": package_data.get("size", 0),
+            "installed_size": package_data.get("installed-size", 0),
+            "dependencies": dependencies,
+            "system_requirements": system_requirements,
+            "ecosystem": "apt",
         }
 
         return info
@@ -130,19 +152,27 @@ class APTClient(BaseDataSourceClient):
                 packages = await self._get_packages_list(dist, component)
                 if packages and package_name in packages:
                     pkg_data = packages[package_name]
-                    versions.append({
-                        'version': pkg_data.get('version', ''),
-                        'distribution': dist,
-                        'component': component,
-                        'architecture': pkg_data.get('architecture', 'all'),
-                        'upload_time': None
-                    })
+                    versions.append(
+                        {
+                            "version": pkg_data.get("version", ""),
+                            "distribution": dist,
+                            "component": component,
+                            "architecture": pkg_data.get("architecture", "all"),
+                            "upload_time": None,
+                        }
+                    )
 
-        versions.sort(key=lambda x: parse_version(x['version'].split('-')[0]) or parse_version('0.0.0'), reverse=True)
+        versions.sort(
+            key=lambda x: parse_version(x["version"].split("-")[0])
+            or parse_version("0.0.0"),
+            reverse=True,
+        )
 
         return versions
 
-    async def get_dependencies(self, package_name: str, version: Optional[str] = None) -> Dict:
+    async def get_dependencies(
+        self, package_name: str, version: Optional[str] = None
+    ) -> Dict:
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -151,7 +181,7 @@ class APTClient(BaseDataSourceClient):
                 packages = await self._get_packages_list(dist, component)
                 if packages and package_name in packages:
                     pkg_data = packages[package_name]
-                    if not version or pkg_data.get('version') == version:
+                    if not version or pkg_data.get("version") == version:
                         package_data = pkg_data
                         break
             if package_data:
@@ -162,7 +192,9 @@ class APTClient(BaseDataSourceClient):
 
         return self._parse_dependencies(package_data)
 
-    async def _get_packages_list(self, distribution: str, component: str) -> Dict[str, Dict]:
+    async def _get_packages_list(
+        self, distribution: str, component: str
+    ) -> Dict[str, Dict]:
         cache_key = f"packages:{distribution}:{component}"
 
         if cache_key in self._packages_cache:
@@ -174,12 +206,14 @@ class APTClient(BaseDataSourceClient):
             session = self._get_session()
             async with session.get(url) as response:
                 if response.status != 200:
-                    logger.error(f"Failed to fetch Packages from {url}: {response.status}")
+                    logger.error(
+                        f"Failed to fetch Packages from {url}: {response.status}"
+                    )
                     return {}
 
                 content = await response.read()
                 with gzip.GzipFile(fileobj=BytesIO(content)) as gz:
-                    packages_content = gz.read().decode('utf-8', errors='ignore')
+                    packages_content = gz.read().decode("utf-8", errors="ignore")
 
                 packages = self._parse_packages_file(packages_content)
                 self._packages_cache[cache_key] = packages
@@ -195,46 +229,54 @@ class APTClient(BaseDataSourceClient):
         current_package = {}
         current_field = None
 
-        for line in content.split('\n'):
+        for line in content.split("\n"):
             if not line.strip():
-                if 'package' in current_package:
-                    pkg_name = current_package['package']
+                if "package" in current_package:
+                    pkg_name = current_package["package"]
                     packages[pkg_name] = current_package
                 current_package = {}
                 current_field = None
                 continue
 
-            if line.startswith(' '):
+            if line.startswith(" "):
                 if current_field:
-                    current_package[current_field] += '\n' + line.strip()
+                    current_package[current_field] += "\n" + line.strip()
             else:
-                match = re.match(r'^([^:]+):\s*(.*)$', line)
+                match = re.match(r"^([^:]+):\s*(.*)$", line)
                 if match:
                     field_name = match.group(1).lower()
                     field_value = match.group(2)
                     current_package[field_name] = field_value
                     current_field = field_name
 
-        if 'package' in current_package:
-            pkg_name = current_package['package']
+        if "package" in current_package:
+            pkg_name = current_package["package"]
             packages[pkg_name] = current_package
 
         return packages
 
     def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
         dependencies = {
-            'depends': [],
-            'recommends': [],
-            'suggests': [],
-            'enhances': [],
-            'conflicts': [],
-            'breaks': [],
-            'provides': [],
-            'replaces': []
+            "depends": [],
+            "recommends": [],
+            "suggests": [],
+            "enhances": [],
+            "conflicts": [],
+            "breaks": [],
+            "provides": [],
+            "replaces": [],
         }
 
-        dep_fields = ['depends', 'recommends', 'suggests', 'enhances',
-                      'conflicts', 'breaks', 'provides', 'replaces']
+        dep_fields = [
+            "depends",
+            "recommends",
+            "suggests",
+            "enhances",
+            "conflicts",
+            "breaks",
+            "provides",
+            "replaces",
+        ]
 
         for field in dep_fields:
             if field in package_data:
@@ -247,48 +289,43 @@ class APTClient(BaseDataSourceClient):
     def _parse_dependency_string(self, deps_str: str) -> List[Dict]:
         dependencies = []
 
-        for dep_group in deps_str.split(','):
+        for dep_group in deps_str.split(","):
             dep_group = dep_group.strip()
 
             or_deps = []
-            for or_dep in dep_group.split('|'):
+            for or_dep in dep_group.split("|"):
                 or_dep = or_dep.strip()
 
-                match = re.match(r'^([a-z0-9][a-z0-9+.-]+)(?:\s*\(([^)]+)\))?', or_dep)
+                match = re.match(r"^([a-z0-9][a-z0-9+.-]+)(?:\s*\(([^)]+)\))?", or_dep)
                 if match:
                     dep_name = match.group(1)
-                    version_spec = match.group(2) if match.group(2) else ''
+                    version_spec = match.group(2) if match.group(2) else ""
 
-                    or_deps.append({
-                        'name': dep_name,
-                        'version_spec': version_spec
-                    })
+                    or_deps.append({"name": dep_name, "version_spec": version_spec})
 
             if len(or_deps) == 1:
                 dependencies.append(or_deps[0])
             elif or_deps:
-                dependencies.append({
-                    'or_dependencies': or_deps
-                })
+                dependencies.append({"or_dependencies": or_deps})
 
         return dependencies
 
     def _extract_system_requirements(self, package_data: Dict) -> Dict[str, Any]:
         requirements = {
-            'architecture': package_data.get('architecture', 'all'),
-            'essential': package_data.get('essential', 'no') == 'yes',
-            'priority': package_data.get('priority', 'optional')
+            "architecture": package_data.get("architecture", "all"),
+            "essential": package_data.get("essential", "no") == "yes",
+            "priority": package_data.get("priority", "optional"),
         }
 
-        if 'depends' in package_data:
-            deps_str = package_data['depends'].lower()
+        if "depends" in package_data:
+            deps_str = package_data["depends"].lower()
 
-            libc_match = re.search(r'libc6\s*\(>=\s*([^)]+)\)', deps_str)
+            libc_match = re.search(r"libc6\s*\(>=\s*([^)]+)\)", deps_str)
             if libc_match:
-                requirements['libc_version'] = libc_match.group(1)
+                requirements["libc_version"] = libc_match.group(1)
 
-            kernel_match = re.search(r'linux-[a-z-]+\s*\(>=\s*([^)]+)\)', deps_str)
+            kernel_match = re.search(r"linux-[a-z-]+\s*\(>=\s*([^)]+)\)", deps_str)
             if kernel_match:
-                requirements['kernel_version'] = kernel_match.group(1)
+                requirements["kernel_version"] = kernel_match.group(1)
 
         return requirements

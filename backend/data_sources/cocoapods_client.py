@@ -7,39 +7,47 @@ import re
 from backend.core.cache import cache_manager, cached, CacheKeys
 from backend.core.utils import normalize_package_name, parse_version, run_async
 from backend.settings import (
-    CACHE_TTL, USER_AGENTS, RATE_LIMITS,
-    REQUEST_TIMEOUT, MAX_RETRIES, RATE_LIMIT_DELAY,
-    get_ecosystem_config
+    CACHE_TTL,
+    USER_AGENTS,
+    RATE_LIMITS,
+    REQUEST_TIMEOUT,
+    MAX_RETRIES,
+    RATE_LIMIT_DELAY,
+    get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
 
+
 class CocoaPodsClient(BaseDataSourceClient):
     def __init__(self):
-        cocoapods_config = get_ecosystem_config('cocoapods')
+        cocoapods_config = get_ecosystem_config("cocoapods")
 
-        base_url = cocoapods_config.get('url', 'https://trunk.cocoapods.org/api/v1')
+        base_url = cocoapods_config.get("url", "https://trunk.cocoapods.org/api/v1")
         super().__init__(
-            ecosystem='cocoapods',
+            ecosystem="cocoapods",
             base_url=base_url,
-            cache_ttl=cocoapods_config.get('cache_ttl', CACHE_TTL),
-            user_agent=USER_AGENTS.get('cocoapods', USER_AGENTS['default']),
-            rate_limit=cocoapods_config.get('rate_limit', RATE_LIMITS.get('cocoapods', 600)),
+            cache_ttl=cocoapods_config.get("cache_ttl", CACHE_TTL),
+            user_agent=USER_AGENTS.get("cocoapods", USER_AGENTS["default"]),
+            rate_limit=cocoapods_config.get(
+                "rate_limit", RATE_LIMITS.get("cocoapods", 600)
+            ),
             timeout=REQUEST_TIMEOUT,
             max_retries=MAX_RETRIES,
         )
 
-        self.specs_url = cocoapods_config.get('specs_url', 'https://cdn.cocoapods.org')
+        self.specs_url = cocoapods_config.get("specs_url", "https://cdn.cocoapods.org")
 
     def package_exists(self, package_name: str) -> bool:
         package_name = self._normalize_pod_name(package_name)
         try:
             import requests
+
             response = requests.get(
                 f"{self.base_url}/pods/{quote(package_name)}",
                 timeout=5,
-                headers={"User-Agent": self.user_agent}
+                headers={"User-Agent": self.user_agent},
             )
             return response.status_code == 200
         except Exception:
@@ -49,7 +57,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         query = normalize_package_name(query)
 
         url = f"{self.base_url}/pods"
-        params = {'query': query}
+        params = {"query": query}
 
         data = await self._get(url, params=params)
         if not data:
@@ -57,13 +65,15 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         results = []
         for pod in data[:limit]:
-            results.append({
-                'name': pod.get('name', ''),
-                'version': pod.get('version', ''),
-                'summary': pod.get('summary', ''),
-                'platforms': pod.get('platforms', {}),
-                'authors': pod.get('authors', {})
-            })
+            results.append(
+                {
+                    "name": pod.get("name", ""),
+                    "version": pod.get("version", ""),
+                    "summary": pod.get("summary", ""),
+                    "platforms": pod.get("platforms", {}),
+                    "authors": pod.get("authors", {}),
+                }
+            )
 
         return results
 
@@ -77,7 +87,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         if not data:
             return None
 
-        versions = data.get('versions', [])
+        versions = data.get("versions", [])
         latest_version = versions[0] if versions else None
 
         if not latest_version:
@@ -86,22 +96,24 @@ class CocoaPodsClient(BaseDataSourceClient):
         spec_data = await self._get_podspec(package_name, latest_version)
 
         dependencies = self._parse_dependencies(spec_data) if spec_data else {}
-        system_requirements = self._extract_system_requirements(spec_data) if spec_data else {}
+        system_requirements = (
+            self._extract_system_requirements(spec_data) if spec_data else {}
+        )
 
         info = {
-            'name': data.get('name', package_name),
-            'version': latest_version,
-            'versions': self._process_versions(versions),
-            'summary': data.get('summary', ''),
-            'description': spec_data.get('description', '') if spec_data else '',
-            'homepage': spec_data.get('homepage', '') if spec_data else '',
-            'source': spec_data.get('source', {}) if spec_data else {},
-            'license': spec_data.get('license', '') if spec_data else '',
-            'authors': spec_data.get('authors', {}) if spec_data else {},
-            'platforms': spec_data.get('platforms', {}) if spec_data else {},
-            'dependencies': dependencies,
-            'system_requirements': system_requirements,
-            'ecosystem': 'cocoapods'
+            "name": data.get("name", package_name),
+            "version": latest_version,
+            "versions": self._process_versions(versions),
+            "summary": data.get("summary", ""),
+            "description": spec_data.get("description", "") if spec_data else "",
+            "homepage": spec_data.get("homepage", "") if spec_data else "",
+            "source": spec_data.get("source", {}) if spec_data else {},
+            "license": spec_data.get("license", "") if spec_data else "",
+            "authors": spec_data.get("authors", {}) if spec_data else {},
+            "platforms": spec_data.get("platforms", {}) if spec_data else {},
+            "dependencies": dependencies,
+            "system_requirements": system_requirements,
+            "ecosystem": "cocoapods",
         }
 
         return info
@@ -119,17 +131,19 @@ class CocoaPodsClient(BaseDataSourceClient):
         if not data:
             return []
 
-        versions = data.get('versions', [])
+        versions = data.get("versions", [])
         return self._process_versions(versions)
 
-    async def get_dependencies(self, package_name: str, version: Optional[str] = None) -> Dict:
+    async def get_dependencies(
+        self, package_name: str, version: Optional[str] = None
+    ) -> Dict:
         package_name = self._normalize_pod_name(package_name)
 
         if not version:
             pod_info = await self.get_package_info_async(package_name)
             if not pod_info:
                 return {}
-            version = pod_info['version']
+            version = pod_info["version"]
 
         spec_data = await self._get_podspec(package_name, version)
         if not spec_data:
@@ -153,50 +167,54 @@ class CocoaPodsClient(BaseDataSourceClient):
         processed = []
 
         for ver in versions:
-            processed.append({
-                'version': ver,
-                'stable': not any(pre in ver for pre in ['alpha', 'beta', 'rc', 'pre']),
-                'upload_time': None
-            })
+            processed.append(
+                {
+                    "version": ver,
+                    "stable": not any(
+                        pre in ver for pre in ["alpha", "beta", "rc", "pre"]
+                    ),
+                    "upload_time": None,
+                }
+            )
 
-        processed.sort(key=lambda x: parse_version(x['version']) or parse_version('0.0.0'), reverse=True)
+        processed.sort(
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            reverse=True,
+        )
 
         return processed
 
     def _parse_dependencies(self, spec_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies = {
-            'dependencies': [],
-            'development_dependencies': []
-        }
+        dependencies = {"dependencies": [], "development_dependencies": []}
 
-        if 'dependencies' in spec_data:
-            for dep_name, dep_spec in spec_data['dependencies'].items():
+        if "dependencies" in spec_data:
+            for dep_name, dep_spec in spec_data["dependencies"].items():
                 dep_info = {
-                    'name': dep_name,
-                    'version_spec': self._parse_version_spec(dep_spec)
+                    "name": dep_name,
+                    "version_spec": self._parse_version_spec(dep_spec),
                 }
-                dependencies['dependencies'].append(dep_info)
+                dependencies["dependencies"].append(dep_info)
 
-        if 'subspecs' in spec_data:
-            for subspec in spec_data['subspecs']:
-                if 'dependencies' in subspec:
-                    for dep_name, dep_spec in subspec['dependencies'].items():
+        if "subspecs" in spec_data:
+            for subspec in spec_data["subspecs"]:
+                if "dependencies" in subspec:
+                    for dep_name, dep_spec in subspec["dependencies"].items():
                         dep_info = {
-                            'name': dep_name,
-                            'version_spec': self._parse_version_spec(dep_spec),
-                            'subspec': subspec.get('name', '')
+                            "name": dep_name,
+                            "version_spec": self._parse_version_spec(dep_spec),
+                            "subspec": subspec.get("name", ""),
                         }
-                        dependencies['dependencies'].append(dep_info)
+                        dependencies["dependencies"].append(dep_info)
 
-        if 'test_spec' in spec_data:
-            test_spec = spec_data['test_spec']
-            if isinstance(test_spec, dict) and 'dependencies' in test_spec:
-                for dep_name, dep_spec in test_spec['dependencies'].items():
+        if "test_spec" in spec_data:
+            test_spec = spec_data["test_spec"]
+            if isinstance(test_spec, dict) and "dependencies" in test_spec:
+                for dep_name, dep_spec in test_spec["dependencies"].items():
                     dep_info = {
-                        'name': dep_name,
-                        'version_spec': self._parse_version_spec(dep_spec)
+                        "name": dep_name,
+                        "version_spec": self._parse_version_spec(dep_spec),
                     }
-                    dependencies['development_dependencies'].append(dep_info)
+                    dependencies["development_dependencies"].append(dep_info)
 
         return dependencies
 
@@ -204,41 +222,37 @@ class CocoaPodsClient(BaseDataSourceClient):
         if isinstance(spec, str):
             return spec
         elif isinstance(spec, list):
-            return ', '.join(spec)
+            return ", ".join(spec)
         elif isinstance(spec, dict):
             return str(spec)
         else:
-            return ''
+            return ""
 
     def _extract_system_requirements(self, spec_data: Dict) -> Dict[str, Any]:
         requirements = {}
 
-        if 'platforms' in spec_data:
-            platforms = spec_data['platforms']
+        if "platforms" in spec_data:
+            platforms = spec_data["platforms"]
             if isinstance(platforms, dict):
                 for platform, min_version in platforms.items():
-                    requirements[f'{platform}_deployment_target'] = min_version
+                    requirements[f"{platform}_deployment_target"] = min_version
 
-        if 'swift_version' in spec_data:
-            requirements['swift'] = {
-                'version': spec_data['swift_version']
-            }
-        elif 'swift_versions' in spec_data:
-            requirements['swift'] = {
-                'versions': spec_data['swift_versions']
-            }
+        if "swift_version" in spec_data:
+            requirements["swift"] = {"version": spec_data["swift_version"]}
+        elif "swift_versions" in spec_data:
+            requirements["swift"] = {"versions": spec_data["swift_versions"]}
 
-        if 'frameworks' in spec_data:
-            requirements['frameworks'] = spec_data['frameworks']
+        if "frameworks" in spec_data:
+            requirements["frameworks"] = spec_data["frameworks"]
 
-        if 'libraries' in spec_data:
-            requirements['libraries'] = spec_data['libraries']
+        if "libraries" in spec_data:
+            requirements["libraries"] = spec_data["libraries"]
 
-        if 'compiler_flags' in spec_data:
-            requirements['compiler_flags'] = spec_data['compiler_flags']
+        if "compiler_flags" in spec_data:
+            requirements["compiler_flags"] = spec_data["compiler_flags"]
 
-        if 'requires_arc' in spec_data:
-            requirements['requires_arc'] = spec_data['requires_arc']
+        if "requires_arc" in spec_data:
+            requirements["requires_arc"] = spec_data["requires_arc"]
 
         return requirements
 

@@ -1,4 +1,4 @@
-#routes/__init__.py
+# routes/__init__.py
 """
 API Routes Package
 
@@ -16,7 +16,7 @@ from .packages import (
     search_packages,
     get_package_versions,
     get_package_dependencies,
-    compare_packages
+    compare_packages,
 )
 
 from .system import get_system_info
@@ -25,7 +25,6 @@ __all__ = [
     # Route modules
     "packages",
     "system",
-    
     # Package routes
     "get_package_info",
     "resolve_dependencies",
@@ -34,7 +33,6 @@ __all__ = [
     "get_package_versions",
     "get_package_dependencies",
     "compare_packages",
-    
     # System routes
     "get_system_info",
     "check_system_compatibility",

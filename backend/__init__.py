@@ -1,4 +1,4 @@
-#backend/__init__.py
+# backend/__init__.py
 """
 Universal Dependency Resolver Backend Package
 
@@ -13,17 +13,8 @@ __email__ = "team@udr.example.com"
 
 # Import key components for easier access
 from .settings import get_ecosystem_config
-from .core import (
-    DataAggregator,
-    ConflictResolver,
-    SystemScanner,
-    ExportGenerator
-)
-from .database import (
-    CompatibilityDB,
-    init_db,
-    get_db
-)
+from .core import DataAggregator, ConflictResolver, SystemScanner, ExportGenerator
+from .database import CompatibilityDB, init_db, get_db
 
 # API components
 from .api import app
@@ -34,25 +25,22 @@ __all__ = [
     "__version__",
     "__author__",
     "__email__",
-    
     # Settings
     "get_ecosystem_config",
-    
     # Core components
     "DataAggregator",
-    "ConflictResolver", 
+    "ConflictResolver",
     "SystemScanner",
     "ExportGenerator",
-    
     # Database
     "CompatibilityDB",
     "init_db",
     "get_db",
-    
     # API
-    "app"
+    "app",
 ]
 
 # Initialize logging
 import logging
+
 logging.getLogger(__name__).addHandler(logging.NullHandler())

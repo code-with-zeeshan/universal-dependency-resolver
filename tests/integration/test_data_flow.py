@@ -18,12 +18,14 @@ class TestPackageLifecycle:
         patcher = patch("backend.api.dependencies.get_data_aggregator")
         mock_get_agg = patcher.start()
         aggregator = AsyncMock()
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "lifecycle-pkg",
-            "ecosystem": "pypi",
-            "version": "1.0.0",
-            "description": "Lifecycle test package",
-        })
+        aggregator.get_package_info = AsyncMock(
+            return_value={
+                "name": "lifecycle-pkg",
+                "ecosystem": "pypi",
+                "version": "1.0.0",
+                "description": "Lifecycle test package",
+            }
+        )
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
         yield
@@ -49,8 +51,7 @@ class TestPackageLifecycle:
         db_session.commit()
 
         versions = [
-            PackageVersion(package_id=pkg.id, version=f"1.{i}.0")
-            for i in range(5)
+            PackageVersion(package_id=pkg.id, version=f"1.{i}.0") for i in range(5)
         ]
         db_session.add_all(versions)
         db_session.commit()
@@ -95,6 +96,7 @@ class TestCrossModelRelationships:
         db_session.commit()
 
         from backend.database.models import CompatibilityReport
+
         report = CompatibilityReport(
             package_id=pkg.id,
             version="1.0.0",
@@ -130,6 +132,7 @@ class TestCrossModelRelationships:
         db_session.commit()
 
         from sqlalchemy import and_
+
         found = (
             db_session.query(ConflictRule)
             .filter(
@@ -153,9 +156,7 @@ class TestDataPersistence:
         db_session.add(pkg)
         db_session.commit()
 
-        ver = PackageVersion(
-            package_id=pkg.id, version="0.1.0"
-        )
+        ver = PackageVersion(package_id=pkg.id, version="0.1.0")
         db_session.add(ver)
         db_session.commit()
 
@@ -171,6 +172,7 @@ class TestDataPersistence:
         pkg_id = pkg.id
 
         from sqlalchemy.exc import IntegrityError
+
         try:
             dup = Package(name="rollback-test", ecosystem="pypi")
             db_session.add(dup)
@@ -211,6 +213,7 @@ class TestErrorRecovery:
         db_session.commit()
 
         from sqlalchemy.exc import IntegrityError
+
         with pytest.raises(IntegrityError):
             pkg_b = Package(name="dup-test", ecosystem="pypi")
             db_session.add(pkg_b)
@@ -224,6 +227,7 @@ class TestErrorRecovery:
         db_session.add(orphan)
 
         from sqlalchemy.exc import IntegrityError
+
         with pytest.raises(IntegrityError):
             db_session.commit()
         db_session.rollback()

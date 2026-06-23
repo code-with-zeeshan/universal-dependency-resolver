@@ -110,8 +110,12 @@ class ErrorFactory:
         status_code: Optional[int] = None,
     ) -> ResolverError:
         """Create a `ResolverError` using defaults when message is omitted."""
-        resolved_message = message or cls.default_messages.get(category, "An unexpected error occurred.")
-        resolved_status_code = status_code or cls.default_status_codes.get(category, 500)
+        resolved_message = message or cls.default_messages.get(
+            category, "An unexpected error occurred."
+        )
+        resolved_status_code = status_code or cls.default_status_codes.get(
+            category, 500
+        )
         return ResolverError(
             message=resolved_message,
             category=category,
@@ -121,7 +125,9 @@ class ErrorFactory:
         )
 
 
-def ensure_details_context(details: Optional[Dict[str, Any]], **context: Any) -> Dict[str, Any]:
+def ensure_details_context(
+    details: Optional[Dict[str, Any]], **context: Any
+) -> Dict[str, Any]:
     """Merge context data with existing details in a safe, copy-on-write way."""
     effective_details: Dict[str, Any] = {"context": context} if context else {}
     if details:
@@ -134,10 +140,12 @@ def serialize_exception_chain(error: BaseException) -> List[Dict[str, Any]]:
     chain: List[Dict[str, Any]] = []
     current: Optional[BaseException] = error  # type: ignore[assignment]
     while current:
-        chain.append({
-            "type": type(current).__name__,
-            "message": str(current),
-        })
+        chain.append(
+            {
+                "type": type(current).__name__,
+                "message": str(current),
+            }
+        )
         cause = current.__cause__ or current.__context__
         current = cause if isinstance(cause, BaseException) else None
     return chain

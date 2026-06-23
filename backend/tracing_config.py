@@ -14,10 +14,14 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, sampling
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPHttpExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter as OTLPHttpExporter,
+)
 
 try:
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as OTLPGrpcExporter
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter as OTLPGrpcExporter,
+    )
 except ImportError:
     OTLPGrpcExporter = None
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -69,7 +73,9 @@ def _create_sampler() -> sampling.Sampler:
         "parentbased_always_off": sampling.ParentBased(sampling.ALWAYS_OFF),
     }
 
-    return samplers.get(sampler_type, sampling.ParentBased(sampling.TraceIdRatioBased(0.1)))
+    return samplers.get(
+        sampler_type, sampling.ParentBased(sampling.TraceIdRatioBased(0.1))
+    )
 
 
 def _create_otlp_exporter():

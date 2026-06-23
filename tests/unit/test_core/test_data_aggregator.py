@@ -34,22 +34,22 @@ class TestDataAggregator:
         # Mock a client response
         mock_client = AsyncMock()
         mock_client.get_package_info.return_value = {
-            'name': 'test-package',
-            'version': '1.0.0',
-            'description': 'Test package',
-            'dependencies': {},
-            'system_requirements': {},
-            'versions': ['1.0.0'],
-            'quality_metrics': {'overall_score': 0.8}
+            "name": "test-package",
+            "version": "1.0.0",
+            "description": "Test package",
+            "dependencies": {},
+            "system_requirements": {},
+            "versions": ["1.0.0"],
+            "quality_metrics": {"overall_score": 0.8},
         }
 
-        with patch.object(aggregator, 'sources') as mock_sources:
+        with patch.object(aggregator, "sources") as mock_sources:
             mock_sources.__getitem__.return_value = mock_client
 
-            result = await aggregator.get_package_info('test-package', 'pypi')
+            result = await aggregator.get_package_info("test-package", "pypi")
 
-            assert result['name'] == 'test-package'
-            assert result['version'] == '1.0.0'
+            assert result["name"] == "test-package"
+            assert result["version"] == "1.0.0"
             mock_client.get_package_info.assert_called_once()
 
     @pytest.mark.asyncio
@@ -57,58 +57,56 @@ class TestDataAggregator:
         """Test basic package search"""
         mock_client = AsyncMock()
         mock_client.search_packages.return_value = [
-            {'name': 'test-pkg', 'version': '1.0.0', 'description': 'Test'}
+            {"name": "test-pkg", "version": "1.0.0", "description": "Test"}
         ]
 
-        with patch.object(aggregator, 'sources') as mock_sources:
+        with patch.object(aggregator, "sources") as mock_sources:
             mock_sources.__getitem__.return_value = mock_client
 
-            result = await aggregator.search_packages('test', ['pypi'])
+            result = await aggregator.search_packages("test", ["pypi"])
 
-            assert 'pypi' in result
-            assert len(result['pypi']) == 1
-            assert result['pypi'][0]['name'] == 'test-pkg'
+            assert "pypi" in result
+            assert len(result["pypi"]) == 1
+            assert result["pypi"][0]["name"] == "test-pkg"
 
     @pytest.mark.asyncio
     async def test_check_compatibility_basic(self, aggregator):
         """Test basic compatibility checking"""
-        packages = [
-            {'name': 'numpy', 'version': '1.24.0', 'ecosystem': 'pypi'}
-        ]
-        system_info = {'python': '3.9.0', 'os': 'linux'}
+        packages = [{"name": "numpy", "version": "1.24.0", "ecosystem": "pypi"}]
+        system_info = {"python": "3.9.0", "os": "linux"}
 
         # Mock package info
         mock_pkg_info = {
-            'name': 'numpy',
-            'ecosystems': {'pypi': {}},
-            'system_requirements': {},
-            'quality_metrics': {'overall_score': 0.9}
+            "name": "numpy",
+            "ecosystems": {"pypi": {}},
+            "system_requirements": {},
+            "quality_metrics": {"overall_score": 0.9},
         }
 
-        with patch.object(aggregator, 'get_package_info', return_value=mock_pkg_info):
+        with patch.object(aggregator, "get_package_info", return_value=mock_pkg_info):
             result = await aggregator.check_compatibility(packages, system_info)
 
-            assert 'overall_compatible' in result
-            assert 'package_compatibility' in result
-            assert 'numpy' in result['package_compatibility']
+            assert "overall_compatible" in result
+            assert "package_compatibility" in result
+            assert "numpy" in result["package_compatibility"]
 
     @pytest.mark.asyncio
     async def test_empty_packages_error(self, aggregator):
         """Test error handling for empty packages"""
         with pytest.raises(ValueError):
-            await aggregator.get_package_info('', 'pypi')
+            await aggregator.get_package_info("", "pypi")
 
     @pytest.mark.asyncio
     async def test_invalid_ecosystem_handling(self, aggregator):
         """Test handling of invalid ecosystem"""
         # Should handle gracefully
-        result = await aggregator.search_packages('test', ['invalid_ecosystem'])
+        result = await aggregator.search_packages("test", ["invalid_ecosystem"])
         assert isinstance(result, dict)
 
     @pytest.mark.asyncio
     async def test_caching_disabled(self, aggregator):
         """Test that caching is disabled for this test instance"""
-        cache_key = aggregator._get_cache_key('test_method', 'arg1', 'arg2')
+        cache_key = aggregator._get_cache_key("test_method", "arg1", "arg2")
         cached = await aggregator._get_cached(cache_key)
         assert cached is None
 
@@ -118,8 +116,8 @@ class TestDataAggregator:
         # Enable caching for this test
         aggregator.enable_caching = True
 
-        cache_key = 'test_key'
-        test_data = {'test': 'data'}
+        cache_key = "test_key"
+        test_data = {"test": "data"}
 
         aggregator._set_cache(cache_key, test_data)
         cached = await aggregator._get_cached(cache_key)
@@ -129,14 +127,16 @@ class TestDataAggregator:
     @pytest.mark.asyncio
     async def test_normalize_package_name_called(self, aggregator):
         """Test that package names are normalized"""
-        with patch('backend.core.data_aggregator.normalize_package_name') as mock_normalize:
-            mock_normalize.return_value = 'normalized-name'
+        with patch(
+            "backend.core.data_aggregator.normalize_package_name"
+        ) as mock_normalize:
+            mock_normalize.return_value = "normalized-name"
             mock_client = AsyncMock()
-            mock_client.get_package_info.return_value = {'name': 'normalized-name'}
+            mock_client.get_package_info.return_value = {"name": "normalized-name"}
 
-            with patch.object(aggregator, 'sources') as mock_sources:
+            with patch.object(aggregator, "sources") as mock_sources:
                 mock_sources.__getitem__.return_value = mock_client
 
-                await aggregator.get_package_info('Test.Package', 'pypi')
+                await aggregator.get_package_info("Test.Package", "pypi")
 
-                mock_normalize.assert_called_with('Test.Package')
+                mock_normalize.assert_called_with("Test.Package")

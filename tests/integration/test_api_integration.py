@@ -85,20 +85,26 @@ class TestPackageSearch:
         patcher = patch("backend.api.dependencies.get_data_aggregator")
         mock_get_agg = patcher.start()
         aggregator = AsyncMock()
-        aggregator.search_packages = AsyncMock(return_value={
-            "pypi": [{
+        aggregator.search_packages = AsyncMock(
+            return_value={
+                "pypi": [
+                    {
+                        "name": "flask",
+                        "ecosystem": "pypi",
+                        "version": "2.3.3",
+                        "description": "A simple framework",
+                        "system_requirements": {"python_versions": [">=3.8"]},
+                    }
+                ]
+            }
+        )
+        aggregator.get_package_info = AsyncMock(
+            return_value={
                 "name": "flask",
                 "ecosystem": "pypi",
                 "version": "2.3.3",
-                "description": "A simple framework",
-                "system_requirements": {"python_versions": [">=3.8"]},
-            }]
-        })
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "flask",
-            "ecosystem": "pypi",
-            "version": "2.3.3",
-        })
+            }
+        )
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
         yield
@@ -136,12 +142,14 @@ class TestPackageInfo:
         patcher = patch("backend.api.dependencies.get_data_aggregator")
         mock_get_agg = patcher.start()
         aggregator = AsyncMock()
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "flask",
-            "ecosystem": "pypi",
-            "version": "2.3.3",
-            "description": "A simple framework",
-        })
+        aggregator.get_package_info = AsyncMock(
+            return_value={
+                "name": "flask",
+                "ecosystem": "pypi",
+                "version": "2.3.3",
+                "description": "A simple framework",
+            }
+        )
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
         yield
@@ -169,13 +177,19 @@ class TestDependencyResolution:
         patcher = patch("backend.api.dependencies.get_data_aggregator")
         mock_get_agg = patcher.start()
         aggregator = AsyncMock()
-        aggregator.resolve_dependencies = AsyncMock(return_value={
-            "status": "success",
-            "resolved_packages": {
-                "flask": {"version": "2.3.3", "ecosystem": "pypi", "dependencies": {}},
-            },
-            "warnings": [],
-        })
+        aggregator.resolve_dependencies = AsyncMock(
+            return_value={
+                "status": "success",
+                "resolved_packages": {
+                    "flask": {
+                        "version": "2.3.3",
+                        "ecosystem": "pypi",
+                        "dependencies": {},
+                    },
+                },
+                "warnings": [],
+            }
+        )
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
         yield

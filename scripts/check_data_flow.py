@@ -24,13 +24,23 @@ def check_endpoint(path: str, method: str = "GET") -> Dict[str, Any]:
             body = resp.read().decode()
             json.loads(body)  # ensure valid JSON
         result["success"] = True
-    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        json.JSONDecodeError,
+        OSError,
+    ) as e:
         result["error"] = str(e)
     return result
 
 
 def main():
-    endpoints = ["/health", "/system/info", "/packages/export-formats", "/packages/search?q=numpy"]
+    endpoints = [
+        "/health",
+        "/system/info",
+        "/packages/export-formats",
+        "/packages/search?q=numpy",
+    ]
     failures = 0
     for ep in endpoints:
         r = check_endpoint(ep)

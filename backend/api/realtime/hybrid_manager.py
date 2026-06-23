@@ -18,7 +18,7 @@ class SocketIOConnection:
         self.connection_type = "socketio"
 
     async def send(self, message: dict):
-        event_type = message.get('type', 'message')
+        event_type = message.get("type", "message")
         await self.sio.emit(event_type, message, to=self.sid)
 
     async def close(self):
@@ -33,19 +33,16 @@ class HybridConnectionManager:
         self.subscriptions: Dict[str, Set[str]] = {}
         self.operation_progress: Dict[str, dict] = {}
         self._sio: Optional[socketio.AsyncServer] = None
-        self.connection_stats = {
-            'socketio': 0,
-            'total': 0
-        }
+        self.connection_stats = {"socketio": 0, "total": 0}
 
     @property
     def sio(self) -> socketio.AsyncServer:
         if self._sio is None:
             self._sio = socketio.AsyncServer(
-                async_mode='asgi',
-                cors_allowed_origins='*',
+                async_mode="asgi",
+                cors_allowed_origins="*",
                 logger=True,
-                engineio_logger=True
+                engineio_logger=True,
             )
             self._setup_socketio_handlers()
         return self._sio
@@ -55,23 +52,25 @@ class HybridConnectionManager:
         async def connect(sid, environ):
             conn = SocketIOConnection(self.sio, sid)
             self.connections[sid] = conn
-            self.connection_stats['socketio'] += 1
-            self.connection_stats['total'] += 1
+            self.connection_stats["socketio"] += 1
+            self.connection_stats["total"] += 1
 
-            await conn.send({
-                'type': 'connection',
-                'status': 'connected',
-                'client_id': sid,
-                'connection_type': 'socketio',
-                'timestamp': datetime.utcnow().isoformat()
-            })
+            await conn.send(
+                {
+                    "type": "connection",
+                    "status": "connected",
+                    "client_id": sid,
+                    "connection_type": "socketio",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         @self.sio.event
         async def disconnect(sid):
             if sid in self.connections:
                 del self.connections[sid]
-                self.connection_stats['socketio'] -= 1
-                self.connection_stats['total'] -= 1
+                self.connection_stats["socketio"] -= 1
+                self.connection_stats["total"] -= 1
 
             if sid in self.subscriptions:
                 del self.subscriptions[sid]
@@ -91,7 +90,7 @@ class HybridConnectionManager:
     async def broadcast_to_operation(self, operation_id: str, message: dict):
         channel = f"operation:{operation_id}"
 
-        if message.get('type') in ['progress', 'resolution_progress']:
+        if message.get("type") in ["progress", "resolution_progress"]:
             self.operation_progress[operation_id] = message
 
         for client_id, channels in self.subscriptions.items():
@@ -119,9 +118,9 @@ class HybridConnectionManager:
         if client_id in self.connections:
             conn = self.connections[client_id]
 
-            if hasattr(conn, 'connection_type'):
+            if hasattr(conn, "connection_type"):
                 self.connection_stats[conn.connection_type] -= 1
-                self.connection_stats['total'] -= 1
+                self.connection_stats["total"] -= 1
 
             try:
                 await conn.close()
@@ -136,8 +135,8 @@ class HybridConnectionManager:
     def get_stats(self) -> dict:
         return {
             **self.connection_stats,
-            'active_operations': len(self.operation_progress),
-            'timestamp': datetime.utcnow().isoformat()
+            "active_operations": len(self.operation_progress),
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
 

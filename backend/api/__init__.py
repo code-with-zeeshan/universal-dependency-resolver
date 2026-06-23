@@ -27,7 +27,7 @@ from .middleware import (
     CSRFProtectionMiddleware,
     setup_middleware,
     get_client_ip,
-    get_user_agent
+    get_user_agent,
 )
 
 # Import exceptions
@@ -37,7 +37,7 @@ from .exceptions import (
     PackageNotFoundError,
     EcosystemNotSupportedError,
     ConflictResolutionError,
-    RateLimitExceededError
+    RateLimitExceededError,
 )
 
 # Import auth components
@@ -61,7 +61,7 @@ from .auth import (
     AuthService,
     # OAuth2
     oauth2_scheme,
-    login_for_access_token
+    login_for_access_token,
 )
 
 # Version info
@@ -72,11 +72,9 @@ __author__ = "Universal Dependency Resolver Team"
 __all__ = [
     # App
     "app",
-    
     # Routers
     "packages",
     "system",
-    
     # Middleware
     "setup_middleware",
     "CorrelationIDMiddleware",
@@ -90,7 +88,6 @@ __all__ = [
     "MaintenanceModeMiddleware",
     "AuditLogMiddleware",
     "CSRFProtectionMiddleware",
-    
     # Exceptions
     "DependencyResolverError",
     "ValidationError",
@@ -98,7 +95,6 @@ __all__ = [
     "EcosystemNotSupportedError",
     "ConflictResolutionError",
     "RateLimitExceededError",
-    
     # Auth
     "Token",
     "UserCreate",
@@ -108,8 +104,7 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "require_scopes",
-    
     # Utilities
     "get_client_ip",
-    "get_user_agent"
+    "get_user_agent",
 ]

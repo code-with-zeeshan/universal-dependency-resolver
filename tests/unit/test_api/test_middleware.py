@@ -3,16 +3,22 @@ import uuid
 import pytest
 
 from backend.api.main import app
-from backend.api.dependencies import get_data_aggregator, get_conflict_resolver, get_system_scanner
+from backend.api.dependencies import (
+    get_data_aggregator,
+    get_conflict_resolver,
+    get_system_scanner,
+)
 
 
 class _MockDataAggregator:
     async def get_package_info(self, name, ecosystem):
         return {"name": name, "ecosystem": ecosystem, "version": "1.0.0"}
 
+
 class _MockSystemScanner:
     def scan_all(self):
         return {"os": "linux", "python": "3.11"}
+
 
 class _MockConflictResolver:
     def resolve_dependencies(self, packages_info, system_info, prefer_compatibility):
@@ -91,6 +97,7 @@ class TestSecurityHeadersMiddleware:
 class TestAuditLogMiddleware:
     def test_audit_logger_exists(self, client):
         from backend.api.middleware import AuditLogMiddleware
+
         assert AuditLogMiddleware is not None
 
     def test_post_with_bearer_bypasses_csrf(self, client, override_resolve_deps):
