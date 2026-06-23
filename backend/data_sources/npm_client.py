@@ -555,7 +555,7 @@ class NPMClient(BaseDataSourceClient):
                     stats[period] = 0
 
             return stats
-        except:
+        except Exception:
             return {'daily': 0, 'weekly': 0, 'monthly': 0, 'yearly': 0}
 
     async def _check_typescript_support(self, package_name: str, latest_data: Dict) -> Dict[str, Any]:
@@ -809,7 +809,7 @@ class NPMClient(BaseDataSourceClient):
                     return False
                 return v == req_v
 
-        except:
+        except Exception:
             return False
 
     def _version_satisfies(self, installed: str, required: str) -> bool:

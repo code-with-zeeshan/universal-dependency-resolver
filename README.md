@@ -1,120 +1,140 @@
 # Universal Dependency Resolver
 
-A sophisticated multi-ecosystem dependency resolution system supporting PyPI, NPM, Conda, Maven, and Crates.io with advanced conflict resolution and system compatibility checking.
+Resolve dependencies across PyPI, npm, Conda, Maven, Crates.io, and more — detect conflicts, check system compatibility, and export to any format.
 
-## 🌟 Features
+---
 
-- **🔍 Multi-Ecosystem Support**: Search and analyze packages across PyPI, NPM, Conda, Maven, Crates.io, and more
-- **🧠 Intelligent Conflict Resolution**: Advanced SAT-solver based dependency conflict resolution using Z3 with parallel processing
-- **🖥️ System Compatibility**: Comprehensive system scanning for OS, CPU, GPU, and runtime detection
-- **📊 Compatibility Matrix**: Generate and analyze compatibility matrices for complex dependencies
-- **📦 Export Formats**: 14+ export formats including Docker, requirements.txt, package.json, and more
-- **🏗️ Community Reports**: Crowdsourced compatibility reporting system
-- **⚡ High Performance**: Redis caching with TTL, async batch operations, connection pooling, and optimized queries
-- **🔒 Security First**: Input validation, distributed rate limiting, vulnerability scanning, and comprehensive error handling
-- **📈 Scalable Architecture**: Async processing, database health checks, monitoring with Prometheus/Sentry
-- **🔧 Production Ready**: Rate limiting, detailed health checks, structured logging, and monitoring
+## The Problem
 
-## 🚀 Coming Soon
+You have a project that depends on packages from multiple ecosystems. A Python script calls a Node service. A Docker image needs both `pip` and `apt` packages. A CI pipeline must pin every transitive dependency across all of them.
 
-We're actively working on these features for upcoming releases:
+Existing tools only work within one ecosystem (`pip-compile`, `npm ls`, `bundler`). Cross-ecosystem conflicts go undetected until runtime. System compatibility (GPU, CUDA, OS version) is never checked.
 
-### Official SDKs & Tools
-- **Python SDK** - Native Python client with async support
-- **JavaScript/TypeScript SDK** - For Node.js and browser environments  
-- **CLI Tool** - Command-line interface for CI/CD integration
-- **More Client Support** - For All applications
+This tool solves that.
 
-### Enhanced Functionality
-- **WebSocket Support** - Real-time progress updates
-- **Dependency Vulnerability Scanning** - Security analysis
-- **Visual Dependency Graphs** - Interactive visualization
-- **Plugin System** - Add custom package ecosystems
+## What It Does
 
-Want to help? Check our [Contributing Guidelines](CONTRIBUTING.md) or vote for features in [Discussions](https://github.com/yourusername/universal-dependency-resolver/discussions).
+```
+Input:  ["requests>=2.25", "torch==2.0", "express@^4.18"]
+                               ↓
+              Fetch metadata from PyPI / npm / Conda / ...
+              Detect target system (OS, GPU, Python, CUDA)
+              Resolve conflicts with SAT solver
+                               ↓
+Output: Locked dependency tree + export (Dockerfile, requirements.txt, ...)
+```
 
-## 📋 Prerequisites
-
-- Docker & Docker Compose (recommended)
-- Python 3.9+ (for local development)
-- Node.js 16+ (for frontend development)
-- PostgreSQL 15+ (if not using Docker)
-- Redis 7+ (if not using Docker)
-
-## 🚀 Quick Start
-
-### Using Docker (Recommended)
+## Quick Example
 
 ```bash
-# Clone the repository
+curl -X POST http://localhost:8000/api/v1/packages/resolve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "packages": [
+      {"name": "requests", "ecosystem": "pypi"},
+      {"name": "express", "ecosystem": "npm"}
+    ],
+    "auto_detect_system": true
+  }'
+```
+
+Returns a resolved dependency tree with all transitive deps, conflict status, and system compatibility notes.
+
+## Use Cases
+
+| Scenario | What this does |
+|----------|----------------|
+| **Container build** | Generate a Dockerfile with exact `pip install` + `apt-get` + `npm ci` pinned versions, verified compatible on the target base image |
+| **Multi-language monorepo** | One `resolve` call covers all `requirements.txt`, `package.json`, `environment.yml`, and `Cargo.toml` dependencies at once |
+| **Platform migration** | Before upgrading the OS or Python version, validate every dependency still resolves without conflict |
+| **CI/CD pipeline** | Lock all transitive deps across ecosystems on every build; fail the pipeline on new conflicts |
+| **Data science stack** | Resolve PyTorch + CUDA + Conda + pip dependencies with GPU compatibility checks |
+| **Export to any format** | Same resolution → generate Dockerfile, package.json, requirements.txt, docker-compose.yml, install.sh, CMakeLists.txt, and more |
+
+## Quick Start
+
+```bash
 git clone https://github.com/yourusername/universal-dependency-resolver.git
 cd universal-dependency-resolver
 
-# Copy environment template
 cp .env.example .env
 
-# Start all services
+# Core services
 docker-compose up -d
 
-# Initialize database
+# Monitoring stack (optional)
+docker-compose --profile monitoring up -d
+
 docker-compose exec backend alembic upgrade head
 
-# Access the application
-# Frontend: http://localhost:8080
-# API Docs: http://localhost:8000/api/v1/docs
-# Health Check: http://localhost:8000/api/v1/health
+# Frontend:  http://localhost:8080
+# API Docs:  http://localhost:8000/api/v1/docs
+# Grafana:   http://localhost:3000 (admin/admin)
+# Jaeger:    http://localhost:16686
+```
 
-## 📚 API Documentation
+## How It Works
 
-See [docs/API.md](docs/API.md) for complete API reference.
+```
+Your request → Fetch metadata from ecosystem registries
+                   ↓
+            Scan target system (OS, GPU, Python, CUDA)
+                   ↓
+            Resolve conflicts with SAT solver
+                   ↓
+            Export to 14+ formats
+```
 
-### Base URL
-http://localhost:8000/api/v1
+The system runs as a FastAPI service with optional PostgreSQL, Redis, and a Vue.js frontend.
 
-### Quick Reference
+## API Quick Reference
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/packages/search` | GET | Search packages across ecosystems |
-| `/packages/{ecosystem}/{name}` | GET | Get package information |
-| `/packages/{ecosystem}/{name}/versions` | GET | List package versions |
-| `/packages/resolve` | POST | Resolve dependencies with conflict resolution |
-| `/packages/export` | POST | Export resolved dependencies |
-| `/packages/export-formats` | GET | List available export formats |
-| `/system/info` | GET | Get system information |
-| `/system/check-compatibility` | POST | Check system compatibility |
-| `/system/analyze-environment` | POST | Analyze environment files |
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/packages/search` | GET | Search across ecosystems |
+| `/packages/{ecosystem}/{name}` | GET | Get package info |
+| `/packages/{ecosystem}/{name}/details` | GET | Detailed info + compatibility |
+| `/packages/{ecosystem}/{name}/versions` | GET | List versions |
+| `/packages/resolve` | POST | Resolve dependencies |
+| `/packages/export` | POST | Export to any format |
+| `/packages/export-formats` | GET | Available export formats |
+| `/system/info` | GET | System information |
+| `/system/check-compatibility` | POST | Check dependency-system fit |
+| `/system/analyze-environment` | POST | Parse env files |
 | `/health` | GET | Health check |
 
-### 🔧 Configuration
-See .env.example for all available configuration options. Key settings:
+Full reference in [docs/API.md](docs/API.md).
 
-* DATABASE_URL: PostgreSQL connection string
-* REDIS_URL: Redis connection string
-* ALLOWED_ORIGINS: CORS allowed origins
-* RATE_LIMIT_PER_MINUTE: API rate limiting
-* ENABLE_AUTH: Enable authentication
-* LOG_LEVEL: Logging verbosity
+## Testing
 
-### 🧪 Testing
+```bash
+# Unit tests
+cd backend && pytest tests/unit/
 
-# Backend tests
-cd backend
-pytest
+# Integration tests (requires Docker)
+docker-compose up -d
+docker-compose exec backend pytest tests/integration/
 
 # Frontend tests
-cd frontend
-npm run test
+cd frontend && npm run test:unit
+npm run test:e2e          # requires Chromium
+```
 
-# Integration tests (Docker)
-docker-compose up -d
-docker-compose exec backend pytest
+## Roadmap
 
-## 🚢 Deployment
-See docs/DEPLOYMENT.md for detailed deployment instructions.
+| Priority | Feature | Status |
+|----------|---------|--------|
+| 🔴 High | Python SDK with async support | In development |
+| 🔴 High | CLI tool for CI/CD | In development |
+| 🟡 Medium | JavaScript/TypeScript SDK | Planned |
+| 🟡 Medium | CI/CD integration examples (GitHub Actions, GitLab CI) | Planned |
+| 🟡 Medium | SBOM export (CycloneDX, SPDX) | Planned |
+| 🟢 Low | WebSocket real-time resolution updates | Researching |
+| 🟢 Low | Visual dependency graphs | Researching |
+| 🟢 Low | Plugin system for custom ecosystems | Researching |
 
-## 🤝 Contributing
-See CONTRIBUTING.md for contribution guidelines.
+---
 
-## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production deployment,
+[CONTRIBUTING.md](CONTRIBUTING.md) to contribute,
+and [LICENSE](LICENSE) for licensing (MIT).

@@ -1,0 +1,45 @@
+# monitoring/prometheus/sli-rules.yml
+# SLI recording rules for service level indicators
+groups:
+  - name: sli
+    interval: 15s
+    rules:
+      # p99 latency over a 5-minute rolling window
+      - record: sli:request_duration_seconds:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          )
+
+      # Ratio of 5xx responses to total requests over 5 minutes
+      - record: sli:error_rate:ratio_5m
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m]))
+          /
+          sum(rate(http_request_duration_seconds_count[5m]))
+
+      # Ratio of 5xx responses to total requests over 30 minutes
+      - record: sli:error_rate:ratio_30m
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status=~"5.."}[30m]))
+          /
+          sum(rate(http_request_duration_seconds_count[30m]))
+
+      # 30-day availability (non-5xx / total)
+      - record: sli:availability:ratio_30d
+        expr: |
+          1 - (
+            sum(increase(http_request_duration_seconds_count{status=~"5.."}[30d]))
+            /
+            sum(increase(http_request_duration_seconds_count[30d]))
+          )
+
+      # Request rate per endpoint over 5 minutes
+      - record: sli:requests_total:rate_5m
+        expr: |
+          sum(rate(http_request_duration_seconds_count[5m])) by (method, endpoint)
+
+      # Database connection pool utilization
+      - record: sli:database_connections:used_ratio
+        expr: |
+          database_pool_in_use / database_pool_size

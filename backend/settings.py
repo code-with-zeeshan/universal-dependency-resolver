@@ -1,8 +1,10 @@
 # settings.py
 import os
+import logging
 from pathlib import Path
-from pydantic import BaseSettings, validator, Field
 from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,7 +38,12 @@ ENABLE_API_KEY_AUTH = os.getenv('ENABLE_API_KEY_AUTH', 'false').lower() == 'true
 # NEW: Rate Limiting Configuration (API Level)
 # =============================================================================
 API_RATE_LIMIT_ENABLED = os.getenv('API_RATE_LIMIT_ENABLED', 'true').lower() == 'true'
-API_RATE_LIMIT_PER_MINUTE = int(os.getenv('API_RATE_LIMIT_PER_MINUTE', 60))
+_raw_rate_limit = os.getenv('API_RATE_LIMIT_PER_MINUTE', '60')
+try:
+    API_RATE_LIMIT_PER_MINUTE = int(_raw_rate_limit)
+except ValueError:
+    API_RATE_LIMIT_PER_MINUTE = 60
+    logger.warning(f"Invalid API_RATE_LIMIT_PER_MINUTE '{_raw_rate_limit}', falling back to 60")
 API_RATE_LIMIT_PER_HOUR = int(os.getenv('API_RATE_LIMIT_PER_HOUR', 1000))
 API_RATE_LIMIT_BURST = int(os.getenv('API_RATE_LIMIT_BURST', 10))
 
@@ -125,9 +132,19 @@ HEALTH_CHECK_CACHE_TTL = int(os.getenv('HEALTH_CHECK_CACHE_TTL', 10))  # 10 seco
 # Database Configuration
 # =============================================================================
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/depresolver')
-DATABASE_POOL_SIZE = int(os.getenv('DATABASE_POOL_SIZE', 10))
+_raw_pool_size = os.getenv('DATABASE_POOL_SIZE', '10')
+try:
+    DATABASE_POOL_SIZE = int(_raw_pool_size)
+except ValueError:
+    DATABASE_POOL_SIZE = 10
+    logger.warning(f"Invalid DATABASE_POOL_SIZE '{_raw_pool_size}', falling back to 10")
 DATABASE_MAX_OVERFLOW = int(os.getenv('DATABASE_MAX_OVERFLOW', 20))
-DATABASE_POOL_TIMEOUT = int(os.getenv('DATABASE_POOL_TIMEOUT', 30))
+_raw_pool_timeout = os.getenv('DATABASE_POOL_TIMEOUT', '30')
+try:
+    DATABASE_POOL_TIMEOUT = int(_raw_pool_timeout)
+except ValueError:
+    DATABASE_POOL_TIMEOUT = 30
+    logger.warning(f"Invalid DATABASE_POOL_TIMEOUT '{_raw_pool_timeout}', falling back to 30")
 
 # =============================================================================
 # Redis Configuration
@@ -498,6 +515,46 @@ if DEBUG:
 # Settings namespace for backward-compatible imports
 # =============================================================================
 settings = {k: v for k, v in globals().items() if k.isupper()}
+
+
+def validate_settings() -> list[str]:
+    """Validate critical settings and return a list of configuration warnings.
+
+    Catches common misconfigurations that would otherwise surface as
+    cryptic runtime errors. Call this at startup.
+    """
+    warnings: list[str] = []
+
+    if SECRET_KEY == "your-secret-key-here-change-in-production":
+        warnings.append("SECRET_KEY is still the default value — rotate it immediately in production")
+
+    if ENV == "production" and not FEATURES.get("ENABLE_AUTH"):
+        warnings.append("ENABLE_AUTH is false in production — authentication is disabled")
+
+    if DATABASE_URL.startswith("sqlite"):
+        warnings.append(f"Using SQLite ({DATABASE_URL}) — not suitable for production workloads")
+
+    if OTEL_EXPORTER_OTLP_ENDPOINT and not OTEL_EXPORTER_OTLP_ENDPOINT.startswith(("http://", "https://")):
+        warnings.append(f"OTEL_EXPORTER_OTLP_ENDPOINT does not look like a URL: {OTEL_EXPORTER_OTLP_ENDPOINT}")
+
+    try:
+        rate = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "60"))
+        if rate < 1:
+            warnings.append(f"API_RATE_LIMIT_PER_MINUTE is {rate} — must be >= 1")
+    except (ValueError, TypeError):
+        warnings.append(f"API_RATE_LIMIT_PER_MINUTE is not a valid integer: {os.getenv('API_RATE_LIMIT_PER_MINUTE')}")
+
+    try:
+        pool = int(os.getenv("DATABASE_POOL_SIZE", "10"))
+        if pool < 1:
+            warnings.append(f"DATABASE_POOL_SIZE is {pool} — must be >= 1")
+    except (ValueError, TypeError):
+        warnings.append(f"DATABASE_POOL_SIZE is not a valid integer: {os.getenv('DATABASE_POOL_SIZE')}")
+
+    for w in warnings:
+        logger.warning(f"Config: {w}")
+
+    return warnings
 
 # =============================================================================
 # Helper Functions

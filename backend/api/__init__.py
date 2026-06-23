@@ -14,7 +14,7 @@ from .routes import packages, system
 
 # Import middleware
 from .middleware import (
-    RequestIDMiddleware,
+    CorrelationIDMiddleware,
     LoggingMiddleware,
     PerformanceMiddleware,
     CompressionMiddleware,
@@ -23,6 +23,8 @@ from .middleware import (
     CacheMiddleware,
     MetricsMiddleware,
     MaintenanceModeMiddleware,
+    AuditLogMiddleware,
+    CSRFProtectionMiddleware,
     setup_middleware,
     get_client_ip,
     get_user_agent
@@ -77,7 +79,7 @@ __all__ = [
     
     # Middleware
     "setup_middleware",
-    "RequestIDMiddleware",
+    "CorrelationIDMiddleware",
     "LoggingMiddleware",
     "PerformanceMiddleware",
     "CompressionMiddleware",
@@ -86,6 +88,8 @@ __all__ = [
     "CacheMiddleware",
     "MetricsMiddleware",
     "MaintenanceModeMiddleware",
+    "AuditLogMiddleware",
+    "CSRFProtectionMiddleware",
     
     # Exceptions
     "DependencyResolverError",

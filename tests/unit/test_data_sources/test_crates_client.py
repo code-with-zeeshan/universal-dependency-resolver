@@ -110,7 +110,7 @@ class TestCratesClient:
         assert deps == {}
 
     @pytest.mark.asyncio
-    async def test_check_compatibility_returns_result(self, client):
+    async def test_check_compatibility_returns_result(self, client, sample_crate_data):
         with patch.object(client, '_get', new_callable=AsyncMock, return_value=sample_crate_data.__class__({"crate": {"id": "serde"}})):
             with patch.object(client, 'check_compatibility') as mock_check:
                 mock_check.return_value = {"compatible": True}

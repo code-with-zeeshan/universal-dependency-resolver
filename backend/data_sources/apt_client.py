@@ -1,8 +1,6 @@
 # data_sources/apt_client.py
 import aiohttp
-import asyncio
 from typing import Dict, List, Optional, Any, Tuple, Set
-import json
 import logging
 from datetime import datetime
 import re
@@ -10,7 +8,7 @@ import gzip
 from io import BytesIO
 from backend.core.cache import cache_manager, cached, CacheKeys
 from urllib.parse import quote, urljoin
-from backend.core.utils import normalize_package_name, parse_version, compare_versions
+from backend.core.utils import normalize_package_name, parse_version, compare_versions, run_async
 from backend.settings import (
     CACHE_TTL, USER_AGENTS, RATE_LIMITS,
     REQUEST_TIMEOUT, MAX_RETRIES,
@@ -121,12 +119,7 @@ class APTClient(BaseDataSourceClient):
 
     def get_package_info(self, package_name: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name))
 
     async def get_versions(self, package_name: str) -> List[Dict]:
         package_name = normalize_package_name(package_name)

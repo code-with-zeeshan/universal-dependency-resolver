@@ -5,7 +5,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
-from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Dict, Any, Optional
@@ -252,17 +251,17 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     
-    # Scopes/permissions as array
-    scopes = Column(ARRAY(String), default=[])
-    
+    # Scopes/permissions
+    scopes = Column(JSON, default=list)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime)
-    
+
     # Relationships
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
-    
+
     __table_args__ = (
         Index('idx_user_username', 'username'),
         Index('idx_user_email', 'email'),
@@ -270,15 +269,15 @@ class User(Base):
 
 class APIKey(Base):
     __tablename__ = 'api_keys'
-    
+
     id = Column(Integer, primary_key=True)
     key = Column(String(255), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     description = Column(Text)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    
+
     # Permissions
-    scopes = Column(ARRAY(String), default=[])
+    scopes = Column(JSON, default=list)
     
     # Status
     is_active = Column(Boolean, default=True)

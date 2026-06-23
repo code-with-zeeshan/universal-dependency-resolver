@@ -1,4 +1,5 @@
 #maven_client.py
+import asyncio
 import aiohttp
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Dict, Any, Tuple, Set
@@ -331,7 +332,7 @@ class MavenClient(BaseDataSourceClient):
             major1 = extract_major(version1)
             major2 = extract_major(version2)
             return (major1 > major2) - (major1 < major2)
-        except:
+        except Exception:
             return 0
 
     async def get_dependencies(self, group_id: str, artifact_id: str, version: Optional[str] = None,
@@ -458,7 +459,7 @@ class MavenClient(BaseDataSourceClient):
                 if response.status == 200:
                     return await response.text()
                 return None
-        except:
+        except Exception:
             return None
 
     def _merge_poms(self, parent_pom: Dict, child_pom: Dict) -> Dict:
@@ -1065,7 +1066,7 @@ class MavenClient(BaseDataSourceClient):
                         return False
 
             return True
-        except:
+        except Exception:
             return False
 
     def _apply_profiles(self, pom_data: Dict, active_profiles: List[str]) -> Dict:

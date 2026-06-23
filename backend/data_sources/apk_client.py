@@ -1,8 +1,6 @@
 # data_sources/apk_client.py
 import aiohttp
-import asyncio
 from typing import Dict, List, Optional, Any, Tuple, Set
-import json
 import logging
 from datetime import datetime
 import re
@@ -10,7 +8,7 @@ import tarfile
 from io import BytesIO
 from urllib.parse import quote, urljoin
 from backend.core.cache import cache_manager, cached, CacheKeys
-from backend.core.utils import normalize_package_name, parse_version
+from backend.core.utils import normalize_package_name, parse_version, run_async
 from backend.settings import (
     CACHE_TTL, USER_AGENTS, RATE_LIMITS,
     REQUEST_TIMEOUT, MAX_RETRIES,
@@ -126,12 +124,7 @@ class APKClient(BaseDataSourceClient):
 
     def get_package_info(self, package_name: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name))
 
     async def get_versions(self, package_name: str) -> List[Dict]:
         package_name = normalize_package_name(package_name)
@@ -264,7 +257,7 @@ class APKClient(BaseDataSourceClient):
                 if std_field in ['size', 'installed_size', 'build_time']:
                     try:
                         value = int(value)
-                    except:
+                    except Exception:
                         value = 0
 
                 converted[std_field] = value

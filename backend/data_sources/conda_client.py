@@ -1,6 +1,5 @@
 # conda_client.py
 import aiohttp
-import asyncio
 from typing import Dict, List, Optional, Set, Tuple
 import json
 import logging
@@ -11,7 +10,7 @@ import tarfile
 import io
 from packaging import version
 from urllib.parse import urljoin
-from ..core.utils import normalize_package_name,  parse_version
+from ..core.utils import normalize_package_name, parse_version, run_async
 from ..settings import CONDA_CHANNELS, CACHE_TTL, USER_AGENTS
 from .base_client import BaseDataSourceClient
 
@@ -46,7 +45,7 @@ class CondaClient(BaseDataSourceClient):
                 timeout=5
             )
             return response.status_code == 200
-        except:
+        except Exception:
             return False
 
     async def get_package_info_async(self, package_name: str) -> Dict:
@@ -74,12 +73,7 @@ class CondaClient(BaseDataSourceClient):
 
     def get_package_info(self, package_name: str) -> Dict:
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name))
 
     async def _fetch_from_anaconda_api(self, package_name: str, channel: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
@@ -424,7 +418,7 @@ class CondaClient(BaseDataSourceClient):
                     try:
                         next_major = f"{parsed_base.major}.{parsed_base.minor + 1}"
                         return match.group(1), f">={base_version},<{next_major}"
-                    except:
+                    except Exception:
                         return match.group(1), f"=={version_part}"
                 else:
                     return match.group(1), f"=={version_part}"

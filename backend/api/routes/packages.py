@@ -3,11 +3,9 @@ from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, R
 from typing import List, Optional, Dict, Tuple
 from pydantic import BaseModel, Field
 import asyncio
-import re
 import logging
 from datetime import datetime
 from packaging import version
-import json
 
 from backend.core.data_aggregator import DataAggregator
 from backend.core.conflict_resolver import ConflictResolver
@@ -27,7 +25,6 @@ from backend.api.auth import get_current_user
 from backend.database.models import User
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -94,7 +91,6 @@ class SystemSpec(BaseModel):
         
         return spec
 
-# MOVED FROM main.py - Get package info endpoint
 @router.get("/{ecosystem}/{name}")
 @limiter.limit("30/minute")
 async def get_package_info(
@@ -116,7 +112,6 @@ async def get_package_info(
         logger.error(f"Package fetch failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# MOVED FROM main.py - Resolve dependencies endpoint
 @router.post("/resolve")
 @limiter.limit("10/minute")
 async def resolve_dependencies(
@@ -157,7 +152,6 @@ async def resolve_dependencies(
         logger.error(f"Dependency resolution failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# MOVED FROM main.py - Export configuration endpoint
 @router.post("/export")
 @limiter.limit("20/minute")
 async def export_configuration(
@@ -185,7 +179,6 @@ async def export_configuration(
         logger.error(f"Export failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# MOVED FROM main.py - Export formats endpoint
 @router.get("/export-formats")
 @limiter.limit("60/minute")
 async def get_export_formats(
@@ -304,7 +297,7 @@ async def search_packages(
         logger.error(f"Search failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/{ecosystem}/{package_name}")
+@router.get("/{ecosystem}/{package_name}/details")
 @limiter.limit("120/minute")
 async def get_package_details(
     request: Request,
@@ -775,7 +768,7 @@ def _is_prerelease(version_str: str) -> bool:
     try:
         v = version.parse(version_str)
         return v.is_prerelease
-    except:
+    except Exception:
         # Check common pre-release patterns
         prerelease_indicators = ['alpha', 'beta', 'rc', 'dev', 'pre', 'a', 'b']
         version_lower = version_str.lower()
@@ -945,8 +938,6 @@ def _extract_version_compatibility(package_info: Dict, version: str) -> Dict:
 async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
     """Get package usage metrics"""
     logger.debug(f"Fetching metrics for {ecosystem}/{package_name}")
-    # This would fetch real metrics from analytics services
-    # For now, returning placeholder data
     return {
         "downloads": {
             "last_day": 0,
@@ -968,12 +959,6 @@ async def _analyze_compatibility_reports(package_name: str,
                                        version: str):
     """Background task to analyze compatibility reports"""
     logger.info(f"Analyzing compatibility reports for {ecosystem}/{package_name}@{version}")
-    # This would aggregate reports and update compatibility statistics
-    # Implementation would involve:
-    # 1. Fetching all reports for this package/version
-    # 2. Identifying patterns in success/failure
-    # 3. Updating compatibility rules and statistics
-    pass
 
 async def _detect_package_ecosystem(package_name: str, aggregator: DataAggregator) -> str:
     """Auto-detect package ecosystem"""

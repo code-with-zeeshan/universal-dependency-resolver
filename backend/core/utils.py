@@ -1,12 +1,23 @@
 #utils.py
+import asyncio
 import logging
 import re
 from packaging import version
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Coroutine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def run_async(coro: Coroutine) -> Any:
+    """Run a coroutine synchronously in a temporary event loop."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 def parse_version(version_str: str) -> Optional[version.Version]:
     """Parse a version string into a packaging.version.Version object."""

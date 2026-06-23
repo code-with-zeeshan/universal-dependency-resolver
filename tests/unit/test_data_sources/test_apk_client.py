@@ -47,7 +47,7 @@ class TestAPKClient:
         assert result is not None
         assert result['pkg']['name'] == 'nginx'
 
-    def test_package_exists_returns_true(self, client):
+    def test_package_exists_returns_true(self, client, sample_package_data):
         with patch.object(client, 'get_package_info_async', new_callable=AsyncMock, return_value=sample_package_data.__class__({"pkg": {"name": "nginx"}})):
             assert client.package_exists('nginx') is True
 

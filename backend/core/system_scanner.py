@@ -368,7 +368,7 @@ class SystemScanner:
                         if '=' in line:
                             key, value = line.strip().split('=', 1)
                             dist_info[key.lower()] = value.strip('"')
-            except:
+            except Exception:
                 pass
         
         # Additional detection for specific distros
@@ -376,7 +376,7 @@ class SystemScanner:
             try:
                 with open('/etc/redhat-release', 'r') as f:
                     dist_info['redhat_release'] = f.read().strip()
-            except:
+            except Exception:
                 pass
         
         return dist_info
@@ -385,7 +385,7 @@ class SystemScanner:
         """Get Linux kernel version"""
         try:
             return subprocess.check_output(['uname', '-r']).decode().strip()
-        except:
+        except Exception:
             return None
     
     def _get_libc_version(self) -> Optional[Dict[str, str]]:
@@ -398,7 +398,7 @@ class SystemScanner:
                     'version': version_match.group(1),
                     'type': 'glibc' if 'GNU' in ldd_output else 'unknown'
                 }
-        except:
+        except Exception:
             return None
     
     def _get_windows_edition(self) -> Optional[str]:
@@ -410,7 +410,7 @@ class SystemScanner:
             edition, _ = winreg.QueryValueEx(key, "EditionID")
             winreg.CloseKey(key)
             return edition
-        except:
+        except Exception:
             return None
     
     def _get_windows_version(self) -> Optional[Dict[str, str]]:
@@ -424,7 +424,7 @@ class SystemScanner:
                     if key and value:
                         info[key.lower()] = value.strip()
             return info
-        except:
+        except Exception:
             return None
     
     def _get_macos_version(self) -> Optional[Dict[str, str]]:
@@ -437,7 +437,7 @@ class SystemScanner:
                     key, value = line.split(':', 1)
                     info[key.strip().lower().replace(' ', '_')] = value.strip()
             return info
-        except:
+        except Exception:
             return None
     
     def detect_cpu_info(self) -> Dict[str, Any]:
@@ -529,7 +529,7 @@ class SystemScanner:
                 for name in ['coretemp', 'cpu_thermal', 'k10temp', 'zenpower']:
                     if name in temps:
                         return temps[name][0].current
-        except:
+        except Exception:
             pass
         
         # Platform-specific methods
@@ -540,7 +540,7 @@ class SystemScanner:
                 temp_match = re.search(r'(\d+\.\d+)', output)
                 if temp_match:
                     return float(temp_match.group(1))
-            except:
+            except Exception:
                 pass
         
         return None
@@ -586,7 +586,7 @@ class SystemScanner:
                 mem_info.swap_used = swap.used
                 mem_info.swap_free = swap.free
                 mem_info.swap_percent = swap.percent
-            except:
+            except Exception:
                 pass
             
             mem_data = asdict(mem_info)
@@ -606,7 +606,7 @@ class SystemScanner:
                                 mem_data['total'] = int(line.split()[1]) * 1024
                             elif line.startswith('MemAvailable:'):
                                 mem_data['available'] = int(line.split()[1]) * 1024
-            except:
+            except Exception:
                 pass
         
         return mem_data
@@ -762,7 +762,7 @@ class SystemScanner:
                     'name': 'AMD GPU',
                     'driver': 'ROCm'
                 })
-        except:
+        except Exception:
             pass
         
         # Try clinfo for OpenCL devices
@@ -788,7 +788,7 @@ class SystemScanner:
                         'name': 'Intel Integrated Graphics',
                         'driver': 'i915'
                     })
-            except:
+            except Exception:
                 pass
         
         return gpus
@@ -806,7 +806,7 @@ class SystemScanner:
                 if cuda_driver:
                     cuda_info['version'] = f"{cuda_driver // 100}.{cuda_driver % 100}"
                     cuda_info['runtime_version'] = cuda_info['version']
-            except:
+            except Exception:
                 pass
         
         # Fallback to nvcc
@@ -817,7 +817,7 @@ class SystemScanner:
                 if version_match:
                     cuda_info['version'] = version_match.group(1)
                     cuda_info['nvcc_path'] = shutil.which('nvcc')
-            except:
+            except Exception:
                 pass
         
         # Fallback to nvidia-smi for CUDA version
@@ -828,7 +828,7 @@ class SystemScanner:
                 if cuda_match:
                     cuda_info['version'] = cuda_match.group(1)
                     cuda_info['runtime_version'] = cuda_match.group(1)
-            except:
+            except Exception:
                 pass
         
         # Check for cuDNN
@@ -875,7 +875,7 @@ class SystemScanner:
                             cudnn_info['version'] = f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}"
                             cudnn_info['header_path'] = header_path
                             return cudnn_info
-                except:
+                except Exception:
                     pass
         
         # Try ldconfig
@@ -886,7 +886,7 @@ class SystemScanner:
                 if cudnn_match:
                     cudnn_info['version'] = cudnn_match.group(1)
                     return cudnn_info
-            except:
+            except Exception:
                 pass
         
         return None
@@ -911,7 +911,7 @@ class SystemScanner:
                 if device_match:
                     opencl_info['device_count'] = int(device_match.group(1))
                     
-        except:
+        except Exception:
             pass
         
         return opencl_info if opencl_info['available'] else None
@@ -924,7 +924,7 @@ class SystemScanner:
             # This is a simplified version
             # In production, use pyopencl or parse clinfo output properly
             pass
-        except:
+        except Exception:
             pass
         
         return devices
@@ -944,7 +944,7 @@ class SystemScanner:
                 if version_match:
                     vulkan_info['version'] = version_match.group(1)
                     
-        except:
+        except Exception:
             pass
         
         return vulkan_info if vulkan_info['available'] else None
@@ -968,7 +968,7 @@ class SystemScanner:
                 # Parse GPU info from system_profiler
                 # Implementation depends on output structure
                 
-        except:
+        except Exception:
             pass
         
         return metal_info if metal_info['available'] else None
@@ -997,7 +997,7 @@ class SystemScanner:
                         percent=usage.percent
                     )
                     disk_data['partitions'].append(asdict(disk_info))
-                except:
+                except Exception:
                     pass
             
             # Get disk I/O counters
@@ -1012,7 +1012,7 @@ class SystemScanner:
                         'read_time': counters.read_time,
                         'write_time': counters.write_time
                     }
-            except:
+            except Exception:
                 pass
         
         # Get physical disk info
@@ -1042,7 +1042,7 @@ class SystemScanner:
                             'rotational': device.get('rota') == '1'
                         }
                         disks.append(disk_info)
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Windows':
@@ -1063,7 +1063,7 @@ class SystemScanner:
                                 'model': parts[1],
                                 'serial': parts[3]
                             })
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Darwin':
@@ -1072,7 +1072,7 @@ class SystemScanner:
                 output = subprocess.check_output(['diskutil', 'list']).decode()
                 # Parse diskutil output
                 # Implementation depends on output format
-            except:
+            except Exception:
                 pass
         
         return disks
@@ -1128,7 +1128,7 @@ class SystemScanner:
                         'pid': conn.pid
                     }
                     network_data['connections'].append(conn_info)
-            except:
+            except Exception:
                 pass
             
             # Network I/O stats
@@ -1144,7 +1144,7 @@ class SystemScanner:
                     'dropin': io_counters.dropin,
                     'dropout': io_counters.dropout
                 }
-            except:
+            except Exception:
                 pass
         
         # Additional network info
@@ -1169,7 +1169,7 @@ class SystemScanner:
                     for line in f:
                         if line.startswith('nameserver'):
                             dns_servers.append(line.split()[1])
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Windows':
@@ -1185,7 +1185,7 @@ class SystemScanner:
                             dns = parts[1].strip()
                             if dns and dns != 'None':
                                 dns_servers.append(dns)
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Darwin':
@@ -1197,7 +1197,7 @@ class SystemScanner:
                         parts = line.split(':')
                         if len(parts) > 1:
                             dns_servers.append(parts[1].strip())
-            except:
+            except Exception:
                 pass
         
         return list(set(dns_servers))  # Remove duplicates
@@ -1210,7 +1210,7 @@ class SystemScanner:
                 match = re.search(r'default via (\S+)', output)
                 if match:
                     return match.group(1)
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Windows':
@@ -1223,7 +1223,7 @@ class SystemScanner:
                         parts = line.split()
                         if len(parts) >= 3:
                             return parts[2]
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Darwin':
@@ -1232,7 +1232,7 @@ class SystemScanner:
                 match = re.search(r'gateway: (\S+)', output)
                 if match:
                     return match.group(1)
-            except:
+            except Exception:
                 pass
         
         return None
@@ -1263,7 +1263,7 @@ class SystemScanner:
                     if b'container=lxc' in f.read():
                         container_data['type'] = ContainerType.LXC.value
                         container_data['detected'] = True
-            except:
+            except Exception:
                 pass
         
         # WSL detection
@@ -1274,7 +1274,7 @@ class SystemScanner:
                         container_data['type'] = ContainerType.WSL.value
                         container_data['detected'] = True
                         container_data['details']['wsl_version'] = self._get_wsl_version()
-            except:
+            except Exception:
                 pass
         
         # VM detection
@@ -1297,7 +1297,7 @@ class SystemScanner:
         try:
             with open('/proc/self/cgroup', 'r') as f:
                 return 'docker' in f.read()
-        except:
+        except Exception:
             pass
         
         return False
@@ -1315,14 +1315,14 @@ class SystemScanner:
                         if len(parts) > 1:
                             info['container_id'] = parts[-1][:12]
                             break
-        except:
+        except Exception:
             pass
         
         # Get Docker version (if docker command available)
         try:
             output = subprocess.check_output(['docker', 'version', '--format', '{{.Server.Version}}']).decode()
             info['docker_version'] = output.strip()
-        except:
+        except Exception:
             pass
         
         return info
@@ -1337,7 +1337,7 @@ class SystemScanner:
                     return '2'
                 elif 'Microsoft' in content:
                     return '1'
-        except:
+        except Exception:
             pass
         
         return None
@@ -1354,7 +1354,7 @@ class SystemScanner:
                 if output and output != 'none':
                     vm_info['type'] = output
                     return vm_info
-            except:
+            except Exception:
                 pass
             
             # Check DMI
@@ -1376,7 +1376,7 @@ class SystemScanner:
                         
                         if vm_info:
                             return vm_info
-            except:
+            except Exception:
                 pass
         
         # Check CPU features
@@ -1387,7 +1387,7 @@ class SystemScanner:
                 if 'hypervisor' in flags:
                     vm_info['detected_by'] = 'cpu_flags'
                     return vm_info
-            except:
+            except Exception:
                 pass
         
         return None if not vm_info else vm_info
@@ -1466,7 +1466,7 @@ class SystemScanner:
                     'npm_path': shutil.which('npm')
                 }
             )
-        except:
+        except Exception:
             return None
     
     def _detect_java(self) -> Optional[RuntimeInfo]:
@@ -1499,7 +1499,7 @@ class SystemScanner:
                         'javac_path': shutil.which('javac')
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _detect_dotnet(self) -> Optional[RuntimeInfo]:
@@ -1519,7 +1519,7 @@ class SystemScanner:
                         'runtimes': self._parse_dotnet_runtimes(output)
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _parse_dotnet_sdks(self, dotnet_output: str) -> List[str]:
@@ -1574,7 +1574,7 @@ class SystemScanner:
                         'full_version': ruby_version.strip()
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _detect_go(self) -> Optional[RuntimeInfo]:
@@ -1593,7 +1593,7 @@ class SystemScanner:
                         'goroot': os.environ.get('GOROOT')
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _detect_rust(self) -> Optional[RuntimeInfo]:
@@ -1609,7 +1609,7 @@ class SystemScanner:
                     cargo_match = re.search(r'cargo (\d+\.\d+\.\d+)', cargo_output)
                     if cargo_match:
                         cargo_version = cargo_match.group(1)
-                except:
+                except Exception:
                     pass
                 
                 return RuntimeInfo(
@@ -1623,7 +1623,7 @@ class SystemScanner:
                         'cargo_home': os.environ.get('CARGO_HOME')
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _detect_gcc(self) -> Optional[RuntimeInfo]:
@@ -1642,7 +1642,7 @@ class SystemScanner:
                         'target': self._get_gcc_target()
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _get_gcc_target(self) -> Optional[str]:
@@ -1650,7 +1650,7 @@ class SystemScanner:
         try:
             output = subprocess.check_output(['gcc', '-dumpmachine']).decode().strip()
             return output
-        except:
+        except Exception:
             return None
     
     def _detect_clang(self) -> Optional[RuntimeInfo]:
@@ -1669,7 +1669,7 @@ class SystemScanner:
                         'llvm_version': self._get_llvm_version()
                     }
                 )
-        except:
+        except Exception:
             return None
     
     def _get_llvm_version(self) -> Optional[str]:
@@ -1677,7 +1677,7 @@ class SystemScanner:
         try:
             output = subprocess.check_output(['llvm-config', '--version']).decode().strip()
             return output
-        except:
+        except Exception:
             return None
     
     def detect_installed_packages(self) -> Dict[str, List[PackageInfo]]:
@@ -1729,7 +1729,7 @@ class SystemScanner:
                         manager='pip',
                         location=dist.location
                     ))
-            except:
+            except Exception:
                 pass
         
         # Fallback to pip list
@@ -1746,7 +1746,7 @@ class SystemScanner:
                         version=pkg['version'],
                         manager='pip'
                     ))
-            except:
+            except Exception:
                 pass
         
         return packages
@@ -1786,7 +1786,7 @@ class SystemScanner:
                     
                     packages.append(pkg_info)
                     
-                except:
+                except Exception:
                     # Fallback to basic info
                     packages.append(PackageInfo(
                         name=pkg['name'],
@@ -1794,7 +1794,7 @@ class SystemScanner:
                         manager='pip'
                     ))
                     
-        except:
+        except Exception:
             # Fallback to basic method
             packages = self._get_python_packages()
         
@@ -1819,7 +1819,7 @@ class SystemScanner:
                         manager='npm',
                         metadata={'scope': 'global'}
                     ))
-        except:
+        except Exception:
             pass
         
         # Local packages (if in a project directory)
@@ -1838,7 +1838,7 @@ class SystemScanner:
                             manager='npm',
                             metadata={'scope': 'local'}
                         ))
-            except:
+            except Exception:
                 pass
         
         return packages
@@ -1887,7 +1887,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='apt'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages[:100] if not self.deep_scan else packages  # Limit if not deep scan
@@ -1910,7 +1910,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='rpm'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages[:100] if not self.deep_scan else packages
@@ -1931,7 +1931,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='pacman'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages[:100] if not self.deep_scan else packages
@@ -1952,7 +1952,7 @@ class SystemScanner:
                         version=parts[1],
                         manager='snap'
                     ))
-        except:
+        except Exception:
             pass
         
         return packages
@@ -1975,7 +1975,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='flatpak'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages
@@ -1996,7 +1996,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='homebrew'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages
@@ -2019,7 +2019,7 @@ class SystemScanner:
                             version=parts[1],
                             manager='chocolatey'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages
@@ -2040,7 +2040,7 @@ class SystemScanner:
                             version=match.group(2),
                             manager='gem'
                         ))
-        except:
+        except Exception:
             pass
         
         return packages[:50] if not self.deep_scan else packages
@@ -2064,7 +2064,7 @@ class SystemScanner:
                             manager='cargo'
                         )
                         packages.append(current_package)
-        except:
+        except Exception:
             pass
         
         return packages
@@ -2094,7 +2094,7 @@ class SystemScanner:
                 )
                 firewall_info['type'] = 'iptables'
                 firewall_info['enabled'] = True
-            except:
+            except Exception:
                 pass
             
             # Check ufw
@@ -2103,7 +2103,7 @@ class SystemScanner:
                 if 'Status: active' in output:
                     firewall_info['type'] = 'ufw'
                     firewall_info['enabled'] = True
-            except:
+            except Exception:
                 pass
             
             # Check firewalld
@@ -2115,7 +2115,7 @@ class SystemScanner:
                 if 'running' in output:
                     firewall_info['type'] = 'firewalld'
                     firewall_info['enabled'] = True
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Windows':
@@ -2127,7 +2127,7 @@ class SystemScanner:
                 if 'ON' in output:
                     firewall_info['type'] = 'windows_firewall'
                     firewall_info['enabled'] = True
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Darwin':
@@ -2139,7 +2139,7 @@ class SystemScanner:
                 if '1' in output or '2' in output:
                     firewall_info['type'] = 'macos_firewall'
                     firewall_info['enabled'] = True
-            except:
+            except Exception:
                 pass
         
         return firewall_info
@@ -2160,7 +2160,7 @@ class SystemScanner:
                     line = line.strip()
                     if line and line != 'displayName':
                         av_list.append({'name': line, 'type': 'antivirus'})
-            except:
+            except Exception:
                 pass
                 
         elif platform.system() == 'Linux':
@@ -2190,7 +2190,7 @@ class SystemScanner:
                     status['policy_version'] = line.split(':')[1].strip()
             
             return status
-        except:
+        except Exception:
             return None
     
     def _check_system_updates(self) -> Dict[str, Any]:
@@ -2213,7 +2213,7 @@ class SystemScanner:
                     if count > 0:
                         updates['available'] = True
                         updates['count'] = count
-                except:
+                except Exception:
                     pass
                     
         elif platform.system() == 'Windows':
@@ -2231,7 +2231,7 @@ class SystemScanner:
                     updates['available'] = True
                     # Count updates
                     updates['count'] = output.count('*')
-            except:
+            except Exception:
                 pass
         
         return updates
@@ -2360,7 +2360,7 @@ class SystemScanner:
                 kvm_loaded = os.path.exists('/dev/kvm')
                 
                 return (has_vmx or has_svm) and kvm_loaded
-        except:
+        except Exception:
             return False
     
     def _check_hyperv(self) -> bool:
@@ -2374,7 +2374,7 @@ class SystemScanner:
                 stderr=subprocess.DEVNULL
             ).decode()
             return 'Enabled' in output
-        except:
+        except Exception:
             return False
     
     def export_scan_results(self, format: str = 'json', 

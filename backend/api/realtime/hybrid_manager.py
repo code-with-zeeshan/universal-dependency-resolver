@@ -125,7 +125,7 @@ class HybridConnectionManager:
 
             try:
                 await conn.close()
-            except:
+            except Exception:
                 pass
 
             del self.connections[client_id]

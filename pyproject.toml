@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-dependency-resolver"
+version = "1.0.0"
+description = "A universal dependency resolver supporting multiple package ecosystems"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+[tool.setuptools.packages.find]
+include = ["backend*"]

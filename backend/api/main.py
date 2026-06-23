@@ -183,12 +183,30 @@ async def validate_environment() -> None:
     if missing_vars:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
     
+    # Validate critical settings
+    try:
+        from backend.settings import validate_settings
+        config_warnings = validate_settings()
+        for w in config_warnings:
+            logger.warning(f"Configuration issue: {w}")
+    except Exception as e:
+        logger.warning(f"Settings validation failed: {e}")
+
     # Log optional variables status
     for var in optional_env_vars:
         if os.getenv(var):
             logger.info(f"Optional variable {var} is configured")
         else:
             logger.warning(f"Optional variable {var} is not set")
+    
+    # Guard: production must have auth enabled
+    env = os.getenv("ENV", "development")
+    enable_auth = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+    if env == "production" and not enable_auth:
+        raise RuntimeError(
+            "Refusing to start in production mode with ENABLE_AUTH=false. "
+            "Set ENABLE_AUTH=true and configure SECRET_KEY."
+        )
     
     # Test database connection
     try:
@@ -308,18 +326,6 @@ app.include_router(
     tags=["Authentication"]
 )
 
-# Optional: Add middleware for request ID tracking
-@app.middleware("http")
-async def add_request_id(request: Request, call_next) -> Response:
-    """Add request ID for tracking"""
-    import uuid
-    request_id = str(uuid.uuid4())
-    request.state.request_id = request_id
-    
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
-
 # Optional: Add middleware for response time tracking
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next) -> Response:
@@ -340,12 +346,12 @@ async def log_requests(request: Request, call_next):
     start_time = time.time()
     log = structlog.get_logger("backend.api.main.request")
 
-    import uuid
     method = request.method
     path = request.url.path
-    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    if not hasattr(request.state, "request_id"):
-        request.state.request_id = request_id
+    import uuid
+    request_id = getattr(request.state, "correlation_id", None) or getattr(request.state, "request_id", None) or str(uuid.uuid4())
+    request.state.request_id = request_id
+    request.state.correlation_id = request_id
 
     log.info(
         "Request started",
@@ -364,7 +370,7 @@ async def log_requests(request: Request, call_next):
             "Request failed",
             method=method,
             path=path,
-            request_id=request_id,
+            request_id=getattr(request.state, "request_id", request_id),
             duration_ms=round(duration_ms, 2),
             error=str(exc),
             exc_info=True,
@@ -372,16 +378,16 @@ async def log_requests(request: Request, call_next):
         raise
 
     duration_ms = (time.time() - start_time) * 1000
+    effective_id = getattr(request.state, "correlation_id", None) or getattr(request.state, "request_id", request_id)
     log.info(
         "Request completed",
         method=method,
         path=path,
-        request_id=request_id,
+        request_id=effective_id,
         status_code=response.status_code,
         duration_ms=round(duration_ms, 2),
     )
 
-    response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{duration_ms / 1000:.3f}"
     return response
 

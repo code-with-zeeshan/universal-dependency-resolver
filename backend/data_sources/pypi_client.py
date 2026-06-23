@@ -1,10 +1,8 @@
 # pypi_client.py
-import asyncio
 from typing import Dict, List, Optional, Any, Tuple, Set
-import json
 from packaging import version
 from packaging.requirements import Requirement
-from ..core.utils import normalize_package_name,  parse_version
+from ..core.utils import normalize_package_name,  parse_version, run_async
 from packaging.markers import Marker
 from datetime import datetime
 import logging
@@ -44,7 +42,7 @@ class PyPIClient(BaseDataSourceClient):
             import requests
             response = requests.head(f"{self.base_url}/{package_name}/json", timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
     
     async def get_package_info_async(self, package_name: str) -> Optional[Dict[str, Any]]:
@@ -66,12 +64,7 @@ class PyPIClient(BaseDataSourceClient):
     def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
         """Synchronous wrapper for get_package_info_async"""
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name))
     
     async def _process_package_data_enhanced(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process raw PyPI data with enhanced extraction"""
@@ -336,7 +329,7 @@ class PyPIClient(BaseDataSourceClient):
             # In reality, you'd want to parse both the marker and python_requires
             # and check for intersection
             return True
-        except:
+        except Exception:
             return True
     
     def _extract_system_requirements_enhanced(self, info: Dict[str, Any], urls: List[Dict[str, Any]]) -> Dict[str, Any]:

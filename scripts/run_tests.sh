@@ -68,7 +68,17 @@ print_status "Starting test services..."
 docker-compose -f docker-compose.test.yml up -d db redis
 
 # Wait for services to be ready
-sleep 10
+echo "Waiting for PostgreSQL..."
+until docker-compose -f docker-compose.test.yml exec -T db pg_isready -U user -d depresolver_test 2>/dev/null; do
+    sleep 1
+done
+echo "PostgreSQL is ready!"
+
+echo "Waiting for Redis..."
+until docker-compose -f docker-compose.test.yml exec -T redis redis-cli ping 2>/dev/null; do
+    sleep 1
+done
+echo "Redis is ready!"
 
 # Backend tests
 if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "unit" || "$TEST_TYPE" == "backend" ]]; then
@@ -82,10 +92,12 @@ if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "unit" || "$TEST_TYPE" == "backen
     fi
     
     # Set test environment variables
-    export DATABASE_URL="postgresql://testuser:testpass@localhost:5432/testdb"
-    export REDIS_URL="redis://localhost:6379"
+    export DATABASE_URL="postgresql://user:password@localhost:15432/depresolver_test"
+    export REDIS_URL="redis://localhost:16379"
     export TESTING=true
     export SECRET_KEY="test-secret-key"
+    export OTEL_ENABLED=false
+    export ENABLE_AUTH=false
     
     # Run database migrations
     alembic upgrade head
@@ -164,26 +176,33 @@ fi
 if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "integration" ]]; then
     print_status "Running integration tests..."
     
-    # Start all services
-    docker-compose up -d --build
+    export DATABASE_URL="postgresql://user:password@localhost:15432/depresolver_test"
+    export REDIS_URL="redis://localhost:16379"
+    export TESTING=true
+    export SECRET_KEY="test-secret-key"
+    export OTEL_ENABLED=false
+    export ENABLE_AUTH=false
+    export LOG_LEVEL=WARNING
     
-    # Wait for services to be ready
-    sleep 30
+    # Initialize database tables
+    python -c "
+from backend.database.models import Base, engine
+Base.metadata.create_all(bind=engine)
+print('Tables created successfully')
+"
     
-    # Run database migrations
-    docker-compose exec -T backend alembic upgrade head
+    # Prepare pytest arguments
+    PYTEST_ARGS="tests/integration/"
     
-    # Run integration tests
-    cd backend
-    if [ -d "venv" ]; then
-        source venv/bin/activate
+    if [ "$COVERAGE" = true ]; then
+        PYTEST_ARGS="$PYTEST_ARGS --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing"
     fi
     
-    export DATABASE_URL="postgresql://user:password@localhost:5432/depresolver"
-    export REDIS_URL="redis://localhost:6379"
-    export API_BASE_URL="http://localhost:8000"
+    if [ "$VERBOSE" = true ]; then
+        PYTEST_ARGS="$PYTEST_ARGS -v -s"
+    fi
     
-    pytest tests/integration/ -v
+    python -m pytest $PYTEST_ARGS
     
     if [ $? -eq 0 ]; then
         print_success "Integration tests passed!"
@@ -191,8 +210,6 @@ if [[ "$TEST_TYPE" == "all" || "$TEST_TYPE" == "integration" ]]; then
         print_error "Integration tests failed!"
         exit 1
     fi
-    
-    cd ..
 fi
 
 # E2E tests
@@ -226,7 +243,8 @@ fi
 
 # Cleanup
 print_status "Cleaning up test services..."
-docker-compose down
+docker-compose -f docker-compose.test.yml down --remove-orphans 2>/dev/null || true
+docker-compose down --remove-orphans 2>/dev/null || true
 
 if [ "$COVERAGE" = true ]; then
     print_status "Coverage reports generated:"

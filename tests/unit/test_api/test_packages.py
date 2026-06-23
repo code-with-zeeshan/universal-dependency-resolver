@@ -1,7 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
 
 from backend.api.main import app
 from backend.api.dependencies import get_data_aggregator
@@ -13,21 +12,6 @@ def _mock_aggregator():
     aggregator.search_packages = AsyncMock()
     aggregator.sources = {}
     return aggregator
-
-
-@pytest.fixture(autouse=True)
-def disable_rate_limiter():
-    was_enabled = getattr(app.state, 'limiter', None)
-    if was_enabled:
-        app.state.limiter.enabled = False
-    yield
-    if was_enabled:
-        app.state.limiter.enabled = True
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 @pytest.fixture

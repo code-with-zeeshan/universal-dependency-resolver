@@ -8,57 +8,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Performance & Scalability Improvements**:
-  - Async batch dependency resolution for parallel processing
-  - Redis-based caching for resolution results with 1-hour TTL
-  - Database connection pooling with health checks
-  - Enhanced async operations throughout the codebase
-- **Security Enhancements**:
-  - Comprehensive Pydantic input validation with regex patterns
-  - Distributed rate limiting with Redis storage
-  - OSV vulnerability scanning integration
-  - Structured exception handling with custom error classes
-- **Code Quality Improvements**:
-  - Enhanced type hints throughout codebase
-  - Google-style docstrings for all public methods
-  - Custom exception classes for better error handling
-- **Architecture Improvements**:
-  - Database indexes on frequently queried fields (release_date, download_count)
-  - Prometheus metrics endpoint at `/metrics`
-  - Sentry error tracking integration
-  - Detailed health check endpoint with component status
-- Universal dependency resolver core functionality
-- Multi-ecosystem support (PyPI, NPM, Conda, Maven, Crates)
-- Vue.js frontend with modern UI
-- FastAPI backend with async support
-- Docker containerization
-- Comprehensive documentation
-
-### Planned Features
-- **SDK Libraries** - Official client libraries for Python, JavaScript, and Go
-- **WebSocket Support** - Real-time updates for long-running operations
-- **CLI Tool** - Command-line interface for automation
-- **Plugin System** - Extend support for custom package ecosystems
+- **Middleware & Observability**:
+  - `CorrelationIDMiddleware` — incoming/preserve `X-Correlation-ID`, binds to structlog contextvars
+  - `AuditLogMiddleware` — structured audit events on mutating methods
+  - `CSRFProtectionMiddleware` — double-submit cookie pattern, Bearer auth bypass
+  - `SecurityHeadersMiddleware` — HSTS, CSP, XFO, nosniff, XSS protection
+  - `RequestSizeLimitMiddleware` — configurable max request body size
+  - Prometheus SLI recording rules (p99 latency, error rates, availability)
+  - Jaeger auto-provisioning via docker-compose monitoring profile
+  - Grafana Jaeger datasource auto-provisioned
+- **Infrastructure**:
+  - `scripts/validate_k8s.sh` — kind cluster creation, manifest validation, cleanup
+  - `pyproject.toml` — project build metadata
+- **Testing**:
+  - Middleware tests: 29 tests covering CorrelationID, CSRF, AuditLog, SecurityHeaders, Logging, RequestSizeLimit, GetClientIP
+  - Settings validation tests: 6 tests for `validate_settings()`
+  - Playwright E2E tests: 20 tests (login, add/remove package, resolve, export, error handling, keyboard, retry)
+  - SQLite fallback for integration tests (auto-detects Postgres/Redis availability)
+- **Security**:
+  - Auth guard in `validate_environment()` — production startup refused without `ENABLE_AUTH=true`
+- **Code Quality**:
+  - `run_async()` helper to eliminate sync wrapper boilerplate across 10 data source clients
+  - `ResolverErrorCode` enum with `ErrorCategory` mapping
 
 ### Changed
-- Enhanced conflict resolver with async caching support
-- Improved database configuration with connection pooling
-- Updated API endpoints with enhanced error responses
-
-### Deprecated
-- N/A
+- Route `/{ecosystem}/{package_name}` → `/{ecosystem}/{package_name}/details` to fix collision with `get_package_info`
+- `validate_settings()` performs 6 config checks on startup
+- `.env.example` `ENABLE_AUTH` default: `false` with comment about production guard
+- `ARRAY(String)` → `JSON` for scopes columns in User/APIKey models (SQLite-compatible)
+- `setup_middleware(app)` called at app startup registering all middleware in correct order
+- `log_requests` middleware no longer overwrites `X-Request-ID`
 
 ### Removed
-- Dead code and unused files after comprehensive audit
+- Redundant `add_request_id` middleware (replaced by `CorrelationIDMiddleware`)
+- Pydantic `BaseSettings` dependency (replaced by `os.getenv()` + `validate_settings()`)
+- Dead Pydantic `BaseSettings` import
+- `RequirementsTxtFormat`/`PackageJsonFormat` import from export generator tests
+- Stale `# MOVED FROM main.py` comments
+- Empty `_analyze_compatibility_reports` body
 
 ### Fixed
-- N/A
+- Route path collision (both `get_package_info` and `get_package_details` bound to `/{ecosystem}/{name}`)
+- 118 bare `except:` → `except Exception:` across 20 files (silent swallow of KeyboardInterrupt/SystemExit)
+- 18 F821 undefined-name errors across 6 files
+- `get_current_user` import path in integration conftest (`dependencies` → `auth`)
+- CSRF test DB dependency: overrode `get_data_aggregator`/`get_conflict_resolver`/`get_system_scanner` to avoid PostgreSQL requirement
+- gRPC OTLP exporter import wrapped in `try/except ImportError`
 
 ### Security
-- JWT authentication implementation
-- Input validation and sanitization
-- Rate limiting protection
-- Vulnerability scanning for dependency security
+- Auth guard prevents production startup with authentication disabled
+- CSRF protection with double-submit cookie pattern
+- Security headers on all API routes
 
 ## [1.0.0] - 2024-01-15
 

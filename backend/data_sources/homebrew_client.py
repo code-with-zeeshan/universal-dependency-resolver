@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from backend.core.cache import cache_manager, cached, CacheKeys
-from backend.core.utils import normalize_package_name, parse_version
+from backend.core.utils import normalize_package_name, parse_version, run_async
 import re
 from enum import Enum
 import hashlib
@@ -82,7 +82,7 @@ class HomebrewClient(BaseDataSourceClient):
                 url = f"{self.cask_api}/{package_name}.json"
             response = requests.head(url, timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
 
     async def search_packages(self, query: str, limit: int = 20,
@@ -202,12 +202,7 @@ class HomebrewClient(BaseDataSourceClient):
 
     def get_package_info(self, package_name: str, package_type: PackageType = PackageType.FORMULA) -> Dict:
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name, package_type))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name, package_type))
 
     async def _get_formula_info(self, formula_name: str) -> Optional[Dict]:
         url = f"{self.formula_api}/{formula_name}.json"

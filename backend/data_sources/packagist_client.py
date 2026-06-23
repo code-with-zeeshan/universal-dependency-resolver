@@ -1,11 +1,10 @@
 # packagist_client.py
 import asyncio
 from typing import Dict, List, Optional, Set, Tuple, Any, Union
-import json
 import logging
 from datetime import datetime, timedelta
 from urllib.parse import quote
-from backend.core.utils import normalize_package_name, parse_version
+from backend.core.utils import normalize_package_name, parse_version, run_async
 import re
 from backend.core.cache import cache_manager, cached, CacheKeys
 from enum import Enum
@@ -78,7 +77,7 @@ class PackagistClient(BaseDataSourceClient):
             import requests
             response = requests.head(f"{self.base_url}/packages/{package_name}.json", timeout=5)
             return response.status_code == 200
-        except:
+        except Exception:
             return False
 
     async def search_packages(self, query: str, limit: int = 20,
@@ -189,12 +188,7 @@ class PackagistClient(BaseDataSourceClient):
 
     def get_package_info(self, package_name: str) -> Dict:
         package_name = normalize_package_name(package_name)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.get_package_info_async(package_name))
-        finally:
-            loop.close()
+        return run_async(self.get_package_info_async(package_name))
 
     async def get_package_version(self, package_name: str, version: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
@@ -253,7 +247,7 @@ class PackagistClient(BaseDataSourceClient):
             data = await self._get(url)
             if data and 'package' in data:
                 return data['package']
-        except:
+        except Exception:
             pass
         return {'daily': 0, 'monthly': 0, 'total': 0}
 

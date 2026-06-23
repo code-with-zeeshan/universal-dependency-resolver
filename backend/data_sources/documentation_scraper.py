@@ -11,13 +11,10 @@ from ..settings import (
 )
 import logging
 from urllib.parse import urljoin, urlparse, quote
-import json
 from datetime import datetime
 import hashlib
 from ..core.utils import normalize_package_name, parse_version, compare_versions
 
-# Configure logger with settings
-logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger(__name__)
 
 class DocumentationScraper:
@@ -240,7 +237,7 @@ class DocumentationScraper:
         try:
             async with self.session.head(url, allow_redirects=True, timeout=5) as response:
                 return response.status == 200
-        except:
+        except Exception:
             return False
     
     async def _scrape_requirements_from_url(self, url: str, package_name: str) -> Dict:

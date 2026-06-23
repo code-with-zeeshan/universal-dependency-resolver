@@ -16,6 +16,7 @@ from backend.utils.errors import (
     ErrorCategory,
     ErrorFactory,
     ResolverError,
+    ResolverErrorCode,
     ensure_details_context,
     make_internal_error,
 )

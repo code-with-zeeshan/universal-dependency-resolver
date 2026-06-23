@@ -10,49 +10,73 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_USER: testuser
-          POSTGRES_DB: testdb
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: user
+          POSTGRES_DB: depresolver_test
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
         ports:
-          - 5432:5432
-      
+          - 15432:5432
+
       redis:
         image: redis:7-alpine
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
         ports:
-          - 6379:6379
-    
+          - 16379:6379
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Build and start services
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
       run: |
-        docker-compose up -d --build
-        sleep 30
-    
-    - name: Run database migrations
+        python -m pip install --upgrade pip
+        pip install -r backend/requirements.txt
+
+    - name: Set test environment
       run: |
-        docker-compose exec -T backend alembic upgrade head
-    
-    - name: Run API integration tests
+        echo "DATABASE_URL=postgresql://user:password@localhost:15432/depresolver_test" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:16379" >> $GITHUB_ENV
+        echo "TESTING=true" >> $GITHUB_ENV
+        echo "OTEL_ENABLED=false" >> $GITHUB_ENV
+        echo "ENABLE_AUTH=false" >> $GITHUB_ENV
+        echo "LOG_LEVEL=WARNING" >> $GITHUB_ENV
+        echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
+
+    - name: Initialize database
       run: |
-        docker-compose exec -T backend python -m pytest tests/integration/ -v
-    
-    - name: Cleanup
-      if: always()
+        python -c "
+from backend.database.models import Base, engine
+Base.metadata.create_all(bind=engine)
+print('Tables created successfully')
+"
+
+    - name: Run integration tests
       run: |
-        docker-compose down -v
+        python -m pytest tests/integration/ -v --tb=short
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-logs
+        path: |
+          /tmp/pytest-*
+          *.log
+        retention-days: 7

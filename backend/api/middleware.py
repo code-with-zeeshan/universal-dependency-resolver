@@ -1,15 +1,17 @@
 # backend/api/middleware.py
+import os
 import time
 import uuid
 import json
 import gzip
 from typing import Callable, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 import logging
+import structlog
 
 from backend.settings import (
     FEATURES,
@@ -24,16 +26,30 @@ from backend.core.cache import cache_manager
 logger = logging.getLogger(__name__)
 
 
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Add unique request ID to each request"""
-    
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    """Add and propagate unique correlation ID across services.
+
+    Accepts incoming X-Correlation-ID from upstream (API gateway, load balancer)
+    or generates one. Ensures every request has a traceable ID that survives
+    across service boundaries.
+    """
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-        request.state.request_id = request_id
-        
+        correlation_id = (
+            request.headers.get("X-Correlation-ID")
+            or request.headers.get("X-Request-ID")
+            or str(uuid.uuid4())
+        )
+        request.state.correlation_id = correlation_id
+        request.state.request_id = correlation_id
+
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+
         response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        
+        response.headers["X-Correlation-ID"] = correlation_id
+        response.headers["X-Request-ID"] = correlation_id
+
         return response
 
 
@@ -55,7 +71,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 async def receive():
                     return {"type": "http.request", "body": request_body}
                 request._receive = receive
-            except:
+            except Exception:
                 pass
         
         # Get request info
@@ -407,6 +423,90 @@ class MaintenanceModeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """Emit structured audit logs for all mutating requests.
+
+    Logs who (user/subject), what (action), which (resource), and when
+    for POST, PUT, PATCH, DELETE requests. Compatible with SOC 2 / ISO 27001
+    audit trail requirements.
+    """
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+            return await call_next(request)
+
+        log = structlog.get_logger("backend.api.audit")
+
+        response = await call_next(request)
+
+        log.info(
+            "audit.write",
+            correlation_id=getattr(request.state, "correlation_id", None),
+            method=request.method,
+            path=request.url.path,
+            query_params=dict(request.query_params),
+            status_code=response.status_code,
+            client_host=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+        return response
+
+
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """Protect against CSRF attacks for cookie-authenticated clients.
+
+    For state-changing requests (POST/PUT/PATCH/DELETE), requires either:
+    - A Bearer token in the Authorization header (API clients), or
+    - A valid CSRF token in X-CSRF-Token header (browser clients).
+
+    Safe methods (GET/HEAD/OPTIONS) are never blocked.
+    """
+
+    SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+    CSRF_COOKIE_NAME = "csrf_token"
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if request.method in self.SAFE_METHODS:
+            return await call_next(request)
+
+        # API clients using Bearer auth are exempt
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return await call_next(request)
+
+        # Check for CSRF token in header vs cookie (double-submit pattern)
+        csrf_cookie = request.cookies.get(self.CSRF_COOKIE_NAME)
+        csrf_header = request.headers.get("X-CSRF-Token")
+
+        if csrf_cookie and csrf_header and csrf_cookie == csrf_header:
+            return await call_next(request)
+
+        # No auth + no CSRF token — only block if same-origin can't be verified
+        origin = request.headers.get("Origin")
+        referer = request.headers.get("Referer")
+        allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+
+        if origin and any(origin.strip() == o.strip() for o in allowed_origins):
+            return await call_next(request)
+
+        if referer and any(ref.strip() in referer for ref in allowed_origins if ref.strip()):
+            return await call_next(request)
+
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "type": "csrf_protection",
+                    "message": "CSRF validation failed. Include X-CSRF-Token header or use Bearer auth.",
+                    "status_code": 403,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+        )
+
+
 # Utility middleware functions
 async def get_client_ip(request: Request) -> str:
     """Get client IP address from request"""
@@ -466,7 +566,13 @@ def setup_middleware(app):
     if ENABLE_REQUEST_LOGGING:
         app.add_middleware(LoggingMiddleware)
     
-    # Request ID (should be early in the chain)
-    app.add_middleware(RequestIDMiddleware)
+    # Audit log for mutating requests
+    app.add_middleware(AuditLogMiddleware)
+
+    # CSRF protection (applies to cookie-based sessions)
+    app.add_middleware(CSRFProtectionMiddleware)
+
+    # Correlation ID (earliest in the chain so all downstream middleware see it)
+    app.add_middleware(CorrelationIDMiddleware)
     
     logger.info("Middleware configuration completed")

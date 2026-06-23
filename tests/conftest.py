@@ -79,9 +79,8 @@ def db_session():
 
 @pytest.fixture
 def client():
-    """Create a test client for FastAPI"""
-    with TestClient(app) as test_client:
-        yield test_client
+    """Create a test client for FastAPI (skip lifespan to avoid DB requirement)"""
+    yield TestClient(app)
 
 
 @pytest.fixture
@@ -357,6 +356,16 @@ def performance_timer():
 
 # Cleanup helpers
 @pytest.fixture(autouse=True)
+def disable_rate_limiter():
+    was_enabled = getattr(app.state, 'limiter', None)
+    if was_enabled:
+        app.state.limiter.enabled = False
+    yield
+    if was_enabled:
+        app.state.limiter.enabled = True
+
+
+@pytest.fixture(autouse=True)
 def cleanup_cache():
     """Automatically cleanup cache after each test"""
     yield
@@ -364,7 +373,7 @@ def cleanup_cache():
     if hasattr(cache_manager, 'clear'):
         try:
             asyncio.get_event_loop().run_until_complete(cache_manager.clear())
-        except:
+        except Exception:
             pass
 
 

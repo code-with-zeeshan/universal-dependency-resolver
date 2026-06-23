@@ -20,21 +20,46 @@ class ErrorCategory(str, Enum):
     DATA_SOURCE = "data_source_error"
 
 
+class ResolverErrorCode(str, Enum):
+    """Granular error codes for the conflict resolver. Maps to ErrorCategory."""
+
+    VALIDATION_ERROR = "validation_error"
+    SYSTEM_INFO_ERROR = "system_info_error"
+    SOLVER_ERROR = "solver_error"
+    UNSATISFIABLE = "unsatisfiable"
+    INTERNAL_ERROR = "internal_error"
+    BATCH_ERROR = "batch_error"
+    NETWORK_ERROR = "network_error"
+    DATA_SOURCE_ERROR = "data_source_error"
+
+
 @dataclass
 class ResolverBaseError(Exception):
     """Base exception carrying structured payload information."""
 
     message: str
-    category: ErrorCategory
+    category: Optional[ErrorCategory] = None
+    code: Optional[Union[ErrorCategory, ResolverErrorCode, str]] = None
     details: Optional[Dict[str, Any]] = None
     warnings: Optional[List[str]] = None
     status_code: int = 500
+
+    def __post_init__(self):
+        """Resolve category from code if only code is provided."""
+        if self.category is None and self.code is not None:
+            code_val = self.code.value if isinstance(self.code, Enum) else self.code
+            try:
+                self.category = ErrorCategory(code_val)
+            except ValueError:
+                self.category = ErrorCategory.INTERNAL
+        elif self.category is None:
+            self.category = ErrorCategory.INTERNAL
 
     def to_payload(self) -> Dict[str, Any]:
         """Render the error in a standard API payload structure."""
         payload: Dict[str, Any] = {
             "status": "error",
-            "code": self.category.value,
+            "code": self.category.value if self.category else "unknown",
             "message": self.message,
             "resolved_packages": {},
             "warnings": self.warnings or [],

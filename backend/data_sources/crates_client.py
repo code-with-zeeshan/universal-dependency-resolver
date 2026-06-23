@@ -8,7 +8,6 @@ import asyncio
 from urllib.parse import quote
 import logging
 from enum import Enum
-import json
 import tempfile
 from pathlib import Path
 from ..core.utils import normalize_package_name,  parse_version
@@ -407,7 +406,7 @@ class CratesClient(BaseDataSourceClient):
                 }
                 for owner in data.get("users", [])
             ]
-        except:
+        except Exception:
             return []
 
     async def _get_reverse_dependencies(self, package_name: str) -> int:
@@ -419,7 +418,7 @@ class CratesClient(BaseDataSourceClient):
             if not data:
                 return 0
             return data.get("meta", {}).get("total", 0)
-        except:
+        except Exception:
             return 0
 
     async def _get_version_metadata(self, package_name: str, version: str) -> Dict:
@@ -427,7 +426,7 @@ class CratesClient(BaseDataSourceClient):
         try:
             url = f"https://crates.io/api/v1/crates/{quote(package_name)}/{quote(version)}/download"
             return {}
-        except:
+        except Exception:
             return {}
 
     async def _get_version_msrv(self, package_name: str, version: str) -> Optional[str]:
@@ -448,7 +447,7 @@ class CratesClient(BaseDataSourceClient):
                     else:
                         return "1.60"
             return None
-        except:
+        except Exception:
             return None
 
     async def _get_version_features(self, package_name: str, version: str) -> List[str]:
@@ -465,7 +464,7 @@ class CratesClient(BaseDataSourceClient):
                     return v["version"]
 
             return None
-        except:
+        except Exception:
             return None
 
     def _version_matches_requirement(self, version: str, requirement: str) -> bool:
@@ -504,7 +503,7 @@ class CratesClient(BaseDataSourceClient):
                 return v.major == 0 and v.minor == r.minor and v >= r
             else:
                 return v.major == 0 and v.minor == 0 and v.micro == r.micro
-        except:
+        except Exception:
             return False
 
     def _tilde_matches(self, version: str, requirement: str) -> bool:
@@ -516,7 +515,7 @@ class CratesClient(BaseDataSourceClient):
                 return False
 
             return v.major == r.major and v.minor == r.minor and v >= r
-        except:
+        except Exception:
             return False
 
     def _comparison_matches(self, version: str, requirement: str) -> bool:
@@ -544,7 +543,7 @@ class CratesClient(BaseDataSourceClient):
             elif operator == "=":
                 return v == r
 
-        except:
+        except Exception:
             pass
 
         return False
@@ -565,7 +564,7 @@ class CratesClient(BaseDataSourceClient):
             req_major_minor = float(f"{req_parts[0]}.{req_parts[1]}")
 
             return sys_major_minor >= req_major_minor
-        except:
+        except Exception:
             return True
 
     def _target_matches(self, system_target: str, requirement: str) -> bool:

@@ -1,5 +1,5 @@
 #data_aggregator.py
-from typing import Dict, List, Optional, Any, Set, Tuple, Union
+from typing import Dict, List, Optional, Any, Union
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -339,7 +339,7 @@ class DataAggregator:
                             package_name
                         )
                     return info is not None
-                except:
+                except Exception:
                     return False
                     
         except Exception as e:

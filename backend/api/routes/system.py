@@ -1,9 +1,8 @@
 # backend/api/routes/system.py
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field
 import json
-import tempfile
 import subprocess
 import re
 import logging
@@ -14,7 +13,6 @@ from backend.api.auth import get_current_user
 from backend.database.models import User
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -739,7 +737,7 @@ def _parse_pep508_dependency(dep_str: str) -> Dict[str, Any]:
             "extras": list(req.extras) if req.extras else None,
             "marker": str(req.marker) if req.marker else None
         }
-    except:
+    except Exception:
         # Basic fallback
         if '>' in dep_str or '<' in dep_str or '=' in dep_str:
             for op in ['>=', '<=', '==', '>', '<', '~=']:
@@ -1370,7 +1368,6 @@ async def _check_docker() -> Dict[str, Any]:
             docker_info = {'version': version_output, 'available': True}
             
             if info_result.returncode == 0:
-                import json
                 info_data = json.loads(info_result.stdout)
                 docker_info.update({
                     'server_version': info_data.get('ServerVersion'),
@@ -1837,7 +1834,7 @@ def _is_compatible_os_version(os_name: str, system_version: str, required_versio
             # Generic version comparison
             from packaging import version
             return version.parse(system_version) >= version.parse(required_version)
-    except:
+    except Exception:
         return True  # Assume compatible if can't parse
 
 def _is_compatible_version(installed: str, required: str) -> bool:
@@ -1851,7 +1848,7 @@ def _is_compatible_version(installed: str, required: str) -> bool:
             return version.parse(installed) in spec
         else:
             return version.parse(installed) >= version.parse(required)
-    except:
+    except Exception:
         return True
 
 def _get_compiler_version(compiler: str) -> Optional[str]:
@@ -1875,7 +1872,7 @@ def _get_compiler_version(compiler: str) -> Optional[str]:
             match = re.search(r'(\d+\.\d+(?:\.\d+)?)', first_line)
             if match:
                 return match.group(1)
-    except:
+    except Exception:
         pass
     
     return None
