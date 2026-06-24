@@ -8,7 +8,7 @@ jest.mock('@/services/systemService')
 
 beforeEach(() => {
   jest.clearAllMocks()
-  packageService.getExportFormats.mockResolvedValue(['requirements.txt', 'package.json'])
+  packageService.getExportFormats.mockResolvedValue({ formats: ['requirements.txt', 'package.json'] })
 })
 
 function createWrapper() {

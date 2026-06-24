@@ -8,15 +8,15 @@ jest.mock('@/services/systemService')
 
 beforeEach(() => {
   jest.clearAllMocks()
-  packageService.getExportFormats.mockResolvedValue(['requirements.txt', 'package.json'])
+  packageService.getExportFormats.mockResolvedValue({ formats: ['requirements.txt', 'package.json'] })
 })
 
 const stubs = {
-  DashboardPanel: { template: '<div class="panel-stub">Dashboard</div>' },
-  PackagePanel: { template: '<div class="panel-stub">Packages</div>' },
-  ResolvePanel: { template: '<div class="panel-stub">Resolve</div>' },
-  SystemPanel: { template: '<div class="panel-stub">System</div>' },
-  AuthPanel: { template: '<div class="panel-stub">Auth</div>' },
+  DashboardPanel: { name: 'DashboardPanel', template: '<div class="panel-stub">Dashboard</div>' },
+  PackagePanel: { name: 'PackagePanel', template: '<div class="panel-stub">Packages</div>' },
+  ResolvePanel: { name: 'ResolvePanel', template: '<div class="panel-stub">Resolve</div>' },
+  SystemPanel: { name: 'SystemPanel', template: '<div class="panel-stub">System</div>' },
+  AuthPanel: { name: 'AuthPanel', template: '<div class="panel-stub">Auth</div>' },
   HomeIcon: { template: '<span>HomeIcon</span>' },
   MagnifyingGlassIcon: { template: '<span>MagnifyingGlassIcon</span>' },
   CheckBadgeIcon: { template: '<span>CheckBadgeIcon</span>' },
@@ -51,8 +51,8 @@ describe('App', () => {
     const buttons = wrapper.findAll('button')
     const packagesBtn = buttons.find(b => b.text().includes('Packages'))
     await packagesBtn.trigger('click')
-    expect(wrapper.text()).toContain('Packages')
-    expect(wrapper.text()).not.toContain('Dashboard')
+    expect(wrapper.find('.main-content').text()).toContain('Packages')
+    expect(wrapper.find('.main-content').text()).not.toContain('Dashboard')
   })
 
   it('switches to Resolve panel when Resolve nav is clicked', async () => {
@@ -66,8 +66,8 @@ describe('App', () => {
   it('switches to System panel when System nav is clicked', async () => {
     const wrapper = createWrapper()
     const buttons = wrapper.findAll('button')
-    const resolveBtn = buttons.find(b => b.text().includes('System'))
-    await resolveBtn.trigger('click')
+    const systemBtn = buttons.find(b => b.text().includes('System'))
+    await systemBtn.trigger('click')
     expect(wrapper.text()).toContain('System')
   })
 
