@@ -115,34 +115,21 @@ jobs:
         cat > /tmp/check_imports.py << 'ENDOFPYTHON'
         import sys, os, traceback
         sys.path.insert(0, '.')
-        try:
-            from fastapi.testclient import TestClient
-            print('::notice::TestClient import OK')
-        except Exception as e:
-            print(f'::error::TestClient import failed: {e}')
-            traceback.print_exc()
-            sys.exit(1)
-        try:
-            from backend.api.main import app
-            print('::notice::app import OK')
-        except Exception as e:
-            print(f'::error::app import failed: {e}')
-            traceback.print_exc()
-            sys.exit(1)
-        try:
-            from backend.database.models import Base, get_db
-            print('::notice::models import OK')
-        except Exception as e:
-            print(f'::error::models import failed: {e}')
-            traceback.print_exc()
-            sys.exit(1)
-        try:
-            from backend.core.cache import cache_manager
-            print('::notice::cache import OK')
-        except Exception as e:
-            print(f'::error::cache import failed: {e}')
-            traceback.print_exc()
-            sys.exit(1)
+        def check_import(label, import_stmt):
+            try:
+                exec(import_stmt)
+                print(f'::notice::{label} import OK')
+            except Exception as e:
+                tb = traceback.format_exc()
+                msg = f'{label} import failed: {e}\\n{tb}'
+                # Escape newlines for workflow command
+                msg = msg.replace('\\n', '%0A')
+                print(f'::error::{msg}')
+                sys.exit(1)
+        check_import('TestClient', 'from fastapi.testclient import TestClient')
+        check_import('app', 'from backend.api.main import app')
+        check_import('models', 'from backend.database.models import Base, get_db')
+        check_import('cache', 'from backend.core.cache import cache_manager')
         print('::notice::ALL IMPORTS OK')
         ENDOFPYTHON
         python3 /tmp/check_imports.py && python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
