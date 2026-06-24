@@ -115,14 +115,10 @@ class AuthService {
   }
 
   async refreshAccessToken(refreshToken) {
-    try {
-      const response = await this.client.post('/auth/refresh', {
-        refresh_token: refreshToken
-      })
-      return response.data
-    } catch (error) {
-      throw error
-    }
+    const response = await this.client.post('/auth/refresh', {
+      refresh_token: refreshToken
+    })
+    return response.data
   }
 
   logout() {
