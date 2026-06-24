@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 import re
 
 
@@ -8,7 +8,8 @@ class PackageRequest(BaseModel):
     ecosystem: Optional[str] = None
     version: Optional[str] = None
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def validate_name(cls, v):
         if not re.match(r"^[a-zA-Z0-9\-_\.]+$", v):
             raise ValueError("Invalid package name")
