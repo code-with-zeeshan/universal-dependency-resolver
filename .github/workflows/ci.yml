@@ -114,26 +114,40 @@ jobs:
         FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        echo "=== Python version ==="
-        python --version
-        echo "=== PYTHONPATH ==="
-        echo "$PYTHONPATH"
-        echo "=== Check conftest import ==="
+        echo "::notice::Python version: $(python --version 2>&1)"
         python -c "
-import sys
+import sys, os
 sys.path.insert(0, '.')
 try:
-    from tests.conftest import *
-    print('conftest imported OK')
+    from fastapi.testclient import TestClient
+    print('::notice::TestClient import OK')
 except Exception as e:
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-" 2>&1 || true
-        echo "=== pytest collect-only (no --cov) ==="
-        python -m pytest tests/unit/ --collect-only -q 2>&1 || true
-        echo "=== pytest collect-only (with --cov) ==="
-        python -m pytest tests/unit/ --collect-only -q --cov=backend --cov-report=term-missing 2>&1 || true
+    print(f'::error::TestClient import failed: {e}')
+    raise
+try:
+    from backend.api.main import app
+    print('::notice::app import OK')
+except Exception as e:
+    print(f'::error::app import failed: {e}')
+    raise
+try:
+    from backend.database.models import Base, get_db
+    print('::notice::models import OK')
+except Exception as e:
+    print(f'::error::models import failed: {e}')
+    raise
+try:
+    from backend.core.cache import cache_manager
+    print('::notice::cache import OK')
+except Exception as e:
+    print(f'::error::cache import failed: {e}')
+    raise
+print('::notice::ALL IMPORTS OK')
+" 2>&1
+        echo "::notice::pytest collect-only (no --cov)"
+        python -m pytest tests/unit/ --collect-only -q 2>&1 || echo "::warning::collect-only (no --cov) failed: exit $?"
+        echo "::notice::pytest collect-only (with --cov)"
+        python -m pytest tests/unit/ --collect-only -q --cov=backend --cov-report=term-missing 2>&1 || echo "::warning::collect-only (with --cov) failed: exit $?"
 
     - name: Run tests with pytest
       env:
@@ -145,7 +159,7 @@ except Exception as e:
         FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing 2>&1 || true
+        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing 2>&1
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
