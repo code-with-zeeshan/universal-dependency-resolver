@@ -373,9 +373,13 @@ def get_session_local():
     return _SessionLocal
 
 
-# Backward-compatible aliases — trigger lazy creation on first attribute access
-engine = None
-SessionLocal = None
+# Backward-compatible aliases — delegate to lazy getters
+def __getattr__(name):
+    if name == 'engine':
+        return get_engine()
+    if name == 'SessionLocal':
+        return get_session_local()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def init_db():

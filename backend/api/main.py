@@ -45,7 +45,7 @@ from backend.api.routes import auth
 from backend.api.middleware import setup_middleware
 from backend.logging_config import setup_logging
 from backend.tracing_config import setup_tracing
-from backend.database.models import engine
+from backend.database.models import get_engine
 
 # Configure structured logging
 setup_logging()
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 
     # Dispose of database connections
     try:
-        engine.dispose()
+        get_engine().dispose()
         logger.info("Database connections disposed")
     except Exception as e:
         logger.warning(f"Error disposing database connections: {e}")

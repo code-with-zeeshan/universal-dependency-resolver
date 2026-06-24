@@ -109,7 +109,7 @@ jobs:
         TESTING: "true"
         SECRET_KEY: test-secret-key-for-ci
         PYTHONPATH: .
-        FEAURES_ENABLE_CSRF: "false"
+        FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
         pytest tests/unit/ -v --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
@@ -407,6 +407,7 @@ jobs:
     steps:
     - name: Notify Slack on success
       if: success()
+      continue-on-error: true
       uses: 8398a7/action-slack@v3
       with:
         status: success
@@ -417,6 +418,7 @@ jobs:
 
     - name: Notify Slack on failure
       if: failure()
+      continue-on-error: true
       uses: 8398a7/action-slack@v3
       with:
         status: failure
