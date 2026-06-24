@@ -32,7 +32,7 @@ gputil==1.4.0
 py-cpuinfo==9.0.0
 psutil==5.9.6
 distro==1.8.0
-nvidia-ml-py==12.535.0
+nvidia-ml-py>=12.535
 
 # API Rate Limiting & Security
 slowapi==0.1.9
