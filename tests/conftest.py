@@ -3,7 +3,6 @@ Pytest configuration and shared fixtures for Universal Dependency Resolver tests
 """
 
 import pytest
-import asyncio
 import tempfile
 import os
 from pathlib import Path
@@ -315,12 +314,8 @@ def disable_rate_limiter():
 def cleanup_cache():
     """Automatically cleanup cache after each test"""
     yield
-    # Clear any cached data
-    if hasattr(cache_manager, "clear"):
-        try:
-            asyncio.get_event_loop().run_until_complete(cache_manager.clear())
-        except Exception:
-            pass
+    # CacheManager has no clear() method, so this is intentionally a no-op.
+    # If clear_pattern were needed, it would need an event loop-aware approach.
 
 
 # Markers for different test types
