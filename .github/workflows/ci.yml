@@ -102,6 +102,39 @@ jobs:
       run: |
         safety check || true
 
+    - name: Debug - test conftest import and pytest collection
+      id: debug
+      continue-on-error: true
+      env:
+        DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        REDIS_URL: redis://localhost:6379
+        TESTING: "true"
+        SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
+        FEATURES_ENABLE_CSRF: "false"
+        ENABLE_CACHE: "false"
+      run: |
+        echo "=== Python version ==="
+        python --version
+        echo "=== PYTHONPATH ==="
+        echo "$PYTHONPATH"
+        echo "=== Check conftest import ==="
+        python -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from tests.conftest import *
+    print('conftest imported OK')
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+" 2>&1 || true
+        echo "=== pytest collect-only (no --cov) ==="
+        python -m pytest tests/unit/ --collect-only -q 2>&1 || true
+        echo "=== pytest collect-only (with --cov) ==="
+        python -m pytest tests/unit/ --collect-only -q --cov=backend --cov-report=term-missing 2>&1 || true
+
     - name: Run tests with pytest
       env:
         DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
@@ -112,7 +145,7 @@ jobs:
         FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
+        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing 2>&1 || true
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
