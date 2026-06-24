@@ -102,7 +102,19 @@ jobs:
       run: |
         safety check || true
 
-    - name: Run tests with pytest
+    - name: Debug - print Python and package info
+      shell: python
+      run: |
+        import subprocess, sys, json
+        print(f"Python: {sys.version}")
+        print(f"PYTHONPATH: {__import__('os').environ.get('PYTHONPATH', 'unset')}")
+        result = subprocess.run([sys.executable, '-m', 'pip', 'list', '--format=columns'], capture_output=True, text=True)
+        print(result.stdout)
+        print(result.stderr)
+
+    - name: Run tests with pytest (without --cov first, for debugging)
+      id: pytest_no_cov
+      continue-on-error: true
       env:
         DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         REDIS_URL: redis://localhost:6379
@@ -112,7 +124,20 @@ jobs:
         FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        pytest tests/unit/ -v --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
+        python -m pytest tests/unit/ -v --tb=long 2>&1 | tail -200
+
+    - name: Run tests with pytest (with --cov)
+      if: always()
+      env:
+        DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        REDIS_URL: redis://localhost:6379
+        TESTING: "true"
+        SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
+        FEATURES_ENABLE_CSRF: "false"
+        ENABLE_CACHE: "false"
+      run: |
+        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
