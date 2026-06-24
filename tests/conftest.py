@@ -17,6 +17,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+# Set test environment before importing app
+os.environ.setdefault("ENABLE_CSRF", "false")
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only")
+
 # Import your application
 from backend.api.main import app
 from backend.database.models import Base, get_db
@@ -111,24 +116,6 @@ def sample_package_data():
         "homepage": "https://example.com",
         "license": "MIT",
         "dependencies": {"required": {"requests": ">=2.25.0", "click": ">=7.0"}},
-    }
-
-
-@pytest.fixture
-def sample_system_info():
-    """Sample system information for testing"""
-    return {
-        "os": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
-        "cpu": {"brand": "Intel Core i7", "physical_cores": 4, "logical_cores": 8},
-        "memory": {"total": 16777216000, "available": 8388608000},
-        "gpu": {
-            "available": True,
-            "devices": [{"name": "NVIDIA GTX 1060", "memory_mb": 6144}],
-            "cuda": "11.8",
-        },
-        "runtime_versions": {
-            "python": {"version": "3.9.16", "location": "/usr/bin/python3"}
-        },
     }
 
 

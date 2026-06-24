@@ -54,7 +54,7 @@ class TestGoModulesClient:
         with patch.object(
             client, "_get_versions_list", new_callable=AsyncMock, return_value=None
         ):
-            result = await client.get_package_info_async("github.com/example/mymodule")
+            result = await client.get_package_info_async("github.com/example/mymodule-noversions")
         assert result is None
 
     @pytest.mark.asyncio
@@ -67,7 +67,7 @@ class TestGoModulesClient:
         ), patch.object(
             client, "_get_latest_version", new_callable=AsyncMock, return_value=None
         ):
-            result = await client.get_package_info_async("github.com/example/mymodule")
+            result = await client.get_package_info_async("github.com/example/mymodule-nolatest")
         assert result is None
 
     @pytest.mark.asyncio
@@ -82,7 +82,7 @@ class TestGoModulesClient:
         ), patch.object(
             client, "_get_module_info", new_callable=AsyncMock, return_value=None
         ):
-            result = await client.get_package_info_async("github.com/example/mymodule")
+            result = await client.get_package_info_async("github.com/example/mymodule-nomodinfo")
         assert result is None
 
     def test_get_package_info_sync_success(self, client):

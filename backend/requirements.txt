@@ -32,23 +32,21 @@ gputil==1.4.0
 py-cpuinfo==9.0.0
 psutil==5.9.6
 distro==1.8.0
-pynvml==11.5.0
-pywin32; sys_platform == "win32"
+nvidia-ml-py==12.535.0
 
 # API Rate Limiting & Security
 slowapi==0.1.9
+email-validator==2.1.0
 
 # Additional dependencies for production
 python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-dotenv==1.0.0
-httpx==0.25.2
+bcrypt<5
 prometheus-client==0.19.0
+prometheus-fastapi-instrumentator==6.1.0
 sentry-sdk[fastapi]==1.39.1
 python-socketio==5.11.0
-aiofiles==23.2.1
-websockets==12.0
 
 # Export Templates
 jinja2==3.1.2

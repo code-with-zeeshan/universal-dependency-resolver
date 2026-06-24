@@ -36,31 +36,3 @@ groups:
           severity: critical
         annotations:
           summary: "Database connection pool almost exhausted"
-          
-      # Free tier specific alerts
-      - alert: ApproachingRenderLimit
-        expr: render_compute_hours_used > 600
-        for: 1m
-        labels:
-          severity: warning
-          tier: free
-        annotations:
-          summary: "Approaching Render.com free tier limit (750 hours)"
-          
-      - alert: UpstashRedisLimit
-        expr: upstash_commands_daily > 8000
-        for: 1m
-        labels:
-          severity: warning
-          tier: free
-        annotations:
-          summary: "Approaching Upstash daily command limit (10k)"
-          
-      - alert: NeonStorageLimit
-        expr: neon_storage_gb > 2.5
-        for: 1m
-        labels:
-          severity: warning
-          tier: free
-        annotations:
-          summary: "Approaching Neon storage limit (3GB)"

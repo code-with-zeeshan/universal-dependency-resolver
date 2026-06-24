@@ -65,8 +65,6 @@ class BaseDataSourceClient:
             self.session = aiohttp.ClientSession()
         return self.session
 
-    # ---- Cache helpers ----
-
     def _cache_get(self, key: str) -> Optional[Any]:
         if key in self._cache:
             data, timestamp = self._cache[key]
@@ -77,8 +75,6 @@ class BaseDataSourceClient:
 
     def _cache_set(self, key: str, data: Any):
         self._cache[key] = (data, datetime.now())
-
-    # ---- Rate limiting ----
 
     async def _throttle(self):
         now = datetime.now()
@@ -92,8 +88,6 @@ class BaseDataSourceClient:
                 )
                 await asyncio.sleep(sleep_for)
         self._request_timestamps.append(now)
-
-    # ---- HTTP helpers ----
 
     async def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
         """Actual HTTP request without circuit breaker."""
@@ -145,7 +139,7 @@ class BaseDataSourceClient:
                 )
                 return None
 
-        result = await BaseDataSourceClient._make_request(self, method, url, **kwargs)
+        result = await self._make_request(method, url, **kwargs)
 
         if result is None:
             self._circuit_failure_count += 1

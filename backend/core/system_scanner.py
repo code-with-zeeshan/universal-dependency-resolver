@@ -7,6 +7,7 @@ import re
 import asyncio
 import socket
 import shutil
+import sys
 from typing import Dict, List, Optional, Any, Union, Tuple
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
@@ -979,16 +980,21 @@ class SystemScanner:
         return opencl_info if opencl_info["available"] else None
 
     def _get_opencl_devices(self) -> List[Dict[str, Any]]:
-        """Get OpenCL device list"""
+        """Get OpenCL device list by parsing clinfo output."""
         devices = []
-
         try:
-            # This is a simplified version
-            # In production, use pyopencl or parse clinfo output properly
-            pass
+            import subprocess
+            result = subprocess.run(
+                ["clinfo", "--raw"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split("\n"):
+                    if "=" in line:
+                        key, val = line.split("=", 1)
+                        devices.append({"key": key.strip(), "value": val.strip()})
         except Exception:
             pass
-
         return devices
 
     def _detect_vulkan_info(self) -> Optional[Dict[str, Any]]:
@@ -2307,7 +2313,7 @@ class SystemScanner:
                     output = subprocess.check_output(
                         ["apt", "list", "--upgradable"]
                     ).decode()
-                    count = len([l for l in output.split("\n") if "upgradable" in l])
+                    count = len([line for line in output.split("\n") if "upgradable" in line])
                     if count > 0:
                         updates["available"] = True
                         updates["count"] = count

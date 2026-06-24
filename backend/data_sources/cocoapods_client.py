@@ -59,7 +59,10 @@ class CocoaPodsClient(BaseDataSourceClient):
         url = f"{self.base_url}/pods"
         params = {"query": query}
 
-        data = await self._get(url, params=params)
+        try:
+            data = await self._get(url, params=params)
+        except Exception:
+            return []
         if not data:
             return []
 

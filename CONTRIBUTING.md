@@ -48,8 +48,8 @@ We pledge to make participation in our project a harassment-free experience for 
 Before contributing, ensure you have:
 
 - **Git** installed and configured
-- **Python 3.9+** for backend development
-- **Node.js 16+** for frontend development
+- **Python 3.11+** for backend development
+- **Node.js 18+** for frontend development
 - **Docker & Docker Compose** for local development
 - **PostgreSQL 15+** (or use Docker)
 - **Redis 7+** (or use Docker)
@@ -58,7 +58,7 @@ Before contributing, ensure you have:
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/yourusername/universal-dependency-resolver.git
+git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
 cd universal-dependency-resolver
 
 # 2. Set up development environment
@@ -451,18 +451,26 @@ class TestConflictResolver:
 ```bash
 // Component test example
 import { mount } from '@vue/test-utils'
-import PackageSearch from '@/components/PackageSearch.vue'
+import SystemInfo from '@/components/SystemInfo.vue'
+import systemService from '@/services/systemService'
 
-describe('PackageSearch.vue', () => {
-  it('renders search input', () => {
-    const wrapper = mount(PackageSearch)
-    expect(wrapper.find('input[type="text"]').exists()).toBe(true)
+jest.mock('@/services/systemService')
+
+describe('SystemInfo.vue', () => {
+  it('renders system info section', () => {
+    const wrapper = mount(SystemInfo)
+    expect(wrapper.text()).toContain('System Information')
   })
 
-  it('emits search event on submit', async () => {
-    const wrapper = mount(PackageSearch)
-    await wrapper.find('form').trigger('submit.prevent')
-    expect(wrapper.emitted('search')).toBeTruthy()
+  it('displays system data after loading', async () => {
+    systemService.getSystemInfo.mockResolvedValue({
+      platform: { system: 'Linux', release: '6.2' },
+      cpu: { brand: 'Intel Core i7', count: 4 },
+      memory: { total: 16000000000, available: 8000000000 }
+    })
+    const wrapper = mount(SystemInfo)
+    await new Promise(process.nextTick)
+    expect(wrapper.text()).toContain('Linux')
   })
 })
 ```

@@ -13,18 +13,18 @@ class TestAPKClient:
     @pytest.fixture
     def sample_package_data(self):
         return {
-            "pkg": {
-                "name": "nginx",
-                "version": "1.24.0-r0",
-                "description": "small, powerful, scalable web/proxy server",
-                "url": "https://nginx.org",
-                "license": "BSD-2-Clause",
-                "arch": "x86_64",
-                "origin": "nginx",
-                "maintainer": "Natanael Copa",
-                "build_time": 1680000000,
-            },
-            "dependencies": "libc.musl-x86_64.so.1,libssl3>=3.0.0",
+            "name": "nginx",
+            "version": "1.24.0-r0",
+            "description": "small, powerful, scalable web/proxy server",
+            "url": "https://nginx.org",
+            "license": "BSD-2-Clause",
+            "architecture": "x86_64",
+            "origin": "nginx",
+            "maintainer": "Natanael Copa",
+            "build_time": 1680000000,
+            "size": 0,
+            "installed_size": 0,
+            "depends": "libc.musl-x86_64.so.1,libssl3>=3.0.0",
             "provides": "nginx=1.24.0-r0",
         }
 
@@ -32,13 +32,13 @@ class TestAPKClient:
     async def test_get_package_info_async_success(self, client, sample_package_data):
         with patch.object(
             client,
-            "cached_get",
+            "_get_apkindex",
             new_callable=AsyncMock,
-            return_value=sample_package_data,
+            return_value={"nginx": sample_package_data},
         ):
             result = await client.get_package_info_async("nginx")
         assert result is not None
-        assert result["pkg"]["name"] == "nginx"
+        assert result["name"] == "nginx"
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
@@ -57,7 +57,7 @@ class TestAPKClient:
         ):
             result = client.get_package_info("nginx")
         assert result is not None
-        assert result["pkg"]["name"] == "nginx"
+        assert result["name"] == "nginx"
 
     def test_package_exists_returns_true(self, client, sample_package_data):
         with patch.object(
@@ -97,7 +97,7 @@ class TestAPKClient:
     @pytest.mark.asyncio
     async def test_search_packages_returns_empty_on_exception(self, client):
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, side_effect=Exception("Error")
+            client, "_get_apkindex", new_callable=AsyncMock, side_effect=Exception("Error")
         ):
             results = await client.search_packages("nginx")
         assert results == []

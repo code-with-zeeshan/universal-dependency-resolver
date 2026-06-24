@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
 from jose import jwt
 
+from backend.settings import SECRET_KEY, ALGORITHM
 from backend.api.auth import (
     AuthService,
     verify_password,
@@ -30,13 +31,13 @@ class TestAuthService:
     def test_create_access_token(self):
         data = {"sub": "testuser"}
         token = create_access_token(data)
-        decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         assert decoded["sub"] == "testuser"
         assert "exp" in decoded
 
     def test_create_refresh_token(self):
         data = {"sub": "testuser"}
         token = create_refresh_token(data)
-        decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         assert decoded["sub"] == "testuser"
         assert decoded["type"] == "refresh"

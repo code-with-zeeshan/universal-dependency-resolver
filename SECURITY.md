@@ -48,7 +48,7 @@ If you discover a security vulnerability in the Universal Dependency Resolver, p
 
 ### How to Report
 1. **DO NOT** create a public GitHub issue
-2. Email security@universal-dependency-resolver.dev with details
+2. Report via [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) or open an issue with the label "security"
 3. Include the following information:
    - Description of the vulnerability
    - Steps to reproduce
@@ -90,16 +90,15 @@ If you discover a security vulnerability in the Universal Dependency Resolver, p
 
 ## 📞 Contact Information
 
-- **Security Issues**: security@universal-dependency-resolver.dev
-- **General Support**: support@universal-dependency-resolver.dev
-- **PGP Key**: Available at https://universal-dependency-resolver.dev/pgp
+- **Security Issues**: [GitHub Issues](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues) (label: security)
+- **General Support**: [GitHub Discussions](https://github.com/code-with-zeeshan/universal-dependency-resolver/discussions)
 
 ## 📋 Security Updates
 
 We maintain a security advisory database for known vulnerabilities:
 
-- [Security Advisories](https://github.com/yourusername/universal-dependency-resolver/security/advisories)
-- [Vulnerability Database](https://vulnerabilities.universal-dependency-resolver.dev)
+- [Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories)
+- [Vulnerability Database](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories)
 
 ## 🔄 Responsible Disclosure Timeline
 
@@ -120,4 +119,4 @@ We use the following severity levels:
 
 ## 🤝 Security Hall of Fame
 
-We recognize security researchers who help make our project safer. See our [Security Hall of Fame](https://universal-dependency-resolver.dev/security/hall-of-fame) for acknowledged contributors.
+We recognize security researchers who help make our project safer. See our [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) for acknowledged contributions.

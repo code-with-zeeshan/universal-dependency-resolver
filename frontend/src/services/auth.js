@@ -82,14 +82,12 @@ class AuthService {
   async login(credentials) {
     try {
       const response = await this.client.post('/auth/login', credentials)
-      const { access_token, refresh_token, user } = response.data
+      const { access_token, refresh_token } = response.data
 
       this.setTokens(access_token, refresh_token)
-      this.setUser(user)
 
       return {
         success: true,
-        user,
         tokens: { access_token, refresh_token }
       }
     } catch (error) {
@@ -105,7 +103,7 @@ class AuthService {
       const response = await this.client.post('/auth/register', userData)
       return {
         success: true,
-        user: response.data.user,
+        user: response.data,
         message: 'Registration successful'
       }
     } catch (error) {

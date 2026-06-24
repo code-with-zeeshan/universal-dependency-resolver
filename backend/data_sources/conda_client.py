@@ -8,7 +8,7 @@ import re
 import yaml
 import tarfile
 import io
-from packaging import version
+from packaging.version import parse
 from urllib.parse import urljoin
 from ..core.utils import normalize_package_name, parse_version, run_async
 from ..settings import CONDA_CHANNELS, CACHE_TTL, USER_AGENTS
@@ -130,15 +130,15 @@ class CondaClient(BaseDataSourceClient):
 
             attrs = file_info.get("attrs", {})
             platform = attrs.get("subdir", "noarch")
-            version_map[version]["platforms"].add(platform)
+            version_map[version_str]["platforms"].add(platform)
 
             if "py" in attrs.get("build", ""):
                 py_match = re.search(r"py(\d)(\d+)", attrs.get("build", ""))
                 if py_match:
                     py_version = f"{py_match.group(1)}.{py_match.group(2)}"
-                    version_map[version]["python_versions"].add(py_version)
+                    version_map[version_str]["python_versions"].add(py_version)
 
-            version_map[version]["builds"].append(
+            version_map[version_str]["builds"].append(
                 {
                     "build": attrs.get("build"),
                     "build_number": attrs.get("build_number"),

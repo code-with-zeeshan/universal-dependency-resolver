@@ -34,7 +34,7 @@ class TestHomebrewClient:
     async def test_get_package_info_async_success(self, client, sample_formula_data):
         with patch.object(
             client,
-            "cached_get",
+            "_get",
             new_callable=AsyncMock,
             return_value=sample_formula_data,
         ):
@@ -48,19 +48,19 @@ class TestHomebrewClient:
     ):
         with patch.object(
             client,
-            "cached_get",
+            "_get",
             new_callable=AsyncMock,
             return_value=sample_formula_data,
         ) as mock_get:
             await client.get_package_info_async("curl", PackageType.FORMULA)
         mock_get.assert_called_once()
-        cache_key, url = mock_get.call_args[0]
-        assert "curl" in cache_key
+        url = mock_get.call_args[0][0]
+        assert "curl" in url
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=None
+            client, "_get", new_callable=AsyncMock, return_value=None
         ):
             result = await client.get_package_info_async(
                 "nonexistent", PackageType.FORMULA
@@ -94,19 +94,14 @@ class TestHomebrewClient:
             assert client.package_exists("nonexistent", PackageType.FORMULA) is False
 
     def test_package_exists_handles_exception(self, client):
-        with patch.object(
-            client,
-            "get_package_info_async",
-            new_callable=AsyncMock,
-            side_effect=Exception("Error"),
-        ):
+        with patch("requests.head", side_effect=Exception("Error")):
             assert client.package_exists("curl", PackageType.FORMULA) is False
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_formula_data):
         with patch.object(
             client,
-            "cached_get",
+            "_get",
             new_callable=AsyncMock,
             return_value=[sample_formula_data],
         ):
@@ -116,7 +111,7 @@ class TestHomebrewClient:
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=[]
+            client, "_get", new_callable=AsyncMock, return_value=[]
         ):
             results = await client.search_packages("nonexistent")
         assert results == []
@@ -124,7 +119,7 @@ class TestHomebrewClient:
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_exception(self, client):
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, side_effect=Exception("Error")
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
         ):
             results = await client.search_packages("curl")
         assert results == []
@@ -138,8 +133,8 @@ class TestHomebrewClient:
             return_value=sample_formula_data,
         ):
             deps = await client.get_dependencies("curl", PackageType.FORMULA)
-        assert "dependencies" in deps
-        assert "openssl" in deps["dependencies"]
+        assert "runtime" in deps
+        assert "openssl" in deps["runtime"]
 
     @pytest.mark.asyncio
     async def test_get_dependencies_empty_on_error(self, client):

@@ -1,306 +1,61 @@
 <template>
-  <div id="app">
-    <div class="container mx-auto p-4">
-      <h1 class="text-3xl font-bold mb-8 text-center">
-        Universal Dependency Resolver
-      </h1>
-      
-      <div v-if="errorMessage" class="text-red-600 text-center mb-6 error-message">
-        {{ errorMessage }}
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1 class="text-lg font-bold">UDR</h1>
       </div>
-      
-      <!-- System Info Section -->
-      <SystemInfo @system-updated="updateSystemInfo" />
-      
-      <!-- Package Input Section -->
-      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Add Packages</h2>
-        
-        <div class="flex gap-4 mb-4">
-          <input
-            v-model="newPackage.name"
-            placeholder="Package name (e.g., tensorflow, tensorrt)"
-            class="form-input flex-1"
-            @keyup.enter="addPackage"
-          />
-          
-          <select v-model="newPackage.ecosystem" class="form-select">
-            <option value="">Auto-detect</option>
-            <option value="pypi">PyPI (Python)</option>
-            <option value="npm">NPM (Node.js)</option>
-            <option value="conda">Conda</option>
-            <option value="maven">Maven (Java)</option>
-            <option value="crates">Crates (Rust)</option>
-          </select>
-          
-          <button @click="addPackage" class="btn btn-primary">
-            Add Package
-          </button>
-        </div>
-        
-        <!-- Package List -->
-        <div v-if="packages.length > 0" class="space-y-2">
-          <div 
-            v-for="(pkg, index) in packages" 
-            :key="pkg.name + '-' + (pkg.ecosystem || 'auto')"
-            class="flex items-center justify-between p-3 bg-gray-50 rounded"
-          >
-            <span>
-              {{ pkg.name }}
-              <span v-if="pkg.ecosystem" class="text-sm text-gray-600">
-                ({{ pkg.ecosystem }})
-              </span>
-            </span>
-            <button 
-              @click="removePackage(index)"
-              class="text-red-600 hover:text-red-800"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Resolve Button -->
-      <div class="text-center mb-6">
-        <button 
-          @click="resolveDependencies"
-          :disabled="packages.length === 0 || resolving"
-          class="btn btn-primary btn-lg"
-        >
-          {{ resolving ? 'Resolving...' : 'Resolve Dependencies' }}
+      <nav class="sidebar-nav">
+        <button v-for="item in navItems" :key="item.key"
+                @click="activeSection = item.key"
+                class="nav-btn" :class="{ 'nav-active': activeSection === item.key }">
+          <component :is="item.icon" class="nav-icon" />
+          <span>{{ item.label }}</span>
         </button>
-      </div>
-      
-      <!-- Results Section -->
-      <div v-if="resolvedPackages" class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Resolved Dependencies</h2>
-        
-        <!-- Resolved Packages -->
-        <div class="mb-6">
-          <h3 class="font-semibold mb-2">Packages</h3>
-          <div class="space-y-1">
-            <div 
-              v-for="(info, name) in resolvedPackages.resolved_packages" 
-              :key="name"
-              class="flex justify-between p-2 bg-gray-50 rounded"
-            >
-              <div>
-                <span>{{ name }}</span>
-                <div v-if="info.system_requirements" class="text-sm text-gray-600 mt-1">
-                  <span>Python: {{ info.system_requirements.python_versions?.join(', ') || 'Any' }}</span>
-                  <span v-if="info.system_requirements.cuda_versions" class="ml-2">
-                    CUDA: {{ info.system_requirements.cuda_versions.join(', ') }}
-                  </span>
-                  <span v-if="info.system_requirements.node" class="ml-2">
-                    Node: {{ info.system_requirements.node.version_spec || 'Any' }}
-                  </span>
-                </div>
-              </div>
-              <span class="text-sm text-gray-600">
-                {{ info.version }} ({{ info.ecosystem }})
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Warnings -->
-        <div v-if="resolvedPackages.warnings?.length > 0" class="mb-6">
-          <h3 class="font-semibold mb-2 text-yellow-600">Warnings</h3>
-          <ul class="list-disc list-inside">
-            <li v-for="(warning, index) in resolvedPackages.warnings" :key="index">
-              {{ warning }}
-            </li>
-          </ul>
-        </div>
-        
-        <!-- Export Options -->
-        <div>
-          <h3 class="font-semibold mb-4">Export Configuration</h3>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <button 
-              v-for="format in exportFormats" 
-              :key="format"
-              @click="exportConfig(format)"
-              :disabled="exporting"
-              class="btn btn-secondary btn-sm"
-            >
-              {{ format }}
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Export Preview Modal -->
-      <div v-if="exportPreview" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-hidden">
-          <div class="p-4 border-b flex justify-between items-center">
-            <h3 class="text-lg font-semibold">{{ exportPreview.format }}</h3>
-            <button @click="exportPreview = null" class="text-gray-500 hover:text-gray-700">
-              ✕
-            </button>
-          </div>
-          
-          <div class="p-4 overflow-auto" style="max-height: 70vh;">
-            <pre class="bg-gray-100 p-4 rounded overflow-x-auto">{{ exportPreview.content }}</pre>
-          </div>
-          
-          <div class="p-4 border-t flex justify-end gap-2">
-            <button @click="copyToClipboard" class="btn btn-secondary">
-              Copy to Clipboard
-            </button>
-            <button @click="downloadFile" class="btn btn-primary">
-              Download
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <DashboardPanel v-if="activeSection === 'dashboard'" @navigate="activeSection = $event" />
+      <PackagePanel v-if="activeSection === 'packages'" />
+      <ResolvePanel v-if="activeSection === 'resolve'" />
+      <SystemPanel v-if="activeSection === 'system'" />
+      <AuthPanel v-if="activeSection === 'auth'" />
+    </main>
   </div>
 </template>
 
 <script>
-import SystemInfo from './components/SystemInfo.vue';
-import systemService from './services/systemService';
-import packageService from './services/packageService';
+import { ref } from 'vue'
+import DashboardPanel from './components/DashboardPanel.vue'
+import PackagePanel from './components/PackagePanel.vue'
+import ResolvePanel from './components/ResolvePanel.vue'
+import SystemPanel from './components/SystemPanel.vue'
+import AuthPanel from './components/AuthPanel.vue'
+import {
+  HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon,
+  ServerIcon, LockClosedIcon,
+} from './icons'
 
 export default {
   name: 'App',
-  components: { SystemInfo },
-  data() {
-    return {
-      systemInfo: null,
-      scanning: false,
-      packages: [],
-      newPackage: {
-        name: '',
-        ecosystem: ''
-      },
-      resolving: false,
-      exporting: false,
-      resolvedPackages: null,
-      exportFormats: [],
-      exportPreview: null,
-      errorMessage: null
-    };
+  components: {
+    DashboardPanel, PackagePanel, ResolvePanel, SystemPanel, AuthPanel,
+    HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon, ServerIcon, LockClosedIcon,
   },
-  async mounted() {
-    try {
-      this.exportFormats = await packageService.getExportFormats();
-      this.errorMessage = null;
-    } catch (error) {
-      console.error('Failed to load export formats:', error);
-      this.errorMessage = 'Failed to load export formats. Please try again.';
-    }
-  },
-  methods: {
-    updateSystemInfo(systemInfo) {
-      this.systemInfo = systemInfo;
-      this.errorMessage = null;
-    },
-    async scanSystem() {
-      this.scanning = true;
-      try {
-        this.systemInfo = await systemService.getSystemInfo();
-        this.errorMessage = null;
-      } catch (error) {
-        console.error('System scan failed:', error);
-        this.errorMessage = 'Failed to scan system. Please try again.';
-      } finally {
-        this.scanning = false;
-      }
-    },
-    addPackage() {
-      if (this.newPackage.name) {
-        this.packages.push({
-          name: this.newPackage.name,
-          ecosystem: this.newPackage.ecosystem || null
-        });
-        this.newPackage.name = '';
-        this.newPackage.ecosystem = '';
-        this.errorMessage = null;
-      } else {
-        this.errorMessage = 'Package name is required.';
-      }
-    },
-    removePackage(index) {
-      this.packages.splice(index, 1);
-      this.resolvedPackages = null;
-      this.exportPreview = null;
-      this.errorMessage = null;
-    },
-    async resolveDependencies() {
-      if (this.packages.length === 0) {
-        this.errorMessage = 'No packages selected.';
-        return;
-      }
-      this.resolving = true;
-      try {
-          const result = await packageService.resolveDependencies(
-          this.packages,
-          this.systemInfo,
-          { preferCompatibility: true }
-        );
-        this.resolvedPackages = result.data || result;
-        this.errorMessage = null;
-      } catch (error) {
-        console.error('Dependency resolution failed:', error);
-        this.errorMessage = 'Failed to resolve dependencies. Please try again.';
-      } finally {
-        this.resolving = false;
-      }
-    },
-    async exportConfig(format) {
-      if (!this.resolvedPackages) {
-        this.errorMessage = 'No resolved packages to export.';
-        return;
-      }
-      this.exporting = true;
-      try {
-        const response = await packageService.exportConfiguration(
-          this.resolvedPackages,
-          format,
-          this.systemInfo,
-          { pin_versions: true, include_index_url: true }
-        );
-        this.exportPreview = { format: format, content: response.content };
-        this.errorMessage = null;
-      } catch (error) {
-        console.error('Export failed:', error);
-        this.errorMessage = `Failed to export as ${format}. Please try again.`;
-      } finally {
-        this.exporting = false;
-      }
-    },
-    copyToClipboard() {
-      if (!this.exportPreview) return;
-      navigator.clipboard.writeText(this.exportPreview.content)
-        .then(() => {
-          this.errorMessage = 'Copied to clipboard!';
-          setTimeout(() => { this.errorMessage = null; }, 2000);
-        })
-        .catch(err => {
-          console.error('Failed to copy:', err);
-          this.errorMessage = 'Failed to copy to clipboard.';
-        });
-    },
-    downloadFile() {
-      if (!this.exportPreview) return;
-      const blob = new Blob([this.exportPreview.content], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = this.exportPreview.format;
-      document.body.appendChild(a);
-      try {
-        a.click();
-      } finally {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    }
+  setup() {
+    const activeSection = ref('dashboard')
+
+    const navItems = [
+      { key: 'dashboard', label: 'Dashboard', icon: HomeIcon },
+      { key: 'packages', label: 'Packages', icon: MagnifyingGlassIcon },
+      { key: 'resolve', label: 'Resolve', icon: CheckBadgeIcon },
+      { key: 'system', label: 'System', icon: ServerIcon },
+      { key: 'auth', label: 'Auth', icon: LockClosedIcon },
+    ]
+
+    return { activeSection, navItems }
   }
-};
+}
 </script>
 
 <style>
@@ -308,40 +63,202 @@ export default {
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 200px;
+  background: #1f2937;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 1.25rem;
+  border-bottom: 1px solid #374151;
+}
+
+.sidebar-nav {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.15s;
+  width: 100%;
+  text-align: left;
+}
+
+.nav-btn:hover {
+  background: #374151;
+  color: white;
+}
+
+.nav-active {
+  background: #3b82f6;
+  color: white;
+}
+
+.nav-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.main-content {
+  flex: 1;
+  padding: 1.5rem;
+  background: #f3f4f6;
+  overflow-y: auto;
+}
+
+.panel {
+  max-width: 1200px;
+}
+
+.panel-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+}
+
+.tab:hover {
+  color: #374151;
+}
+
+.tab-active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+.stat-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #6b7280;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
 .btn {
-  @apply px-4 py-2 rounded font-medium transition-colors duration-200;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  font-size: 0.875rem;
 }
 
 .btn-primary {
-  @apply bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed;
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
-  @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #d1d5db;
 }
 
 .btn-sm {
-  @apply px-3 py-1 text-sm;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .btn-lg {
-  @apply px-6 py-3 text-lg;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
 }
 
 .form-input {
-  @apply px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .form-select {
-  @apply px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  outline: none;
 }
 
-.error-message {
-  animation: fadeIn 0.5s;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.error-msg {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
 }
 </style>

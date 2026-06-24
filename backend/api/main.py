@@ -1,11 +1,11 @@
 # backend/api/main.py
 import os
-import logging
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Dict, Optional
-from starlette.responses import Response
+from starlette.responses import Response, FileResponse, HTMLResponse
 
 import structlog
 
@@ -50,10 +50,6 @@ from backend.database.models import engine
 # Configure structured logging
 setup_logging()
 logger = structlog.get_logger(__name__)
-
-# Keep stdlib logger for backward compatibility
-_stdlib_logger = logging.getLogger(__name__)
-
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -225,10 +221,11 @@ async def validate_environment() -> None:
 
     # Test database connection
     try:
-        from backend.database.models import engine
+        from backend.database.models import get_engine
+        from sqlalchemy import text
 
-        with engine.connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
+        with get_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
         logger.info("Database connection successful")
     except Exception as e:
         raise RuntimeError(f"Database connection failed: {e}")
@@ -410,6 +407,22 @@ async def log_requests(request: Request, call_next):
 
     response.headers["X-Process-Time"] = f"{duration_ms / 1000:.3f}"
     return response
+
+
+# Serve frontend static files if the dist directory exists
+frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if frontend_dist.is_dir():
+    @app.route("/{full_path:path}")
+    async def serve_frontend(request: Request, full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        file_path = frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        index = frontend_dist / "index.html"
+        if index.is_file():
+            return HTMLResponse(content=index.read_text())
+        return JSONResponse({"detail": "Frontend not built"}, status_code=404)
 
 
 if __name__ == "__main__":

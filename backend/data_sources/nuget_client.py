@@ -168,7 +168,10 @@ class NuGetClient(BaseDataSourceClient):
         if target_framework:
             params["supportedFramework"] = target_framework
 
-        data = await self._get(self.search_url, params=params)
+        try:
+            data = await self._get(self.search_url, params=params)
+        except Exception:
+            return []
         if not data or "data" not in data:
             return []
 

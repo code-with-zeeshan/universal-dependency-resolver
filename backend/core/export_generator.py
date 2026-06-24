@@ -27,8 +27,6 @@ class PackageEcosystem(Enum):
     PACKAGIST = "packagist"
     NUGET = "nuget"
     HOMEBREW = "homebrew"
-    CONAN = "conan"
-    VCPKG = "vcpkg"
     SYSTEM = "system"
     UNKNOWN = "unknown"
 

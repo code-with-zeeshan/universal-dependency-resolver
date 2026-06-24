@@ -278,8 +278,7 @@ def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(async_wrapper(*args, **kwargs))
+            return asyncio.run(async_wrapper(*args, **kwargs))
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper

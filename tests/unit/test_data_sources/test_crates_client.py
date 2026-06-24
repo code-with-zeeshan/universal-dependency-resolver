@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from backend.data_sources.crates_client import CratesClient
 
@@ -17,18 +18,24 @@ class TestCratesClient:
                 "id": "serde",
                 "name": "serde",
                 "description": "A generic serialization framework",
-                "latest_version": "1.0.188",
+                "max_version": "1.0.188",
                 "repository": "https://github.com/serde-rs/serde",
                 "max_stars": 8000,
                 "downloads": 50000000,
                 "homepage": "https://serde.rs",
                 "license": "MIT",
                 "documentation": "https://docs.rs/serde",
+                "keywords": [],
+                "categories": [],
+                "created_at": "2023-09-01",
+                "updated_at": "2023-09-01",
+                "recent_downloads": 1000,
             },
             "versions": [
                 {
                     "num": "1.0.188",
                     "created_at": "2023-09-01",
+                    "updated_at": "2023-09-01",
                     "license": "MIT",
                     "downloads": 1000000,
                     "yanked": False,
@@ -36,6 +43,7 @@ class TestCratesClient:
                 {
                     "num": "1.0.187",
                     "created_at": "2023-08-15",
+                    "updated_at": "2023-08-15",
                     "license": "MIT",
                     "downloads": 900000,
                     "yanked": False,
@@ -51,8 +59,16 @@ class TestCratesClient:
                     "id": "serde",
                     "name": "serde",
                     "description": "Serialization framework",
-                    "latest_version": "1.0.188",
+                    "max_version": "1.0.188",
                     "downloads": 50000000,
+                    "recent_downloads": 1000,
+                    "homepage": "https://serde.rs",
+                    "repository": "https://github.com/serde-rs/serde",
+                    "documentation": "https://docs.rs/serde",
+                    "keywords": [],
+                    "categories": [],
+                    "created_at": "2023-09-01",
+                    "updated_at": "2023-09-01",
                 }
             ],
             "meta": {"total": 1},
@@ -75,9 +91,10 @@ class TestCratesClient:
             client, "_get", new_callable=AsyncMock, return_value=sample_search_results
         ) as mock_get:
             await client.search_packages("serde", limit=5)
-        url = mock_get.call_args[0][0]
-        assert "q=serde" in url
-        assert "per_page=5" in url
+        args, kwargs = mock_get.call_args
+        params = kwargs.get("params", {})
+        assert params.get("q") == "serde"
+        assert params.get("per_page") == 5
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
@@ -101,48 +118,57 @@ class TestCratesClient:
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
         ):
-            result = await client.get_package_info("serde")
+            with patch.object(client, "_get_crate_owners", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0):
+                    result = await client.get_package_info("serde")
         assert result is not None
         assert result["name"] == "serde"
-        assert result["latest_version"] == "1.0.188"
+        assert result["info"]["latest_version"] == "1.0.188"
 
     @pytest.mark.asyncio
     async def test_get_package_info_calls_correct_url(self, client, sample_crate_data):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
         ) as mock_get:
-            await client.get_package_info("serde")
+            with patch.object(client, "_get_crate_owners", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0):
+                    await client.get_package_info("serde")
         url = mock_get.call_args[0][0]
         assert "/api/v1/crates/serde" in url
 
     @pytest.mark.asyncio
     async def test_get_package_info_not_found(self, client):
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-            result = await client.get_package_info("nonexistent")
-        assert result is None
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_package_info("nonexistent")
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_get_package_info_handles_missing_crate_key(self, client):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value={"versions": []}
         ):
-            result = await client.get_package_info("bad-data")
-        assert result is None
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_package_info("bad-data")
+        assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
     async def test_get_package_versions_success(self, client, sample_crate_data):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
         ):
-            versions = await client.get_package_versions("serde")
+            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+                    versions = await client.get_package_versions("serde")
         assert len(versions) == 2
-        assert versions[0]["num"] == "1.0.188"
+        assert versions[0]["version"] == "1.0.188"
 
     @pytest.mark.asyncio
     async def test_get_package_versions_empty_on_no_data(self, client):
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-            versions = await client.get_package_versions("nonexistent")
-        assert versions == []
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_package_versions("nonexistent")
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_get_dependencies_success(self, client):
@@ -166,7 +192,7 @@ class TestCratesClient:
     async def test_get_dependencies_empty_on_error(self, client):
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             deps = await client.get_dependencies("nonexistent", "1.0")
-        assert deps == {}
+        assert deps == {"normal": [], "dev": [], "build": []}
 
     @pytest.mark.asyncio
     async def test_check_compatibility_returns_result(self, client, sample_crate_data):

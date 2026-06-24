@@ -93,7 +93,10 @@ class RubyGemsClient(BaseDataSourceClient):
         url = f"{self.base_url}/search.json"
         params = {"query": query}
 
-        data = await self._get(url, params=params)
+        try:
+            data = await self._get(url, params=params)
+        except Exception:
+            return []
         if not data:
             return []
 

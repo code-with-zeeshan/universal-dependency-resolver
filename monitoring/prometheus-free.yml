@@ -1,5 +1,6 @@
 # monitoring/prometheus-free.yml
 # Configuration for Grafana Cloud Free
+# Alert rules are in monitoring/alert_rules.yml — do not duplicate them here.
 remote_write:
   - url: https://prometheus-prod.grafana.net/api/prom/push
     basic_auth:
@@ -12,17 +13,3 @@ scrape_configs:
       - targets: ['your-app.onrender.com']
     metrics_path: '/metrics'
     scrape_interval: 60s  # Reduce frequency for free tier
-
-# monitoring/alerts-free.yml
-groups:
-  - name: free_tier_alerts
-    rules:
-      - alert: ApproachingRenderLimit
-        expr: render_compute_hours_used > 600
-        annotations:
-          summary: "Approaching Render.com free tier limit"
-      
-      - alert: UpstashRedisLimit
-        expr: upstash_commands_daily > 8000
-        annotations:
-          summary: "Approaching Upstash daily command limit"

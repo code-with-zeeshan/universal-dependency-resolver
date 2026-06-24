@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Jaeger auto-provisioning via docker-compose monitoring profile
   - Grafana Jaeger datasource auto-provisioned
 - **Infrastructure**:
-  - `scripts/validate_k8s.sh` — kind cluster creation, manifest validation, cleanup
+  - `scripts/validate_k8s.sh` — kind cluster creation, manifest validation, cleanup (planned — not committed)
   - `pyproject.toml` — project build metadata
 - **Testing**:
   - Middleware tests: 29 tests covering CorrelationID, CSRF, AuditLog, SecurityHeaders, Logging, RequestSizeLimit, GetClientIP

@@ -61,13 +61,20 @@ class APTClient(BaseDataSourceClient):
 
     def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
-        return True
+        try:
+            result = run_async(self.get_package_info_async(package_name))
+            return result is not None
+        except Exception:
+            return False
 
     async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
         query = normalize_package_name(query)
         results = []
 
-        packages = await self._get_packages_list("stable", "main")
+        try:
+            packages = await self._get_packages_list("stable", "main")
+        except Exception:
+            return results
         if not packages:
             return results
 

@@ -17,7 +17,6 @@ from backend.core.utils import (
 import json
 import hashlib
 from collections import defaultdict
-import re
 import aiohttp
 
 from backend.data_sources.pypi_client import PyPIClient
@@ -980,10 +979,17 @@ class DataAggregator:
         """Search for packages across multiple ecosystems"""
         query = normalize_package_name(query)
         if ecosystems:
-            ecosystems = [
-                Ecosystem(sanitize_ecosystem_name(e)) if isinstance(e, str) else e
-                for e in ecosystems
-            ]
+            valid_ecosystems = []
+            for e in ecosystems:
+                if isinstance(e, str):
+                    try:
+                        valid_ecosystems.append(Ecosystem(sanitize_ecosystem_name(e)))
+                    except ValueError:
+                        logger.warning(f"Invalid ecosystem: {e}")
+                        continue
+                else:
+                    valid_ecosystems.append(e)
+            ecosystems = valid_ecosystems
         else:
             ecosystems = [
                 e for e in Ecosystem if e not in [Ecosystem.DOCS, Ecosystem.CUSTOM_DB]

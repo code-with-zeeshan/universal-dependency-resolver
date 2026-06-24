@@ -27,7 +27,7 @@ def parse_version(version_str: str) -> Optional[version.Version]:
     try:
         return version.parse(version_str)
     except Exception as e:
-        logger.error(f"Failed to parse version {version_str}: {e}")
+        logger.warning(f"Failed to parse version {version_str}: {e}")
         return None
 
 

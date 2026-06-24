@@ -51,6 +51,11 @@ class ConflictResolver:
         solver_timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Resolve package dependencies and conflicts."""
+        # Clear previous solver state
+        self.version_vars.clear()
+        self.version_to_int.clear()
+        self.int_to_version.clear()
+
         resolution_context = {
             "package_count": len(packages),
             "solver_timeout_ms": solver_timeout,
@@ -113,7 +118,7 @@ class ConflictResolver:
                 extra={
                     "event": "dependency_resolution_error",
                     "code": exc.category.value,
-                    "message": exc.message,
+                    "log_msg": exc.message,
                     "details": exc.details,
                     **resolution_context,
                 },
@@ -357,7 +362,7 @@ class ConflictResolver:
                 )
                 continue
 
-            if not self._validate_package_structure(package):
+            if not isinstance(package, dict) or not package.get("name"):
                 normalization_failures.append(
                     {"index": index, "reason": "package missing required fields"}
                 )
@@ -504,6 +509,14 @@ class ConflictResolver:
             "gpu": {"available": False, "cuda": None},
         }
 
+    def _reset_solver_state(self, solver_timeout: Optional[int] = None) -> None:
+        """Reset the solver state and apply timeout if specified."""
+        self.solver.reset()
+        if solver_timeout is not None:
+            self.solver.set(timeout=solver_timeout)
+        else:
+            self.solver.set(timeout=0)
+
     @staticmethod
     def _get_default_python_version() -> str:
         import sys
@@ -515,7 +528,6 @@ class ConflictResolver:
         error: Exception,
         context: Optional[Dict[str, Any]] = None,
         *,
-        return_payload: bool = False,
         elevate: bool = False,
     ) -> Dict[str, Any]:
         """Convert unexpected errors into structured ResolverError payloads."""
@@ -826,7 +838,9 @@ class ConflictResolver:
         """Add constraints for package dependencies"""
         for node in self.dependency_graph.nodes():
             node_data = self.dependency_graph.nodes[node]
-            pkg_name = node_data["name"]
+            pkg_name = node_data.get("name")
+            if pkg_name is None:
+                continue
             ecosystem = node_data.get("ecosystem", "unknown")
 
             for successor in self.dependency_graph.successors(node):
@@ -846,7 +860,7 @@ class ConflictResolver:
                         pkg_version = str(pkg_var).split("_")[-1]
                         pkg_var_ref = self.version_vars.get(str(pkg_var))
 
-                        if pkg_var_ref and dep_name in constraints["package_versions"]:
+                        if pkg_var_ref is not None and dep_name in constraints["package_versions"]:
                             # Create constraint: if this package version is selected,
                             # then dependency must satisfy version constraint
                             valid_dep_vars = []
@@ -856,7 +870,7 @@ class ConflictResolver:
                                 dep_var_ref = self.version_vars.get(str(dep_var))
 
                                 # Use is_compatible_version for checking
-                                if dep_var_ref and is_compatible_version(
+                                if dep_var_ref is not None and is_compatible_version(
                                     dep_version, constraint_str
                                 ):
                                     valid_dep_vars.append(dep_var_ref)
@@ -900,7 +914,7 @@ class ConflictResolver:
                         for var12 in constraints["package_versions"][pkg12]:
                             var11_ref = self.version_vars.get(str(var11))
                             var12_ref = self.version_vars.get(str(var12))
-                            if var11_ref and var12_ref:
+                            if var11_ref is not None and var12_ref is not None:
                                 self.solver.add(z3.Not(z3.And(var11_ref, var12_ref)))
 
     def _solve_constraints(self, constraints: Dict, prefer_compatibility: bool) -> Dict:
@@ -915,7 +929,7 @@ class ConflictResolver:
             for pkg_name, version_vars in constraints["package_versions"].items():
                 for var in version_vars:
                     var_ref = self.version_vars.get(str(var))
-                    if var_ref and z3.is_true(model.eval(var_ref)):
+                    if var_ref is not None and z3.is_true(model.eval(var_ref)):
                         version_str = str(var).split("_", 1)[-1]
                         solution["packages"][pkg_name] = {
                             "version": version_str,
@@ -1139,8 +1153,6 @@ class ConflictResolver:
                     packages_involved = []
 
                     # Extract package names from the constraint string
-                    import re
-
                     package_pattern = r"(\w+)_(\d+\.\d+(?:\.\d+)?)"
                     matches = re.findall(package_pattern, constraint_str)
 

@@ -6,14 +6,15 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Frontend Layer                           │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  App.vue                                                │    │
-│  │    ├── components/PackageSearch.vue                     │    │
-│  │    │     └── services/packageService.js ─────────────┐  │    │
-│  │    ├── components/SystemInfo.vue                     │  │    │
-│  │    │     └── services/systemService.js ──────────┐   │  │    │
-│  │    └── services/auth.js ──────────────────────┐  │   │  │    │
-│  │                                                │  │   │  │    │
-│  │    utils/validators.js ◄─── used by ───────────┴──┴───┘  │    │
+│  │  App.vue (sidebar nav)                                 │    │
+│  │    ├── DashboardPanel.vue                             │    │
+│  │    ├── PackagePanel.vue                               │    │
+│  │    ├── ResolvePanel.vue                               │    │
+│  │    ├── SystemPanel.vue                                │    │
+│  │    │     └── SystemInfo.vue ─── systemService.js ──┐  │    │
+│  │    ├── AuthPanel.vue ─────────── auth.js ────────┐  │  │    │
+│  │                                                    │  │  │    │
+│  │    utils/validators.js ◄─── used by ───────────────┴──┴──┘    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                                                   │
@@ -66,11 +67,15 @@
 | File | Imports/Uses | Imported By | Purpose | External Dependencies |
 |------|--------------|-------------|---------|----------------------|
 | **Frontend** | | | | |
-| `App.vue` | PackageSearch, SystemInfo | - | Main Vue app component | Vue framework |
-| `components/PackageSearch.vue` | packageService | App.vue | Package search UI | Vue |
-| `components/SystemInfo.vue` | systemService | App.vue | System info display | Vue |
-| `services/packageService.js` | axios, auth, validators | PackageSearch.vue | API client for packages | axios |
-| `services/systemService.js` | axios, auth, validators | SystemInfo.vue | API client for system info | axios |
+| `App.vue` | DashboardPanel, PackagePanel, ResolvePanel, SystemPanel, AuthPanel | - | Main Vue app with sidebar nav | Vue framework |
+| `components/DashboardPanel.vue` | systemService | App.vue | Health & overview dashboard | Vue |
+| `components/PackagePanel.vue` | packageService | App.vue | Search/info/versions/deps/compat | Vue |
+| `components/ResolvePanel.vue` | packageService, systemService | App.vue | Resolve dependencies & export | Vue |
+| `components/SystemPanel.vue` | systemService, SystemInfo | App.vue | GPU/runtime/benchmarks/env analysis | Vue |
+| `components/AuthPanel.vue` | authService | App.vue | Login/register/profile/API keys | Vue |
+| `components/SystemInfo.vue` | systemService | SystemPanel.vue | System info display | Vue |
+| `services/packageService.js` | axios, auth, validators | PackagePanel, ResolvePanel | API client for packages | axios |
+| `services/systemService.js` | axios, auth, validators | DashboardPanel, SystemPanel, SystemInfo | API client for system info | axios |
 | `services/auth.js` | axios | packageService, systemService | Authentication utilities | axios |
 | `utils/validators.js` | - | All services | Input validation helpers | - |
 | **Backend API** | | | | |
@@ -169,29 +174,27 @@ routes/packages   routes/system
              api/main.py
                   │
                   ▼
-         Frontend Services
-         (auth.js wraps all)
-                  │
-     ┌────────────┴────────────┐
-     ▼                         ▼
-packageService.js       systemService.js
-     │                         │
-     ▼                         ▼
-PackageSearch.vue       SystemInfo.vue
-     │                         │
-     └───────────┬─────────────┘
-                 ▼
-              App.vue
-          (directly)
+          Frontend Services
+          (auth.js wraps packageService & systemService)
+              │               │               │
+              ▼               ▼               ▼
+      packageService.js  systemService.js  auth.js
+              │               │               │
+              ▼               ▼               ▼
+      PackagePanel      DashboardPanel   AuthPanel
+      ResolvePanel      SystemPanel
+                        SystemInfo.vue
 ```
 
 ## Frontend Component Hierarchy
 ```
-App.vue
-├── PackageSearch.vue
-│   └── services/packageService.js
-└── SystemInfo.vue
-    └── services/systemService.js
+App.vue (sidebar nav)
+├── DashboardPanel.vue
+├── PackagePanel.vue
+├── ResolvePanel.vue
+├── SystemPanel.vue
+│   └── SystemInfo.vue
+└── AuthPanel.vue
 ```
 
 ## Service Layer Flow
@@ -212,7 +215,7 @@ auth.js → provides auth headers
      ├── Backend Settings
      │   ├── DATABASE_URL
      │   ├── REDIS_URL
-     │   ├── JWT_SECRET
+      │   ├── SECRET_KEY
      │   ├── API_RATE_LIMIT
      │   └── CACHE_TTL
      │
@@ -294,13 +297,13 @@ Deployment Pipeline:
 │   │
 │   └── GitHub Actions Deploy
 │       ├── Push to registry
-│       ├── Update K8s manifests
-│       └── Deploy to cluster
+│       ├── Build & push images
+│       └── Deploy via Docker Compose
 │
 └── Production Setup
-    ├── Kubernetes configs
-    ├── Ingress rules
-    └── SSL certificates
+    ├── Docker Compose (multi-node swarm)
+    ├── Nginx reverse proxy with SSL
+    └── Monitoring stack (Prometheus + Grafana + Loki)
 ```
 
 ## Database Schema Relationships
@@ -552,12 +555,14 @@ universal-dependency-resolver/
 │   ├── package.json         # Node.js dependencies
 │   │
 │   └── src/                 # Vue.js source code
-│       ├── App.vue          # Main Vue component
+│       ├── App.vue          # Main Vue component (sidebar nav)
 │       │
 │       ├── components/      # Vue components
-│       │   ├── DependencyList.vue
-│       │   ├── PackageSearch.vue
-│       │   ├── ResultsPanel.vue
+│       │   ├── DashboardPanel.vue
+│       │   ├── PackagePanel.vue
+│       │   ├── ResolvePanel.vue
+│       │   ├── SystemPanel.vue
+│       │   ├── AuthPanel.vue
 │       │   └── SystemInfo.vue
 │       │
 │       ├── services/       # API services
@@ -574,27 +579,17 @@ universal-dependency-resolver/
 │   ├── SDK_ROADMAP.md    # document outlines our SDK
 │   └── ARCHITECTURE.md   # Architecture documentation
 │
-├── scripts/              # Utility scripts
+├── scripts/              # Utility scripts (all source common.sh)
+│   ├── common.sh         # Shared shell functions (colors, checks, upload)
 │   ├── setup_dev.sh      # Development setup script
 │   ├── run_tests.sh      # Test runner script
 │   ├── deploy.sh         # Deployment script
 │   ├── backup_database.sh
 │   ├── restore_database.sh
 │   ├── full_backup.sh
-│   ├── check_data_flow.py
-│   └── verify_imports.py
+│   └── check_data_flow.py    # API endpoint smoke test (stdlib only)
 │
-├── k8s/                          # Kubernetes manifests
-│   ├── namespace.yaml            # Namespace definition
-│   ├── configmap.yaml            # Non-sensitive env config
-│   ├── secrets.yaml              # Secret definitions (placeholder)
-│   ├── backend.yaml              # Backend Deployment + Service
-│   ├── frontend.yaml             # Frontend Deployment + Service
-│   ├── postgres.yaml             # PostgreSQL StatefulSet + PVC
-│   ├── redis.yaml                # Redis Deployment + PVC
-│   ├── ingress.yaml              # TLS Ingress rules
-│   └── README.md
-│
+
 ├── monitoring/                      # Monitoring stack
 │   ├── setup_monitoring.sh          # Setup script
 │   ├── alert_rules.yml              # Prometheus alert rules

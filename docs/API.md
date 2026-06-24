@@ -24,10 +24,12 @@ The Universal Dependency Resolver API provides a unified interface for package m
 
 | Property | Value |
 |----------|-------|
-| **Base URL** | `https://api.yourdomain.com/api/v1` |
-| **Protocol** | HTTPS only |
+| **Base URL** | `http://localhost:8000/api/v1` |
+| **Protocol** | HTTP (HTTPS in production) |
 | **Format** | JSON |
 | **Versioning** | URL-based (`/api/v1/`) |
+
+All endpoint paths in this document assume the `/api/v1` prefix unless otherwise noted.
 | **Documentation** | OpenAPI 3.0 at `/docs` |
 
 ### Supported Ecosystems

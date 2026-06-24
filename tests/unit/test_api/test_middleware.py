@@ -131,12 +131,13 @@ class TestCSRFProtectionMiddleware:
         assert resp.status_code != 403, "CSRF should not block Bearer auth requests"
 
     def test_csrf_blocked_when_no_auth_no_cookie(self, client):
-        resp = client.post(
-            "/api/v1/packages/resolve",
-            json={"packages": [{"name": "test", "ecosystem": "pypi"}]},
-        )
-        assert resp.status_code == 403
-        assert resp.json()["error"]["type"] == "csrf_protection"
+        with patch.dict("backend.settings.FEATURES", {"ENABLE_CSRF": True}, clear=False):
+            resp = client.post(
+                "/api/v1/packages/resolve",
+                json={"packages": [{"name": "test", "ecosystem": "pypi"}]},
+            )
+            assert resp.status_code == 403
+            assert resp.json()["error"]["type"] == "csrf_protection"
 
     def test_csrf_cookie_and_header_match(self, client, override_resolve_deps):
         cookie_val = "valid-csrf-token"

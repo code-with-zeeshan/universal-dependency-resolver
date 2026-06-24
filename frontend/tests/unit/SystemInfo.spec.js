@@ -30,7 +30,7 @@ describe('SystemInfo', () => {
 
   it('displays system data after loading', async () => {
     systemService.getSystemInfo.mockResolvedValue({
-      os: { system: 'Linux', release: '6.2', machine: 'x86_64' },
+      platform: { system: 'Linux', release: '6.2', machine: 'x86_64' },
       cpu: { brand: 'Intel Core i7', count: 4, count_logical: 8, arch: 'x86_64' },
       gpu: { available: false },
       memory: { total: 16000000000, available: 8000000000 },
@@ -49,18 +49,18 @@ describe('SystemInfo', () => {
   })
 
   it('calls getSystemInfo on mount', () => {
-    systemService.getSystemInfo.mockResolvedValue({ os: { system: 'Linux' } })
+    systemService.getSystemInfo.mockResolvedValue({ platform: { system: 'Linux' } })
     createWrapper()
     expect(systemService.getSystemInfo).toHaveBeenCalled()
   })
 
   it('refreshes data when refresh button is clicked', async () => {
-    systemService.getSystemInfo.mockResolvedValue({ os: { system: 'Linux' } })
+    systemService.getSystemInfo.mockResolvedValue({ platform: { system: 'Linux' } })
     const wrapper = createWrapper()
 
     await new Promise(process.nextTick)
 
-    systemService.getSystemInfo.mockResolvedValue({ os: { system: 'macOS' } })
+    systemService.getSystemInfo.mockResolvedValue({ platform: { system: 'macOS' } })
     await wrapper.find('.refresh-button').trigger('click')
 
     await new Promise(process.nextTick)
@@ -79,7 +79,7 @@ describe('SystemInfo', () => {
 
   it('formats GPU memory correctly', async () => {
     systemService.getSystemInfo.mockResolvedValue({
-      os: { system: 'Linux', release: '6.2', machine: 'x86_64' },
+      platform: { system: 'Linux', release: '6.2', machine: 'x86_64' },
       gpu: { available: true, devices: [{ name: 'RTX 3080', memory_mb: 10240, memory_total: 10240, memory_free: 5120 }], cuda: '11.8' },
       memory: { total: 16000000000, available: 8000000000 }
     })
@@ -93,7 +93,7 @@ describe('SystemInfo', () => {
 
   it('shows GPU unavailable state', async () => {
     systemService.getSystemInfo.mockResolvedValue({
-      os: { system: 'Linux', release: '6.2', machine: 'x86_64' },
+      platform: { system: 'Linux', release: '6.2', machine: 'x86_64' },
       gpu: { available: false }
     })
 

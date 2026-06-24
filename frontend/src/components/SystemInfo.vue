@@ -16,9 +16,9 @@
           Operating System
         </div>
         <div class="info-content">
-          <p><strong>System:</strong> {{ systemInfo.os?.system }}</p>
-          <p><strong>Release:</strong> {{ systemInfo.os?.release }}</p>
-          <p><strong>Architecture:</strong> {{ systemInfo.os?.machine }}</p>
+          <p><strong>System:</strong> {{ systemInfo.platform?.system }}</p>
+          <p><strong>Release:</strong> {{ systemInfo.platform?.release }}</p>
+          <p><strong>Architecture:</strong> {{ systemInfo.platform?.machine }}</p>
         </div>
       </div>
       

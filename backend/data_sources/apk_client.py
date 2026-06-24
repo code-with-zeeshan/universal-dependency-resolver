@@ -50,36 +50,43 @@ class APKClient(BaseDataSourceClient):
 
     def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
-        return True
+        try:
+            result = run_async(self.get_package_info_async(package_name))
+            return result is not None
+        except Exception:
+            return False
 
     async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
         query = normalize_package_name(query)
         results = []
         seen = set()
 
-        for branch in self.branches[:1]:
-            for repo_type in self.repos_types[:2]:
-                packages = await self._get_apkindex(branch, repo_type)
+        try:
+            for branch in self.branches[:1]:
+                for repo_type in self.repos_types[:2]:
+                    packages = await self._get_apkindex(branch, repo_type)
 
-                for pkg_name, pkg_info in packages.items():
-                    if query in pkg_name or (
-                        pkg_info.get("description")
-                        and query in pkg_info["description"].lower()
-                    ):
-                        if pkg_name not in seen:
-                            seen.add(pkg_name)
-                            results.append(
-                                {
-                                    "name": pkg_name,
-                                    "version": pkg_info.get("version", ""),
-                                    "description": pkg_info.get("description", ""),
-                                    "branch": branch,
-                                    "repository": repo_type,
-                                }
-                            )
+                    for pkg_name, pkg_info in packages.items():
+                        if query in pkg_name or (
+                            pkg_info.get("description")
+                            and query in pkg_info["description"].lower()
+                        ):
+                            if pkg_name not in seen:
+                                seen.add(pkg_name)
+                                results.append(
+                                    {
+                                        "name": pkg_name,
+                                        "version": pkg_info.get("version", ""),
+                                        "description": pkg_info.get("description", ""),
+                                        "branch": branch,
+                                        "repository": repo_type,
+                                    }
+                                )
 
-                            if len(results) >= limit:
-                                return results
+                                if len(results) >= limit:
+                                    return results
+        except Exception:
+            pass
 
         return results
 

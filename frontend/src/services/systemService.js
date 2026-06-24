@@ -1,5 +1,5 @@
 import apiClient from './apiClient'
-import filesize from 'filesize'
+import { filesize } from 'filesize'
 import { satisfies } from 'semver'
 
 class SystemService {
@@ -13,7 +13,7 @@ class SystemService {
     }
   }
 
-  async getSystemInfo(detailed = false, forceRefresh = false) {
+  async getSystemInfo(detailed = true, forceRefresh = false) {
     try {
       if (!forceRefresh && this.cache.systemInfo && this.cache.timestamp) {
         const age = Date.now() - this.cache.timestamp
@@ -150,15 +150,15 @@ class SystemService {
       })
     }
 
-    if (systemInfo.os) {
+    if (systemInfo.platform) {
       requirements.push({
         type: 'os',
         name: 'Operating System',
-        value: `${systemInfo.os.system} ${systemInfo.os.release}`,
+        value: `${systemInfo.platform.system} ${systemInfo.platform.release}`,
         metadata: {
-          platform: systemInfo.os.platform,
-          architecture: systemInfo.os.machine,
-          version: systemInfo.os.version
+          platform: systemInfo.platform.system,
+          architecture: systemInfo.platform.machine,
+          version: systemInfo.platform.release
         }
       })
     }
@@ -246,7 +246,7 @@ class SystemService {
     }
 
     if (requirements.os) {
-      const systemOS = systemInfo.os?.system?.toLowerCase()
+      const systemOS = systemInfo.platform?.system?.toLowerCase()
       const requiredOS = Array.isArray(requirements.os)
         ? requirements.os.map(os => os.toLowerCase())
         : [requirements.os.toLowerCase()]
@@ -254,7 +254,7 @@ class SystemService {
       if (!requiredOS.includes(systemOS)) {
         comparison.compatible = false
         comparison.issues.push(
-          `Operating system ${requirements.os} required, but ${systemInfo.os.system} found`
+          `Operating system ${requirements.os} required, but ${systemInfo.platform?.system} found`
         )
       }
     }
@@ -290,10 +290,10 @@ class SystemService {
 
     return {
       os: {
-        name: `${systemInfo.os.system} ${systemInfo.os.release}`,
-        version: systemInfo.os.version,
-        architecture: systemInfo.os.machine,
-        platform: systemInfo.os.platform
+        name: `${systemInfo.platform.system} ${systemInfo.platform.release}`,
+        version: systemInfo.platform.release,
+        architecture: systemInfo.platform.machine,
+        platform: systemInfo.platform.system
       },
       cpu: {
         model: systemInfo.cpu.brand,

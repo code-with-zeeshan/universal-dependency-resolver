@@ -363,7 +363,12 @@ ENABLE_PERFORMANCE_LOGGING = (
 # =============================================================================
 # Supported Ecosystems
 # =============================================================================
-ECOSYSTEMS = ["pypi", "conda", "npm", "crates", "maven", "conan", "vcpkg", "apt"]
+ECOSYSTEMS = [
+    "pypi", "conda", "npm", "crates", "maven",
+    "gomodules", "apt", "apk", "cocoapods",
+    "homebrew", "nuget", "packagist", "rubygems",
+    "docs", "custom_db",
+]
 ENABLED_ECOSYSTEMS = os.getenv("ENABLED_ECOSYSTEMS", ",".join(ECOSYSTEMS)).split(",")
 
 # Ecosystem display names
@@ -373,9 +378,16 @@ ECOSYSTEM_NAMES = {
     "npm": "NPM (Node.js)",
     "crates": "Crates.io (Rust)",
     "maven": "Maven (Java)",
-    "conan": "Conan (C/C++)",
-    "vcpkg": "vcpkg (C/C++)",
-    "apt": "APT (System)",
+    "gomodules": "Go Modules",
+    "apt": "APT (Debian)",
+    "apk": "APK (Alpine)",
+    "cocoapods": "CocoaPods (iOS)",
+    "homebrew": "Homebrew (macOS)",
+    "nuget": "NuGet (.NET)",
+    "packagist": "Packagist (PHP)",
+    "rubygems": "RubyGems",
+    "docs": "Documentation",
+    "custom_db": "Custom Database",
 }
 
 # =============================================================================
@@ -394,8 +406,7 @@ EXPORT_FORMATS = [
     "Cargo.toml",
     "build.gradle",
     "pom.xml",
-    "conanfile.txt",
-    "vcpkg.json",
+
 ]
 
 ENABLED_EXPORT_FORMATS = os.getenv(
@@ -503,6 +514,7 @@ FEATURES = {
         "ENABLE_RESPONSE_COMPRESSION", "true"
     ).lower()
     == "true",
+    "ENABLE_CSRF": os.getenv("ENABLE_CSRF", "true").lower() == "true",
 }
 
 # =============================================================================
@@ -677,6 +689,10 @@ def validate_settings() -> list[str]:
     warnings: list[str] = []
 
     if SECRET_KEY == "your-secret-key-here-change-in-production":
+        if ENV == "production":
+            raise RuntimeError(
+                "SECRET_KEY is still the default value — set a strong random secret in production"
+            )
         warnings.append(
             "SECRET_KEY is still the default value — rotate it immediately in production"
         )

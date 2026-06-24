@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.VUE_APP_API_URL || 'http://localhost:8000'
+const API_BASE_URL = process.env.VUE_APP_API_URL || ''
 const API_VERSION = 'v1'
 
 const apiClient = axios.create({
@@ -22,9 +22,6 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 429) {
       console.error('Rate limit exceeded. Please try again later.')
-    }
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token')
     }
     return Promise.reject(error)
   }

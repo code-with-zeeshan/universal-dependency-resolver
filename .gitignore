@@ -66,7 +66,6 @@ htmlcov/
 .nox/
 coverage.xml
 *.cover
-*.py,cover
 .hypothesis/
 
 # mypy
@@ -234,7 +233,6 @@ docker-volumes/
 # Docker Compose override files
 docker-compose.override.yml
 docker-compose.local.yml
-docker-compose.test.yml
 
 # =============================================================================
 # IDE & Editors

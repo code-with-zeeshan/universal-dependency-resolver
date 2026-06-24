@@ -18,11 +18,15 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+RUN adduser -D -g '' -u 1000 appuser
+
 # Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder --chown=appuser:appuser /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+USER appuser
 
 # Expose port
 EXPOSE 80

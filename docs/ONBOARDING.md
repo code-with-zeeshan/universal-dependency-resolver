@@ -95,7 +95,7 @@ graph TD
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/universal-dependency-resolver.git
+git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
 cd universal-dependency-resolver
 
 # Copy environment template

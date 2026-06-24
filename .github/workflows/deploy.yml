@@ -60,68 +60,6 @@ jobs:
           echo "version=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
         fi
 
-  # Deploy to Kubernetes
-  deploy-k8s:
-    runs-on: ubuntu-latest
-    needs: prepare
-    if: needs.prepare.outputs.should-deploy == 'true'
-    environment: ${{ needs.prepare.outputs.environment }}
-    
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Configure kubectl
-      run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Deploy to Kubernetes
-      run: |
-        # Set image tags
-        export BACKEND_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ needs.prepare.outputs.version }}"
-        export FRONTEND_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ needs.prepare.outputs.version }}"
-        export ENVIRONMENT="${{ needs.prepare.outputs.environment }}"
-        
-        # Apply Kubernetes manifests
-        envsubst < k8s/namespace.yaml | kubectl apply -f -
-        envsubst < k8s/configmap.yaml | kubectl apply -f -
-        envsubst < k8s/secrets.yaml | kubectl apply -f -
-        envsubst < k8s/postgres.yaml | kubectl apply -f -
-        envsubst < k8s/redis.yaml | kubectl apply -f -
-        envsubst < k8s/backend.yaml | kubectl apply -f -
-        envsubst < k8s/frontend.yaml | kubectl apply -f -
-        envsubst < k8s/ingress.yaml | kubectl apply -f -
-
-    - name: Wait for deployment
-      run: |
-        kubectl rollout status deployment/backend -n ${{ needs.prepare.outputs.environment }}
-        kubectl rollout status deployment/frontend -n ${{ needs.prepare.outputs.environment }}
-
-    - name: Run database migrations
-      run: |
-        kubectl exec -n ${{ needs.prepare.outputs.environment }} \
-          deployment/backend -- alembic upgrade head
-
-    - name: Verify deployment
-      run: |
-        # Get service URL
-        if [ "${{ needs.prepare.outputs.environment }}" = "production" ]; then
-          echo "SERVICE_URL=${{ secrets.PROD_API_URL }}" >> $GITHUB_ENV
-        else
-          echo "SERVICE_URL=${{ secrets.STAGING_API_URL }}" >> $GITHUB_ENV
-        fi
-        
-        # Health check
-        curl -f "$SERVICE_URL/api/v1/health" || exit 1
-        
-        echo "Deployment verified successfully!"
-
   # Deploy to Docker Swarm (Alternative)
   deploy-swarm:
     runs-on: ubuntu-latest
@@ -193,7 +131,7 @@ jobs:
   # Database Migration Job
   migrate-database:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-k8s]
+    needs: [prepare]
     if: needs.prepare.outputs.should-deploy == 'true'
     environment: ${{ needs.prepare.outputs.environment }}
     
@@ -217,7 +155,7 @@ jobs:
   # Post-deployment tests
   post-deploy-tests:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-k8s, migrate-database]
+    needs: [prepare, migrate-database]
     if: needs.prepare.outputs.should-deploy == 'true'
     
     steps:
@@ -252,7 +190,7 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     if: failure() && github.event_name != 'workflow_dispatch'
-    needs: [prepare, deploy-k8s, post-deploy-tests]
+    needs: [prepare, post-deploy-tests]
     environment: ${{ needs.prepare.outputs.environment }}
     
     steps:
@@ -273,7 +211,7 @@ jobs:
   # Update deployment status
   update-status:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-k8s, post-deploy-tests]
+    needs: [prepare, post-deploy-tests]
     if: always() && needs.prepare.outputs.should-deploy == 'true'
     
     steps:
@@ -303,7 +241,7 @@ jobs:
   # Notifications
   notify-deployment:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-k8s, post-deploy-tests]
+    needs: [prepare, post-deploy-tests]
     if: always() && needs.prepare.outputs.should-deploy == 'true'
     
     steps:

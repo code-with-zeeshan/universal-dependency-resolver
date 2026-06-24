@@ -112,7 +112,7 @@ class CompatibilityDB:
                 size_bytes=version_info.get("size"),
                 system_requirements=version_info.get("system_requirements", {}),
                 dependencies=version_info.get("dependencies", {}),
-                metadata=version_info.get("metadata", {}),
+                metadata_json=version_info.get("metadata", {}),
             )
             db.add(version)
             db.commit()

@@ -78,7 +78,7 @@ Official SDKs for Universal Dependency Resolver are planned for Q2 2026. This do
 
 We welcome contributions! If you'd like to help:
 
-1. **Vote** on SDK features in [Discussions](https://github.com/yourusername/universal-dependency-resolver/discussions)
+1. **Vote** on SDK features in [Discussions](https://github.com/code-with-zeeshan/universal-dependency-resolver/discussions)
 2. **Contribute** to SDK development (see guidelines below)
 3. **Test** pre-release versions and provide feedback
 

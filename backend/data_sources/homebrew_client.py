@@ -126,7 +126,10 @@ class HomebrewClient(BaseDataSourceClient):
         return results[:limit]
 
     async def _search_formulas(self, query: str, limit: int) -> List[Dict]:
-        data = await self._get(f"{self.formula_api}.json")
+        try:
+            data = await self._get(f"{self.formula_api}.json")
+        except Exception:
+            return []
         if not data:
             return []
 
@@ -166,7 +169,10 @@ class HomebrewClient(BaseDataSourceClient):
         return matches[:limit]
 
     async def _search_casks(self, query: str, limit: int) -> List[Dict]:
-        data = await self._get(f"{self.cask_api}.json")
+        try:
+            data = await self._get(f"{self.cask_api}.json")
+        except Exception:
+            return []
         if not data:
             return []
 
@@ -181,7 +187,7 @@ class HomebrewClient(BaseDataSourceClient):
             if (
                 query_lower in token.lower()
                 or query_lower in name.lower()
-                or query_lower in desc.lower()
+                or (desc and query_lower in desc.lower())
             ):
                 matches.append(
                     {

@@ -23,18 +23,12 @@ from typing import Dict, Any, Optional
 import os
 import sys
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path for direct execution
+_sys_path_appended = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _sys_path_appended not in sys.path:
+    sys.path.insert(0, _sys_path_appended)
 
 Base = declarative_base()
-
-# Add association table for user roles/scopes
-user_scopes = Table(
-    "user_scopes",
-    Base.metadata,
-    Column("user_id", Integer, ForeignKey("users.id")),
-    Column("scope", String(50)),
-)
 
 
 class Package(Base):
@@ -353,42 +347,59 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://user:password@localhost/depresolver"
 )
 
-# Configure connection pooling for better performance and reliability
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,  # Number of connections to keep in pool
-    max_overflow=20,  # Maximum number of connections beyond pool_size
-    pool_timeout=30,  # Timeout for getting connection from pool
-    pool_recycle=3600,  # Recycle connections after 1 hour
-    pool_pre_ping=True,  # Enable connection health checks
-    echo=False,  # Disable SQL query logging in production
-)
+_engine = None
+_SessionLocal = None
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            DATABASE_URL,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=3600,
+            pool_pre_ping=True,
+            echo=False,
+        )
+    return _engine
+
+
+def get_session_local():
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return _SessionLocal
+
+
+# Backward-compatible aliases — trigger lazy creation on first attribute access
+engine = None
+SessionLocal = None
 
 
 def init_db():
     """Initialize database tables"""
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=get_engine())
 
 
 def check_db_health() -> Dict[str, Any]:
     """Check database connection health and pool status"""
     try:
-        # Test basic connection
-        db = SessionLocal()
-        db.execute("SELECT 1")
+        e = get_engine()
+        s = get_session_local()
+        db = s()
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         db.close()
 
-        # Get pool statistics
-        pool = engine.pool
+        pool = e.pool
         return {
             "status": "healthy",
             "pool_size": pool.size(),
             "checked_in": pool.checkedin(),
             "checked_out": pool.checkedout(),
             "overflow": pool.overflow(),
-            "invalid": pool.invalid(),
             "message": "Database connection is healthy",
         }
     except Exception as e:
@@ -401,7 +412,8 @@ def check_db_health() -> Dict[str, Any]:
 
 def get_db():
     """Get database session"""
-    db = SessionLocal()
+    s = get_session_local()
+    db = s()
     try:
         yield db
     finally:
@@ -411,7 +423,8 @@ def get_db():
 @contextmanager
 def db_session():
     """Provide a transactional scope for database operations"""
-    session = SessionLocal()
+    s = get_session_local()
+    session = s()
     try:
         yield session
         session.commit()

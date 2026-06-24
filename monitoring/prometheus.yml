@@ -13,14 +13,6 @@ scrape_configs:
     static_configs:
       - targets: ['backend:8000']
     metrics_path: '/metrics'
-    
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-      
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis-exporter:9121']
 
 # For Grafana Cloud (free tier) - uncomment if using
 # remote_write:

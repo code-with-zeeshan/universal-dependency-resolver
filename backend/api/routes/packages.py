@@ -144,7 +144,7 @@ async def resolve_dependencies(
     try:
         # Get system info if needed
         system_info = (
-            scanner.scan_all()
+            await scanner.scan_all()
             if resolve_request.auto_detect_system and not resolve_request.system_info
             else resolve_request.system_info.dict()
             if resolve_request.system_info
@@ -252,66 +252,22 @@ async def search_packages(
     try:
         logger.info(f"Searching for packages: query='{q}', ecosystems={ecosystems}")
 
-        # Update search tasks to include all ecosystems
         ecosystem_list = ecosystems.split(",") if ecosystems else None
 
-        # Map of ecosystem names to their sources
-        available_ecosystems = {
-            "pypi": "pypi",
-            "npm": "npm",
-            "conda": "conda",
-            "maven": "maven",
-            "crates": "crates",
-            "gomodules": "gomodules",
-            "apt": "apt",
-            "apk": "apk",
-            "cocoapods": "cocoapods",
-            "rubygems": "rubygems",
-            "packagist": "packagist",
-            "nuget": "nuget",
-            "homebrew": "homebrew",
-        }
+        results = await aggregator.search_packages(q, ecosystems=ecosystem_list, limit=limit)
 
-        # Search in parallel across ecosystems
-        search_tasks = []
-        ecosystems_to_search = (
-            ecosystem_list if ecosystem_list else list(available_ecosystems.keys())
-        )
-
-        for eco in ecosystems_to_search:
-            if eco in available_ecosystems and eco in aggregator.sources:
-                source = aggregator.sources[eco]
-                if hasattr(source, "search_packages") or hasattr(source, "search"):
-                    method = (
-                        "search_packages"
-                        if hasattr(source, "search_packages")
-                        else "search"
-                    )
-                    search_tasks.append((eco, getattr(source, method)(q, limit)))
-
-        results = {}
-        for ecosystem, task in search_tasks:
-            try:
-                ecosystem_results = (
-                    await asyncio.create_task(task)
-                    if asyncio.iscoroutine(task)
-                    else task
+        # Apply post-processing (filtering, sorting)
+        for ecosystem, ecosystem_results in list(results.items()):
+            # Filter by Python version if specified
+            if python_version and ecosystem in ["pypi", "conda"] and isinstance(ecosystem_results, list):
+                ecosystem_results = _filter_by_python_version(
+                    ecosystem_results, python_version
                 )
 
-                # Filter by Python version if specified
-                if python_version and ecosystem in ["pypi", "conda"]:
-                    ecosystem_results = _filter_by_python_version(
-                        ecosystem_results, python_version
-                    )
-
-                # Sort results
+            # Sort results
+            if isinstance(ecosystem_results, list):
                 ecosystem_results = _sort_search_results(ecosystem_results, sort_by)
-
                 results[ecosystem] = ecosystem_results
-                logger.debug(f"Found {len(ecosystem_results)} results in {ecosystem}")
-            except Exception as e:
-                logger.error(f"Search failed for ecosystem {ecosystem}: {e}")
-                results[ecosystem] = {"error": str(e)}
 
         # Calculate total count
         total_count = sum(

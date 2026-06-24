@@ -47,38 +47,80 @@ class TestNuGetClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_success(self, client, sample_package_data):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
+        mock_registration = {
+            "count": 1,
+            "items": [
+                {
+                    "items": [
+                        {
+                            "catalogEntry": sample_package_data,
+                        }
+                    ]
+                }
+            ],
+        }
         with patch.object(
             client,
-            "cached_get",
+            "_initialize_service_endpoints",
             new_callable=AsyncMock,
-            return_value=sample_package_data,
         ):
-            result = await client.get_package_info_async("Newtonsoft.Json")
+            with patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value=mock_registration,
+            ):
+                result = await client.get_package_info_async("Newtonsoft.Json")
         assert result is not None
-        assert result["id"] == "Newtonsoft.Json"
+        assert result["name"] == "newtonsoft-json"
         assert result["version"] == "13.0.3"
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_calls_correct_url(
         self, client, sample_package_data
     ):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
+        mock_registration = {
+            "count": 1,
+            "items": [
+                {
+                    "items": [
+                        {
+                            "catalogEntry": sample_package_data,
+                        }
+                    ]
+                }
+            ],
+        }
         with patch.object(
             client,
-            "cached_get",
+            "_initialize_service_endpoints",
             new_callable=AsyncMock,
-            return_value=sample_package_data,
-        ) as mock_get:
-            await client.get_package_info_async("Newtonsoft.Json")
+        ):
+            with patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value=mock_registration,
+            ) as mock_get:
+                await client.get_package_info_async("Newtonsoft.Json")
         mock_get.assert_called_once()
-        cache_key, url = mock_get.call_args[0]
-        assert "newtonsoft" in cache_key.lower()
+        url = mock_get.call_args[0][0]
+        assert "newtonsoft" in url.lower()
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=None
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            result = await client.get_package_info_async("Nonexistent.Package")
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=None
+            ):
+                result = await client.get_package_info_async("Nonexistent.Package")
         assert result is None
 
     def test_get_package_info_sync_success(self, client, sample_package_data):
@@ -93,80 +135,108 @@ class TestNuGetClient:
         assert result["id"] == "Newtonsoft.Json"
 
     def test_package_exists_returns_true(self, client):
-        with patch.object(
-            client,
-            "get_package_info_async",
-            new_callable=AsyncMock,
-            return_value={"id": "Newtonsoft.Json"},
-        ):
+        with patch("requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
             assert client.package_exists("Newtonsoft.Json") is True
 
     def test_package_exists_returns_false(self, client):
-        with patch.object(
-            client, "get_package_info_async", new_callable=AsyncMock, return_value=None
-        ):
+        with patch("requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+            mock_head.return_value = mock_response
             assert client.package_exists("Nonexistent.Package") is False
 
     def test_package_exists_handles_exception(self, client):
-        with patch.object(
-            client,
-            "get_package_info_async",
-            new_callable=AsyncMock,
-            side_effect=Exception("Error"),
-        ):
+        with patch("requests.head", side_effect=Exception("Error")):
             assert client.package_exists("Newtonsoft.Json") is False
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_search_results):
+        client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            results = await client.search_packages("json", limit=10)
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+            ):
+                results = await client.search_packages("json", limit=10)
         assert len(results) == 1
-        assert results[0]["id"] == "Newtonsoft.Json"
+        assert results[0]["name"] == "Newtonsoft.Json"
 
     @pytest.mark.asyncio
     async def test_search_packages_calls_correct_url(
         self, client, sample_search_results
     ):
+        client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
-        ) as mock_get:
-            await client.search_packages("json", limit=5)
-        url = mock_get.call_args[0][0]
-        assert "q=json" in url
-        assert "take=5" in url
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
+        ):
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+            ) as mock_get:
+                await client.search_packages("json", limit=5)
+        args, kwargs = mock_get.call_args
+        params = kwargs.get("params", {})
+        assert params.get("q") == "json"
+        assert params.get("take") == 5
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
+        client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value={"data": []}
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            results = await client.search_packages("nonexistent")
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value={"data": []}
+            ):
+                results = await client.search_packages("nonexistent")
         assert results == []
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_exception(self, client):
+        client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
-            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            results = await client.search_packages("json")
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
+            ):
+                results = await client.search_packages("json")
         assert results == []
 
     @pytest.mark.asyncio
     async def test_search_packages_with_prerelease_filter(
         self, client, sample_search_results
     ):
+        client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
-        ) as mock_get:
-            await client.search_packages("json", include_prerelease=True)
-        url = mock_get.call_args[0][0]
-        assert "prerelease=true" in url
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
+        ):
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+            ) as mock_get:
+                await client.search_packages("json", include_prerelease=True)
+        args, kwargs = mock_get.call_args
+        params = kwargs.get("params", {})
+        assert params.get("prerelease") == "true"
 
     @pytest.mark.asyncio
     async def test_get_versions_success(self, client):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
         mock_registration = {
+            "count": 2,
             "items": [
                 {
                     "items": [
@@ -189,47 +259,82 @@ class TestNuGetClient:
             ]
         }
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=mock_registration
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            versions = await client.get_versions("Newtonsoft.Json")
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=mock_registration
+            ):
+                versions = await client.get_versions("Newtonsoft.Json")
         assert len(versions) >= 1
         assert all("version" in v for v in versions)
 
     @pytest.mark.asyncio
     async def test_get_versions_empty_on_no_package(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-            versions = await client.get_versions("Nonexistent.Package")
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
+        with patch.object(
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
+        ):
+            with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+                versions = await client.get_versions("Nonexistent.Package")
         assert versions == []
 
     @pytest.mark.asyncio
     async def test_get_package_version_success(self, client, sample_package_data):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
+        mock_version_data = {
+            "catalogEntry": sample_package_data,
+        }
         with patch.object(
             client,
-            "cached_get",
+            "_initialize_service_endpoints",
             new_callable=AsyncMock,
-            return_value=sample_package_data,
         ):
-            result = await client.get_package_version("Newtonsoft.Json", "13.0.3")
+            with patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value=mock_version_data,
+            ):
+                result = await client.get_package_version("Newtonsoft.Json", "13.0.3")
         assert result is not None
         assert result["version"] == "13.0.3"
 
     @pytest.mark.asyncio
     async def test_get_dependencies_success(self, client, sample_package_data):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
+        mock_version_data = {
+            "catalogEntry": sample_package_data,
+        }
         with patch.object(
             client,
-            "cached_get",
+            "_initialize_service_endpoints",
             new_callable=AsyncMock,
-            return_value=sample_package_data,
         ):
-            deps = await client.get_dependencies("Newtonsoft.Json", "13.0.3")
+            with patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value=mock_version_data,
+            ):
+                deps = await client.get_dependencies("Newtonsoft.Json", "13.0.3")
         assert isinstance(deps, dict)
 
     @pytest.mark.asyncio
     async def test_get_dependencies_empty_on_error(self, client):
+        client.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
         with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=None
+            client,
+            "_initialize_service_endpoints",
+            new_callable=AsyncMock,
         ):
-            deps = await client.get_dependencies("Nonexistent.Package", "1.0")
+            with patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=None
+            ):
+                deps = await client.get_dependencies("Nonexistent.Package", "1.0")
         assert deps == {}
 
     @pytest.mark.asyncio

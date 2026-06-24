@@ -38,9 +38,11 @@ class HybridConnectionManager:
     @property
     def sio(self) -> socketio.AsyncServer:
         if self._sio is None:
+            from backend.settings import ALLOWED_ORIGINS
+            cors_origins = ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else "*"
             self._sio = socketio.AsyncServer(
                 async_mode="asgi",
-                cors_allowed_origins="*",
+                cors_allowed_origins=cors_origins,
                 logger=True,
                 engineio_logger=True,
             )
@@ -50,6 +52,22 @@ class HybridConnectionManager:
     def _setup_socketio_handlers(self):
         @self.sio.event
         async def connect(sid, environ):
+            from backend.settings import FEATURES, SECRET_KEY, ALGORITHM
+            if FEATURES.get("ENABLE_AUTH", False):
+                from urllib.parse import parse_qs
+                from jose import JWTError, jwt
+                qs = environ.get("QUERY_STRING", "")
+                params = parse_qs(qs)
+                token = (
+                    params.get("token", [None])[0]
+                    or environ.get("HTTP_AUTHORIZATION", "").replace("Bearer ", "")
+                )
+                if not token:
+                    return False
+                try:
+                    jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                except JWTError:
+                    return False
             conn = SocketIOConnection(self.sio, sid)
             self.connections[sid] = conn
             self.connection_stats["socketio"] += 1

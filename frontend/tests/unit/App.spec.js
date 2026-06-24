@@ -12,12 +12,16 @@ beforeEach(() => {
 })
 
 const stubs = {
-  SystemInfo: { template: '<div class="system-info-stub"><slot /></div>' },
-  RefreshIcon: { template: '<span>RefreshIcon</span>' },
-  ComputerIcon: { template: '<span>ComputerIcon</span>' },
-  CpuIcon: { template: '<span>CpuIcon</span>' },
-  GpuIcon: { template: '<span>GpuIcon</span>' },
-  CodeIcon: { template: '<span>CodeIcon</span>' }
+  DashboardPanel: { template: '<div class="panel-stub">Dashboard</div>' },
+  PackagePanel: { template: '<div class="panel-stub">Packages</div>' },
+  ResolvePanel: { template: '<div class="panel-stub">Resolve</div>' },
+  SystemPanel: { template: '<div class="panel-stub">System</div>' },
+  AuthPanel: { template: '<div class="panel-stub">Auth</div>' },
+  HomeIcon: { template: '<span>HomeIcon</span>' },
+  MagnifyingGlassIcon: { template: '<span>MagnifyingGlassIcon</span>' },
+  CheckBadgeIcon: { template: '<span>CheckBadgeIcon</span>' },
+  ServerIcon: { template: '<span>ServerIcon</span>' },
+  LockClosedIcon: { template: '<span>LockClosedIcon</span>' },
 }
 
 function createWrapper() {
@@ -27,257 +31,59 @@ function createWrapper() {
 }
 
 describe('App', () => {
-  it('renders the app title', async () => {
+  it('renders sidebar with navigation items', () => {
     const wrapper = createWrapper()
-    await new Promise(process.nextTick)
-    expect(wrapper.text()).toContain('Universal Dependency Resolver')
+    expect(wrapper.text()).toContain('UDR')
+    expect(wrapper.text()).toContain('Dashboard')
+    expect(wrapper.text()).toContain('Packages')
+    expect(wrapper.text()).toContain('Resolve')
+    expect(wrapper.text()).toContain('System')
+    expect(wrapper.text()).toContain('Auth')
   })
 
-  it('loads export formats on mount', async () => {
-    createWrapper()
-    await new Promise(process.nextTick)
-    expect(packageService.getExportFormats).toHaveBeenCalled()
-  })
-
-  it('handles export format load error', async () => {
-    packageService.getExportFormats.mockRejectedValue(new Error('API error'))
+  it('shows Dashboard panel by default', () => {
     const wrapper = createWrapper()
-    await new Promise(process.nextTick)
-
-    expect(wrapper.text()).toContain('Failed to load export formats')
+    expect(wrapper.text()).toContain('Dashboard')
   })
 
-  describe('package management', () => {
-    it('adds a package to the list', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      const nameInput = wrapper.find('.form-input')
-      await nameInput.setValue('flask')
-      await wrapper.vm.addPackage()
-
-      expect(wrapper.text()).toContain('flask')
-    })
-
-    it('shows error when adding empty package', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = ''
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-
-      expect(wrapper.text()).toContain('Package name is required.')
-    })
-
-    it('removes a package from the list', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-      expect(wrapper.text()).toContain('flask')
-      expect(wrapper.text()).toContain('(')
-
-      wrapper.vm.removePackage(0)
-      await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
-      expect(wrapper.text()).not.toContain('flask')
-    })
-
-    it('selects ecosystem when adding package', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.newPackage.ecosystem = 'pypi'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-
-      expect(wrapper.text()).toContain('pypi')
-    })
+  it('switches to Packages panel when Packages nav is clicked', async () => {
+    const wrapper = createWrapper()
+    const buttons = wrapper.findAll('button')
+    const packagesBtn = buttons.find(b => b.text().includes('Packages'))
+    await packagesBtn.trigger('click')
+    expect(wrapper.text()).toContain('Packages')
+    expect(wrapper.text()).not.toContain('Dashboard')
   })
 
-  describe('dependency resolution', () => {
-    it('shows error when resolving with no packages', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      await wrapper.vm.resolveDependencies()
-
-      expect(wrapper.vm.errorMessage).toBe('No packages selected.')
-      expect(wrapper.text()).toContain('No packages selected.')
-    })
-
-    it('resolves dependencies when button is clicked', async () => {
-      packageService.resolveDependencies.mockResolvedValue({
-        status: 'success',
-        resolved_packages: { flask: { version: '2.3.3', ecosystem: 'pypi' } }
-      })
-
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-
-      await wrapper.vm.resolveDependencies()
-      await new Promise(process.nextTick)
-
-      expect(wrapper.text()).toContain('Resolved Dependencies')
-    })
-
-    it('handles resolution failure', async () => {
-      packageService.resolveDependencies.mockRejectedValue(new Error('Resolution failed'))
-
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-
-      await wrapper.vm.resolveDependencies()
-      await new Promise(process.nextTick)
-
-      expect(wrapper.text()).toContain('Failed to resolve dependencies')
-    })
-
-    it('shows resolve button as disabled when no packages', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      const resolveBtn = wrapper.findAll('button').filter(b => b.text() === 'Resolve Dependencies')
-      if (resolveBtn.length) {
-        expect(resolveBtn[0].element.disabled).toBe(true)
-      }
-    })
+  it('switches to Resolve panel when Resolve nav is clicked', async () => {
+    const wrapper = createWrapper()
+    const buttons = wrapper.findAll('button')
+    const resolveBtn = buttons.find(b => b.text().includes('Resolve'))
+    await resolveBtn.trigger('click')
+    expect(wrapper.text()).toContain('Resolve')
   })
 
-  describe('export', () => {
-    it('shows export formats after resolution', async () => {
-      packageService.resolveDependencies.mockResolvedValue({
-        status: 'success',
-        resolved_packages: { flask: { version: '2.3.3', ecosystem: 'pypi' } }
-      })
-
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-      await wrapper.vm.resolveDependencies()
-      await new Promise(process.nextTick)
-
-      expect(wrapper.text()).toContain('requirements.txt')
-      expect(wrapper.text()).toContain('package.json')
-    })
-
-    it('calls exportConfiguration when export button clicked', async () => {
-      packageService.resolveDependencies.mockResolvedValue({
-        status: 'success',
-        resolved_packages: { flask: { version: '2.3.3', ecosystem: 'pypi' } }
-      })
-      packageService.exportConfiguration.mockResolvedValue({
-        content: 'flask==2.3.3'
-      })
-
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.newPackage.name = 'flask'
-      wrapper.vm.addPackage()
-      await wrapper.vm.$nextTick()
-      await wrapper.vm.resolveDependencies()
-      await new Promise(process.nextTick)
-
-      await wrapper.vm.exportConfig('requirements.txt')
-
-      expect(packageService.exportConfiguration).toHaveBeenCalled()
-    })
+  it('switches to System panel when System nav is clicked', async () => {
+    const wrapper = createWrapper()
+    const buttons = wrapper.findAll('button')
+    const resolveBtn = buttons.find(b => b.text().includes('System'))
+    await resolveBtn.trigger('click')
+    expect(wrapper.text()).toContain('System')
   })
 
-  describe('system info updates', () => {
-    it('updates system info when SystemInfo emits event', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      const sysInfo = { os: { system: 'Linux' } }
-      wrapper.vm.updateSystemInfo(sysInfo)
-      expect(wrapper.vm.systemInfo).toEqual(sysInfo)
-    })
+  it('switches to Auth panel when Auth nav is clicked', async () => {
+    const wrapper = createWrapper()
+    const buttons = wrapper.findAll('button')
+    const authBtn = buttons.find(b => b.text().includes('Auth'))
+    await authBtn.trigger('click')
+    expect(wrapper.text()).toContain('Auth')
   })
 
-  describe('clipboard', () => {
-    beforeEach(() => {
-      Object.assign(navigator, {
-        clipboard: { writeText: jest.fn().mockResolvedValue(undefined) }
-      })
-    })
-
-    it('copies export preview to clipboard', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      wrapper.vm.exportPreview = { format: 'requirements.txt', content: 'flask==2.3.3' }
-      await wrapper.vm.copyToClipboard()
-
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('flask==2.3.3')
-    })
-
-    it('does nothing when no export preview', async () => {
-      const wrapper = createWrapper()
-      await new Promise(process.nextTick)
-
-      await wrapper.vm.copyToClipboard()
-      expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('download', () => {
-    it('creates a blob URL and triggers download', () => {
-      const createObjectURL = jest.fn(() => 'blob:test')
-      const revokeObjectURL = jest.fn()
-      window.URL.createObjectURL = createObjectURL
-      window.URL.revokeObjectURL = revokeObjectURL
-
-      const wrapper = createWrapper()
-      wrapper.vm.exportPreview = { format: 'requirements.txt', content: 'flask==2.3.3' }
-
-      wrapper.vm.downloadFile()
-
-      expect(createObjectURL).toHaveBeenCalled()
-      expect(revokeObjectURL).toHaveBeenCalled()
-    })
-
-    it('does nothing when no export preview', () => {
-      const createObjectURL = jest.fn()
-      window.URL.createObjectURL = createObjectURL
-
-      const wrapper = createWrapper()
-      wrapper.vm.downloadFile()
-
-      expect(createObjectURL).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('error handling', () => {
-    it('clears error message after 2 seconds', async () => {
-      jest.useFakeTimers()
-
-      const wrapper = createWrapper()
-      wrapper.vm.exportPreview = { format: 'txt', content: 'test' }
-      await wrapper.vm.copyToClipboard()
-
-      expect(wrapper.vm.errorMessage).toBe('Copied to clipboard!')
-
-      jest.advanceTimersByTime(2000)
-      expect(wrapper.vm.errorMessage).toBeNull()
-
-      jest.useRealTimers()
-    })
+  it('navigates to Resolve when DashboardPanel emits navigate event', async () => {
+    const wrapper = createWrapper()
+    const dashboard = wrapper.findComponent({ name: 'DashboardPanel' })
+    dashboard.vm.$emit('navigate', 'resolve')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Resolve')
   })
 })

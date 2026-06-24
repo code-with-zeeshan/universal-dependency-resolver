@@ -102,7 +102,7 @@ class TestGetPackageDetails:
             "system_requirements": {},
             "compatibility_matrix": {},
         }
-        response = client.get("/api/v1/packages/pypi/flask")
+        response = client.get("/api/v1/packages/pypi/flask/details")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -111,22 +111,22 @@ class TestGetPackageDetails:
 
     def test_get_package_details_not_found(self, client, mock_aggregator):
         mock_aggregator.get_package_info.return_value = None
-        response = client.get("/api/v1/packages/pypi/nonexistent")
+        response = client.get("/api/v1/packages/pypi/nonexistent/details")
         assert response.status_code == 404
         data = response.json()
-        assert "not found" in data["detail"]
+        assert "not found" in data["error"]["message"]
 
     def test_get_package_details_missing_ecosystem(self, client, mock_aggregator):
         mock_aggregator.get_package_info.return_value = {
             "name": "flask",
             "ecosystems": {},
         }
-        response = client.get("/api/v1/packages/pypi/flask")
+        response = client.get("/api/v1/packages/pypi/flask/details")
         assert response.status_code == 404
 
     def test_get_package_details_invalid_ecosystem(self, client):
-        response = client.get("/api/v1/packages/invalideco/some-package")
-        assert response.status_code == 500
+        response = client.get("/api/v1/packages/invalideco/some-package/details")
+        assert response.status_code == 400
 
     def test_get_package_details_with_metrics(self, client, mock_aggregator):
         mock_aggregator.get_package_info.return_value = {
@@ -137,17 +137,17 @@ class TestGetPackageDetails:
             "system_requirements": {},
             "compatibility_matrix": {},
         }
-        response = client.get("/api/v1/packages/pypi/flask?include_metrics=true")
+        response = client.get("/api/v1/packages/pypi/flask/details?include_metrics=true")
         assert response.status_code == 200
 
     def test_get_package_details_handles_value_error(self, client, mock_aggregator):
         mock_aggregator.get_package_info.side_effect = ValueError("Invalid data")
-        response = client.get("/api/v1/packages/pypi/flask")
+        response = client.get("/api/v1/packages/pypi/flask/details")
         assert response.status_code == 400
 
     def test_get_package_details_handles_generic_error(self, client, mock_aggregator):
         mock_aggregator.get_package_info.side_effect = Exception("Unexpected error")
-        response = client.get("/api/v1/packages/pypi/flask")
+        response = client.get("/api/v1/packages/pypi/flask/details")
         assert response.status_code == 500
 
 
@@ -183,7 +183,7 @@ class TestGetPackageVersions:
         response = client.get("/api/v1/packages/invalideco/pkg/versions")
         assert response.status_code == 400
         data = response.json()
-        assert "Unknown ecosystem" in data["detail"]
+        assert "Unknown ecosystem" in data["error"]["message"]
 
     def test_get_versions_filters_yanked(self, client, mock_aggregator):
         mock_source = MagicMock()

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4.0
 # Multi-stage build for optimized image
 FROM python:3.11-slim as builder
 
@@ -29,9 +30,9 @@ FROM python:3.11-slim
 # Metadata labels
 LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.authors="Universal Dependency Resolver Team" \
-      org.opencontainers.image.url="https://github.com/yourusername/universal-dependency-resolver" \
-      org.opencontainers.image.documentation="https://github.com/yourusername/universal-dependency-resolver/blob/main/README.md" \
-      org.opencontainers.image.source="https://github.com/yourusername/universal-dependency-resolver" \
+      org.opencontainers.image.url="https://github.com/code-with-zeeshan/universal-dependency-resolver" \
+      org.opencontainers.image.documentation="https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/code-with-zeeshan/universal-dependency-resolver" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.vendor="Your Organization" \

@@ -55,14 +55,14 @@ async def get_system_info(
 ) -> dict:
     """Get current system information"""
     try:
-        info = scanner.scan_all()
+        info = await scanner.scan_all()
 
         if not detailed:
             # Return simplified version
             return {
                 "status": "success",
                 "system": {
-                    "os": f"{info['os']['system']} {info['os']['release']}",
+                    "os": f"{info['platform']['system']} {info['platform']['release']}",
                     "cpu": info["cpu"]["brand"],
                     "gpu": info["gpu"]["devices"][0]["name"]
                     if info["gpu"]["available"]
@@ -87,11 +87,12 @@ async def get_system_info(
 async def check_system_compatibility(
     request: Request,
     check_request: SystemCheckRequest,
+    scanner: SystemScanner = Depends(get_system_scanner),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Check if system meets specified requirements"""
     try:
-        system_info = system_scanner.scan_all()  # Uses the module-level system_scanner
+        system_info = await scanner.scan_all()
         results = {
             "compatible": True,
             "checks": [],
@@ -110,18 +111,18 @@ async def check_system_compatibility(
             elif check_result["status"] == "warning":
                 results["warnings"].append(check_result["message"])
 
-            # Add recommendations
             if "recommendation" in check_result:
                 results["recommendations"].append(check_result["recommendation"])
 
-        # Check package-specific requirements if provided
         if check_request.packages:
             package_checks = await _check_package_requirements(
-                request.packages, system_info
+                check_request.packages, system_info
             )
             results["package_compatibility"] = package_checks
 
         return {"status": "success", "results": results}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -129,13 +130,13 @@ async def check_system_compatibility(
 @router.get("/gpu/info")
 @limiter.limit("30/minute")
 async def get_gpu_info(
-    request: Request, current_user: User = Depends(get_current_user)
+    request: Request,
+    scanner: SystemScanner = Depends(get_system_scanner),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Get detailed GPU information"""
     try:
-        gpu_info = (
-            system_scanner.detect_gpu_info()
-        )  # Uses the module-level system_scanner
+        gpu_info = scanner.detect_gpu_info()
 
         # Add additional GPU details if available
         if gpu_info["available"]:
@@ -156,13 +157,14 @@ async def get_gpu_info(
 @router.get("/runtime/{runtime}")
 @limiter.limit("30/minute")
 async def get_runtime_info(
-    request: Request, runtime: str, current_user: User = Depends(get_current_user)
+    request: Request,
+    runtime: str,
+    scanner: SystemScanner = Depends(get_system_scanner),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Get information about a specific runtime (python, node, java, etc.)"""
     try:
-        runtime_versions = (
-            system_scanner.detect_runtime_versions()
-        )  # Uses the module-level system_scanner
+        runtime_versions = scanner.detect_runtime_versions()
 
         # Comprehensive runtime detection
         runtime_checkers = {
@@ -220,51 +222,40 @@ async def analyze_environment_file(
             potential_conflicts=[],
         )
 
-        # Route to appropriate parser
-        if filename.endswith(
-            ("requirements.txt", "requirements.in", "requirements-dev.txt")
-        ):
-            analysis.type = "python"
-            analysis.packages = _parse_requirements_txt_comprehensive(content.decode())
+        # Map filenames to ManifestDetector parser keys
+        FILE_PARSER_MAP = [
+            (("requirements.txt", "requirements.in", "requirements-dev.txt"), "requirements", "python"),
+            ("pipfile", "pipfile", "python-pipenv"),
+            ("pipfile.lock", "pipfile_lock", "python-pipenv-lock"),
+            ("pyproject.toml", "pyproject", "python-poetry"),
+            ("package.json", "package_json", "nodejs"),
+            ("package-lock.json", "package_lock", "nodejs-lock"),
+            ("yarn.lock", "yarn_lock", "nodejs-yarn"),
+            (("environment.yml", "environment.yaml"), "conda_env", "conda"),
+            ("cargo.toml", "cargo_toml", "rust"),
+            ("cargo.lock", "cargo_lock", "rust-lock"),
+            ("go.mod", "go_mod", "go"),
+            ("composer.json", "composer_json", "php"),
+            ("gemfile", "gemfile", "ruby"),
+        ]
+
+        from backend.manifest_detector import ManifestDetector
+        detector = ManifestDetector()
+
+        for patterns, parser_key, ptype in FILE_PARSER_MAP:
+            if isinstance(patterns, str):
+                patterns = (patterns,)
+            if filename.endswith(patterns):
+                analysis.type = ptype
+                parser = detector._get_parser(parser_key)
+                analysis.packages = parser(content.decode())
+                break
+
+        # Extract Python version requirement for requirements.txt
+        if analysis.type == "python":
             analysis.python_version_required = _extract_python_version_requirement(
                 content.decode()
             )
-        elif filename.endswith("pipfile"):
-            analysis.type = "python-pipenv"
-            analysis.packages = _parse_pipfile(content.decode())
-        elif filename.endswith("pipfile.lock"):
-            analysis.type = "python-pipenv-lock"
-            analysis.packages = _parse_pipfile_lock(content.decode())
-        elif filename.endswith("pyproject.toml"):
-            analysis.type = "python-poetry"
-            analysis.packages = _parse_pyproject_toml(content.decode())
-        elif filename.endswith("package.json"):
-            analysis.type = "nodejs"
-            analysis.packages = _parse_package_json_comprehensive(content.decode())
-        elif filename.endswith("package-lock.json"):
-            analysis.type = "nodejs-lock"
-            analysis.packages = _parse_package_lock_json(content.decode())
-        elif filename.endswith("yarn.lock"):
-            analysis.type = "nodejs-yarn"
-            analysis.packages = _parse_yarn_lock(content.decode())
-        elif filename.endswith(("environment.yml", "environment.yaml")):
-            analysis.type = "conda"
-            analysis.packages = _parse_conda_env_comprehensive(content.decode())
-        elif filename.endswith("cargo.toml"):
-            analysis.type = "rust"
-            analysis.packages = _parse_cargo_toml_comprehensive(content.decode())
-        elif filename.endswith("cargo.lock"):
-            analysis.type = "rust-lock"
-            analysis.packages = _parse_cargo_lock(content.decode())
-        elif filename.endswith("go.mod"):
-            analysis.type = "go"
-            analysis.packages = _parse_go_mod(content.decode())
-        elif filename.endswith("composer.json"):
-            analysis.type = "php"
-            analysis.packages = _parse_composer_json(content.decode())
-        elif filename.endswith("gemfile"):
-            analysis.type = "ruby"
-            analysis.packages = _parse_gemfile(content.decode())
 
         # Analyze system requirements and conflicts
         analysis = await _analyze_package_requirements(analysis)
@@ -281,6 +272,7 @@ async def analyze_environment_file(
 @limiter.limit("30/minute")
 async def run_system_benchmarks(
     request: Request,
+    scanner: SystemScanner = Depends(get_system_scanner),
     comprehensive: bool = False,
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -294,7 +286,7 @@ async def run_system_benchmarks(
         benchmarks["disk"] = await _benchmark_disk()
 
         # GPU benchmark if available
-        system_info = system_scanner.scan_all()
+        system_info = await scanner.scan_all()
         if system_info["gpu"]["available"]:
             benchmarks["gpu"] = await _benchmark_gpu()
 
@@ -525,7 +517,7 @@ def _check_os_requirement(
     """Check OS requirements"""
     result = {"details": {}}
 
-    os_info = system_info["os"]
+    os_info = system_info["platform"]
 
     if requirement.minimum and "name" in requirement.minimum:
         required_os = requirement.minimum["name"].lower()
@@ -595,627 +587,6 @@ def _check_compiler_requirement(
 
     return result
 
-
-def _parse_requirements_txt_comprehensive(content: str) -> List[Dict[str, Any]]:
-    """Comprehensive parsing of requirements.txt"""
-    packages = []
-    current_line_num = 0
-
-    try:
-        from packaging.requirements import Requirement
-        from packaging.markers import Marker
-    except ImportError:
-        # Fallback to basic parsing
-        return _parse_requirements_txt_basic(content)
-
-    for line in content.split("\n"):
-        current_line_num += 1
-        line = line.strip()
-
-        # Skip comments and empty lines
-        if not line or line.startswith("#"):
-            continue
-
-        # Handle -r (include another requirements file)
-        if line.startswith("-r "):
-            packages.append(
-                {"type": "include", "file": line[3:].strip(), "line": current_line_num}
-            )
-            continue
-
-        # Handle -e (editable installs)
-        if line.startswith("-e "):
-            packages.append(
-                {"type": "editable", "path": line[3:].strip(), "line": current_line_num}
-            )
-            continue
-
-        # Handle index URLs
-        if line.startswith(("-i ", "--index-url", "-f", "--find-links")):
-            continue
-
-        try:
-            # Parse with packaging library
-            req = Requirement(line)
-
-            package_info = {
-                "name": req.name,
-                "version": str(req.specifier) if req.specifier else "*",
-                "line": current_line_num,
-            }
-
-            # Parse extras
-            if req.extras:
-                package_info["extras"] = list(req.extras)
-
-            # Parse markers (environment markers)
-            if req.marker:
-                package_info["marker"] = str(req.marker)
-                package_info["conditional"] = True
-
-            # Parse URL requirements
-            if req.url:
-                package_info["url"] = req.url
-
-            packages.append(package_info)
-
-        except Exception as e:
-            # Fallback parsing for non-standard formats
-            packages.append(
-                {
-                    "name": line,
-                    "version": "*",
-                    "line": current_line_num,
-                    "parse_error": str(e),
-                }
-            )
-
-    return packages
-
-
-def _parse_requirements_txt_basic(content: str) -> List[Dict[str, Any]]:
-    """Basic requirements.txt parsing fallback"""
-    packages = []
-
-    for line in content.split("\n"):
-        line = line.strip()
-        if line and not line.startswith("#"):
-            # Handle different operators
-            for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
-                if op in line:
-                    name, version = line.split(op, 1)
-                    packages.append(
-                        {"name": name.strip(), "version": f"{op}{version.strip()}"}
-                    )
-                    break
-            else:
-                # No version specifier
-                packages.append({"name": line, "version": "*"})
-
-    return packages
-
-
-def _parse_pipfile(content: str) -> List[Dict[str, Any]]:
-    """Parse Pipfile"""
-    try:
-        import toml
-
-        data = toml.loads(content)
-        packages = []
-
-        for section in ["packages", "dev-packages"]:
-            if section in data:
-                for name, spec in data[section].items():
-                    package_info = {"name": name, "dev": section == "dev-packages"}
-
-                    if isinstance(spec, str):
-                        package_info["version"] = spec
-                    elif isinstance(spec, dict):
-                        if "version" in spec:
-                            package_info["version"] = spec["version"]
-                        if "git" in spec:
-                            package_info["git"] = spec["git"]
-                        if "path" in spec:
-                            package_info["path"] = spec["path"]
-                        if "editable" in spec:
-                            package_info["editable"] = spec["editable"]
-
-                    packages.append(package_info)
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_pipfile_lock(content: str) -> List[Dict[str, Any]]:
-    """Parse Pipfile.lock"""
-    try:
-        data = json.loads(content)
-        packages = []
-
-        for section in ["default", "develop"]:
-            if section in data:
-                for name, info in data[section].items():
-                    package_info = {
-                        "name": name,
-                        "version": info.get("version", "*"),
-                        "dev": section == "develop",
-                    }
-
-                    if "hashes" in info:
-                        package_info["hashes"] = info["hashes"]
-
-                    packages.append(package_info)
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_pyproject_toml(content: str) -> List[Dict[str, Any]]:
-    """Parse pyproject.toml (Poetry/PEP 517)"""
-    try:
-        import toml
-
-        data = toml.loads(content)
-        packages = []
-
-        # Poetry format
-        if "tool" in data and "poetry" in data["tool"]:
-            poetry = data["tool"]["poetry"]
-
-            for section in ["dependencies", "dev-dependencies"]:
-                if section in poetry:
-                    for name, spec in poetry[section].items():
-                        if name == "python":  # Skip Python version constraint
-                            continue
-
-                        package_info = {"name": name, "dev": "dev" in section}
-
-                        if isinstance(spec, str):
-                            package_info["version"] = spec
-                        elif isinstance(spec, dict):
-                            if "version" in spec:
-                                package_info["version"] = spec["version"]
-                            if "git" in spec:
-                                package_info["git"] = spec["git"]
-                            if "extras" in spec:
-                                package_info["extras"] = spec["extras"]
-
-                        packages.append(package_info)
-
-        # PEP 517 format
-        elif "project" in data:
-            project = data["project"]
-
-            if "dependencies" in project:
-                for dep in project["dependencies"]:
-                    # Parse PEP 508 dependency specification
-                    packages.append(_parse_pep508_dependency(dep))
-
-            if "optional-dependencies" in project:
-                for extra, deps in project["optional-dependencies"].items():
-                    for dep in deps:
-                        pkg = _parse_pep508_dependency(dep)
-                        pkg["extra"] = extra
-                        packages.append(pkg)
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_pep508_dependency(dep_str: str) -> Dict[str, Any]:
-    """Parse PEP 508 dependency specification"""
-    try:
-        from packaging.requirements import Requirement
-
-        req = Requirement(dep_str)
-
-        return {
-            "name": req.name,
-            "version": str(req.specifier) if req.specifier else "*",
-            "extras": list(req.extras) if req.extras else None,
-            "marker": str(req.marker) if req.marker else None,
-        }
-    except Exception:
-        # Basic fallback
-        if ">" in dep_str or "<" in dep_str or "=" in dep_str:
-            for op in [">=", "<=", "==", ">", "<", "~="]:
-                if op in dep_str:
-                    name, version = dep_str.split(op, 1)
-                    return {"name": name.strip(), "version": f"{op}{version.strip()}"}
-
-        return {"name": dep_str, "version": "*"}
-
-
-def _parse_package_json_comprehensive(content: str) -> List[Dict[str, Any]]:
-    """Comprehensive package.json parsing"""
-    try:
-        data = json.loads(content)
-        packages = []
-
-        # Parse different dependency sections
-        dep_sections = [
-            ("dependencies", False, False),
-            ("devDependencies", True, False),
-            ("peerDependencies", False, True),
-            ("optionalDependencies", False, False),
-            ("bundledDependencies", False, False),
-        ]
-
-        for section, is_dev, is_peer in dep_sections:
-            if section in data:
-                deps = data[section]
-
-                if isinstance(deps, dict):
-                    for name, version in deps.items():
-                        package_info = {
-                            "name": name,
-                            "version": version,
-                            "dev": is_dev,
-                            "peer": is_peer,
-                        }
-
-                        # Parse version types
-                        if version.startswith("file:"):
-                            package_info["type"] = "file"
-                            package_info["path"] = version[5:]
-                        elif version.startswith("git"):
-                            package_info["type"] = "git"
-                            package_info["url"] = version
-                        elif version.startswith("npm:"):
-                            package_info["type"] = "alias"
-                            package_info["alias"] = version[4:]
-
-                        packages.append(package_info)
-
-                elif isinstance(deps, list) and section == "bundledDependencies":
-                    for name in deps:
-                        packages.append({"name": name, "bundled": True})
-
-        # Extract engines (Node.js version requirements)
-        if "engines" in data:
-            for engine, version in data["engines"].items():
-                packages.append({"type": "engine", "name": engine, "version": version})
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_package_lock_json(content: str) -> List[Dict[str, Any]]:
-    """Parse package-lock.json"""
-    try:
-        data = json.loads(content)
-        packages = []
-
-        # npm v7+ format
-        if "packages" in data:
-            for path, info in data["packages"].items():
-                if path == "":  # Root package
-                    continue
-
-                name = path.split("node_modules/")[-1]
-                packages.append(
-                    {
-                        "name": name,
-                        "version": info.get("version", "*"),
-                        "resolved": info.get("resolved"),
-                        "integrity": info.get("integrity"),
-                        "dev": info.get("dev", False),
-                        "optional": info.get("optional", False),
-                    }
-                )
-
-        # npm v6 format
-        elif "dependencies" in data:
-
-            def parse_deps(deps, dev=False):
-                for name, info in deps.items():
-                    packages.append(
-                        {
-                            "name": name,
-                            "version": info.get("version", "*"),
-                            "resolved": info.get("resolved"),
-                            "integrity": info.get("integrity"),
-                            "dev": dev or info.get("dev", False),
-                        }
-                    )
-
-                    # Nested dependencies
-                    if "dependencies" in info:
-                        parse_deps(info["dependencies"], dev)
-
-            parse_deps(data["dependencies"])
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_yarn_lock(content: str) -> List[Dict[str, Any]]:
-    """Parse yarn.lock"""
-    packages = []
-    current_package = None
-
-    for line in content.split("\n"):
-        line = line.strip()
-
-        # Package declaration
-        if line and not line.startswith(" ") and "@" in line:
-            # Extract package name and version constraint
-            parts = line.rstrip(":").split(", ")
-            for part in parts:
-                if "@" in part:
-                    # Handle scoped packages
-                    if part.startswith("@"):
-                        at_count = part.count("@")
-                        if at_count == 2:
-                            name, version = part.rsplit("@", 1)
-                        else:
-                            name = part
-                            version = "*"
-                    else:
-                        name, version = part.rsplit("@", 1)
-
-                    current_package = {
-                        "name": name.strip('"'),
-                        "requested_version": version.strip('"'),
-                    }
-
-        # Version line
-        elif line.startswith("version") and current_package:
-            version = line.split('"')[1]
-            current_package["version"] = version
-            packages.append(current_package)
-            current_package = None
-
-    return packages
-
-
-def _parse_conda_env_comprehensive(content: str) -> List[Dict[str, Any]]:
-    """Comprehensive conda environment.yml parsing"""
-    try:
-        import yaml
-
-        data = yaml.safe_load(content)
-        packages = []
-
-        if "dependencies" in data:
-            for dep in data["dependencies"]:
-                if isinstance(dep, str):
-                    # Conda package
-                    package_info = _parse_conda_dependency(dep)
-                    package_info["manager"] = "conda"
-                    packages.append(package_info)
-
-                elif isinstance(dep, dict):
-                    # Can contain pip dependencies
-                    if "pip" in dep:
-                        for pip_dep in dep["pip"]:
-                            package_info = _parse_pip_dependency(pip_dep)
-                            package_info["manager"] = "pip"
-                            packages.append(package_info)
-
-                    # Other package managers (rare but possible)
-                    for manager, deps in dep.items():
-                        if manager != "pip" and isinstance(deps, list):
-                            for d in deps:
-                                packages.append({"name": d, "manager": manager})
-
-        # Extract channels
-        if "channels" in data:
-            channels = data["channels"]
-            # Add channel info to packages if needed
-
-        # Extract other metadata
-        if "prefix" in data:
-            # Environment location
-            pass
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_conda_dependency(dep: str) -> Dict[str, Any]:
-    """Parse conda dependency string"""
-    # Handle different conda dependency formats
-    # package
-    # package=version
-    # package=version=build
-    # package>=version
-
-    if "=" in dep:
-        if dep.count("=") == 2:
-            # package=version=build
-            name, version, build = dep.split("=")
-            return {"name": name, "version": version, "build": build}
-        elif ">" in dep or "<" in dep or "!" in dep:
-            # Handle >=, <=, etc.
-            for op in [">=", "<=", "==", "!=", ">", "<"]:
-                if op in dep:
-                    name, version = dep.split(op)
-                    return {"name": name, "version": f"{op}{version}"}
-        else:
-            # package=version
-            name, version = dep.split("=", 1)
-            return {"name": name, "version": version}
-    else:
-        return {"name": dep, "version": "*"}
-
-
-def _parse_pip_dependency(dep: str) -> Dict[str, Any]:
-    """Parse pip dependency from conda env"""
-    # Reuse the PEP 508 parser
-    return _parse_pep508_dependency(dep)
-
-
-def _parse_cargo_toml_comprehensive(content: str) -> List[Dict[str, Any]]:
-    """Comprehensive Cargo.toml parsing"""
-    try:
-        import toml
-
-        data = toml.loads(content)
-        packages = []
-
-        # Parse different dependency sections
-        dep_sections = ["dependencies", "dev-dependencies", "build-dependencies"]
-
-        for section in dep_sections:
-            if section in data:
-                for name, spec in data[section].items():
-                    package_info = {
-                        "name": name,
-                        "dev": "dev" in section,
-                        "build": "build" in section,
-                    }
-
-                    if isinstance(spec, str):
-                        package_info["version"] = spec
-                    elif isinstance(spec, dict):
-                        if "version" in spec:
-                            package_info["version"] = spec["version"]
-                        if "git" in spec:
-                            package_info["git"] = spec["git"]
-                            if "branch" in spec:
-                                package_info["branch"] = spec["branch"]
-                            if "tag" in spec:
-                                package_info["tag"] = spec["tag"]
-                        if "path" in spec:
-                            package_info["path"] = spec["path"]
-                        if "features" in spec:
-                            package_info["features"] = spec["features"]
-                        if "optional" in spec:
-                            package_info["optional"] = spec["optional"]
-
-                    packages.append(package_info)
-
-        # Parse target-specific dependencies
-        if "target" in data:
-            for target, target_data in data["target"].items():
-                for section in dep_sections:
-                    if section in target_data:
-                        for name, spec in target_data[section].items():
-                            package_info = {
-                                "name": name,
-                                "target": target,
-                                "dev": "dev" in section,
-                            }
-
-                            if isinstance(spec, str):
-                                package_info["version"] = spec
-                            elif isinstance(spec, dict):
-                                package_info["version"] = spec.get("version", "*")
-
-                            packages.append(package_info)
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_cargo_lock(content: str) -> List[Dict[str, Any]]:
-    """Parse Cargo.lock"""
-    try:
-        import toml
-
-        data = toml.loads(content)
-        packages = []
-
-        if "package" in data:
-            for pkg in data["package"]:
-                package_info = {
-                    "name": pkg.get("name"),
-                    "version": pkg.get("version"),
-                    "source": pkg.get("source"),
-                    "checksum": pkg.get("checksum"),
-                }
-
-                if "dependencies" in pkg:
-                    package_info["dependencies"] = pkg["dependencies"]
-
-                packages.append(package_info)
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_go_mod(content: str) -> List[Dict[str, Any]]:
-    """Parse go.mod"""
-    packages = []
-
-    for line in content.split("\n"):
-        line = line.strip()
-
-        if line.startswith("require"):
-            # Start of require block
-            in_require_block = True
-        elif line.startswith("replace"):
-            # Handle replace directives
-            pass
-        elif line and not line.startswith("//"):
-            # Parse module lines
-            parts = line.split()
-            if len(parts) >= 2 and "." in parts[0]:
-                packages.append(
-                    {
-                        "name": parts[0],
-                        "version": parts[1],
-                        "indirect": "indirect" in line,
-                    }
-                )
-
-    return packages
-
-
-def _parse_composer_json(content: str) -> List[Dict[str, Any]]:
-    """Parse composer.json (PHP)"""
-    try:
-        data = json.loads(content)
-        packages = []
-
-        for section in ["require", "require-dev"]:
-            if section in data:
-                for name, version in data[section].items():
-                    if name == "php":  # PHP version constraint
-                        continue
-
-                    packages.append(
-                        {"name": name, "version": version, "dev": "dev" in section}
-                    )
-
-        return packages
-    except Exception:
-        return []
-
-
-def _parse_gemfile(content: str) -> List[Dict[str, Any]]:
-    """Parse Gemfile (Ruby)"""
-    packages = []
-
-    for line in content.split("\n"):
-        line = line.strip()
-
-        if line.startswith("gem "):
-            # Parse gem declaration
-            parts = re.findall(r'["\']([^"\']+)["\']', line)
-            if parts:
-                package_info = {"name": parts[0]}
-
-                if len(parts) > 1:
-                    package_info["version"] = parts[1]
-
-                # Check for groups
-                group_match = re.search(r":group\s*=>\s*:(\w+)", line)
-                if group_match:
-                    package_info["group"] = group_match.group(1)
-
-                packages.append(package_info)
-
-    return packages
 
 
 def _extract_python_version_requirement(content: str) -> Optional[str]:

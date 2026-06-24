@@ -22,18 +22,18 @@ describe('systemService', () => {
   describe('getSystemInfo', () => {
     it('calls /system/info and returns data', async () => {
       apiClient.get.mockResolvedValue({
-        data: { data: { os: { system: 'Linux' }, cpu: { brand: 'Intel' } } }
+        data: { data: { platform: { system: 'Linux' }, cpu: { brand: 'Intel' } } }
       })
 
       const result = await systemService.getSystemInfo()
 
       expect(apiClient.get).toHaveBeenCalledWith('/system/info', { params: { detailed: false } })
-      expect(result.os.system).toBe('Linux')
+      expect(result.platform.system).toBe('Linux')
     })
 
     it('caches results within TTL', async () => {
       apiClient.get.mockResolvedValue({
-        data: { data: { os: { system: 'Linux' } } }
+        data: { data: { platform: { system: 'Linux' } } }
       })
 
       await systemService.getSystemInfo()
@@ -44,7 +44,7 @@ describe('systemService', () => {
 
     it('bypasses cache when forceRefresh is true', async () => {
       apiClient.get.mockResolvedValue({
-        data: { data: { os: { system: 'Linux' } } }
+        data: { data: { platform: { system: 'Linux' } } }
       })
 
       await systemService.getSystemInfo()
@@ -154,7 +154,7 @@ describe('systemService', () => {
       const systemInfo = {
         gpu: { available: true, devices: [{ name: 'RTX 3080' }], cuda: '11.8', cudnn: '8.6', driver_version: '525' },
         runtime_versions: { python: { version: '3.11.0', location: '/usr/bin/python3' } },
-        os: { system: 'Linux', release: '6.2', platform: 'x86_64', machine: 'x86_64', version: '' },
+        platform: { system: 'Linux', release: '6.2', platform: 'x86_64', machine: 'x86_64', version: '' },
         cpu: { brand: 'Intel Core i7', count: 4, logical_cores: 8, arch: 'x86_64' },
         memory: { total: 16000000000, available: 8000000000 }
       }
@@ -209,7 +209,7 @@ describe('systemService', () => {
     })
 
     it('detects OS mismatch', () => {
-      const systemInfo = { os: { system: 'Windows' } }
+      const systemInfo = { platform: { system: 'Windows' } }
       const result = systemService.compareSystemRequirements(
         systemInfo,
         { os: 'linux' }
@@ -244,7 +244,7 @@ describe('systemService', () => {
 
     it('formats full system info', () => {
       const systemInfo = {
-        os: { system: 'Linux', release: '6.2', version: '', machine: 'x86_64', platform: 'x86_64' },
+        platform: { system: 'Linux', release: '6.2', version: '', machine: 'x86_64', platform: 'x86_64' },
         cpu: { brand: 'Intel', count: 4, logical_cores: 8, arch: 'x86_64' },
         gpu: { available: false },
         memory: { total: 16000000000, available: 8000000000 },
@@ -263,7 +263,7 @@ describe('systemService', () => {
   describe('clearCache', () => {
     it('clears cached system info', async () => {
       apiClient.get.mockResolvedValue({
-        data: { data: { os: { system: 'Linux' } } }
+        data: { data: { platform: { system: 'Linux' } } }
       })
 
       await systemService.getSystemInfo()

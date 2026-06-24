@@ -25,6 +25,17 @@ from backend.core.cache import cache_manager
 
 logger = logging.getLogger(__name__)
 
+# Prometheus metrics
+try:
+    from prometheus_client import Histogram as _Histogram
+    _request_duration = _Histogram(
+        "http_request_duration_seconds",
+        "HTTP request duration in seconds",
+        ["method", "endpoint", "status"],
+    )
+except ImportError:
+    _request_duration = None
+
 
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """Add and propagate unique correlation ID across services.
@@ -118,9 +129,6 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
 
         start_time = time.time()
 
-        # Add timing info to request state
-        request.state.start_time = start_time
-
         response = await call_next(request)
 
         # Calculate duration
@@ -144,22 +152,12 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
         response.headers["X-Response-Time"] = f"{duration:.3f}s"
 
         # Update metrics if enabled
-        if PROMETHEUS_ENABLED:
-            try:
-                from prometheus_client import Histogram
-
-                request_duration = Histogram(
-                    "http_request_duration_seconds",
-                    "HTTP request duration in seconds",
-                    ["method", "endpoint", "status"],
-                )
-                request_duration.labels(
-                    method=request.method,
-                    endpoint=request.url.path,
-                    status=response.status_code,
-                ).observe(duration)
-            except ImportError:
-                pass
+        if PROMETHEUS_ENABLED and _request_duration is not None:
+            _request_duration.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status=response.status_code,
+            ).observe(duration)
 
         return response
 
@@ -231,9 +229,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Add CSP header for API responses
         if request.url.path.startswith("/api/"):
-            response.headers[
-                "Content-Security-Policy"
-            ] = "default-src 'none'; frame-ancestors 'none';"
+            if request.url.path in ("/api/v1/docs", "/api/v1/redoc"):
+                csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https://fastapi.tiangolo.com data:; font-src 'self' data:; frame-ancestors 'none';"
+            else:
+                csp = "default-src 'none'; frame-ancestors 'none';"
+            response.headers["Content-Security-Policy"] = csp
 
         # Add HSTS for HTTPS connections
         if request.url.scheme == "https":
@@ -288,13 +288,11 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                     )
                 chunks.append(chunk)
 
-            # Reconstruct request body
             body = b"".join(chunks)
 
-            async def receive():
-                return {"type": "http.request", "body": body}
-
-            request._receive = receive
+            # Set _body so downstream middlewares and route handlers
+            # can read the body via request.body() without re-consuming the stream
+            request._body = body
 
         return await call_next(request)
 
@@ -483,6 +481,11 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method in self.SAFE_METHODS:
+            return await call_next(request)
+
+        # Allow bypassing CSRF when disabled via feature flag
+        from backend.settings import FEATURES
+        if not FEATURES.get("ENABLE_CSRF", True):
             return await call_next(request)
 
         # API clients using Bearer auth are exempt
