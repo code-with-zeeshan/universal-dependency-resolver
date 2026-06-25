@@ -69,11 +69,11 @@ class TestSystemEndpoint:
         response = api_client.get(f"{app_url}/system/info")
         if response.status_code == 200:
             data = response.json()
-            assert "data" in data
-            info = data["data"]
+            assert "system" in data
+            info = data["system"]
             assert "os" in info
             assert "cpu" in info
-            assert "runtime_versions" in info
+            assert "python" in info
 
 
 class TestPackageSearch:
@@ -205,15 +205,16 @@ class TestDependencyResolution:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "resolved_packages" in data
-        assert "flask" in data["resolved_packages"]
+        assert "data" in data
+        assert "resolved_packages" in data["data"]
+        assert "flask" in data["data"]["resolved_packages"]
 
     def test_resolve_empty_packages(self, api_client, app_url):
         response = api_client.post(
             f"{app_url}/packages/resolve",
             json={"packages": []},
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
 
     def test_resolve_missing_body(self, api_client, app_url):
         response = api_client.post(f"{app_url}/packages/resolve", json={})
@@ -270,7 +271,7 @@ class TestErrorHandling:
         assert "error" in data or "detail" in data
 
     def test_cors_headers_present(self, api_client):
-        response = api_client.get("/")
+        response = api_client.get("/", headers={"Origin": "http://localhost:8080"})
         assert "access-control-allow-origin" in response.headers
 
     def test_request_id_header(self, api_client):

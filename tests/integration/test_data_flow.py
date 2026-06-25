@@ -165,13 +165,15 @@ class TestDataPersistence:
         assert len(verify_pkg.versions) == 1
 
     def test_rollback_on_error(self, db_session):
+        from sqlalchemy.exc import IntegrityError
+
+        nested = db_session.begin_nested()
+
         pkg = Package(name="rollback-test", ecosystem="pypi")
         db_session.add(pkg)
         db_session.commit()
 
         pkg_id = pkg.id
-
-        from sqlalchemy.exc import IntegrityError
 
         try:
             dup = Package(name="rollback-test", ecosystem="pypi")
