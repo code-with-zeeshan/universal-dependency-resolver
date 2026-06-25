@@ -19,12 +19,12 @@ from typing import Dict, List, Optional, Any, Tuple
 
 
 def _parse_package_spec(spec: str, default_ecosystem: str = "pypi") -> Tuple[str, str]:
-    """Parse pkg@ecosystem syntax, falling back to default ecosystem."""
+    """Parse pkg@ecosystem syntax, falling back to default ecosystem.
+    Splits on the last @ so scoped npm packages (e.g. @angular/core) work.
+    """
     if "@" in spec:
-        parts = spec.split("@", 1)
-        name = parts[0].strip()
-        eco = parts[1].strip().lower()
-        return name, eco
+        name, eco = spec.rsplit("@", 1)
+        return name.strip(), eco.strip().lower()
     return spec.strip(), default_ecosystem
 
 
@@ -40,30 +40,34 @@ def _extract_cuda_variants(versions_info: List[Dict], base_version: str) -> List
     return variants
 
 
+def _normalize_cuda(cuda_str: str) -> int:
+    """Convert CUDA version string to comparable int by stripping dots.
+    '12.1' -> 121, '118' -> 118, 'cu118' -> 118
+    """
+    cleaned = cuda_str.replace(".", "").lstrip("cu")
+    try:
+        return int(cleaned)
+    except (ValueError, IndexError):
+        return 0
+
+
 def _select_best_cuda_variant(variants: List[Dict], system_cuda: Optional[str]) -> Optional[str]:
     """Select the best CUDA variant matching system CUDA version."""
     if not variants:
         return None
     if not system_cuda:
         return variants[0]["version"]
+    sys_norm = _normalize_cuda(system_cuda)
     # Try exact match first
     for v in variants:
-        if v["cuda_version"] == system_cuda:
+        if _normalize_cuda(v["cuda_version"]) == sys_norm:
             return v["version"]
     # Fall back to highest compatible (<= system CUDA)
-    system_major = _parse_major_version(system_cuda)
-    compatible = [v for v in variants if _parse_major_version(v["cuda_version"]) <= system_major]
+    compatible = [v for v in variants if _normalize_cuda(v["cuda_version"]) <= sys_norm]
     if compatible:
-        compatible.sort(key=lambda x: int(x["cuda_version"]), reverse=True)
+        compatible.sort(key=lambda x: _normalize_cuda(x["cuda_version"]), reverse=True)
         return compatible[0]["version"]
     return variants[0]["version"]
-
-
-def _parse_major_version(cuda_str: str) -> int:
-    try:
-        return int(cuda_str.split(".")[0])
-    except (ValueError, IndexError):
-        return 0
 
 
 def _aggregator_to_resolver_input(agg_data: Dict, ecosystem: str) -> Dict:
@@ -95,7 +99,7 @@ def _aggregator_to_resolver_input(agg_data: Dict, ecosystem: str) -> Dict:
             sys_reqs["python"] = {"min_version": min_ver}
 
     # Check for CUDA requirements from ecosystem data
-    eco_data = agg_data.get("ecosystems", {}).get(ecosystem, {})
+    eco_data = agg_data.get("ecosystem", {}).get(ecosystem, {})
     cuda_req = eco_data.get("system_requirements", {}).get("cuda")
     if cuda_req:
         sys_reqs["cuda"] = cuda_req

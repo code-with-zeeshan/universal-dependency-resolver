@@ -16,7 +16,7 @@ class _MockDataAggregator:
 
 
 class _MockSystemScanner:
-    def scan_all(self):
+    async def scan_all(self):
         return {"os": "linux", "python": "3.11"}
 
 

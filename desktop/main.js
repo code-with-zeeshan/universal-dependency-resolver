@@ -26,11 +26,13 @@ function startBackend(port) {
       ? path.join(__dirname, '..', 'backend')
       : path.join(process.resourcesPath, 'backend')
 
+    const isWin = process.platform === 'win32'
+    const pythonBin = isWin ? 'python.exe' : 'python3'
     const venvPython = isDev
-      ? path.join(__dirname, '..', 'venv', 'bin', 'python3')
-      : path.join(process.resourcesPath, 'venv', 'bin', 'python3')
+      ? path.join(__dirname, '..', 'venv', isWin ? 'Scripts' : 'bin', pythonBin)
+      : path.join(process.resourcesPath, 'venv', isWin ? 'Scripts' : 'bin', pythonBin)
 
-    const pythonCmd = require('fs').existsSync(venvPython) ? venvPython : 'python3'
+    const pythonCmd = require('fs').existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3')
 
     backendProcess = spawn(pythonCmd, [
       '-m', 'uvicorn', 'backend.api.main:app',
@@ -115,7 +117,10 @@ async function createWindow() {
     console.log('Backend ready!')
   } catch (e) {
     console.error('Backend start warning:', e.message)
-    // Continue anyway — the frontend can show an error state
+    dialog.showErrorBox(
+      'Backend Failed to Start',
+      `The Python backend could not be started.\n\n${e.message}\n\nMake sure Python 3.11+ and uvicorn are installed.`
+    )
   }
 
   // Load frontend
@@ -130,11 +135,9 @@ async function createWindow() {
     mainWindow.loadFile(distPath)
   }
 
-  // Inject backend URL into renderer
+  // Inject backend URL into renderer via preload
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript(`
-      window.__UDR_BACKEND_URL__ = '${backendUrl}';
-    `)
+    mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
   })
 
   mainWindow.on('closed', () => {

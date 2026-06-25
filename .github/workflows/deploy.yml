@@ -60,11 +60,11 @@ jobs:
           echo "version=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
         fi
 
-  # Deploy to Docker Swarm (Alternative)
+  # Deploy to Docker Swarm — disabled (set up your swarm first, then remove `&& false`)
   deploy-swarm:
     runs-on: ubuntu-latest
     needs: prepare
-    if: needs.prepare.outputs.should-deploy == 'true' && false  # Disabled by default
+    if: needs.prepare.outputs.should-deploy == 'true' && false
     environment: ${{ needs.prepare.outputs.environment }}
     
     steps:
@@ -91,11 +91,11 @@ jobs:
         # Verify deployment
         docker service ls
 
-  # Deploy to AWS ECS (Alternative)
+  # Deploy to AWS ECS — disabled (configure AWS secrets first, then remove `&& false`)
   deploy-ecs:
     runs-on: ubuntu-latest
     needs: prepare
-    if: needs.prepare.outputs.should-deploy == 'true' && false  # Disabled by default
+    if: needs.prepare.outputs.should-deploy == 'true' && false
     environment: ${{ needs.prepare.outputs.environment }}
     
     steps:

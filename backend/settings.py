@@ -154,7 +154,7 @@ HEALTH_CHECK_CACHE_TTL = int(os.getenv("HEALTH_CHECK_CACHE_TTL", 10))  # 10 seco
 # Database Configuration
 # =============================================================================
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://user:password@localhost:5432/depresolver"
+    "DATABASE_URL", "sqlite:///./udr.db"
 )
 _raw_pool_size = os.getenv("DATABASE_POOL_SIZE", "10")
 try:

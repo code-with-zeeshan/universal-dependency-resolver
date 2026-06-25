@@ -1,71 +1,52 @@
 # Core Framework
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.5.0
+fastapi>=0.115.0,<0.116
+uvicorn>=0.24,<0.25
+pydantic>=2.5.0,<3
 
 # HTTP & Web Scraping
-aiohttp==3.9.0
-requests==2.31.0
-beautifulsoup4==4.12.2
+aiohttp>=3.9,<4
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
 
 # Package Management & Versioning
-packaging==23.2
-toml==0.10.2
-pyyaml==6.0.1
+packaging>=23.2,<24
+tomli-w>=1.0,<2
+toml>=0.10,<1
+pyyaml>=6.0.1,<7
 
 # Algorithms & Solvers
-networkx==3.2.1
-z3-solver==4.12.2.0
+networkx>=3.2.1,<4
+z3-solver>=4.12,<5
 
 # Database
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.23
-alembic==1.12.1
-
-# Caching & Task Queue
-redis==5.0.1
-celery==5.3.4
-aiocache==0.12.2
-
-# System Information
-gputil==1.4.0
-py-cpuinfo==9.0.0
-psutil==5.9.6
-distro==1.8.0
-nvidia-ml-py>=12.535
+sqlalchemy>=2.0.23,<3
+alembic>=1.12,<2
 
 # API Rate Limiting & Security
-slowapi==0.1.9
-email-validator==2.1.0
-
-# Additional dependencies for production
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt<5
-prometheus-client==0.19.0
-prometheus-fastapi-instrumentator==6.1.0
-sentry-sdk[fastapi]==1.39.1
-python-socketio==5.11.0
+slowapi>=0.1.9,<1
+email-validator>=2.1,<3
+python-multipart>=0.0.6,<1
 
 # Export Templates
-jinja2==3.1.2
+jinja2>=3.1.2,<4
+
+# Structured Logging
+structlog>=24.1,<25
+
+# System Information (optional)
+psutil>=5.9.6,<6
+py-cpuinfo>=9.0,<10
+distro>=1.8,<2
+
+# Test dependencies (required by CI)
+pytest>=7.4,<8
+pytest-asyncio>=0.21,<1
+pytest-cov>=4.1,<6
+httpx>=0.25,<1
+black>=23.11,<24
+flake8>=6.1,<7
+mypy>=1.7,<2
+bandit>=1.7,<2
 
 # Build-time dependencies
 setuptools>=65.0.0
-
-# Development dependencies (optional)
-pytest==7.4.3
-pytest-asyncio==0.21.1
-httpx==0.25.2
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
-
-# Structured Logging & Observability
-structlog==24.1.0
-opentelemetry-api==1.22.0
-opentelemetry-sdk==1.22.0
-opentelemetry-instrumentation-fastapi==0.43b0
-opentelemetry-instrumentation-httpx==0.43b0
-opentelemetry-exporter-otlp-proto-http==1.22.0

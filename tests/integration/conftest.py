@@ -24,9 +24,7 @@ from backend.database.models import (
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://user:password@localhost:15432/depresolver_test"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/test_integration.db")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:16379")
 
 

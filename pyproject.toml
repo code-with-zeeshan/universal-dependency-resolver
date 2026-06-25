@@ -25,16 +25,17 @@ classifiers = [
 
 dependencies = [
     # Core Framework
-    "fastapi>=0.104,<0.105",
+    "fastapi>=0.115.0,<0.116",
     "uvicorn>=0.24,<0.25",
-    "pydantic==2.5.0",
+    "pydantic>=2.5.0,<3",
     # HTTP & Web Scraping
     "aiohttp>=3.9,<4",
     "requests>=2.31,<3",
     "beautifulsoup4>=4.12,<5",
     # Package Management & Versioning
     "packaging>=23.2,<24",
-    "toml>=0.10,<1",
+    "tomli-w>=1.0,<2",
+    "toml>=0.10,<1",  # TODO: migrate to tomllib (stdlib) once code no longer uses `import toml`
     "pyyaml>=6.0.1,<7",
     # Algorithms & Solvers
     "networkx>=3.2.1,<4",
@@ -67,10 +68,12 @@ security = [
 dev = [
     "pytest>=7.4,<8",
     "pytest-asyncio>=0.21,<1",
+    "pytest-cov>=4.1,<6",
     "httpx>=0.25,<1",
     "black>=23.11,<24",
     "flake8>=6.1,<7",
     "mypy>=1.7,<2",
+    "bandit>=1.7,<2",
 ]
 postgres = [
     "psycopg2-binary>=2.9.9,<3",
@@ -89,7 +92,7 @@ monitoring = [
     "prometheus-client>=0.19,<1",
 ]
 all = [
-    "universal-dependency-resolver[system,security,dev,postgres,monitoring]",
+    "ud-resolver[system,security,postgres,monitoring]",
 ]
 
 [project.urls]

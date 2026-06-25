@@ -1,13 +1,19 @@
 # backend/core/cache.py
 import json
 import hashlib
+import time
 from typing import Any, Optional, Union, List, Dict, Callable
 import asyncio
 from functools import wraps
 from urllib.parse import urlparse
-from aiocache import Cache
-from aiocache.serializers import JsonSerializer
 import logging
+
+try:
+    from aiocache import Cache
+    from aiocache.serializers import JsonSerializer
+    AIOCACHE_AVAILABLE = True
+except ImportError:
+    AIOCACHE_AVAILABLE = False
 
 from backend.settings import (
     REDIS_URL,
@@ -18,6 +24,52 @@ from backend.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class DictCache:
+    """Pure-Python in-memory dict cache with TTL support.
+
+    Acts as a drop-in replacement for aiocache when Redis is unavailable.
+    """
+
+    def __init__(self):
+        self._store: Dict[str, tuple[Any, float]] = {}
+
+    async def get(self, key: str) -> Optional[Any]:
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        value, expiry = entry
+        if expiry is not None and time.time() > expiry:
+            del self._store[key]
+            return None
+        return value
+
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        expiry = (time.time() + ttl) if ttl is not None else None
+        self._store[key] = (value, expiry)
+
+    async def delete(self, key: str) -> None:
+        self._store.pop(key, None)
+
+    async def clear(self) -> None:
+        self._store.clear()
+
+    async def close(self) -> None:
+        self._store.clear()
+
+    async def incr(self, key: str, delta: int = 1) -> int:
+        entry = self._store.get(key)
+        if entry is None:
+            self._store[key] = (delta, None)
+            return delta
+        value, expiry = entry
+        value = (value or 0) + delta
+        self._store[key] = (value, expiry)
+        return value
+
+    async def ping(self) -> bool:
+        return True
 
 
 class CacheManager:
@@ -32,6 +84,11 @@ class CacheManager:
         """Initialize cache backend"""
         if not FEATURES.get("ENABLE_CACHE", True):
             logger.info("Caching is disabled")
+            return
+
+        if not AIOCACHE_AVAILABLE:
+            self._cache = DictCache()
+            logger.info("Using DictCache fallback (aiocache not installed)")
             return
 
         try:
@@ -51,8 +108,8 @@ class CacheManager:
                 self._cache = Cache(Cache.MEMORY)
                 logger.info("Using in-memory cache (no Redis URL configured)")
         except Exception as e:
-            logger.warning(f"Failed to connect to Redis: {e}. Using in-memory cache.")
-            self._cache = Cache(Cache.MEMORY)
+            logger.warning(f"Failed to connect to Redis: {e}. Using DictCache fallback.")
+            self._cache = DictCache()
 
     async def disconnect(self):
         """Close cache connection"""

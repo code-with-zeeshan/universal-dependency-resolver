@@ -1,346 +1,107 @@
 # Troubleshooting Guide
 
-## 🔧 Common Issues and Solutions
-
-This guide helps you diagnose and resolve common issues with the Universal Dependency Resolver.
-
-## 🚀 Startup Issues
+## Startup Issues
 
 ### Database Connection Failed
-```
-Error: Can't connect to PostgreSQL database
-```
 
 **Solutions:**
-1. Verify PostgreSQL is running:
-   ```bash
-   docker-compose ps postgres
-   ```
-
-2. Check connection string in `.env`:
-   ```bash
-   DATABASE_URL=postgresql://user:password@localhost/depresolver
-   ```
-
-3. Test database connectivity:
-   ```bash
-   docker-compose exec postgres psql -U user -d depresolver
-   ```
+1. Check `DATABASE_URL` in `.env` (default: `sqlite:///./udr.db`)
+2. For PostgreSQL: verify it's running and credentials are correct
+3. For SQLite: ensure the parent directory is writable
+4. Reset: `rm -f udr.db && alembic upgrade head`
 
 ### Redis Connection Failed
-```
-Error: Can't connect to Redis
-```
 
-**Solutions:**
-1. Verify Redis is running:
-   ```bash
-   docker-compose ps redis
-   ```
+Redis is **optional**. If `REDIS_URL` is not set, the app uses DictCache (in-memory) and runs fine.
 
-2. Check Redis URL in `.env`:
-   ```bash
-   REDIS_URL=redis://localhost:6379
-   ```
-
-3. Test Redis connectivity:
-   ```bash
-   docker-compose exec redis redis-cli ping
-   ```
+If Redis is set but unreachable:
+- Check connection with `redis-cli ping`
+- The app logs a warning and falls back to DictCache automatically
 
 ### Port Already in Use
-```
-Error: [Errno 48] Address already in use
-```
 
-**Solutions:**
-1. Find process using the port:
-   ```bash
-   lsof -i :8000  # For backend
-   lsof -i :8080  # For frontend
-   ```
-
-2. Kill the process or change ports in docker-compose.yml
-
-## 🔍 API Issues
-
-### Rate Limiting
-```
-HTTP 429: Too Many Requests
+```bash
+lsof -i :8000  # Backend
+lsof -i :8080  # Frontend
 ```
 
-**Current Limits:**
-- General: 60 requests/minute
-- Resolve: 10 requests/minute
-- Export: 20 requests/minute
+## Database Issues
 
-**Solutions:**
-1. Wait for rate limit reset
-2. Implement request batching
-3. Contact administrators for higher limits
+### SQLite Performance
+SQLite is fine for single-user/desktop use. For multi-user production, use PostgreSQL.
 
-### Invalid Package Names
-```
-HTTP 400: Invalid package name format
+### PostgreSQL Connection Pool Exhausted
+
+```bash
+# Increase pool size in .env
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=30
 ```
 
-**Validation Rules:**
-- Package names must match: `^[a-zA-Z0-9][a-zA-Z0-9._-]*$`
-- Maximum length: 255 characters
-- No leading/trailing whitespace
+## Test Issues
 
-### Resolution Timeout
-```
-HTTP 504: Resolution timeout
-```
+### Tests Need PostgreSQL
 
-**Causes:**
-- Complex dependency graphs
-- Network issues with external APIs
-- Resource constraints
+No they don't. Integration tests default to SQLite (`sqlite:////tmp/test_integration.db`). All 422 tests pass with SQLite.
 
-**Solutions:**
-1. Simplify dependency requirements
-2. Use batch resolution for multiple packages
-3. Check external API status
+```bash
+# Run all tests (no Docker needed)
+pytest -v
 
-## 🗄️ Database Issues
-
-### Connection Pool Exhausted
-```
-Error: Timeout waiting for connection from pool
+# With coverage
+pytest --cov=backend
 ```
 
-**Symptoms:**
-- Slow response times
-- Database connection errors
-- High memory usage
+### Frontend Tests Fail
 
-**Solutions:**
-1. Increase pool size in `models.py`:
-   ```python
-   engine = create_engine(DATABASE_URL, pool_size=20, max_overflow=30)
-   ```
-
-2. Monitor pool status via health check:
-   ```bash
-   curl http://localhost:8000/api/v1/health
-   ```
-
-3. Check for connection leaks in application code
-
-### Slow Queries
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+npm run test
 ```
-Query execution time > 5 seconds
-```
+Requires Node.js 18+.
 
-**Common Causes:**
-- Missing database indexes
-- Large result sets
-- Complex joins
+## API Issues
 
-**Solutions:**
-1. Check query execution plan:
-   ```sql
-   EXPLAIN ANALYZE SELECT * FROM packages WHERE name LIKE 'tensorflow%';
-   ```
+### 429 Too Many Requests
 
-2. Add missing indexes:
-   ```sql
-   CREATE INDEX idx_package_search ON packages (name, ecosystem);
-   ```
+Rate limits:
+- Search: 60/min
+- Resolve: 10/min
+- Export: 20/min
+- Auth (login): 10/min
 
-3. Optimize query structure
+Wait for reset or increase via environment variables.
 
-## ⚡ Performance Issues
+### Authentication Errors
+
+- Auth is **disabled by default** (`ENABLE_AUTH=false` in development)
+- For production: set `ENABLE_AUTH=true` and configure `SECRET_KEY`
+- Tokens expire after configurable minutes (default: 30)
+
+## Performance
 
 ### High Memory Usage
-**Symptoms:**
-- Out of memory errors
-- Slow garbage collection
-- System instability
+- SQLite is memory-efficient for single-user
+- For multi-user, use PostgreSQL
+- Monitor with `docker stats` or health endpoint
 
-**Solutions:**
-1. Monitor memory usage:
-   ```bash
-   docker stats
-   ```
+### Cache Hit Rate Low
+- DictCache has no persistence (cleared on restart)
+- For persistent cache, configure Redis
+- Tune `CACHE_TTL` in environment
 
-2. Adjust Python memory settings:
-   ```bash
-   PYTHONMALLOC=jemalloc python app.py
-   ```
+## Desktop App
 
-3. Check for memory leaks in async code
+### Backend Fails to Start
+- The Electron app spawns the Python backend automatically
+- Check the error dialog for details
+- Ensure Python 3.11+ is available on PATH
+- On Windows, use the bundled Python from install
 
-### Cache Issues
-```
-Cache hit rate < 50%
-```
+## Getting Help
 
-**Causes:**
-- Redis connection issues
-- Short TTL values
-- Cache key conflicts
-
-**Solutions:**
-1. Verify Redis connectivity
-2. Adjust TTL values in settings
-3. Monitor cache statistics via health endpoint
-
-## 🔒 Security Issues
-
-### Authentication Failed
-```
-HTTP 401: Invalid credentials
-```
-
-**Solutions:**
-1. Verify JWT token format
-2. Check token expiration
-3. Ensure proper authorization headers
-
-### CORS Errors
-```
-Access-Control-Allow-Origin error
-```
-
-**Solutions:**
-1. Add allowed origins to environment:
-   ```bash
-   ALLOWED_ORIGINS=http://localhost:8080,https://yourdomain.com
-   ```
-
-2. Check CORS middleware configuration
-
-## 🌐 External API Issues
-
-### Package Registry Down
-```
-Error: PyPI/NPM registry unavailable
-```
-
-**Fallback Behavior:**
-- Uses cached data when available
-- Returns partial results with warnings
-- Graceful degradation
-
-**Solutions:**
-1. Check external service status
-2. Use alternative ecosystems
-3. Wait for service recovery
-
-### Network Timeouts
-```
-Connection timeout to external APIs
-```
-
-**Solutions:**
-1. Increase timeout values in settings
-2. Implement retry logic with backoff
-3. Use local mirrors if available
-
-## 🔧 Development Issues
-
-### Test Failures
-```
-pytest failures
-```
-
-**Common Issues:**
-1. Missing test dependencies
-2. Database not initialized for tests
-3. Async test setup issues
-
-**Solutions:**
-1. Install test dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Set up test database:
-   ```bash
-   docker-compose up test-db
-   ```
-
-3. Run tests with proper configuration:
-   ```bash
-   pytest tests/ -v --tb=short
-   ```
-
-### Code Quality Issues
-```
-flake8/black/mypy failures
-```
-
-**Solutions:**
-1. Auto-format code:
-   ```bash
-   black .
-   ```
-
-2. Fix linting issues:
-   ```bash
-   flake8 . --max-line-length=127
-   ```
-
-3. Check type hints:
-   ```bash
-   mypy backend/ --ignore-missing-imports
-   ```
-
-## 📊 Monitoring Issues
-
-### Missing Metrics
-```
-Prometheus metrics not available
-```
-
-**Solutions:**
-1. Verify Prometheus integration:
-   ```bash
-   curl http://localhost:8000/metrics
-   ```
-
-2. Check instrumentation setup in main.py
-
-### Alert Fatigue
-```
-Too many false positive alerts
-```
-
-**Solutions:**
-1. Adjust alert thresholds
-2. Fine-tune monitoring rules
-3. Implement alert silencing
-
-## 🚨 Critical Issues
-
-### Data Loss
-**Immediate Actions:**
-1. Stop all write operations
-2. Create database backup
-3. Contact database administrators
-
-### Security Breach
-**Immediate Actions:**
-1. Rotate all credentials
-2. Review access logs
-3. Notify security team
-4. Follow incident response plan
-
-## 📞 Getting Help
-
-### Support Channels
-- **Documentation**: Check this troubleshooting guide
-- **Issues**: GitHub Issues for bugs and feature requests
-- **Discussions**: GitHub Discussions for questions
-- **Email**: support@universal-dependency-resolver.dev
-
-### Diagnostic Information
-When reporting issues, include:
-- Error messages and stack traces
-- Environment details (OS, Python version, etc.)
-- Configuration files (redacted)
-- Logs from affected services
-- Steps to reproduce the issue
+- **API Docs**: `http://localhost:8000/api/v1/docs`
+- **Health Check**: `http://localhost:8000/api/v1/health`
+- **GitHub Issues**: Report bugs and feature requests

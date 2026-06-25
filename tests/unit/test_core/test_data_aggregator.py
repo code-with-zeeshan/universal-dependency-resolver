@@ -14,9 +14,7 @@ class TestDataAggregator:
     @pytest.mark.asyncio
     async def test_initialization(self, aggregator):
         """Test DataAggregator initialization"""
-        assert isinstance(aggregator.sources, dict)
-        assert Ecosystem.PYPI in aggregator.sources
-        assert Ecosystem.NPM in aggregator.sources
+        assert isinstance(aggregator._sources, dict)
         assert aggregator.enable_caching is False
         assert aggregator.cache_ttl == 3600
 
@@ -31,23 +29,19 @@ class TestDataAggregator:
     @pytest.mark.asyncio
     async def test_get_package_info_basic(self, aggregator):
         """Test basic package info retrieval"""
-        # Mock a client response
-        def get_package_info_mock(*args, **kwargs):
-            return {
-                "name": "test-package",
-                "version": "1.0.0",
-                "description": "Test package",
-                "dependencies": {},
-                "system_requirements": {},
-                "versions": ["1.0.0"],
-                "quality_metrics": {"overall_score": 0.8},
-            }
-        mock_client = Mock(spec=[])
-        mock_client.get_package_info = get_package_info_mock
-
-        with patch.object(aggregator, "sources") as mock_sources:
-            mock_sources.__getitem__.return_value = mock_client
-
+        from backend.core.data_aggregator import Ecosystem
+        mock_client = AsyncMock(spec=[])
+        mock_client.get_package_info_async = AsyncMock(return_value={
+            "name": "test-package",
+            "version": "1.0.0",
+            "description": "Test package",
+            "dependencies": {},
+            "system_requirements": {},
+            "versions": ["1.0.0"],
+            "quality_metrics": {"overall_score": 0.8},
+        })
+        mock_client.package_exists = AsyncMock(return_value=True)
+        with patch.dict(aggregator._sources, {Ecosystem.PYPI: mock_client}):
             result = await aggregator.get_package_info("test-package", "pypi")
 
             assert result["name"] == "test-package"
@@ -56,14 +50,14 @@ class TestDataAggregator:
     @pytest.mark.asyncio
     async def test_search_packages_basic(self, aggregator):
         """Test basic package search"""
-        mock_client = Mock(spec=[])
-        mock_client.search_packages = AsyncMock(return_value=[
+        from backend.core.data_aggregator import Ecosystem
+        mock_client = AsyncMock(spec=[])
+        mock_client.search_packages = Mock(return_value=[])
+        mock_client.search_packages_async = AsyncMock(return_value=[
             {"name": "test-pkg", "version": "1.0.0", "description": "Test"}
         ])
 
-        with patch.object(aggregator, "sources") as mock_sources:
-            mock_sources.__getitem__.return_value = mock_client
-
+        with patch.dict(aggregator._sources, {Ecosystem.PYPI: mock_client}):
             result = await aggregator.search_packages("test", ["pypi"])
 
             assert "pypi" in result
@@ -128,16 +122,16 @@ class TestDataAggregator:
     @pytest.mark.asyncio
     async def test_normalize_package_name_called(self, aggregator):
         """Test that package names are normalized"""
+        from backend.core.data_aggregator import Ecosystem
         with patch(
             "backend.core.data_aggregator.normalize_package_name"
         ) as mock_normalize:
             mock_normalize.return_value = "normalized-name"
-            mock_client = AsyncMock()
-            mock_client.get_package_info.return_value = {"name": "normalized-name"}
+            mock_client = AsyncMock(spec=[])
+            mock_client.get_package_info_async = AsyncMock(return_value={"name": "normalized-name"})
+            mock_client.package_exists = AsyncMock(return_value=True)
 
-            with patch.object(aggregator, "sources") as mock_sources:
-                mock_sources.__getitem__.return_value = mock_client
-
+            with patch.dict(aggregator._sources, {Ecosystem.PYPI: mock_client}):
                 await aggregator.get_package_info("Test.Package", "pypi")
 
                 mock_normalize.assert_any_call("Test.Package")

@@ -1,5 +1,6 @@
 # monitoring/prometheus.yml
-# For local development or self-hosted Prometheus
+# Self-hosted Prometheus (local dev / Docker Compose)
+# For Grafana Cloud Free, use prometheus-free.yml instead
 global:
   scrape_interval: 15s
   evaluation_interval: 15s

@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass
 import logging
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,8 @@ class ExportGenerator:
     """Main export generator using Jinja2 templates"""
 
     def __init__(self):
-        template_dir = Path(__file__).parent / "templates"
         self.env = Environment(
-            loader=FileSystemLoader(str(template_dir)),
+            loader=PackageLoader("backend.core", "templates"),
             trim_blocks=True,
             lstrip_blocks=True,
         )

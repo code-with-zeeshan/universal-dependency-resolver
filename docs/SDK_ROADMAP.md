@@ -1,98 +1,36 @@
-# SDK Development Roadmap
+# SDK Status
 
-## Overview
+## CLI Tool — ✅ DONE
 
-Official SDKs for Universal Dependency Resolver are planned for Q2 2026. This document outlines our SDK strategy and development plan.
+The CLI tool is already built into the backend:
 
-## Planned SDKs
+```bash
+python -m backend.cli resolve flask>=2.0.0
+python -m backend.cli lock flask>=2.0.0
+python -m backend.cli scan /path/to/project
+```
 
-### 1. Python SDK
-- **Timeline**: Q2 2026
-- **Features**:
-  - Full API coverage
-  - Async/await support
-  - Type hints
-  - Comprehensive error handling
-  - Retry logic with exponential backoff
-  - Connection pooling
-  - Local caching options
+## Python SDK — BUILT-IN
 
-### 2. JavaScript/TypeScript SDK
-- **Timeline**: Q2 2026
-- **Features**:
-  - Promise-based API
-  - TypeScript definitions
-  - Browser and Node.js support
-  - Automatic retries
-  - Request/response interceptors
-  - Built-in validation
+The entire backend is importable as a Python library:
 
-### 3. CLI Tool
-- **Timeline**: Q2 2026
-- **Features**:
-  - Interactive and scriptable modes
-  - JSON/YAML output formats
-  - Configuration file support
-  - Shell completions
-  - Progress indicators
-  - Batch operations
+```python
+from backend.core.data_aggregator import DataAggregator
+from backend.core.conflict_resolver import ConflictResolver
 
-### 4. Go Client (Stretch Goal)
-- **Timeline**: Q3 2026
-- **Features**:
-  - Idiomatic Go interface
-  - Context support
-  - Structured logging
+aggregator = DataAggregator()
+resolver = ConflictResolver()
+info = await aggregator.get_package_info("flask", "pypi")
+```
 
-## Development Phases
+## Planned
 
-### Phase 1: Specification (Current)
-- [ ] Define SDK API standards
-- [ ] Create OpenAPI specification
-- [ ] Design error handling patterns
-- [ ] Plan versioning strategy
+- **JavaScript/TypeScript SDK** — Q3 2026 (wraps the REST API)
+- **Go Client** — Stretch goal (low priority)
 
-### Phase 2: Python SDK
-- [ ] Generate initial code from OpenAPI
-- [ ] Implement core functionality
-- [ ] Add authentication handling
-- [ ] Write comprehensive tests
-- [ ] Create documentation
-- [ ] Publish to PyPI
+The REST API at `http://localhost:8000/api/v1/` is fully documented via OpenAPI at `/api/v1/docs`.
 
-### Phase 3: JavaScript SDK
-- [ ] Set up TypeScript project
-- [ ] Implement API client
-- [ ] Add browser compatibility
-- [ ] Create npm package
-- [ ] Write documentation
+## Contribute
 
-### Phase 4: CLI Tool
-- [ ] Design command structure
-- [ ] Implement using Click/Typer
-- [ ] Add interactive features
-- [ ] Package for distribution
-- [ ] Create man pages
-
-## Contributing
-
-We welcome contributions! If you'd like to help:
-
-1. **Vote** on SDK features in [Discussions](https://github.com/code-with-zeeshan/universal-dependency-resolver/discussions)
-2. **Contribute** to SDK development (see guidelines below)
-3. **Test** pre-release versions and provide feedback
-
-### SDK Contribution Guidelines
-
-1. Follow language-specific best practices
-2. Include comprehensive tests
-3. Add documentation and examples
-4. Ensure backward compatibility
-5. Follow semantic versioning
-
-## Get Notified
-
-Want to be notified when SDKs are released?
-- ⭐ Star the repository
-- 👁️ Watch for releases
-- 📧 Join our mailing list (coming soon)
+- Star the repo for priority: SDKs follow community demand
+- PRs welcome for JS/TS and Go SDKs

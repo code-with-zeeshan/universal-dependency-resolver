@@ -174,9 +174,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 # Environment validation function
 async def validate_environment() -> None:
     """Validate environment configuration on startup"""
-    required_env_vars = [
-        "DATABASE_URL",
-    ]
+    standalone = os.getenv("UDR_STANDALONE", "false").lower() == "true"
 
     optional_env_vars = [
         "REDIS_URL",
@@ -184,14 +182,10 @@ async def validate_environment() -> None:
         "API_KEY",  # For future auth implementation
     ]
 
-    # Check required variables
-    missing_vars = []
-    for var in required_env_vars:
-        if not os.getenv(var):
-            missing_vars.append(var)
-
-    if missing_vars:
-        raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+    if not standalone:
+        from backend.settings import DATABASE_URL
+        if not DATABASE_URL:
+            raise RuntimeError("DATABASE_URL is not configured")
 
     # Validate critical settings
     try:
@@ -230,9 +224,9 @@ async def validate_environment() -> None:
     except Exception as e:
         raise RuntimeError(f"Database connection failed: {e}")
 
-    # Test Redis connection if configured
+    # Test Redis connection if configured (skipped in standalone/desktop mode)
     redis_url = os.getenv("REDIS_URL")
-    if redis_url:
+    if redis_url and not standalone:
         try:
             import redis
 

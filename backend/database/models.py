@@ -343,9 +343,7 @@ def normalize_package_fields(mapper, connection, target):
 
 
 # Database connection with connection pooling and health checks
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://user:password@localhost/depresolver"
-)
+from backend.settings import DATABASE_URL
 
 _engine = None
 _SessionLocal = None
@@ -354,15 +352,18 @@ _SessionLocal = None
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(
-            DATABASE_URL,
-            pool_size=10,
-            max_overflow=20,
-            pool_timeout=30,
-            pool_recycle=3600,
-            pool_pre_ping=True,
-            echo=False,
-        )
+        kwargs: Dict[str, Any] = {"echo": False}
+        if DATABASE_URL.startswith("sqlite"):
+            kwargs["connect_args"] = {"check_same_thread": False}
+        else:
+            kwargs.update(
+                pool_size=10,
+                max_overflow=20,
+                pool_timeout=30,
+                pool_recycle=3600,
+                pool_pre_ping=True,
+            )
+        _engine = create_engine(DATABASE_URL, **kwargs)
     return _engine
 
 

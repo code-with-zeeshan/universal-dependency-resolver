@@ -1,5 +1,5 @@
 import apiClient from './apiClient'
-import jwt_decode from 'jwt-decode'
+import { jwtDecode } from 'jwt-decode'
 
 class AuthService {
   constructor() {
@@ -71,7 +71,7 @@ class AuthService {
     if (!token) return false
 
     try {
-      const payload = jwt_decode(token)
+      const payload = jwtDecode(token)
       const currentTime = Date.now() / 1000
       return payload.exp > currentTime
     } catch {

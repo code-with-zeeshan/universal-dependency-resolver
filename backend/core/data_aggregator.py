@@ -110,31 +110,45 @@ class CompatibilityIssue:
     resolution: Optional[str] = None
 
 
+_CLIENT_BUILDERS = {
+    Ecosystem.PYPI: lambda: PyPIClient(),
+    Ecosystem.NPM: lambda: NPMClient(),
+    Ecosystem.CONDA: lambda: CondaClient(),
+    Ecosystem.MAVEN: lambda: MavenClient(),
+    Ecosystem.CRATES: lambda: CratesClient(),
+    Ecosystem.GOMODULES: lambda: GoModulesClient(),
+    Ecosystem.APT: lambda: APTClient(),
+    Ecosystem.APK: lambda: APKClient(),
+    Ecosystem.COCOAPODS: lambda: CocoaPodsClient(),
+    Ecosystem.HOMEBREW: lambda: HomebrewClient(),
+    Ecosystem.NUGET: lambda: NuGetClient(),
+    Ecosystem.PACKAGIST: lambda: PackagistClient(),
+    Ecosystem.RUBYGEMS: lambda: RubyGemsClient(),
+    Ecosystem.DOCS: lambda: DocumentationScraper(),
+    Ecosystem.CUSTOM_DB: lambda: CompatibilityDB(),
+}
+
+
 class DataAggregator:
     def __init__(
         self, cache_ttl: int = 3600, max_workers: int = 10, enable_caching: bool = True
     ):
-        self.sources = {
-            Ecosystem.PYPI: PyPIClient(),
-            Ecosystem.NPM: NPMClient(),
-            Ecosystem.CONDA: CondaClient(),
-            Ecosystem.MAVEN: MavenClient(),
-            Ecosystem.CRATES: CratesClient(),
-            Ecosystem.GOMODULES: GoModulesClient(),
-            Ecosystem.APT: APTClient(),
-            Ecosystem.APK: APKClient(),
-            Ecosystem.COCOAPODS: CocoaPodsClient(),
-            Ecosystem.HOMEBREW: HomebrewClient(),
-            Ecosystem.NUGET: NuGetClient(),
-            Ecosystem.PACKAGIST: PackagistClient(),
-            Ecosystem.RUBYGEMS: RubyGemsClient(),
-            Ecosystem.DOCS: DocumentationScraper(),
-            Ecosystem.CUSTOM_DB: CompatibilityDB(),
-        }
+        self._sources: Dict[Ecosystem, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.cache_ttl = cache_ttl
         self.enable_caching = enable_caching
         self._ecosystem_cache: Dict[str, List[Ecosystem]] = {}
+
+    def _get_client(self, ecosystem: Ecosystem) -> Any:
+        """Lazily create and cache a data source client."""
+        client = self._sources.get(ecosystem)
+        if client is None:
+            builder = _CLIENT_BUILDERS.get(ecosystem)
+            if builder is None:
+                raise ValueError(f"Unknown ecosystem: {ecosystem}")
+            client = builder()
+            self._sources[ecosystem] = client
+        return client
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -147,8 +161,7 @@ class DataAggregator:
     async def close(self):
         """Cleanup resources"""
         self.executor.shutdown(wait=True)
-        # Close async clients
-        for ecosystem, client in self.sources.items():
+        for client in self._sources.values():
             if hasattr(client, "close"):
                 await client.close()
 
@@ -327,7 +340,7 @@ class DataAggregator:
         """Check if package exists in an ecosystem"""
         package_name = normalize_package_name(package_name)
         try:
-            client = self.sources[ecosystem]
+            client = self._get_client(ecosystem)
 
             # Handle different client interfaces
             if hasattr(client, "package_exists"):
@@ -367,7 +380,7 @@ class DataAggregator:
         """Fetch package data from a specific ecosystem"""
         package_name = normalize_package_name(package_name)
         try:
-            client = self.sources[ecosystem]
+            client = self._get_client(ecosystem)
 
             # Build method arguments based on client capabilities
             kwargs = {}
@@ -835,17 +848,16 @@ class DataAggregator:
         }
 
         # Get documentation from scraper
-        if Ecosystem.DOCS in self.sources:
-            try:
-                doc_client = self.sources[Ecosystem.DOCS]
-                if hasattr(doc_client, "get_documentation"):
-                    doc_data = await self._call_client_method(
-                        doc_client, "get_documentation", package_name
-                    )
-                    if doc_data:
-                        docs.update(doc_data)
-            except Exception as e:
-                logger.error(f"Error fetching documentation: {e}")
+        try:
+            doc_client = self._get_client(Ecosystem.DOCS)
+            if hasattr(doc_client, "get_documentation"):
+                doc_data = await self._call_client_method(
+                    doc_client, "get_documentation", package_name
+                )
+                if doc_data:
+                    docs.update(doc_data)
+        except Exception as e:
+            logger.error(f"Error fetching documentation: {e}")
 
         # Add ecosystem-specific documentation links
         for eco in ecosystems:
@@ -874,7 +886,7 @@ class DataAggregator:
         """Fetch custom compatibility data from database"""
         package_name = normalize_package_name(package_name)
         try:
-            client = self.sources[Ecosystem.CUSTOM_DB]
+            client = self._get_client(Ecosystem.CUSTOM_DB)
             return await self._call_client_method(
                 client, "get_compatibility_rules", package_name
             )
@@ -1000,7 +1012,7 @@ class DataAggregator:
         tasks = []
 
         for eco in ecosystems:
-            client = self.sources[eco]
+            client = self._get_client(eco)
             if hasattr(client, "search_packages") or hasattr(client, "search"):
                 tasks.append(self._search_in_ecosystem(eco, client, query, limit))
 

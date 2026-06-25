@@ -7,6 +7,7 @@ This package contains all API route definitions organized by domain.
 
 from . import packages
 from . import system
+from . import scan
 
 # Import specific route functions if needed for testing
 from .packages import (
@@ -36,4 +37,9 @@ __all__ = [
     # System routes
     "get_system_info",
     "check_system_compatibility",
+    # Scan routes
+    "scan",
+    "scan_github",
+    "scan_upload",
+    "scan_local",
 ]

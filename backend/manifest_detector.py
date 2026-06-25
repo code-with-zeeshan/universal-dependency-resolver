@@ -31,6 +31,8 @@ MANIFEST_PATTERNS: List[Tuple[str, str, str]] = [
     ("environment.yaml", "conda", "conda_env"),
     ("Gemfile", "rubygems", "gemfile"),
     ("composer.json", "packagist", "composer_json"),
+    ("pnpm-lock.yaml", "npm", "pnpm_lock"),
+    ("pubspec.yaml", "pub", "pubspec"),
 ]
 
 
@@ -111,6 +113,8 @@ class ManifestDetector:
             "conda_env": self._parse_conda_env,
             "gemfile": self._parse_gemfile,
             "composer_json": self._parse_composer_json,
+            "pnpm_lock": self._parse_pnpm_lock,
+            "pubspec": self._parse_pubspec,
         }
         return parsers[key]
 
@@ -343,6 +347,43 @@ class ManifestDetector:
                     if len(parts) > 1:
                         info["version"] = parts[1]
                     packages.append(info)
+        return packages
+
+    def _parse_pnpm_lock(self, content: str) -> List[Dict]:
+        try:
+            import yaml
+            data = yaml.safe_load(content)
+        except Exception:
+            return []
+        packages = []
+        for name, info in data.get("packages", {}).items():
+            if name == ".":
+                continue
+            short_name = name.lstrip("@npm/").split("/")[-1] if name.startswith("/") else name
+            packages.append({
+                "name": short_name,
+                "version": info.get("version", "*"),
+            })
+        return packages
+
+    def _parse_pubspec(self, content: str) -> List[Dict]:
+        try:
+            import yaml
+            data = yaml.safe_load(content)
+        except Exception:
+            return []
+        packages = []
+        for section in ["dependencies", "dev_dependencies"]:
+            deps = data.get(section, {})
+            for name, spec in deps.items():
+                if name == "flutter" or name == "sdk":
+                    continue
+                info = {"name": name}
+                if isinstance(spec, str):
+                    info["version"] = spec
+                elif isinstance(spec, dict):
+                    info["version"] = spec.get("version", "*")
+                packages.append(info)
         return packages
 
     def _parse_composer_json(self, content: str) -> List[Dict]:

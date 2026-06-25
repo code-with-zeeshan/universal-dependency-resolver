@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-25
+
+### Added
+- **Desktop Electron app** (`desktop/`) — spawns Python backend, IPC bridge, electron-builder
+- **Project scan feature** — GitHub repo / zip upload / local directory manifest detection and dependency resolution
+- **CLI tool** (`backend/cli.py`) — `resolve`, `lock`, `scan` commands with Z3 SAT solver
+- **DictCache fallback** — pure-Python in-memory cache when Redis is unavailable
+- **SQLite default** — `DATABASE_URL` defaults to `sqlite:///./udr.db`, no PostgreSQL required
+- **Manifest detection** (`manifest_detector.py`) — detects requirements.txt, package.json, Dockerfile, Cargo.toml, and 20+ manifest formats
+- **Lazy client creation** in `data_aggregator.py` — 15 HTTP clients no longer created eagerly
+- **`install.sh`** — one-command bootstrap (Docker or manual)
+- **4 new workflow files** — `integration-test.yml`, `release-desktop.yml`, `publish.yml`, `deploy.yml`
+
+### Changed
+- PostgreSQL and Redis are now **optional** — SQLite + DictCache cover all standalone/desktop use cases
+- FastAPI pinned to `>=0.115.0,<0.116` for pydantic 2.x compatibility
+- `prometheus-fastapi-instrumentator` pinned to `>=6.1,<7` (avoids starlette 1.x breaking changes)
+- `validate_environment()` reads `settings.DATABASE_URL` instead of raw `os.getenv`
+- `export_generator.py` uses `PackageLoader` for Electron/frozen-packaged compatibility
+- CLI `_parse_package_spec` uses `rsplit("@", 1)` for npm scoped packages (`@angular/core@npm`)
+- All GitHub workflows audited and fixed: 12 issues resolved (env vars, pip install, YAML, `|| true`, etc.)
+
+### Removed
+- WebSocket / SocketIO API (real-time module was aspirational, never wired)
+- `grafana/` monitoring dashboards (overkill for pre-v2 project)
+- `monitoring/grafana/` directory and provisioning configs
+- 3 aspirational `backend/api/realtime/` files
+- Redis as a hard dependency — now optional with graceful fallback
+
+### Fixed
+- `test_settings.py` no longer poisons other tests (`importlib.reload` + `clear=True` bug)
+- Integration tests default to SQLite — no PostgreSQL needed on the host
+- `backend/api/main.py`: `validate_environment()` skips Redis check under `UDR_STANDALONE=true`
+- All 14 pre-existing test failures fixed (mock/data-shape mismatches, aiohttp cleanup, PostgreSQL requirement)
+- `release-desktop.yml`: `npm ci` → `npm install` (no lockfile)
+- `ci.yml`: removed `|| true` (was masking test failures)
+- `integration-test.yml`: fixed YAML multi-line `:` parsing
+- CSRF env var poisoning: `ENABLE_CSRF` must be set in every `os.environ` patch
+
+### Security
+- Auth guard prevents production startup with `ENABLE_AUTH=false`
+- `desktop/main.js`: `dialog.showErrorBox()` on backend failure
+- All 5 workflow YAMLs validated via `yaml.safe_load`
+
 ## [Unreleased]
 
 ### Added
