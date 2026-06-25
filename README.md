@@ -12,7 +12,6 @@ udr resolve numpy@pypi torch@pypi
 | Source | Install | Published via |
 |--------|---------|---------------|
 | **PyPI** | `pip install ud-resolver` | GitHub Actions on release |
-| **GitHub Packages** | `pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/` | GitHub Actions on release |
 | **GitHub Releases** | `pip install ud-resolver-*.whl` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | CI on release |
 | **GHCR (Docker)** | `docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest` | CI on every push |
 
@@ -80,19 +79,6 @@ pip install "ud-resolver[monitoring]"   # OpenTelemetry & Sentry
 pip install "ud-resolver[security]"     # Auth & JWT support
 pip install "ud-resolver[postgres]"     # PostgreSQL + Redis + Celery
 pip install "ud-resolver[all]"          # Everything
-```
-
-### GitHub Packages
-
-```bash
-pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/
-```
-
-Requires GitHub authentication. Create a [PAT](https://github.com/settings/tokens) with `read:packages` scope:
-
-```bash
-echo "machine pypi.pkg.github.com login $GITHUB_USER password $GITHUB_TOKEN" > ~/.netrc
-pip install ud-resolver
 ```
 
 ### From source

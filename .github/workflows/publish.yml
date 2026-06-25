@@ -29,13 +29,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         continue-on-error: true
 
-      - name: Publish to GitHub Packages
-        continue-on-error: true
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://pypi.pkg.github.com/${{ github.repository_owner }}/
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload wheel to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
