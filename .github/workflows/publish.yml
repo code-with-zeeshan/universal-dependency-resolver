@@ -5,7 +5,7 @@ on:
     types: [published]
 
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # for PyPI trusted publishing
