@@ -136,29 +136,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## How to Update This Changelog
 
-When making changes to the project:
-
-1. Add new entries under `[Unreleased]` section
-2. Use the following categories:
-   - `Added` for new features
-   - `Changed` for changes in existing functionality
-   - `Deprecated` for soon-to-be removed features
-   - `Removed` for now removed features
-   - `Fixed` for any bug fixes
-   - `Security` for security improvements
-
-3. When releasing a new version:
-   - Move unreleased changes to a new version section
-   - Add the release date
-   - Create a new empty `[Unreleased]` section
-
-### Example Entry Format:
-```markdown
-### Added
-- New package ecosystem support for Go modules
-- Real-time dependency resolution updates via WebSocket
-- Package vulnerability scanning integration
-
-### Fixed
-- Fixed memory leak in package caching system
-- Resolved CORS issues with frontend authentication
+See [CONTRIBUTING.md](CONTRIBUTING.md) for instructions on updating this changelog.

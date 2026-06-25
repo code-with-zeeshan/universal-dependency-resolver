@@ -15,7 +15,6 @@ udr resolve numpy@pypi torch@pypi
 | **GitHub Releases** | `pip install ud-resolver-*.whl` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | CI on release |
 | **GHCR (Docker)** | `docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest` | CI on every push |
 
-> **PyPI note**: The package is published on PyPI as **`ud-resolver`** — install with `pip install ud-resolver`, *not* `universal-dependency-resolver`.
 
 ---
 
@@ -246,7 +245,7 @@ cd frontend && npm run test:e2e
 | 🟡 Medium | CI/CD integration examples (GitHub Actions, GitLab CI) | ✅ Done |
 | 🟡 Medium | SBOM export (CycloneDX, SPDX) | Planned |
 | 🟡 Medium | Visual dependency graphs | Planned |
-| 🟢 Low | Plugin system for custom ecosystems | Researching |
+| 🟢 Low | Plugin system for custom ecosystems | Under consideration |
 
 ---
 

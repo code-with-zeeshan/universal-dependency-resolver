@@ -119,15 +119,17 @@ artillery run tests/performance/load_test.yml
 3. **Memory Usage**: Monitor thread pool sizes and connection leaks
 
 ### Monitoring Queries
+
+**PostgreSQL** — check connection pool and slow queries:
 ```sql
--- Check connection pool status
 SELECT * FROM pg_stat_activity;
-
--- Monitor cache performance
-GET cache:stats
-
--- Check slow queries
 SELECT * FROM pg_stat_statements ORDER BY total_time DESC;
+```
+
+**Redis** — inspect cache state:
+```bash
+redis-cli INFO stats
+redis-cli MEMORY STATS
 ```
 
 ## 🔍 Profiling

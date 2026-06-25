@@ -68,7 +68,7 @@ services:
   frontend:
     build: ./frontend
     environment:
-      - VUE_APP_API_URL=https://yourdomain.com
+      - VUE_APP_API_URL=https://api.example.com  # Replace with your domain
     restart: unless-stopped
     deploy:
       replicas: 2
@@ -128,11 +128,11 @@ DATABASE_URL=postgresql://user:password@host:5432/depresolver
 REDIS_URL=redis://host:6379
 
 # Auth
-SECRET_KEY=your-secret-key
+SECRET_KEY=<generate-a-random-secret>  # python -c "import secrets; print(secrets.token_hex(32))"
 ENABLE_AUTH=true
 
 # CORS
-ALLOWED_ORIGINS=https://yourdomain.com
+ALLOWED_ORIGINS=https://example.com  # Replace with your frontend domain
 
 # Standalone (skip Redis/Postgres checks)
 UDR_STANDALONE=false

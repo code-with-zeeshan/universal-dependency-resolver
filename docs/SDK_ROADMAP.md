@@ -32,5 +32,4 @@ The REST API at `http://localhost:8000/api/v1/` is fully documented via OpenAPI 
 
 ## Contribute
 
-- Star the repo for priority: SDKs follow community demand
-- PRs welcome for JS/TS and Go SDKs
+PRs welcome for JS/TS and Go SDKs. SDK prioritization is driven by community interest — open an issue or upvote existing ones to signal demand.

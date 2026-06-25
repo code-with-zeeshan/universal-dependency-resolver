@@ -40,9 +40,9 @@ DATABASE_MAX_OVERFLOW=30
 
 ## Test Issues
 
-### Tests Need PostgreSQL
+### PostgreSQL Requirement
 
-No they don't. Integration tests default to SQLite (`sqlite:////tmp/test_integration.db`). All 422 tests pass with SQLite.
+Integration tests default to SQLite (`sqlite:////tmp/test_integration.db`) — no PostgreSQL is required to run tests.
 
 ```bash
 # Run all tests (no Docker needed)

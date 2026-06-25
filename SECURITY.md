@@ -48,7 +48,7 @@ If you discover a security vulnerability in the Universal Dependency Resolver, p
 
 ### How to Report
 1. **DO NOT** create a public GitHub issue
-2. Report via [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) or open an issue with the label "security"
+2. Report via [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) (private disclosure)
 3. Include the following information:
    - Description of the vulnerability
    - Steps to reproduce
@@ -90,7 +90,7 @@ If you discover a security vulnerability in the Universal Dependency Resolver, p
 
 ## 📞 Contact Information
 
-- **Security Issues**: [GitHub Issues](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues) (label: security)
+- **Security Issues**: [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) (private disclosure)
 - **General Support**: [GitHub Discussions](https://github.com/code-with-zeeshan/universal-dependency-resolver/discussions)
 
 ## 📋 Security Updates
@@ -117,6 +117,3 @@ We use the following severity levels:
 - **Low**: Minor security improvements needed
 - **Info**: Informational findings, no immediate risk
 
-## 🤝 Security Hall of Fame
-
-We recognize security researchers who help make our project safer. See our [GitHub Security Advisories](https://github.com/code-with-zeeshan/universal-dependency-resolver/security/advisories) for acknowledged contributions.
