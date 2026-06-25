@@ -20,6 +20,7 @@
       <ResolvePanel v-if="activeSection === 'resolve'" />
       <SystemPanel v-if="activeSection === 'system'" />
       <AuthPanel v-if="activeSection === 'auth'" />
+      <ProjectScanPanel v-if="activeSection === 'scan'" />
     </main>
   </div>
 </template>
@@ -31,16 +32,17 @@ import PackagePanel from './components/PackagePanel.vue'
 import ResolvePanel from './components/ResolvePanel.vue'
 import SystemPanel from './components/SystemPanel.vue'
 import AuthPanel from './components/AuthPanel.vue'
+import ProjectScanPanel from './components/ProjectScanPanel.vue'
 import {
   HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon,
-  ServerIcon, LockClosedIcon,
+  ServerIcon, LockClosedIcon, DocumentMagnifyingGlassIcon,
 } from './icons'
 
 export default {
   name: 'App',
   components: {
-    DashboardPanel, PackagePanel, ResolvePanel, SystemPanel, AuthPanel,
-    HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon, ServerIcon, LockClosedIcon,
+    DashboardPanel, PackagePanel, ResolvePanel, SystemPanel, AuthPanel, ProjectScanPanel,
+    HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon, ServerIcon, LockClosedIcon, DocumentMagnifyingGlassIcon,
   },
   setup() {
     const activeSection = ref('dashboard')
@@ -51,6 +53,7 @@ export default {
       { key: 'resolve', label: 'Resolve', icon: CheckBadgeIcon },
       { key: 'system', label: 'System', icon: ServerIcon },
       { key: 'auth', label: 'Auth', icon: LockClosedIcon },
+      { key: 'scan', label: 'Scan', icon: DocumentMagnifyingGlassIcon },
     ]
 
     return { activeSection, navItems }

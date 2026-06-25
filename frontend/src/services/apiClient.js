@@ -1,10 +1,14 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.VUE_APP_API_URL || ''
+let baseUrl = process.env.VUE_APP_API_URL || ''
+if (!baseUrl && window.__UDR_BACKEND_URL__) {
+  baseUrl = window.__UDR_BACKEND_URL__
+}
+
 const API_VERSION = 'v1'
 
 const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api/${API_VERSION}`,
+  baseURL: `${baseUrl}/api/${API_VERSION}`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
 })

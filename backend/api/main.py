@@ -40,7 +40,7 @@ from backend.api.schemas import (
     ExportRequest,
     SystemInfo,
 )
-from backend.api.routes import packages, system
+from backend.api.routes import packages, system, scan
 from backend.api.routes import auth
 from backend.api.middleware import setup_middleware
 from backend.logging_config import setup_logging
@@ -332,6 +332,8 @@ app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 app.include_router(packages.router, prefix="/api/v1/packages", tags=["Packages"])
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+
+app.include_router(scan.router, prefix="/api/v1", tags=["Scan"])
 
 
 # Optional: Add middleware for response time tracking
