@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     
     services:
       postgres:
@@ -43,10 +45,6 @@ jobs:
           --health-retries 5
         ports:
           - 6379:6379
-
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v4
