@@ -174,26 +174,38 @@ class TestDependencyResolution:
 
     @pytest.fixture(autouse=True)
     def _mock_data_sources(self):
-        patcher = patch("backend.api.dependencies.get_data_aggregator")
-        mock_get_agg = patcher.start()
+        agg_patcher = patch("backend.api.dependencies.get_data_aggregator")
+        mock_get_agg = agg_patcher.start()
         aggregator = AsyncMock()
-        aggregator.resolve_dependencies = AsyncMock(
+        aggregator.get_package_info = AsyncMock(
             return_value={
-                "status": "success",
-                "resolved_packages": {
-                    "flask": {
-                        "version": "2.3.3",
-                        "ecosystem": "pypi",
-                        "dependencies": {},
-                    },
-                },
-                "warnings": [],
+                "name": "flask",
+                "ecosystem": "pypi",
+                "version": "2.3.3",
+                "dependencies": {},
             }
         )
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
+
+        res_patcher = patch("backend.api.dependencies.get_conflict_resolver")
+        mock_get_res = res_patcher.start()
+        mock_get_res.return_value.resolve_dependencies.return_value = {
+            "status": "success",
+            "resolved_packages": {
+                "flask": {
+                    "version": "2.3.3",
+                    "ecosystem": "pypi",
+                    "dependencies": {},
+                },
+            },
+            "warnings": [],
+        }
+
         yield
-        patcher.stop()
+
+        agg_patcher.stop()
+        res_patcher.stop()
 
     def test_resolve_with_packages(self, api_client, app_url, db_session):
         response = api_client.post(

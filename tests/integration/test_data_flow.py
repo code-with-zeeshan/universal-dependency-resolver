@@ -167,20 +167,19 @@ class TestDataPersistence:
     def test_rollback_on_error(self, db_session):
         from sqlalchemy.exc import IntegrityError
 
-        nested = db_session.begin_nested()
-
         pkg = Package(name="rollback-test", ecosystem="pypi")
         db_session.add(pkg)
         db_session.commit()
 
         pkg_id = pkg.id
 
+        sp = db_session.begin_nested()
         try:
             dup = Package(name="rollback-test", ecosystem="pypi")
             db_session.add(dup)
             db_session.commit()
         except IntegrityError:
-            db_session.rollback()
+            sp.rollback()
 
         assert db_session.get(Package, pkg_id) is not None
 
