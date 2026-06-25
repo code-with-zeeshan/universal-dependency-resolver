@@ -16,6 +16,8 @@ jobs:
   # Backend Tests
   backend-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     
     services:
       postgres:
@@ -101,6 +103,32 @@ jobs:
       continue-on-error: true
       run: |
         safety check || true
+
+    - name: Debug - check collection
+      continue-on-error: true
+      env:
+        DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        REDIS_URL: redis://localhost:6379
+        TESTING: "true"
+        SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
+        FEATURES_ENABLE_CSRF: "false"
+        ENABLE_CACHE: "false"
+      run: |
+        python -m pytest tests/unit/ --collect-only -q 2>&1 || echo "COLLECT FAILED: exit $?"
+
+    - name: Debug - check collection with cov
+      continue-on-error: true
+      env:
+        DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+        REDIS_URL: redis://localhost:6379
+        TESTING: "true"
+        SECRET_KEY: test-secret-key-for-ci
+        PYTHONPATH: .
+        FEATURES_ENABLE_CSRF: "false"
+        ENABLE_CACHE: "false"
+      run: |
+        python -m pytest tests/unit/ --collect-only -q --cov=backend --cov-report=term-missing 2>&1 || echo "COLLECT+COV FAILED: exit $?"
 
     - name: Run tests with pytest
       env:
