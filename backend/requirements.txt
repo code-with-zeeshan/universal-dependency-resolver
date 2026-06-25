@@ -51,6 +51,9 @@ python-socketio==5.11.0
 # Export Templates
 jinja2==3.1.2
 
+# Build-time dependencies
+setuptools>=65.0.0
+
 # Development dependencies (optional)
 pytest==7.4.3
 pytest-asyncio==0.21.1
