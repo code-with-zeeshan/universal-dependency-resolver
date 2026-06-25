@@ -139,6 +139,11 @@ class DataAggregator:
         self.enable_caching = enable_caching
         self._ecosystem_cache: Dict[str, List[Ecosystem]] = {}
 
+    @property
+    def sources(self) -> Dict[str, Any]:
+        """Expose lazy-initialized sources keyed by ecosystem name."""
+        return {eco.value: client for eco, client in self._sources.items()}
+
     def _get_client(self, ecosystem: Ecosystem) -> Any:
         """Lazily create and cache a data source client."""
         client = self._sources.get(ecosystem)

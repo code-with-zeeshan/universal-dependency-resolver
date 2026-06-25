@@ -59,17 +59,18 @@ async def get_system_info(
         info = await scanner.scan_all()
 
         if not detailed:
-            # Return simplified version
+            cpu_info = info.get("cpu", {})
+            gpu_info = info.get("gpu", {})
             return {
                 "status": "success",
                 "system": {
-                    "os": f"{info['platform']['system']} {info['platform']['release']}",
-                    "cpu": info["cpu"]["brand"],
-                    "gpu": info["gpu"]["devices"][0]["name"]
-                    if info["gpu"]["available"]
+                    "os": f"{info.get('platform', {}).get('system', 'unknown')} {info.get('platform', {}).get('release', '')}",
+                    "cpu": cpu_info.get("brand", "Unknown"),
+                    "gpu": gpu_info.get("devices", [{}])[0].get("name")
+                    if gpu_info.get("available")
                     else None,
-                    "cuda": info["gpu"].get("cuda"),
-                    "python": info["runtime_versions"]["python"]["version"],
+                    "cuda": gpu_info.get("cuda"),
+                    "python": info.get("runtime_versions", {}).get("python", {}).get("version", "unknown"),
                 },
             }
 

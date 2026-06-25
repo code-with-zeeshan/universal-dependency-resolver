@@ -482,6 +482,20 @@ class CompatibilityDB:
         finally:
             db.close()
 
+    def get_compatibility_statistics(
+        self, package_name: str, ecosystem: str, version: Optional[str] = None
+    ) -> Dict:
+        """Get compatibility statistics filtered by ecosystem and optional version."""
+        stats = self.get_package_stats(package_name)
+        if "error" in stats:
+            return {"reports_count": 0, "success_rate": None, "version": version}
+        return {
+            "reports_count": stats.get("total_reports", 0),
+            "success_rate": stats.get("overall_success_rate"),
+            "most_compatible_version": stats.get("most_compatible_version"),
+            "version": version,
+        }
+
     def cleanup_old_cache(self, days: int = 7):
         """Remove old cache entries"""
         db = next(get_db())
