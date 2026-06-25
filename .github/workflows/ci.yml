@@ -71,7 +71,6 @@ jobs:
         SECRET_KEY: test-secret-key-for-ci
         PYTHONPATH: .
         ENABLE_CSRF: "false"
-        ENABLE_CACHE: "false"
       run: |
         python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml --cov-report=html
 
