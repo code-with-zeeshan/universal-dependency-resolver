@@ -8,6 +8,10 @@
     "url": "https://github.com/code-with-zeeshan/universal-dependency-resolver.git"
   },
   "license": "MIT",
+  "author": {
+    "name": "Universal Dependency Resolver Team",
+    "email": "team@udr.example.com"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
