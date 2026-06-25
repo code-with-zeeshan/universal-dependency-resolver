@@ -1,7 +1,7 @@
 # Core Framework
 fastapi==0.104.1
 uvicorn==0.24.0
-pydantic>=2.0,<2.5
+pydantic==2.5.0
 
 # HTTP & Web Scraping
 aiohttp==3.9.0
