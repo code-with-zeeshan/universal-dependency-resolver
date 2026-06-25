@@ -25,15 +25,15 @@ classifiers = [
 
 dependencies = [
     # Core Framework
-    "fastapi>=0.115.0,<0.116",
-    "uvicorn>=0.24,<0.25",
+    "fastapi>=0.115.0,<0.137",
+    "uvicorn>=0.24,<0.50",
     "pydantic>=2.5.0,<3",
     # HTTP & Web Scraping
     "aiohttp>=3.9,<4",
     "requests>=2.31,<3",
     "beautifulsoup4>=4.12,<5",
     # Package Management & Versioning
-    "packaging>=23.2,<24",
+    "packaging>=23.2,<27",
     "tomli-w>=1.0,<2",
     "toml>=0.10,<1",  # TODO: migrate to tomllib (stdlib) once code no longer uses `import toml`
     "pyyaml>=6.0.1,<7",

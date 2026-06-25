@@ -26,14 +26,18 @@
     },
     "files": [
       "main.js",
-      "preload.js",
-      "../frontend/dist/**/*"
+      "preload.js"
     ],
     "extraResources": [
       {
         "from": "../backend",
         "to": "backend",
         "filter": ["**/*", "!__pycache__", "!*.pyc"]
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist",
+        "filter": ["**/*"]
       }
     ],
     "linux": {

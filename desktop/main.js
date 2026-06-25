@@ -130,8 +130,8 @@ async function createWindow() {
     mainWindow.loadURL('http://localhost:8080')
     mainWindow.webContents.openDevTools()
   } else {
-    // Production: serve built files
-    const distPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html')
+    // Production: serve built files from extraResources
+    const distPath = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html')
     mainWindow.loadFile(distPath)
   }
 
