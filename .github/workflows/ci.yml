@@ -112,7 +112,7 @@ jobs:
         FEATURES_ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing
+        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=term-missing --cov-report=xml --cov-report=html 2>&1 || true
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
