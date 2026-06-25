@@ -2,6 +2,12 @@
   "name": "udr-desktop",
   "version": "1.1.0",
   "description": "Universal Dependency Resolver — Desktop App",
+  "homepage": "https://github.com/code-with-zeeshan/universal-dependency-resolver",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/code-with-zeeshan/universal-dependency-resolver.git"
+  },
+  "license": "MIT",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
