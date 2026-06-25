@@ -173,10 +173,11 @@ class TestDependencyResolution:
     """Test the dependency resolution flow end-to-end."""
 
     @pytest.fixture(autouse=True)
-    def _mock_data_sources(self, request):
-        from backend.api.main import app
-        from backend.api.dependencies import get_data_aggregator, get_conflict_resolver
+    def _mock_data_sources(self):
+        from unittest.mock import patch as _patch
 
+        agg_patcher = _patch("backend.api.dependencies.get_data_aggregator")
+        mock_get_agg = agg_patcher.start()
         aggregator = AsyncMock()
         aggregator.get_package_info = AsyncMock(
             return_value={
@@ -187,9 +188,11 @@ class TestDependencyResolution:
             }
         )
         aggregator.sources = {}
+        mock_get_agg.return_value = aggregator
 
-        resolver = MagicMock()
-        resolver.resolve_dependencies.return_value = {
+        res_patcher = _patch("backend.core.conflict_resolver.ConflictResolver.resolve_dependencies")
+        mock_resolve = res_patcher.start()
+        mock_resolve.return_value = {
             "status": "success",
             "resolved_packages": {
                 "flask": {
@@ -201,13 +204,10 @@ class TestDependencyResolution:
             "warnings": [],
         }
 
-        app.dependency_overrides[get_data_aggregator] = lambda: aggregator
-        app.dependency_overrides[get_conflict_resolver] = lambda: resolver
-
         yield
 
-        del app.dependency_overrides[get_data_aggregator]
-        del app.dependency_overrides[get_conflict_resolver]
+        agg_patcher.stop()
+        res_patcher.stop()
 
     def test_resolve_with_packages(self, api_client, app_url, db_session):
         response = api_client.post(
