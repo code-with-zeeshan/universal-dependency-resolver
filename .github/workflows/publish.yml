@@ -10,6 +10,7 @@ jobs:
     permissions:
       id-token: write   # for PyPI trusted publishing
       contents: write    # for uploading release assets
+      packages: write    # for GitHub Packages
 
     steps:
       - uses: actions/checkout@v4
