@@ -125,8 +125,9 @@ jobs:
   # Frontend Tests
   frontend-tests:
     runs-on: ubuntu-latest
-
+    
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18, 20, 22]
 
