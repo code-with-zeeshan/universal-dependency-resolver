@@ -66,14 +66,14 @@ cp .env.example .env
 # Edit .env with your local configuration
 
 # 3. Start with Docker (recommended)
-docker-compose up -d
+docker compose up -d
 
 # 4. Or set up manually
 # Backend
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 alembic upgrade head
 
 # Frontend
@@ -88,11 +88,7 @@ npm run serve
 
 ```bash
 # Install development dependencies
-pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov black flake8 mypy
-
-# Set up pre-commit hooks
-pre-commit install
+pip install -e ".[dev]"
 
 # Run backend server
 uvicorn backend.api.main:app --reload
@@ -511,7 +507,7 @@ describe('SystemInfo.vue', () => {
 * Discord: Join our Discord server
 * GitHub Discussions: Use for questions and discussions
 * Issues: Use for bug reports and feature requests
-* Email: maintainers@yourdomain.com for sensitive topics
+* Email: Reach out via GitHub Issues for sensitive topics
 
 ### Recognition
 
@@ -526,10 +522,9 @@ describe('SystemInfo.vue', () => {
 
 #### Current maintainers:
 
-Name	             GitHub	                Role	         Focus Area
-Mohammad Zeeshan	@codewithzeeshan	 Lead Maintainer	  Architecture, Backend
-Mohammad Zeeshan	@codewithzeeshan	 Frontend Lead	      UI/UX, Frontend
-Mohammad Zeeshan	@codewithzeeshan	 DevOps Lead	      CI/CD, Infrastructure
+| Name | GitHub | Role |
+|------|--------|------|
+| Mohammad Zeeshan | [@codewithzeeshan](https://github.com/codewithzeeshan) | Lead Maintainer |
 
 ## 🎯 Development Roadmap
 
@@ -549,7 +544,6 @@ Mohammad Zeeshan	@codewithzeeshan	 DevOps Lead	      CI/CD, Infrastructure
   - Python SDK with async support
   - JavaScript/TypeScript SDK
   - Go client library
-  - Command-line interface (CLI)
 - **🔌 WebSocket Support** for real-time updates
 - **🤖 Machine learning** for conflict resolution
 - **📈 Visual dependency graphs**
@@ -560,7 +554,6 @@ Mohammad Zeeshan	@codewithzeeshan	 DevOps Lead	      CI/CD, Infrastructure
 - [ ] Create OpenAPI code generation pipeline
 - [ ] Develop Python SDK with full test coverage
 - [ ] Build JavaScript/TypeScript SDK
-- [ ] Create CLI tool using Click/Typer
 - [ ] Write comprehensive SDK documentation
 - [ ] Set up SDK versioning and release process
 

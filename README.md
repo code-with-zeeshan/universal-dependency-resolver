@@ -7,7 +7,7 @@ udr resolve numpy@pypi torch@pypi
   → numpy 1.26.2, torch 2.1.2+cu121 (CUDA 12.1)
 ```
 
-### Package availability
+## Package availability
 
 | Source | Install | Published via |
 |--------|---------|---------------|
@@ -21,11 +21,11 @@ udr resolve numpy@pypi torch@pypi
 
 ## The Problem
 
-You have a project that depends on packages from multiple ecosystems. A Python script calls a Node service. A Docker image needs both `pip` and `apt` packages. A CI pipeline must pin every transitive dependency across all of them.
+Your project pulls in packages from everywhere — Python scripts call Node services, Docker images need both `pip` and `apt` packages, and your CI pipeline has to pin every transitive dependency across all of them.
 
-Existing tools only work within one ecosystem (`pip-compile`, `npm ls`, `bundler`). Cross-ecosystem conflicts go undetected until runtime. System compatibility (GPU, CUDA, OS version) is never checked.
+Existing tools only work within one ecosystem. `pip-compile` handles Python. `npm ls` handles JavaScript. But cross-ecosystem conflicts go undetected until something breaks at runtime. And system compatibility — GPU drivers, CUDA versions, OS patches — is never checked at all.
 
-This tool solves that.
+This tool fixes that.
 
 ## What It Does
 
@@ -243,7 +243,7 @@ cd frontend && npm run test:e2e
 | 🔴 High | Python SDK with async support | ✅ Done |
 | 🔴 High | CLI tool for CI/CD | ✅ Done |
 | 🟡 Medium | JavaScript/TypeScript SDK | Planned |
-| 🟡 Medium | CI/CD integration examples (GitHub Actions, GitLab CI) | Planned |
+| 🟡 Medium | CI/CD integration examples (GitHub Actions, GitLab CI) | ✅ Done |
 | 🟡 Medium | SBOM export (CycloneDX, SPDX) | Planned |
 | 🟡 Medium | Visual dependency graphs | Planned |
 | 🟢 Low | Plugin system for custom ecosystems | Researching |
