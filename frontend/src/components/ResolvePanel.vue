@@ -63,10 +63,10 @@
       <div v-if="exportFormats.length > 0">
         <h4 class="font-semibold mb-2 text-sm">Export</h4>
         <div class="flex flex-wrap gap-2">
-          <button v-for="fmt in exportFormats" :key="fmt.format"
-                  @click="exportConfig(fmt.format)" :disabled="exporting"
+          <button v-for="fmt in exportFormats" :key="typeof fmt === 'string' ? fmt : fmt.format"
+                  @click="exportConfig(typeof fmt === 'string' ? fmt : fmt.format)" :disabled="exporting"
                   class="btn btn-secondary btn-sm">
-            {{ fmt.format }}
+            {{ typeof fmt === 'string' ? fmt : fmt.format }}
           </button>
         </div>
       </div>
@@ -105,12 +105,14 @@ export default {
     const exportFormats = ref([])
     const exportPreview = ref(null)
     const errorMessage = ref(null)
+    const successMessage = ref(null)
 
     onMounted(async () => {
       try {
         const resp = await packageService.getExportFormats()
         exportFormats.value = resp.formats || resp.data || []
       } catch (e) {
+        errorMessage.value = 'Failed to load export formats'
         console.error('Failed to load export formats:', e)
       }
     })
@@ -136,7 +138,10 @@ export default {
     }
 
     async function resolveDependencies() {
-      if (packages.value.length === 0) return
+      if (packages.value.length === 0) {
+        errorMessage.value = 'No packages selected.'
+        return
+      }
       resolving.value = true
       errorMessage.value = null
       try {
@@ -166,6 +171,8 @@ export default {
     function copyToClipboard() {
       if (!exportPreview.value) return
       navigator.clipboard.writeText(exportPreview.value.content).catch(() => {})
+      successMessage.value = 'Copied to clipboard!'
+      setTimeout(() => { successMessage.value = null }, 2000)
     }
 
     function downloadFile() {
@@ -183,7 +190,7 @@ export default {
 
     return {
       packages, newPackage, resolving, exporting, resolvedPackages,
-      exportFormats, exportPreview, errorMessage,
+      exportFormats, exportPreview, errorMessage, successMessage,
       addPackage, removePackage, resolveDependencies, exportConfig,
       copyToClipboard, downloadFile,
     }

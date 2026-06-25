@@ -4,8 +4,13 @@ import apiClient from '@/services/apiClient'
 jest.mock('@/services/apiClient')
 
 describe('packageService', () => {
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
   afterEach(() => {
     jest.clearAllMocks()
+    console.error.mockRestore()
   })
 
   describe('searchPackages', () => {

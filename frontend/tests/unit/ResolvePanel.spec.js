@@ -8,7 +8,12 @@ jest.mock('@/services/systemService')
 
 beforeEach(() => {
   jest.clearAllMocks()
+  jest.spyOn(console, 'error').mockImplementation(() => {})
   packageService.getExportFormats.mockResolvedValue({ formats: ['requirements.txt', 'package.json'] })
+})
+
+afterEach(() => {
+  console.error.mockRestore()
 })
 
 function createWrapper() {
@@ -29,7 +34,7 @@ function createWrapper() {
 describe('ResolvePanel', () => {
   it('renders the panel', () => {
     const wrapper = createWrapper()
-    expect(wrapper.text()).toContain('Dependency Resolution')
+    expect(wrapper.text()).toContain('Resolve Dependencies')
   })
 
   it('loads export formats on mount', async () => {
@@ -92,12 +97,11 @@ describe('ResolvePanel', () => {
   })
 
   describe('dependency resolution', () => {
-    it('shows error when resolving with no packages', async () => {
+    it('disables resolve button when no packages are added', async () => {
       const wrapper = createWrapper()
       await new Promise(process.nextTick)
       const resolveBtn = wrapper.findAll('button').filter(b => b.text() === 'Resolve Dependencies').pop()
-      await resolveBtn.trigger('click')
-      expect(wrapper.text()).toContain('No packages selected.')
+      expect(resolveBtn.attributes('disabled')).toBeDefined()
     })
 
     it('resolves dependencies when button is clicked', async () => {

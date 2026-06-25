@@ -3,19 +3,24 @@ import apiClient from '@/services/apiClient'
 
 jest.mock('@/services/apiClient')
 
-jest.mock('filesize', () => {
-  return jest.fn((bytes) => {
+jest.mock('filesize', () => ({
+  filesize: jest.fn((bytes) => {
     if (bytes === 0) return '0 B'
     const units = ['B', 'KB', 'MB', 'GB', 'TB']
     const i = Math.floor(Math.log(bytes) / Math.log(1024))
     const val = (bytes / Math.pow(1024, i)).toFixed(2)
     return `${val} ${units[i]}`
   })
-})
+}))
 
 describe('systemService', () => {
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
   afterEach(() => {
     jest.clearAllMocks()
+    console.error.mockRestore()
     systemService.clearCache()
   })
 
@@ -25,7 +30,7 @@ describe('systemService', () => {
         data: { data: { platform: { system: 'Linux' }, cpu: { brand: 'Intel' } } }
       })
 
-      const result = await systemService.getSystemInfo()
+      const result = await systemService.getSystemInfo(false)
 
       expect(apiClient.get).toHaveBeenCalledWith('/system/info', { params: { detailed: false } })
       expect(result.platform.system).toBe('Linux')

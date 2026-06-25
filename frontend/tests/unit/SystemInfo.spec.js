@@ -6,6 +6,11 @@ jest.mock('@/services/systemService')
 
 beforeEach(() => {
   jest.clearAllMocks()
+  jest.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  console.error.mockRestore()
 })
 
 const stubs = {
