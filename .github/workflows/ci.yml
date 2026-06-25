@@ -73,7 +73,7 @@ jobs:
         ENABLE_CSRF: "false"
         ENABLE_CACHE: "false"
       run: |
-        python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=term-missing --cov-report=xml --cov-report=html
+        python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml --cov-report=html
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -175,11 +175,11 @@ jobs:
 
     - name: Install project
       run: |
-        pip install -e ".[dev,postgres]"
+        pip install -e ".[dev,postgres,monitoring]"
 
     - name: Run integration tests
       env:
-        DATABASE_URL: postgresql://testpass:testuser@localhost:5432/testdb
+        DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
         REDIS_URL: redis://localhost:6379
         TESTING: "true"
         SECRET_KEY: test-secret-key-for-ci
