@@ -13,8 +13,8 @@ udr resolve numpy@pypi torch@pypi
 |--------|---------|---------------|
 | **PyPI** | `pip install ud-resolver` | GitHub Actions on release |
 | **GitHub Packages** | `pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/` | GitHub Actions on release |
+| **GitHub Releases** | `pip install ud-resolver-*.whl` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | CI on release |
 | **GHCR (Docker)** | `docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest` | CI on every push |
-| **GitHub Releases** | Binary downloads from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | Manual / CI tag |
 
 > **PyPI note**: The package is published on PyPI as **`ud-resolver`** — install with `pip install ud-resolver`, *not* `universal-dependency-resolver`.
 
@@ -88,7 +88,7 @@ pip install "ud-resolver[all]"          # Everything
 pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/
 ```
 
-This requires GitHub authentication. Create a [PAT](https://github.com/settings/tokens) with `read:packages` scope and use it in `~/.netrc` or `PIP_EXTRA_INDEX_URL`:
+Requires GitHub authentication. Create a [PAT](https://github.com/settings/tokens) with `read:packages` scope:
 
 ```bash
 echo "machine pypi.pkg.github.com login $GITHUB_USER password $GITHUB_TOKEN" > ~/.netrc

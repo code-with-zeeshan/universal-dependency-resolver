@@ -1,4 +1,4 @@
-name: Publish to Package Registries
+name: Publish to PyPI & Release Assets
 
 on:
   release:
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # for PyPI trusted publishing
-      packages: write    # for GitHub Packages
+      contents: write    # for uploading release assets
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,15 @@ jobs:
         continue-on-error: true
 
       - name: Publish to GitHub Packages
+        continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://pypi.pkg.github.com/${{ github.repository_owner }}/
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload wheel to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} dist/*.whl dist/*.tar.gz --clobber
+
