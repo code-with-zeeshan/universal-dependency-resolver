@@ -6,6 +6,11 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
     inputs:
       environment:
         description: 'Environment to deploy to'
@@ -131,6 +136,7 @@ jobs:
   # Database Migration Job
   migrate-database:
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [prepare]
     if: needs.prepare.outputs.should-deploy == 'true'
     environment: ${{ needs.prepare.outputs.environment }}
@@ -162,7 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     needs: [prepare, migrate-database]
-    if: needs.prepare.outputs.should-deploy == 'true'
+    if: always() && needs.prepare.outputs.should-deploy == 'true'
     
     steps:
     - uses: actions/checkout@v4
