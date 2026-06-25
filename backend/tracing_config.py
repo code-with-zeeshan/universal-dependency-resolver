@@ -10,23 +10,6 @@ import os
 import logging
 from typing import Optional
 
-from opentelemetry import trace
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider, sampling
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-    OTLPSpanExporter as OTLPHttpExporter,
-)
-
-try:
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-        OTLPSpanExporter as OTLPGrpcExporter,
-    )
-except ImportError:
-    OTLPGrpcExporter = None
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-
 from backend.settings import (
     OTEL_ENABLED,
     OTEL_EXPORTER_OTLP_PROTOCOL,
@@ -44,6 +27,36 @@ from backend.settings import (
 
 logger = logging.getLogger(__name__)
 
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider, sampling
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+        OTLPSpanExporter as OTLPHttpExporter,
+    )
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+    trace = None
+    Resource = None
+    TracerProvider = None
+    sampling = None
+    BatchSpanProcessor = None
+    SimpleSpanProcessor = None
+    OTLPHttpExporter = None
+    FastAPIInstrumentor = None
+    HTTPXClientInstrumentor = None
+
+try:
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter as OTLPGrpcExporter,
+    )
+except ImportError:
+    OTLPGrpcExporter = None
+
 
 def _parse_resource_attributes(raw: str) -> dict:
     """Parse OTEL_RESOURCE_ATTRIBUTES (key1=val1,key2=val2) into a dict."""
@@ -57,8 +70,10 @@ def _parse_resource_attributes(raw: str) -> dict:
     return attrs
 
 
-def _create_sampler() -> sampling.Sampler:
+def _create_sampler() -> Optional["sampling.Sampler"]:
     """Create a sampler based on OTEL_SAMPLER_TYPE and OTEL_SAMPLER_ARG."""
+    if not _OTEL_AVAILABLE:
+        return None
     sampler_type = OTEL_SAMPLER_TYPE
     sampler_arg = float(OTEL_SAMPLER_ARG)
 
@@ -79,12 +94,9 @@ def _create_sampler() -> sampling.Sampler:
 
 
 def _create_otlp_exporter():
-    """Create an OTLP exporter based on configuration.
-
-    Supports both HTTP/protobuf and gRPC protocols, making it compatible
-    with self-hosted collectors (Jaeger, Tempo) and managed services
-    (Grafana Cloud, Datadog, Honeycomb, New Relic, Lightstep).
-    """
+    """Create an OTLP exporter based on configuration."""
+    if not _OTEL_AVAILABLE:
+        return None
     if not OTEL_EXPORTER_OTLP_ENDPOINT:
         logger.warning("No OTLP endpoint configured -- traces will not be exported")
         return None
@@ -122,22 +134,12 @@ def _create_otlp_exporter():
 
 
 def setup_tracing(app=None):
-    """Configure OpenTelemetry tracing.
-
-    Supports:
-    - Self-hosted: Jaeger, Tempo, local OTLP collector
-    - Managed: Grafana Cloud, Datadog, Honeycomb, New Relic, Lightstep
-
-    Configure via environment variables (standard OTEL conventions):
-    - OTEL_ENABLED=true
-    - OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.grafana.net/otlp
-    - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (default) or grpc
-    - OTEL_EXPORTER_OTLP_HEADERS=X-Scope-OrgID=12345,Authorization=Bearer token
-    - OTEL_SAMPLER_TYPE=parentbased_traceidratio
-    - OTEL_SAMPLER_ARG=0.1
-    """
+    """Configure OpenTelemetry tracing."""
     if not OTEL_ENABLED:
         logger.info("OpenTelemetry tracing is disabled")
+        return
+    if not _OTEL_AVAILABLE:
+        logger.warning("OpenTelemetry packages not installed")
         return
 
     resource_attrs = {
