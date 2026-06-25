@@ -7,6 +7,17 @@ udr resolve numpy@pypi torch@pypi
   → numpy 1.26.2, torch 2.1.2+cu121 (CUDA 12.1)
 ```
 
+### Package availability
+
+| Source | Install | Published via |
+|--------|---------|---------------|
+| **PyPI** | `pip install ud-resolver` | GitHub Actions on release |
+| **GitHub Packages** | `pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/` | GitHub Actions on release |
+| **GHCR (Docker)** | `docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest` | CI on every push |
+| **GitHub Releases** | Binary downloads from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | Manual / CI tag |
+
+> **PyPI note**: The package is published on PyPI as **`ud-resolver`** — install with `pip install ud-resolver`, *not* `universal-dependency-resolver`.
+
 ---
 
 ## The Problem
@@ -56,10 +67,32 @@ Returns a resolved dependency tree with all transitive deps, conflict status, an
 
 ## Quick Start
 
-### One-command install
+### PyPI (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/code-with-zeeshan/universal-dependency-resolver/main/install.sh | bash
+pip install ud-resolver
+```
+
+Install with extras for additional features:
+```bash
+pip install "ud-resolver[system]"       # GPU & system scanning
+pip install "ud-resolver[monitoring]"   # OpenTelemetry & Sentry
+pip install "ud-resolver[security]"     # Auth & JWT support
+pip install "ud-resolver[postgres]"     # PostgreSQL + Redis + Celery
+pip install "ud-resolver[all]"          # Everything
+```
+
+### GitHub Packages
+
+```bash
+pip install ud-resolver --index-url https://pypi.pkg.github.com/code-with-zeeshan/
+```
+
+This requires GitHub authentication. Create a [PAT](https://github.com/settings/tokens) with `read:packages` scope and use it in `~/.netrc` or `PIP_EXTRA_INDEX_URL`:
+
+```bash
+echo "machine pypi.pkg.github.com login $GITHUB_USER password $GITHUB_TOKEN" > ~/.netrc
+pip install ud-resolver
 ```
 
 ### From source
@@ -151,6 +184,15 @@ asyncio.run(main())
 
 ### Docker (production)
 
+Pre-built images are available on **GitHub Container Registry (GHCR)**:
+
+```bash
+docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest
+docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-frontend:latest
+```
+
+Or build and run locally:
+
 ```bash
 cp .env.example .env
 docker compose up -d
@@ -159,6 +201,8 @@ docker compose exec backend alembic upgrade head
 # Frontend:  http://localhost:8080
 # API Docs:  http://localhost:8000/api/v1/docs
 ```
+
+> **Note**: The Docker images are published automatically via CI on every push to `main` and on tags (`v*`).
 
 ## How It Works
 
