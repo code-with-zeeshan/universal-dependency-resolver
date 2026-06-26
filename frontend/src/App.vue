@@ -7,6 +7,10 @@
     <div v-else-if="backendStatus === 'error'" class="backend-banner backend-error">
       <span>Backend unavailable. Make sure Python 3.11+ is installed and try restarting the application.</span>
     </div>
+    <div v-if="sessionExpired" class="backend-banner backend-error">
+      <span>Session expired. Please log in again.</span>
+      <button @click="sessionExpired = false; activeSection = 'auth'" class="ml-2 underline text-sm">Go to Login</button>
+    </div>
 
     <div class="app-layout">
       <aside class="sidebar">
@@ -43,6 +47,7 @@ import ResolvePanel from './components/ResolvePanel.vue'
 import SystemPanel from './components/SystemPanel.vue'
 import AuthPanel from './components/AuthPanel.vue'
 import ProjectScanPanel from './components/ProjectScanPanel.vue'
+import authService from './services/auth'
 import {
   HomeIcon, MagnifyingGlassIcon, CheckBadgeIcon,
   ServerIcon, LockClosedIcon, DocumentMagnifyingGlassIcon,
@@ -57,6 +62,11 @@ export default {
   setup() {
     const backendStatus = ref('loading')
     const activeSection = ref('dashboard')
+    const sessionExpired = ref(false)
+
+    authService._onSessionExpired = () => {
+      sessionExpired.value = true
+    }
 
     const navItems = [
       { key: 'dashboard', label: 'Dashboard', icon: HomeIcon },
@@ -100,7 +110,7 @@ export default {
       backendStatus.value = 'error'
     })
 
-    return { backendStatus, activeSection, navItems }
+    return { backendStatus, activeSection, sessionExpired, navItems }
   }
 }
 </script>

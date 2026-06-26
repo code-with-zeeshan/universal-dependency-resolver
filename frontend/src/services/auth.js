@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode'
 class AuthService {
   constructor() {
     this.client = apiClient
+    this._onSessionExpired = null
 
     this.client.interceptors.response.use(
       (response) => response,
@@ -24,7 +25,7 @@ class AuthService {
             }
           } catch (refreshError) {
             this.logout()
-            window.location.href = '/login'
+            this._onSessionExpired && this._onSessionExpired()
           }
         }
 
@@ -133,7 +134,7 @@ class AuthService {
       const response = await this.client.get('/auth/api-keys')
       return {
         success: true,
-        keys: response.data.keys
+        keys: Array.isArray(response.data) ? response.data : (response.data.keys || [])
       }
     } catch (error) {
       return {
@@ -148,7 +149,7 @@ class AuthService {
       const response = await this.client.post('/auth/api-keys', keyData)
       return {
         success: true,
-        key: response.data.key
+        key: response.data.key || response.data
       }
     } catch (error) {
       return {
@@ -175,7 +176,7 @@ class AuthService {
       const response = await this.client.get('/auth/profile')
       return {
         success: true,
-        user: response.data.user
+        user: response.data
       }
     } catch (error) {
       return {
@@ -187,8 +188,11 @@ class AuthService {
 
   async updateProfile(profileData) {
     try {
-      const response = await this.client.put('/auth/profile', profileData)
-      const updatedUser = response.data.user
+      const response = await this.client.put('/auth/profile', {
+        full_name: profileData.full_name || profileData.username || '',
+        email: profileData.email || '',
+      })
+      const updatedUser = response.data
       this.setUser(updatedUser)
 
       return {
@@ -200,6 +204,33 @@ class AuthService {
         success: false,
         error: error.response?.data?.message || error.message || 'An error occurred'
       }
+    }
+  }
+
+  async verifyToken() {
+    try {
+      const response = await this.client.get('/auth/verify')
+      return { success: true, data: response.data }
+    } catch (error) {
+      return { success: false }
+    }
+  }
+
+  async checkUsername(username) {
+    try {
+      const response = await this.client.post('/auth/check-username', null, { params: { username } })
+      return response.data
+    } catch (error) {
+      return { available: true }
+    }
+  }
+
+  async checkEmail(email) {
+    try {
+      const response = await this.client.post('/auth/check-email', null, { params: { email } })
+      return response.data
+    } catch (error) {
+      return { available: true }
     }
   }
 

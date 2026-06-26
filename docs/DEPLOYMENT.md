@@ -80,7 +80,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER"]
-      interval: 10s, timeout: 5s, retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine

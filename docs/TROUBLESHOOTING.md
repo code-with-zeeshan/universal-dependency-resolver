@@ -76,8 +76,9 @@ Wait for reset or increase via environment variables.
 
 ### Authentication Errors
 
-- Auth is **disabled by default** (`ENABLE_AUTH=false` in development)
-- For production: set `ENABLE_AUTH=true` and configure `SECRET_KEY`
+- Auth is **disabled by default** for the backend server (`ENABLE_AUTH=false` in development)
+- The Desktop app enables auth automatically with a randomly generated secret key
+- For production server: set `ENABLE_AUTH=true` and configure `SECRET_KEY`
 - Tokens expire after configurable minutes (default: 30)
 
 ## Performance

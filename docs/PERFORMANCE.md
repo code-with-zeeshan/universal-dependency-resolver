@@ -104,11 +104,8 @@ THREAD_POOL_SIZE=8
 
 ### Load Testing
 ```bash
-# Run performance tests
-pytest tests/performance/ -v
-
-# Load testing with Artillery
-artillery run tests/performance/load_test.yml
+# Load testing with K6
+k6 run tests/performance/load_test.js
 ```
 
 ## 🚨 Performance Troubleshooting

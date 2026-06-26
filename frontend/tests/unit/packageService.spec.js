@@ -113,10 +113,13 @@ describe('packageService', () => {
     it('calls compare endpoint', async () => {
       apiClient.get.mockResolvedValue({ data: { comparison: [] } })
 
-      const result = await packageService.comparePackages(['flask', 'django'], 'all')
+      const result = await packageService.comparePackages([
+        { name: 'flask', ecosystem: 'pypi' },
+        { name: 'django', ecosystem: 'pypi' }
+      ], 'all')
 
       expect(apiClient.get).toHaveBeenCalledWith('/packages/compare', {
-        params: { packages: 'flask,django', aspects: 'all' }
+        params: { packages: 'flask:pypi,django:pypi', aspects: 'all' }
       })
       expect(result).toEqual({ comparison: [] })
     })

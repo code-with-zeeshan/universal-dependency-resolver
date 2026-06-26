@@ -40,6 +40,16 @@
           <option value="node">Node.js</option>
           <option value="java">Java</option>
           <option value="gcc">GCC</option>
+          <option value="docker">Docker</option>
+          <option value="rust">Rust</option>
+          <option value="go">Go</option>
+          <option value="julia">Julia</option>
+          <option value="r">R</option>
+          <option value="dotnet">.NET</option>
+          <option value="ruby">Ruby</option>
+          <option value="php">PHP</option>
+          <option value="kotlin">Kotlin</option>
+          <option value="scala">Scala</option>
         </select>
         <button @click="fetchRuntime" class="btn btn-primary" :disabled="rtLoading">
           {{ rtLoading ? 'Loading...' : 'Get Info' }}
@@ -68,8 +78,8 @@
     <!-- Analyze Environment -->
     <div v-if="activeTab === 'analyze'" class="space-y-4">
       <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-        <p class="mb-2 text-gray-600">Upload a requirements.txt, package.json, or other manifest</p>
-        <input type="file" @change="handleFileUpload" accept=".txt,.json,.yml,.yaml,.toml,.cfg,.ini" class="block mx-auto" />
+        <p class="mb-2 text-gray-600">Upload a requirements.txt, package.json, Cargo.toml, go.mod, or other manifest</p>
+        <input type="file" @change="handleFileUpload" accept=".txt,.json,.yml,.yaml,.toml,.cfg,.ini,.lock,.rb,.php" class="block mx-auto" />
       </div>
       <div v-if="envAnalysis" class="bg-gray-50 rounded-lg p-4 text-sm">
         <pre class="whitespace-pre-wrap">{{ JSON.stringify(envAnalysis, null, 2) }}</pre>
@@ -78,18 +88,63 @@
 
     <!-- Compatibility Check -->
     <div v-if="activeTab === 'compat_check'" class="space-y-4">
-      <div class="bg-gray-50 rounded-lg p-4">
-        <p class="text-sm text-gray-600 mb-3">Check if your system meets requirements (e.g. OS, memory, GPU).</p>
-        <button @click="checkSystemCompat" class="btn btn-primary" :disabled="ccLoading">
-          {{ ccLoading ? 'Checking...' : 'Check System Compatibility' }}
-        </button>
+      <div class="bg-white rounded-lg shadow-sm border p-4">
+        <p class="text-sm text-gray-600 mb-3">Define system requirements to check against your machine.</p>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">OS</label>
+            <select v-model="compatReq.os" class="form-select w-full text-sm">
+              <option value="">Any</option>
+              <option value="linux">Linux</option>
+              <option value="darwin">macOS</option>
+              <option value="windows">Windows</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Min Memory (GB)</label>
+            <input v-model.number="compatReq.memory" type="number" min="0" step="1" class="form-input w-full text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Min Python Version</label>
+            <input v-model="compatReq.python" placeholder="e.g. 3.9" class="form-input w-full text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">CUDA Version</label>
+            <input v-model="compatReq.cuda" placeholder="e.g. 11.8" class="form-input w-full text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Min GPU Memory (MB)</label>
+            <input v-model.number="compatReq.gpuMemory" type="number" min="0" step="512" class="form-input w-full text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Min Disk Space (GB)</label>
+            <input v-model.number="compatReq.disk" type="number" min="0" step="1" class="form-input w-full text-sm" />
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button @click="checkSystemCompat" class="btn btn-primary" :disabled="ccLoading">
+            {{ ccLoading ? 'Checking...' : 'Check System Compatibility' }}
+          </button>
+          <button @click="compatReq = { os: '', memory: 0, python: '', cuda: '', gpuMemory: 0, disk: 0 }" class="btn btn-secondary btn-sm">Reset</button>
+        </div>
       </div>
       <div v-if="compatCheckResult" class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+        <div class="mb-2">
+          <strong :class="compatCheckResult.compatible ? 'text-green-600' : 'text-red-600'">
+            {{ compatCheckResult.compatible ? '✓ Compatible' : '✗ Not Compatible' }}
+          </strong>
+        </div>
         <div v-for="(check, i) in compatCheckResult.checks" :key="i" class="border-b pb-2">
           <span :class="check.status === 'pass' ? 'text-green-600' : 'text-red-600'">
             {{ check.status === 'pass' ? '✓' : '✗' }}
           </span>
-          {{ check.requirement || check.name || JSON.stringify(check) }}
+          {{ check.message || check.type }}
+        </div>
+        <div v-if="compatCheckResult.errors?.length" class="text-red-600 mt-2">
+          <div v-for="(e, i) in compatCheckResult.errors" :key="i">• {{ e }}</div>
+        </div>
+        <div v-if="compatCheckResult.warnings?.length" class="text-yellow-600 mt-2">
+          <div v-for="(w, i) in compatCheckResult.warnings" :key="i">• {{ w }}</div>
         </div>
       </div>
     </div>
@@ -181,14 +236,19 @@ export default {
     // Compatibility check
     const compatCheckResult = ref(null)
     const ccLoading = ref(false)
+    const compatReq = ref({ os: '', memory: 0, python: '', cuda: '', gpuMemory: 0, disk: 0 })
     async function checkSystemCompat() {
       ccLoading.value = true
       error.value = null
       try {
-        const resp = await systemService.checkCompatibility([
-          { type: 'os', minimum: { name: 'linux' } },
-          { type: 'memory', minimum: { gb: 2 } },
-        ])
+        const reqs = []
+        if (compatReq.value.os) reqs.push({ type: 'os', minimum: { name: compatReq.value.os } })
+        if (compatReq.value.memory > 0) reqs.push({ type: 'memory', minimum: { gb: compatReq.value.memory } })
+        if (compatReq.value.python) reqs.push({ type: 'python', minimum: { version: compatReq.value.python } })
+        if (compatReq.value.cuda) reqs.push({ type: 'gpu', minimum: { cuda: compatReq.value.cuda } })
+        if (compatReq.value.gpuMemory > 0) reqs.push({ type: 'gpu', minimum: { memory_gb: compatReq.value.gpuMemory / 1024 } })
+        if (compatReq.value.disk > 0) reqs.push({ type: 'disk', minimum: { gb: compatReq.value.disk } })
+        const resp = await systemService.checkCompatibility(reqs)
         compatCheckResult.value = resp
       } catch (e) {
         error.value = 'Compatibility check failed: ' + (e.response?.data?.message || e.message)
@@ -202,7 +262,7 @@ export default {
       runtimeName, runtimeInfo, rtLoading, fetchRuntime,
       benchResults, benchLoading, runBenchmarks,
       envAnalysis, handleFileUpload,
-      compatCheckResult, ccLoading, checkSystemCompat,
+      compatCheckResult, ccLoading, compatReq, checkSystemCompat,
     }
   }
 }

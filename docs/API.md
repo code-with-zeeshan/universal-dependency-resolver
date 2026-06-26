@@ -21,6 +21,14 @@ Auto-generated OpenAPI/Swagger docs at `http://localhost:8000/api/v1/docs` are t
 | Conda | `conda` | Yes | Yes |
 | Maven | `maven` | Yes | Yes |
 | Crates.io | `crates` | Yes | Yes |
+| Go Modules | `gomodules` | Limited | Yes |
+| NuGet | `nuget` | Yes | Yes |
+| RubyGems | `rubygems` | Yes | Yes |
+| Packagist (PHP) | `packagist` | Yes | Yes |
+| CocoaPods | `cocoapods` | Yes | Yes |
+| Homebrew | `homebrew` | Yes | Yes |
+| APT (Debian) | `apt` | Yes | Yes |
+| APK (Alpine) | `apk` | Yes | Yes |
 
 ## Authentication
 

@@ -2,14 +2,14 @@
 
 ## System Overview
 
-Multi-ecosystem dependency resolver supporting PyPI, NPM, Conda, Maven, and Crates.io with Z3 SAT-based conflict resolution.
+Multi-ecosystem dependency resolver supporting PyPI, NPM, Conda, Maven, Crates.io, and 8 more — with Z3 SAT-based conflict resolution.
 
 ### Key Features
 - **Multi-Ecosystem**: Python, JavaScript, Java, Rust, Conda, and more
 - **Conflict Resolution**: Z3 theorem prover for dependency solving
 - **System Compatibility**: OS, CPU, GPU, runtime scanning
 - **12 Export Formats**: requirements.txt, package.json, Dockerfile, etc.
-- **Desktop App**: Electron wrapper with bundled Python backend (see [COMPONENTS.md](COMPONENTS.md))
+- **Desktop App**: Electron wrapper with bundled Python backend, system tray, notifications, and auto-update (see [COMPONENTS.md](COMPONENTS.md))
 - **CI/CD Ready**: GitHub Actions, Docker, K6 load testing
 
 ### Architecture
@@ -65,7 +65,10 @@ pytest -v
 # Frontend (65 tests)
 cd frontend && npm run test
 
-# All 487 tests pass
+# Desktop (19 tests)
+cd desktop && npm test
+
+# All 506 tests pass
 ```
 
 ### Code Quality
@@ -115,7 +118,7 @@ curl http://localhost:8000/api/v1/health
 backend/         → Python FastAPI app
   api/           → REST API layer
   core/          → Business logic (solver, cache, scanner)
-  data_sources/  → 14 ecosystem API clients
+  data_sources/  → 13 ecosystem API clients
   database/      → SQLAlchemy models
   cli.py         → CLI interface
 desktop/         → Electron shell
@@ -128,4 +131,4 @@ tests/           → 422 backend tests
 - PRs from `feature/*` branches to `main`
 - Tests required for new functionality
 - Type hints required for all Python code
-- CI must pass (lint + 487 tests)
+- CI must pass (lint + 506 tests)

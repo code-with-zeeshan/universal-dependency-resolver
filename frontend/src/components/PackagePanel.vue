@@ -21,6 +21,14 @@
           <option value="conda">Conda</option>
           <option value="maven">Maven</option>
           <option value="crates">Crates</option>
+          <option value="gomodules">Go Modules</option>
+          <option value="nuget">NuGet</option>
+          <option value="rubygems">RubyGems</option>
+          <option value="packagist">Packagist</option>
+          <option value="cocoapods">CocoaPods</option>
+          <option value="homebrew">Homebrew</option>
+          <option value="apt">APT</option>
+          <option value="apk">APK</option>
         </select>
         <button @click="doSearch" class="btn btn-primary" :disabled="searching">
           {{ searching ? 'Searching...' : 'Search' }}
@@ -47,6 +55,13 @@
           <option value="pypi">PyPI</option>
           <option value="npm">NPM</option>
           <option value="conda">Conda</option>
+          <option value="maven">Maven</option>
+          <option value="crates">Crates</option>
+          <option value="gomodules">Go</option>
+          <option value="nuget">NuGet</option>
+          <option value="rubygems">RubyGems</option>
+          <option value="packagist">PHP</option>
+          <option value="homebrew">Homebrew</option>
         </select>
         <input v-model="infoPackage" placeholder="Package name" class="form-input flex-1" @keyup.enter="fetchInfo" />
         <button @click="fetchInfo" class="btn btn-primary" :disabled="infoLoading">{{ infoLoading ? 'Loading...' : 'Get Info' }}</button>
@@ -68,6 +83,9 @@
         <select v-model="verEcosystem" class="form-select w-32">
           <option value="pypi">PyPI</option>
           <option value="npm">NPM</option>
+          <option value="conda">Conda</option>
+          <option value="maven">Maven</option>
+          <option value="crates">Crates</option>
         </select>
         <input v-model="verPackage" placeholder="Package name" class="form-input flex-1" @keyup.enter="fetchVersions" />
         <button @click="fetchVersions" class="btn btn-primary" :disabled="verLoading">{{ verLoading ? 'Loading...' : 'List Versions' }}</button>
@@ -114,10 +132,23 @@
 
     <!-- Compare -->
     <div v-if="activeTab === 'compare'" class="space-y-4">
-      <div class="flex gap-2">
-        <input v-model="compareInput" placeholder="Package names, comma-separated (e.g. flask, django)"
-               class="form-input flex-1" @keyup.enter="doCompare" />
-        <button @click="doCompare" class="btn btn-primary" :disabled="compLoading">{{ compLoading ? 'Loading...' : 'Compare' }}</button>
+      <div class="bg-gray-50 rounded-lg p-4 space-y-2">
+        <p class="text-sm text-gray-600 mb-2">Add packages to compare. Each must include ecosystem (e.g. flask:pypi).</p>
+        <div v-for="(item, i) in comparePackagesList" :key="i" class="flex gap-2">
+          <input v-model="item.name" placeholder="Package name" class="form-input flex-1" />
+          <select v-model="item.ecosystem" class="form-select w-28">
+            <option value="pypi">PyPI</option>
+            <option value="npm">NPM</option>
+            <option value="conda">Conda</option>
+            <option value="maven">Maven</option>
+            <option value="crates">Crates</option>
+          </select>
+          <button v-if="comparePackagesList.length > 1" @click="comparePackagesList.splice(i, 1)" class="text-red-600 text-sm">×</button>
+        </div>
+        <div class="flex gap-2">
+          <button @click="comparePackagesList.push({ name: '', ecosystem: 'pypi' })" class="btn btn-secondary btn-sm">+ Add Package</button>
+          <button @click="doCompare" class="btn btn-primary btn-sm" :disabled="compLoading">{{ compLoading ? 'Loading...' : 'Compare' }}</button>
+        </div>
       </div>
       <div v-if="compareResult" class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
         <pre class="whitespace-pre-wrap">{{ JSON.stringify(compareResult, null, 2) }}</pre>
@@ -250,20 +281,23 @@ export default {
     }
 
     // Compare
-    const compareInput = ref('')
-    const compareResult = ref(null)
+  const comparePackagesList = ref([{ name: '', ecosystem: 'pypi' }, { name: '', ecosystem: 'pypi' }])
+  const compareResult = ref(null)
 
-    async function doCompare() {
-      if (!compareInput.value) return
-      compLoading.value = true
-      try {
-        const names = compareInput.value.split(',').map(s => s.trim()).filter(Boolean)
-        compareResult.value = await packageService.comparePackages(names)
-      } catch (e) {
-        error.value = 'Failed: ' + (e.response?.data?.message || e.message)
-      }
-      compLoading.value = false
+  async function doCompare() {
+    const valid = comparePackagesList.value.filter(p => p.name.trim())
+    if (valid.length < 2) {
+      error.value = 'Add at least 2 packages to compare.'
+      return
     }
+    compLoading.value = true
+    try {
+      compareResult.value = await packageService.comparePackages(valid)
+    } catch (e) {
+      error.value = 'Failed: ' + (e.response?.data?.message || e.message)
+    }
+    compLoading.value = false
+  }
 
     return {
       tabs, activeTab, error,
@@ -272,7 +306,7 @@ export default {
       verEcosystem, verPackage, versions, verLoading, fetchVersions,
       depEcosystem, depPackage, dependencies, depLoading, fetchDeps,
       compEcosystem, compPackage, compatibility, compLoading, fetchCompat,
-      compareInput, compareResult, doCompare,
+      comparePackagesList, compareResult, doCompare,
     }
   }
 }

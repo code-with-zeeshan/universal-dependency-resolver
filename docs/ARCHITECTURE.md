@@ -62,7 +62,7 @@
 │  │ crates_client.py │    │ │  ┌──────────────────────────┐    │
 │  │ apt_client.py    │    │ │  │ alembic/env.py           │    │
 │  │ gomodules_client │    │ │  └──────────────────────────┘    │
-│  │ + 7 more         │    │ │                                  │
+│  │   + 7 more         │    │                                  │                                  │
 │  └──────────────────┘    │ │  SQLite (default) or PostgreSQL  │
 └──────────────────────────┘ └──────────────────────────────────┘
 ```
@@ -319,10 +319,13 @@ Multi-Level Cache:
 │   ├── Unit (Jest, 5 spec files, 65 tests)
 │   └── E2E (Playwright, 20 tests)
 │
+├── Desktop Tests (Node --test, 19 tests)
+│   └── backend-launcher.test.js
+│
 └── Backend Tests (pytest, 422 tests)
     ├── Unit
     │   ├── Core module tests
-    │   ├── Data source tests (14 files)
+    │   ├── Data source tests (13 files)
     │   ├── API route tests
     │   ├── CLI tests (16 tests)
     │   └── Settings tests (6 tests)
@@ -412,9 +415,12 @@ universal-dependency-resolver/
 │   └── utils/
 │       └── errors.py
 ├── desktop/
+│   ├── backend-launcher.js
 │   ├── main.js
 │   ├── preload.js
-│   └── package.json
+│   ├── package.json
+│   ├── assets/ (tray icon)
+│   └── tests/ (backend-launcher.test.js)
 ├── docs/ (this directory)
 ├── frontend/
 │   ├── src/

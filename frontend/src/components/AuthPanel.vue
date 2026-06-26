@@ -32,12 +32,13 @@
     <div v-if="activeTab === 'profile'" class="max-w-md mx-auto space-y-4">
       <div v-if="profile" class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
         <p><strong>Username:</strong> {{ profile.username }}</p>
+        <p><strong>Full Name:</strong> {{ profile.full_name || '—' }}</p>
         <p><strong>Email:</strong> {{ profile.email }}</p>
         <p><strong>Active:</strong> {{ profile.is_active ? 'Yes' : 'No' }}</p>
       </div>
       <div class="border-t pt-4 space-y-3">
-        <input v-model="profileForm.username" placeholder="New username" class="form-input w-full" />
-        <input v-model="profileForm.email" type="email" placeholder="New email" class="form-input w-full" />
+        <input v-model="profileForm.full_name" placeholder="Full name" class="form-input w-full" />
+        <input v-model="profileForm.email" type="email" placeholder="Email" class="form-input w-full" />
         <button @click="updateProfile" class="btn btn-primary" :disabled="authLoading">Update Profile</button>
       </div>
     </div>
@@ -126,12 +127,12 @@ export default {
 
     // Profile
     const profile = ref(null)
-    const profileForm = ref({ username: '', email: '' })
+    const profileForm = ref({ full_name: '', email: '' })
     async function loadProfile() {
       const result = await authService.getProfile()
       if (result.success) {
         profile.value = result.user
-        profileForm.value = { username: result.user.username || '', email: result.user.email || '' }
+        profileForm.value = { full_name: result.user.full_name || result.user.username || '', email: result.user.email || '' }
       }
     }
     async function updateProfile() {

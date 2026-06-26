@@ -22,7 +22,7 @@ The core resolver engine — a Python FastAPI application with:
 - REST API for resolving, scanning, exporting
 - CLI entry point for scripting and CI/CD
 - Python library for programmatic use
-- SAT-based conflict resolver (Z3), system scanner, 14 ecosystem data sources
+- SAT-based conflict resolver (Z3), system scanner, 13 ecosystem data sources
 
 ### Where to get it
 ```bash
@@ -100,11 +100,17 @@ Once running: `http://localhost:8000/api/v1/docs` (Swagger UI)
 
 ### What it is
 A browser-based graphical interface built with Vue.js 3 and Tailwind CSS. Connects to the backend API and provides a visual way to:
-- Search packages across ecosystems
-- Resolve dependency trees
+- Search packages across 13 ecosystems
+- Dashboard with health overview, system status, and quick actions
+- View package info, versions, dependencies, compatibility
+- Compare packages side-by-side with ecosystem selection
+- Resolve dependency trees with SAT solver
 - Export to 12 formats
-- Scan projects and GitHub repos
-- View system info (OS, GPU, CUDA)
+- Scan projects (GitHub URL, upload archive, local directory)
+- View system info (OS, GPU, CUDA, runtime versions)
+- Run system benchmarks and compatibility checks
+- Analyze environment files (requirements.txt, package.json, Cargo.toml, etc.)
+- Manage authentication, user profile, and API keys
 
 ### Where to get it
 
@@ -186,6 +192,12 @@ If the bundled binary fails (antivirus, missing system libraries), the desktop a
 
 1. **PyInstaller binary** (bundled, preferred — no Python needed)
 2. **System Python** (`python3 -m uvicorn backend.api.main:app`) — requires Python 3.11+
+
+### Desktop-specific features
+- **Auto-update**: In production builds, the app checks for updates on launch and notifies you when a new version is available
+- **System tray**: Minimize to tray with quick-access menu (Show / Quit)
+- **Desktop notifications**: Alerts when backend starts and when updates are ready
+- **Auth enabled by default**: Authentication is automatically enabled with a randomly generated secret key
 
 ### Known platform notes
 - **Windows**: Antivirus may flag the PyInstaller binary. Add an exclusion for the app directory if needed.

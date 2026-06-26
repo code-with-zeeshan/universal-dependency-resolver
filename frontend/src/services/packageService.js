@@ -109,7 +109,7 @@ export default {
   async comparePackages(packages, aspects = 'all') {
     try {
       const params = {
-        packages: packages.join(','),
+        packages: packages.map(p => `${p.name}:${p.ecosystem || 'pypi'}`).join(','),
         aspects
       };
 
@@ -167,5 +167,27 @@ export default {
       console.error('Error fetching export formats:', error);
       throw error;
     }
-  }
+  },
+
+  async getPackageDetails(ecosystem, packageName, includeMetrics = false) {
+    try {
+      const response = await apiClient.get(`/packages/${ecosystem}/${packageName}/details`, {
+        params: { include_metrics: includeMetrics }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching package details:', error);
+      throw error;
+    }
+  },
+
+  async getEcosystems() {
+    try {
+      const response = await apiClient.get('/packages/ecosystems');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching ecosystems:', error);
+      throw error;
+    }
+  },
 };

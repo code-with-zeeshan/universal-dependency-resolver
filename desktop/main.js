@@ -1,15 +1,13 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Tray, Menu, Notification } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const crypto = require('crypto')
-const { spawn } = require('child_process')
-const http = require('http')
-const net = require('net')
+const launcher = require('./backend-launcher')
 
 let mainWindow = null
 let backendProcess = null
 let backendPort = 8199
 let backendCrashed = false
+let tray = null
 
 const isDev = !app.isPackaged
 const isWin = process.platform === 'win32'
@@ -18,21 +16,6 @@ const backendDir = isDev
   ? path.join(__dirname, '..', 'backend')
   : path.join(process.resourcesPath, 'backend')
 const backendParentDir = path.dirname(backendDir)
-
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer()
-    server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port
-      server.close(() => resolve(port))
-    })
-    server.on('error', reject)
-  })
-}
-
-function generateSecretKey() {
-  return crypto.randomBytes(48).toString('hex')
-}
 
 function getFallbackCommands() {
   const cmds = []
@@ -49,93 +32,8 @@ function getFallbackCommands() {
   return cmds
 }
 
-function getEnv(port) {
-  return {
-    ...process.env,
-    UDR_PORT: String(port),
-    UDR_HOST: '127.0.0.1',
-    UDR_DESKTOP: 'true',
-    PYTHONUNBUFFERED: '1',
-    SECRET_KEY: process.env.SECRET_KEY || generateSecretKey(),
-  }
-}
-
-function spawnBackend(cmd, args, port, isBinary) {
-  return new Promise((resolve, reject) => {
-    backendCrashed = false
-
-    const allArgs = args.length > 0
-      ? [...args, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
-      : [String(port)]
-
-    // Binary: cwd inside backend/ (doesn't matter, everything bundled)
-    // System Python: cwd must be parent so backend/ is on sys.path
-    const cwd = isBinary ? backendDir : backendParentDir
-
-    backendProcess = spawn(cmd, allArgs, {
-      cwd,
-      env: getEnv(port),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    let started = false
-
-    function onOutput(data) {
-      const msg = data.toString()
-      if (!started && (msg.includes('Uvicorn running') || msg.includes('Application startup complete') || msg.includes('Uvicorn'))) {
-        started = true
-        resolve()
-      }
-    }
-
-    backendProcess.stdout.on('data', (data) => {
-      console.log('[backend:out]', data.toString().trimEnd())
-      onOutput(data)
-    })
-
-    backendProcess.stderr.on('data', (data) => {
-      const msg = data.toString()
-      console.log('[backend:err]', msg.trimEnd())
-      onOutput(data)
-    })
-
-    backendProcess.on('error', (err) => {
-      console.error('[backend] spawn error:', err.message)
-      backendCrashed = true
-      if (!started) reject(err)
-    })
-
-    backendProcess.on('exit', (code) => {
-      console.log(`Backend exited with code ${code}`)
-      backendCrashed = true
-      if (!started) reject(new Error(`Backend exited unexpectedly with code ${code}`))
-    })
-
-    setTimeout(() => {
-      if (!started) resolve()
-    }, 15000)
-  })
-}
-
-function waitForServer(url, maxRetries = 30) {
-  return new Promise((resolve, reject) => {
-    let retries = 0
-    const check = () => {
-      if (backendCrashed) {
-        reject(new Error('Backend process crashed'))
-        return
-      }
-      http.get(url, () => resolve()).on('error', () => {
-        retries++
-        if (retries >= maxRetries) {
-          reject(new Error('Server did not start in time'))
-        } else {
-          setTimeout(check, 1000)
-        }
-      })
-    }
-    check()
-  })
+function envForPort(port) {
+  return launcher.getEnv(port)
 }
 
 async function startBackendWithFallback(port) {
@@ -144,9 +42,17 @@ async function startBackendWithFallback(port) {
   for (const fb of fallbacks) {
     try {
       console.log(`[backend] Trying: ${fb.cmd}`)
-      await spawnBackend(fb.cmd, fb.args, port, fb.isBinary)
+      const cwd = fb.isBinary ? backendDir : backendParentDir
+      const result = await launcher.spawnBackend(fb.cmd, fb.args, port, fb.isBinary, cwd)
+      backendProcess = result.process
+      backendCrashed = false
+      const crashedCheck = result.crashed
+
       console.log('[backend] Spawn succeeded, waiting for HTTP...')
-      await waitForServer(`http://127.0.0.1:${port}/api/v1/docs`)
+      await launcher.waitForServer(`http://127.0.0.1:${port}/api/v1/docs`, 30, () => {
+        if (crashedCheck()) return true
+        return backendCrashed
+      })
       console.log('[backend] Server ready!')
       return
     } catch (err) {
@@ -161,23 +67,36 @@ async function startBackendWithFallback(port) {
   throw lastError || new Error('All backend attempts failed')
 }
 
-function getPlatformHint() {
-  const hints = []
-  if (isMac) {
-    hints.push('- If the app is blocked by macOS, go to System Settings → Privacy & Security and click "Open Anyway"')
-  }
-  if (!isWin) {
-    hints.push('- Ensure the binary has execute permission: chmod +x <path-to-backend>')
-  }
-  if (isWin) {
-    hints.push('- The bundled backend may be blocked by antivirus. Try adding an exclusion for the app directory.')
-  }
-  return hints.length ? '\n' + hints.join('\n') : ''
-}
-
 async function createWindow() {
-  backendPort = await findFreePort()
+  backendPort = await launcher.findFreePort()
   const backendUrl = `http://127.0.0.1:${backendPort}`
+
+  // Auto-update (only in production)
+  if (!isDev) {
+    try {
+      const { autoUpdater } = require('electron-updater')
+      autoUpdater.checkForUpdatesAndNotify()
+      autoUpdater.on('update-downloaded', () => {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: 'UDR Update',
+            body: 'A new version has been downloaded. Restart to apply.',
+          })
+        }
+        const { dialog: d } = require('electron')
+        d.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Update Ready',
+          message: 'A new version has been downloaded. Restart now to apply the update?',
+          buttons: ['Restart', 'Later'],
+        }).then(({ response }) => {
+          if (response === 0) autoUpdater.quitAndInstall()
+        })
+      })
+    } catch (e) {
+      console.warn('Auto-updater not available:', e.message)
+    }
+  }
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -208,9 +127,13 @@ async function createWindow() {
     console.log(`Starting backend on port ${backendPort}...`)
     await startBackendWithFallback(backendPort)
     mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
+    createTray()
+    if (Notification.isSupported()) {
+      new Notification({ title: 'UDR', body: 'Backend started successfully' })
+    }
   } catch (e) {
     console.error('Backend start failed:', e.message)
-    let msg = `The backend server could not be started.\n\n${e.message}${getPlatformHint()}`
+    let msg = `The backend server could not be started.\n\n${e.message}${launcher.getPlatformHint(isMac, isWin)}`
     if (e.message.includes('exited unexpectedly') || e.message.includes('crashed')) {
       msg += '\n\nThe bundled backend binary may be blocked by antivirus or missing system libraries. Try running the Python backend manually:\n  python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8199'
     }
@@ -235,6 +158,24 @@ ipcMain.handle('select-directory', async () => {
 ipcMain.handle('get-backend-url', () => {
   return `http://127.0.0.1:${backendPort}`
 })
+
+function createTray() {
+  try {
+    const iconPath = path.join(__dirname, 'assets', 'tray-icon.png')
+    if (!fs.existsSync(iconPath)) return
+    tray = new Tray(iconPath)
+    const contextMenu = Menu.buildFromTemplate([
+      { label: 'Show UDR', click: () => mainWindow && mainWindow.show() },
+      { type: 'separator' },
+      { label: 'Quit', click: () => { app.isQuitting = true; app.quit() } },
+    ])
+    tray.setToolTip('Universal Dependency Resolver')
+    tray.setContextMenu(contextMenu)
+    tray.on('click', () => mainWindow && mainWindow.show())
+  } catch (e) {
+    console.warn('Tray creation failed:', e.message)
+  }
+}
 
 app.whenReady().then(createWindow)
 

@@ -60,7 +60,7 @@ curl -X POST http://localhost:8000/api/v1/packages/resolve \
 | **Multi-ecosystem** | PyPI (pip), npm, Cargo, Go, Conda, Maven, NuGet, RubyGems, Linux packages, Homebrew |
 | **GPU-aware resolution** | Scans CUDA, cuDNN, GPU memory — resolves CUDA variants automatically |
 | **System scan** | Detects OS, CPU, GPU, Python, Node.js, GCC, Java |
-| **12 export formats** | Dockerfile, requirements.txt, package.json, docker-compose.yml, install.sh, CMakeLists.txt, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, Gemfile |
+| **12 export formats** | Dockerfile, requirements.txt, package.json, docker-compose.yml, install.sh, install.bat, CMakeLists.txt, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml |
 | **CI/CD ready** | CLI for pipelines, health check endpoint, structured logging |
 
 ## Quick Start
@@ -130,24 +130,36 @@ docker compose exec backend alembic upgrade head
 
 ### Desktop
 
-Download the installer from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. See [docs/COMPONENTS.md](docs/COMPONENTS.md#3-desktop-electron-standalone-app) for details.
+Download the installer from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. Features system tray, notifications, auto-update, and auth enabled by default. See [docs/COMPONENTS.md](docs/COMPONENTS.md#3-desktop-electron-standalone-app) for details.
 
 ## API Quick Reference
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/api/v1/` | GET | API metadata |
+| `/api/v1/health` | GET | Health check |
 | `/api/v1/packages/search` | GET | Search across ecosystems |
+| `/api/v1/packages/ecosystems` | GET | List supported ecosystems |
 | `/api/v1/packages/{ecosystem}/{name}` | GET | Get package info |
-| `/api/v1/packages/versions` | GET | List versions |
+| `/api/v1/packages/{ecosystem}/{name}/details` | GET | Rich package details with metrics |
+| `/api/v1/packages/{ecosystem}/{name}/versions` | GET | List versions |
+| `/api/v1/packages/{ecosystem}/{name}/dependencies` | GET | Get dependencies |
+| `/api/v1/packages/{ecosystem}/{name}/compatibility` | GET | Compatibility info |
+| `/api/v1/packages/{ecosystem}/{name}/compatibility/report` | POST | Submit compatibility report |
+| `/api/v1/packages/compare` | GET | Compare packages |
 | `/api/v1/packages/resolve` | POST | Resolve dependencies |
 | `/api/v1/packages/export` | POST | Export to any format |
 | `/api/v1/packages/export-formats` | GET | Available export formats |
 | `/api/v1/system/info` | GET | System information |
 | `/api/v1/system/check-compatibility` | POST | Check dependency-system fit |
+| `/api/v1/system/gpu/info` | GET | GPU details |
+| `/api/v1/system/runtime/{runtime}` | GET | Runtime version info |
+| `/api/v1/system/analyze-environment` | POST | Analyze manifest file |
+| `/api/v1/system/benchmarks` | GET | Run system benchmarks |
 | `/api/v1/scan/github` | POST | Scan a GitHub repo |
 | `/api/v1/scan/upload` | POST | Scan an uploaded archive |
 | `/api/v1/scan/local` | POST | Scan a local directory |
-| `/api/v1/health` | GET | Health check |
+| `/api/v1/auth/*` | * | Register, login, profile, API keys |
 
 Full reference in [docs/API.md](docs/API.md).
 
@@ -159,6 +171,9 @@ python -m pytest tests/unit/
 
 # Frontend
 cd frontend && npm run test:unit
+
+# Desktop
+cd desktop && npm test
 
 # E2E (requires Chromium)
 cd frontend && npm run test:e2e
