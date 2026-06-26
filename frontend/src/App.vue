@@ -82,7 +82,7 @@ export default {
       const maxRetries = 30
       for (let i = 0; i < maxRetries; i++) {
         try {
-          const res = await fetch(`${backendUrl}/api/v1/system/health`, { method: 'GET' })
+          const res = await fetch(`${backendUrl}/api/v1/health`, { method: 'GET' })
           if (res.ok || res.status === 200) {
             backendStatus.value = 'ready'
             return

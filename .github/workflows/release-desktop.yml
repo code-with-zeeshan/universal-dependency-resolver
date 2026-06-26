@@ -42,7 +42,7 @@ jobs:
         run: |
           pip install pyinstaller
           pip install -e .
-          pyinstaller --onefile --noconfirm --name udr-backend --distpath backend/dist --workpath ${{ runner.temp }}/pyibuild backend/run.py
+          pyinstaller --onefile --noconsole --noconfirm --name udr-backend --distpath backend/dist --workpath ${{ runner.temp }}/pyibuild backend/run.py
 
       - name: Build Electron app
         run: npx electron-builder --publish=never

@@ -8,6 +8,7 @@ const net = require('net')
 let mainWindow = null
 let backendProcess = null
 let backendPort = 8199
+let backendCrashed = false
 
 const isDev = !app.isPackaged
 const isWin = process.platform === 'win32'
@@ -26,39 +27,30 @@ function findFreePort() {
   })
 }
 
-function findBackendCommand() {
-  // Priority 1: bundled standalone binary (PyInstaller)
+function getFallbackCommands() {
+  const cmds = []
   const binDir = isDev
     ? path.join(__dirname, '..', 'backend', 'dist')
     : path.join(process.resourcesPath, 'backend-bin')
   const binName = isWin ? 'udr-backend.exe' : 'udr-backend'
   const binPath = path.join(binDir, binName)
   if (fs.existsSync(binPath)) {
-    return { cmd: binPath, args: [] }
+    cmds.push({ cmd: binPath, args: [] })
   }
-
-  // Priority 2: bundled venv
-  const venvPython = isDev
-    ? path.join(__dirname, '..', 'venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python3')
-    : path.join(process.resourcesPath, 'venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python3')
-  if (fs.existsSync(venvPython)) {
-    return { cmd: venvPython, args: ['-m', 'uvicorn', 'backend.api.main:app'] }
-  }
-
-  // Priority 3: system Python
   const pythonName = isWin ? 'python' : 'python3'
-  return { cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'] }
+  cmds.push({ cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'] })
+  return cmds
 }
 
-function startBackend(port) {
+function spawnBackend(cmd, args, port) {
   return new Promise((resolve, reject) => {
-    const { cmd, args: extraArgs } = findBackendCommand()
+    backendCrashed = false
 
-    const args = extraArgs.length > 0
-      ? [...extraArgs, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
+    const allArgs = args.length > 0
+      ? [...args, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
       : [String(port)]
 
-    backendProcess = spawn(cmd, args, {
+    backendProcess = spawn(cmd, allArgs, {
       cwd: backendDir,
       env: {
         ...process.env,
@@ -70,28 +62,42 @@ function startBackend(port) {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
-    backendProcess.stdout.on('data', (data) => {
+    let started = false
+
+    function onOutput(data) {
       const msg = data.toString()
-      console.log('[backend]', msg)
-      if (msg.includes('Uvicorn running') || msg.includes('Application startup complete') || msg.includes('Uvicorn')) {
+      if (!started && (msg.includes('Uvicorn running') || msg.includes('Application startup complete') || msg.includes('Uvicorn'))) {
+        started = true
         resolve()
       }
+    }
+
+    backendProcess.stdout.on('data', (data) => {
+      console.log('[backend:out]', data.toString().trimEnd())
+      onOutput(data)
     })
 
     backendProcess.stderr.on('data', (data) => {
-      console.error('[backend]', data.toString())
+      const msg = data.toString()
+      console.log('[backend:err]', msg.trimEnd())
+      onOutput(data)
     })
 
     backendProcess.on('error', (err) => {
       console.error('[backend] spawn error:', err.message)
-      reject(err)
-    })
-    backendProcess.on('exit', (code) => {
-      console.log(`Backend exited with code ${code}`)
+      backendCrashed = true
+      if (!started) reject(err)
     })
 
-    // Timeout: resolve anyway after 15s
-    setTimeout(() => resolve(), 15000)
+    backendProcess.on('exit', (code) => {
+      console.log(`Backend exited with code ${code}`)
+      backendCrashed = true
+      if (!started) reject(new Error(`Backend exited unexpectedly with code ${code}`))
+    })
+
+    setTimeout(() => {
+      if (!started) resolve()
+    }, 15000)
   })
 }
 
@@ -99,9 +105,11 @@ function waitForServer(url, maxRetries = 30) {
   return new Promise((resolve, reject) => {
     let retries = 0
     const check = () => {
-      http.get(url, (res) => {
-        resolve()
-      }).on('error', () => {
+      if (backendCrashed) {
+        reject(new Error('Backend process crashed'))
+        return
+      }
+      http.get(url, () => resolve()).on('error', () => {
         retries++
         if (retries >= maxRetries) {
           reject(new Error('Server did not start in time'))
@@ -112,6 +120,29 @@ function waitForServer(url, maxRetries = 30) {
     }
     check()
   })
+}
+
+async function startBackendWithFallback(port) {
+  const fallbacks = getFallbackCommands()
+  let lastError = null
+  for (const fb of fallbacks) {
+    try {
+      console.log(`[backend] Trying: ${fb.cmd}`)
+      await spawnBackend(fb.cmd, fb.args, port)
+      console.log('[backend] Spawn succeeded, waiting for HTTP...')
+      await waitForServer(`http://127.0.0.1:${port}/api/v1/docs`)
+      console.log('[backend] Server ready!')
+      return
+    } catch (err) {
+      lastError = err
+      console.warn(`[backend] ${fb.cmd} failed: ${err.message}`)
+      if (backendProcess) {
+        backendProcess.kill()
+        backendProcess = null
+      }
+    }
+  }
+  throw lastError || new Error('All backend attempts failed')
 }
 
 async function createWindow() {
@@ -131,7 +162,6 @@ async function createWindow() {
     },
   })
 
-  // Load frontend FIRST so user sees UI immediately (backend starts in background)
   if (isDev) {
     mainWindow.loadURL('http://localhost:8080')
     mainWindow.webContents.openDevTools()
@@ -140,25 +170,22 @@ async function createWindow() {
     mainWindow.loadFile(distPath)
   }
 
-  // Inject backend URL into renderer via preload
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
   })
 
-  // Start backend in background
   try {
     console.log(`Starting backend on port ${backendPort}...`)
-    await startBackend(backendPort)
-    console.log('Backend started, waiting for server...')
-    await waitForServer(`${backendUrl}/api/v1/docs`)
-    console.log('Backend ready!')
+    await startBackendWithFallback(backendPort)
     mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
   } catch (e) {
-    console.error('Backend start warning:', e.message)
-    dialog.showErrorBox(
-      'Backend Failed to Start',
-      `The backend server could not be started.\n\n${e.message}\n\nMake sure Python 3.11+ is installed on your system. If Python is already installed, try reinstalling this application.`
-    )
+    console.error('Backend start failed:', e.message)
+    let msg = `The backend server could not be started.\n\n${e.message}`
+    if (e.message.includes('exited unexpectedly') || e.message.includes('crashed')) {
+      msg += '\n\nIf using the packaged app, the bundled backend binary may be blocked by antivirus or missing system libraries. Try running the Python backend directly:\n  python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8199'
+    }
+    msg += '\n\nMake sure Python 3.11+ is installed. If Python is already installed, try running the backend manually.'
+    dialog.showErrorBox('Backend Failed to Start', msg)
   }
 
   mainWindow.on('closed', () => {
@@ -166,7 +193,6 @@ async function createWindow() {
   })
 }
 
-// IPC handlers
 ipcMain.handle('select-directory', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
