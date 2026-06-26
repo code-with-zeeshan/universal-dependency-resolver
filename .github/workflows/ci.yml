@@ -337,21 +337,38 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        pip install -e ".[dev,monitoring,security,system]"
+
+    - name: Start backend and wait for readiness
+      run: |
+        uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --log-level info &
+        echo "PID=$!"
+        for i in $(seq 1 30); do
+          if curl -s http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+            echo "Backend ready"
+            break
+          fi
+          sleep 2
+        done
+
     - name: Run K6 Performance Tests
       uses: grafana/k6-action@v0.3.1
       continue-on-error: true
       with:
-        filename: tests/performance/load-test.js
+        filename: tests/performance/load_test.js
       env:
         K6_TARGET_URL: http://localhost:8000
 
-    - name: Upload performance results
-      uses: actions/upload-artifact@v4
+    - name: Stop backend
       if: always()
-      continue-on-error: true
-      with:
-        name: performance-results
-        path: performance-results.json
+      run: pkill -f "uvicorn backend.api.main" || true
 
   # Notification
   notify:
