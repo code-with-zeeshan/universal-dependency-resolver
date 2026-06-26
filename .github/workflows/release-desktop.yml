@@ -42,12 +42,7 @@ jobs:
         run: |
           pip install pyinstaller
           pip install -e .
-          Z3_LIB=$(python3 << 'PYEOF'
-import z3, os, sys
-ext = 'dll' if sys.platform in ('win32', 'cygwin') else 'dylib' if sys.platform == 'darwin' else 'so'
-print(os.path.join(os.path.dirname(z3.__file__), 'lib', f'libz3.{ext}'))
-PYEOF
-)
+          Z3_LIB=$(python3 -c "import z3, os, sys; ext = 'dll' if sys.platform in ('win32', 'cygwin') else 'dylib' if sys.platform == 'darwin' else 'so'; print(os.path.join(os.path.dirname(z3.__file__), 'lib', f'libz3.{ext}'))")
           pyinstaller --onefile --noconsole --noconfirm \
             --name udr-backend \
             --add-binary "$Z3_LIB:z3/lib/" \
