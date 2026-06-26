@@ -195,6 +195,9 @@ dist
 .cache/
 public
 
+# But track the Vue HTML template
+!frontend/public/index.html
+
 # Storybook build outputs
 .out
 .storybook-out

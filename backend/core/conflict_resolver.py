@@ -11,6 +11,7 @@ import hashlib
 import json
 import copy
 import uuid
+import platform
 
 from backend.utils.errors import (
     ErrorCategory,
@@ -497,8 +498,6 @@ class ConflictResolver:
 
     def _get_default_system_info(self) -> Dict:
         """Provide default system info when none is provided."""
-        import platform
-        import sys
 
         return {
             "os": platform.system().lower(),

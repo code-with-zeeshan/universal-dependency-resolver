@@ -68,6 +68,7 @@ export default {
     ]
 
     onMounted(async () => {
+      document.title = 'Universal Dependency Resolver'
       let backendUrl = 'http://127.0.0.1:8199'
       if (window.udrDesktop) {
         try {

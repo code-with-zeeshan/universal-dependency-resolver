@@ -34,7 +34,7 @@ ALLOW_HEADERS = (
 # =============================================================================
 # NEW: Authentication & Security
 # =============================================================================
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
@@ -688,13 +688,9 @@ def validate_settings() -> list[str]:
     """
     warnings: list[str] = []
 
-    if SECRET_KEY == "your-secret-key-here-change-in-production":
-        if ENV == "production":
-            raise RuntimeError(
-                "SECRET_KEY is still the default value — set a strong random secret in production"
-            )
-        warnings.append(
-            "SECRET_KEY is still the default value — rotate it immediately in production"
+    if len(SECRET_KEY) < 32:
+        raise RuntimeError(
+            "SECRET_KEY must be at least 32 characters long — generate a strong random key"
         )
 
     if ENV == "production" and not FEATURES.get("ENABLE_AUTH"):

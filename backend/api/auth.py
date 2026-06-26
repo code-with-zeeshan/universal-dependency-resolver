@@ -2,14 +2,12 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader, OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 import secrets
 import logging
-from typing import Optional
-from datetime import datetime
 
 from backend.settings import (
     SECRET_KEY,
@@ -142,7 +140,7 @@ async def get_current_user_from_api_key(api_key: str) -> Optional[User]:
     with db_session() as db:
         key_record = (
             db.query(APIKey)
-            .filter(APIKey.key == api_key, APIKey.is_active == True)
+            .filter(APIKey.key == api_key, APIKey.is_active is True)
             .first()
         )
 
@@ -403,8 +401,7 @@ class AuthService:
             return True
 
 
-# Optional: OAuth2 password flow for testing
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 

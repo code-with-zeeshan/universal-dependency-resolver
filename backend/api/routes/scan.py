@@ -16,7 +16,6 @@ from backend.manifest_detector import ManifestDetector
 from backend.core.data_aggregator import DataAggregator
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
-from backend.core.export_generator import ExportGenerator
 from backend.cli import (
     _aggregator_to_resolver_input,
     _resolve_transitive,
@@ -66,7 +65,6 @@ async def _run_resolution_pipeline(project_dir: Path) -> dict:
     aggregator = DataAggregator()
     resolver = ConflictResolver()
     scanner = SystemScanner()
-    exporter = ExportGenerator()
 
     manifests = detector.detect()
     if not manifests:

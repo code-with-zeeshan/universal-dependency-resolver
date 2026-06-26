@@ -42,24 +42,14 @@ from .exceptions import (
 
 # Import auth components
 from .auth import (
-    # Models
     Token,
-    TokenData,
     UserCreate,
     UserLogin,
     APIKeyCreate,
-    # Functions
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    create_refresh_token,
-    generate_api_key,
     get_current_user,
     get_current_active_user,
     require_scopes,
-    # Service
     AuthService,
-    # OAuth2
     oauth2_scheme,
     login_for_access_token,
 )
@@ -104,6 +94,8 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "require_scopes",
+    "oauth2_scheme",
+    "login_for_access_token",
     # Utilities
     "get_client_ip",
     "get_user_agent",

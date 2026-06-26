@@ -137,7 +137,7 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
         # Log slow requests
         if duration > SLOW_REQUEST_THRESHOLD:
             logger.warning(
-                f"Slow request detected",
+                "Slow request detected",
                 extra={
                     "request_id": getattr(request.state, "request_id", None),
                     "method": request.method,

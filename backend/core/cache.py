@@ -190,7 +190,7 @@ class CacheManager:
                     cursor, keys = await self._cache.client.scan(
                         cursor, match=pattern, count=100
                     )
-                    if keys:
+                    if keys and hasattr(self._cache, "client") and self._cache.client is not None:
                         await self._cache.client.delete(*keys)
                         count += len(keys)
                     if cursor == 0:
