@@ -45,6 +45,8 @@ jobs:
           pyinstaller --onefile --noconsole --noconfirm \
             --name udr-backend \
             --collect-binaries z3 --collect-data z3 \
+            --hidden-import jose.jwt \
+            --hidden-import passlib.handlers.bcrypt --hidden-import bcrypt \
             --distpath backend/dist \
             --workpath ${{ runner.temp }}/pyibuild \
             backend/run.py
