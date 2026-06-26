@@ -368,8 +368,6 @@ universal-dependency-resolver/
 ├── .env.example
 ├── .github/workflows/
 │   ├── ci.yml
-│   ├── integration-test.yml
-│   ├── deploy.yml
 │   ├── publish.yml
 │   └── release-desktop.yml
 ├── alembic/
@@ -442,6 +440,5 @@ universal-dependency-resolver/
 ├── install.sh
 ├── CHANGELOG.md
 ├── README.md
-├── weaknesses.md
-└── CODEREVIEW.md
+└── docs/ (this directory)
 ```

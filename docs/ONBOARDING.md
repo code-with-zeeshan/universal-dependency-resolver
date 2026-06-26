@@ -9,15 +9,17 @@ Multi-ecosystem dependency resolver supporting PyPI, NPM, Conda, Maven, and Crat
 - **Conflict Resolution**: Z3 theorem prover for dependency solving
 - **System Compatibility**: OS, CPU, GPU, runtime scanning
 - **12 Export Formats**: requirements.txt, package.json, Dockerfile, etc.
-- **Desktop App**: Electron wrapper with bundled Python backend
+- **Desktop App**: Electron wrapper with bundled Python backend (see [COMPONENTS.md](COMPONENTS.md))
 - **CI/CD Ready**: GitHub Actions, Docker, K6 load testing
 
 ### Architecture
-- **Backend**: Python 3.11+ FastAPI, SQLAlchemy, Z3 solver
-- **Frontend**: Vue.js 3 with Tailwind CSS
-- **Database**: SQLite (default) or PostgreSQL
-- **Cache**: DictCache (default) or Redis
-- **CLI**: `python -m backend.cli` for scriptable use
+The project is split into **three distributable components**:
+
+- **Backend** (PyPI: `ud-resolver`) — Python FastAPI app with CLI, REST API, and Python library
+- **Frontend** (Vue.js 3) — browser-based GUI, served via Docker or bundled in desktop app
+- **Desktop** (Electron) — standalone app bundling back end + frontend, no setup required
+
+See [COMPONENTS.md](COMPONENTS.md) for the full component guide with prerequisites and usage examples.
 
 ## Development Setup
 

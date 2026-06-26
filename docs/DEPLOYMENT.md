@@ -4,7 +4,7 @@
 
 | Method | Complexity | Best For |
 |--------|------------|----------|
-| Direct (no Docker) | Low | Desktop, development, single-user |
+| Direct (no Docker) | Low | Desktop (manual), development, single-user |
 | Docker Compose | Low-Medium | Development, small deployments |
 | Cloud | Medium | Production, managed infrastructure |
 
@@ -106,6 +106,8 @@ Set `UDR_STANDALONE=true` to skip Redis validation. The app uses:
 - DictCache (no Redis needed)
 
 Ideal for desktop app, single-user, or CI environments.
+
+> **Tip**: The [Desktop app](COMPONENTS.md#3-desktop-electron-standalone-app) uses standalone mode automatically — no configuration needed.
 
 ## Production Checklist
 

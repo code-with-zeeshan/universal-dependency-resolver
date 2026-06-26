@@ -7,14 +7,17 @@ udr resolve numpy@pypi torch@pypi
   → numpy 1.26.2, torch 2.1.2+cu121 (CUDA 12.1)
 ```
 
-## Package availability
+## Components
 
-| Source | Install | Published via |
-|--------|---------|---------------|
-| **PyPI** | `pip install ud-resolver` | GitHub Actions on release |
-| **GitHub Releases** | `pip install ud-resolver-*.whl` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | CI on release |
-| **GHCR (Docker)** | `docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest` | CI on every push |
+This project ships as **three components** — pick the one that fits your use case:
 
+| Component | What it is | Install / Download |
+|---|---|---|
+| **Backend** | Core resolver engine — CLI, Python library, REST API | `pip install ud-resolver` |
+| **Frontend** | Browser-based web UI (Vue.js) | `docker pull` or bundled in desktop |
+| **Desktop** | Standalone app — backend + frontend bundled, no setup | `.exe` / `.dmg` / `.AppImage` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) |
+
+See [docs/COMPONENTS.md](docs/COMPONENTS.md) for detailed prerequisites, use cases, and examples.
 
 ---
 
@@ -52,8 +55,6 @@ curl -X POST http://localhost:8000/api/v1/packages/resolve \
   }'
 ```
 
-Returns a resolved dependency tree with all transitive deps, conflict status, and system compatibility notes.
-
 | Feature | What it does |
 |---------|--------------|
 | **Multi-ecosystem** | PyPI (pip), npm, Cargo, Go, Conda, Maven, NuGet, RubyGems, Linux packages, Homebrew |
@@ -61,85 +62,29 @@ Returns a resolved dependency tree with all transitive deps, conflict status, an
 | **System scan** | Detects OS, CPU, GPU, Python, Node.js, GCC, Java |
 | **12 export formats** | Dockerfile, requirements.txt, package.json, docker-compose.yml, install.sh, CMakeLists.txt, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, Gemfile |
 | **CI/CD ready** | CLI for pipelines, health check endpoint, structured logging |
-| **Desktop app** | Cross-platform Electron app with integrated Python backend |
 
 ## Quick Start
 
-### PyPI (recommended)
+### CLI (from `pip install ud-resolver`)
 
 ```bash
-pip install ud-resolver
-```
-
-Install with extras for additional features:
-```bash
-pip install "ud-resolver[system]"       # GPU & system scanning
-pip install "ud-resolver[monitoring]"   # OpenTelemetry & Sentry
-pip install "ud-resolver[security]"     # Auth & JWT support
-pip install "ud-resolver[postgres]"     # PostgreSQL + Redis + Celery
-pip install "ud-resolver[all]"          # Everything
-```
-
-### From source
-
-```bash
-git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
-cd universal-dependency-resolver
-pip install -e .
-```
-
-### Use as CLI
-
-```bash
-# Start the API server
-udr serve --port 8000
-
-# Check system compatibility
-udr check
-
-# Resolve dependencies
+# Resolve packages
 udr resolve numpy pandas scikit-learn
-
-# Resolve from other ecosystems
 udr resolve react vue -e npm
-udr resolve serde tokio -e crates
 
-# Show system info
+# Lock dependencies
+udr lock
+udr lock --manifest requirements.txt --manifest package.json --dry-run
+
+# Check system
+udr check
 udr info
 
-# Auto-detect manifests in project dir and lock all deps
-udr lock
-
-# Lock with explicit manifest
-udr lock --manifest requirements.txt --manifest package.json
-
-# Dry-run lock (no files written)
-udr lock --dry-run
-
-# Resolve with JSON output
-udr resolve torch torchvision --format json
+# Start API server
+udr serve --port 8000
 ```
 
-### Desktop app
-
-```bash
-cd desktop
-npm install
-npm start
-```
-
-The Electron app spawns the Python backend automatically and opens the Vue.js UI. Binary downloads are available from GitHub Releases.
-
-### Web UI
-
-```bash
-cd frontend && npm install && npm run serve
-# → http://localhost:8080
-```
-
-The frontend connects to the backend at `http://localhost:8000` (configurable via `VUE_APP_API_URL`).
-
-### Use as Python Library
+### Python library (same `pip install ud-resolver`)
 
 ```python
 import asyncio
@@ -167,9 +112,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Docker (production)
-
-Pre-built images are available on **GitHub Container Registry (GHCR)**:
+### Docker
 
 ```bash
 docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest
@@ -182,26 +125,12 @@ Or build and run locally:
 cp .env.example .env
 docker compose up -d
 docker compose exec backend alembic upgrade head
-
-# Frontend:  http://localhost:8080
-# API Docs:  http://localhost:8000/api/v1/docs
+# Frontend: http://localhost:8080, API: http://localhost:8000
 ```
 
-> **Note**: The Docker images are published automatically via CI on every push to `main` and on tags (`v*`).
+### Desktop
 
-## How It Works
-
-```
-Your request → Fetch metadata from ecosystem registries
-                   ↓
-            Scan target system (OS, GPU, Python, CUDA)
-                   ↓
-            Resolve conflicts with SAT solver
-                   ↓
-            Export to 12 formats
-```
-
-The system runs as a FastAPI service with optional PostgreSQL, Redis, and a Vue.js frontend.
+Download the installer from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. See [docs/COMPONENTS.md](docs/COMPONENTS.md#3-desktop-electron-standalone-app) for details.
 
 ## API Quick Reference
 
@@ -225,30 +154,33 @@ Full reference in [docs/API.md](docs/API.md).
 ## Testing
 
 ```bash
-# Unit tests
+# Backend
 python -m pytest tests/unit/
 
-# Frontend tests
+# Frontend
 cd frontend && npm run test:unit
 
-# E2E tests (requires Chromium)
+# E2E (requires Chromium)
 cd frontend && npm run test:e2e
 ```
 
-## Roadmap
+## How It Works
 
-| Priority | Feature | Status |
-|----------|---------|--------|
-| 🔴 High | Python SDK with async support | ✅ Done |
-| 🔴 High | CLI tool for CI/CD | ✅ Done |
-| 🟡 Medium | JavaScript/TypeScript SDK | Planned |
-| 🟡 Medium | CI/CD integration examples (GitHub Actions, GitLab CI) | ✅ Done |
-| 🟡 Medium | SBOM export (CycloneDX, SPDX) | Planned |
-| 🟡 Medium | Visual dependency graphs | Planned |
-| 🟢 Low | Plugin system for custom ecosystems | Under consideration |
+```
+Your request → Fetch metadata from ecosystem registries
+                   ↓
+            Scan target system (OS, GPU, Python, CUDA)
+                   ↓
+            Resolve conflicts with SAT solver
+                   ↓
+            Export to 12 formats
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture.
 
 ---
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production deployment,
-[CONTRIBUTING.md](CONTRIBUTING.md) to contribute,
-and [LICENSE](LICENSE) for licensing (MIT).
+- [docs/COMPONENTS.md](docs/COMPONENTS.md) — component guide (backend / frontend / desktop)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production deployment
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
+- [LICENSE](LICENSE) — MIT

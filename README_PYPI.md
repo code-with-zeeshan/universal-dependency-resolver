@@ -130,3 +130,12 @@ Your request → Fetch metadata from ecosystem registries
 ```
 
 The system runs as a FastAPI service with optional PostgreSQL and Redis.
+
+## Also available
+
+This package is the **backend component**. The project also ships:
+
+- **Web UI** — a browser-based GUI (Vue.js), available as a Docker image or bundled in the desktop app
+- **Desktop app** — standalone cross-platform application (Windows, macOS, Linux) with backend + frontend bundled, no Python or Node.js required
+
+See the [full documentation](https://github.com/code-with-zeeshan/universal-dependency-resolver) for details.
