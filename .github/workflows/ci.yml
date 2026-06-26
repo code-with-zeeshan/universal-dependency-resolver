@@ -222,7 +222,7 @@ jobs:
       with:
         sarif_file: 'trivy-results.sarif'
 
-    - name: Snyk: scan Python dependencies
+    - name: "Snyk: scan Python dependencies"
       uses: snyk/actions/python@master
       continue-on-error: true
       env:
@@ -230,7 +230,7 @@ jobs:
       with:
         args: --severity-threshold=high
 
-    - name: Snyk: scan JavaScript dependencies
+    - name: "Snyk: scan JavaScript dependencies"
       uses: snyk/actions/node@master
       continue-on-error: true
       env:
