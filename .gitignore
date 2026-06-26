@@ -47,6 +47,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+backend/dist/
 
 # Virtual environments
 venv/

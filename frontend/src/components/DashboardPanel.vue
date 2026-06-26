@@ -78,16 +78,21 @@ export default {
     async function fetchHealth() {
       try {
         health.value = await systemService.getHealthStatus()
+        error.value = null
       } catch (e) {
         health.value = { status: 'unreachable' }
+        error.value = 'Cannot reach the backend. Make sure Python 3.11+ is running with all dependencies installed.'
       }
     }
 
     async function fetchSystemInfo() {
       try {
         systemInfo.value = await systemService.getSystemInfo(true)
+        error.value = null
       } catch (e) {
-        // silent
+        if (!error.value) {
+          error.value = 'Cannot reach the backend. Make sure Python 3.11+ is running with all dependencies installed.'
+        }
       }
     }
 

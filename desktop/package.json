@@ -32,7 +32,12 @@
       {
         "from": "../backend",
         "to": "backend",
-        "filter": ["**/*", "!__pycache__", "!*.pyc"]
+        "filter": ["**/*", "!__pycache__/**", "!**/*.pyc"]
+      },
+      {
+        "from": "../backend/dist",
+        "to": "backend-bin",
+        "filter": ["**/*"]
       },
       {
         "from": "../frontend/dist",

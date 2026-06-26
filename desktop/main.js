@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const { spawn } = require('child_process')
 const http = require('http')
 const net = require('net')
@@ -7,6 +8,12 @@ const net = require('net')
 let mainWindow = null
 let backendProcess = null
 let backendPort = 8199
+
+const isDev = !app.isPackaged
+const isWin = process.platform === 'win32'
+const backendDir = isDev
+  ? path.join(__dirname, '..', 'backend')
+  : path.join(process.resourcesPath, 'backend')
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -19,31 +26,44 @@ function findFreePort() {
   })
 }
 
+function findBackendCommand() {
+  // Priority 1: bundled standalone binary (PyInstaller)
+  const binDir = isDev
+    ? path.join(__dirname, '..', 'backend', 'dist')
+    : path.join(process.resourcesPath, 'backend-bin')
+  const binName = isWin ? 'udr-backend.exe' : 'udr-backend'
+  const binPath = path.join(binDir, binName)
+  if (fs.existsSync(binPath)) {
+    return { cmd: binPath, args: [] }
+  }
+
+  // Priority 2: bundled venv
+  const venvPython = isDev
+    ? path.join(__dirname, '..', 'venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python3')
+    : path.join(process.resourcesPath, 'venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python3')
+  if (fs.existsSync(venvPython)) {
+    return { cmd: venvPython, args: ['-m', 'uvicorn', 'backend.api.main:app'] }
+  }
+
+  // Priority 3: system Python
+  const pythonName = isWin ? 'python' : 'python3'
+  return { cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'] }
+}
+
 function startBackend(port) {
   return new Promise((resolve, reject) => {
-    const isDev = !app.isPackaged
-    const backendDir = isDev
-      ? path.join(__dirname, '..', 'backend')
-      : path.join(process.resourcesPath, 'backend')
+    const { cmd, args: extraArgs } = findBackendCommand()
 
-    const isWin = process.platform === 'win32'
-    const pythonBin = isWin ? 'python.exe' : 'python3'
-    const venvPython = isDev
-      ? path.join(__dirname, '..', 'venv', isWin ? 'Scripts' : 'bin', pythonBin)
-      : path.join(process.resourcesPath, 'venv', isWin ? 'Scripts' : 'bin', pythonBin)
+    const args = extraArgs.length > 0
+      ? [...extraArgs, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
+      : [String(port)]
 
-    const pythonCmd = require('fs').existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3')
-
-    backendProcess = spawn(pythonCmd, [
-      '-m', 'uvicorn', 'backend.api.main:app',
-      '--host', '127.0.0.1',
-      '--port', String(port),
-      '--log-level', 'info',
-    ], {
+    backendProcess = spawn(cmd, args, {
       cwd: backendDir,
       env: {
         ...process.env,
         UDR_PORT: String(port),
+        UDR_HOST: '127.0.0.1',
         UDR_DESKTOP: 'true',
         PYTHONUNBUFFERED: '1',
       },
@@ -53,7 +73,7 @@ function startBackend(port) {
     backendProcess.stdout.on('data', (data) => {
       const msg = data.toString()
       console.log('[backend]', msg)
-      if (msg.includes('Uvicorn running') || msg.includes('Application startup complete')) {
+      if (msg.includes('Uvicorn running') || msg.includes('Application startup complete') || msg.includes('Uvicorn')) {
         resolve()
       }
     })
@@ -62,7 +82,10 @@ function startBackend(port) {
       console.error('[backend]', data.toString())
     })
 
-    backendProcess.on('error', reject)
+    backendProcess.on('error', (err) => {
+      console.error('[backend] spawn error:', err.message)
+      reject(err)
+    })
     backendProcess.on('exit', (code) => {
       console.log(`Backend exited with code ${code}`)
     })
@@ -108,29 +131,11 @@ async function createWindow() {
     },
   })
 
-  // Start backend
-  try {
-    console.log(`Starting backend on port ${backendPort}...`)
-    await startBackend(backendPort)
-    console.log('Backend started, waiting for server...')
-    await waitForServer(`${backendUrl}/api/v1/docs`)
-    console.log('Backend ready!')
-  } catch (e) {
-    console.error('Backend start warning:', e.message)
-    dialog.showErrorBox(
-      'Backend Failed to Start',
-      `The Python backend could not be started.\n\n${e.message}\n\nMake sure Python 3.11+ and uvicorn are installed.`
-    )
-  }
-
-  // Load frontend
-  const isDev = !app.isPackaged
+  // Load frontend FIRST so user sees UI immediately (backend starts in background)
   if (isDev) {
-    // Development: use vite dev server
     mainWindow.loadURL('http://localhost:8080')
     mainWindow.webContents.openDevTools()
   } else {
-    // Production: serve built files from extraResources
     const distPath = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html')
     mainWindow.loadFile(distPath)
   }
@@ -139,6 +144,22 @@ async function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
   })
+
+  // Start backend in background
+  try {
+    console.log(`Starting backend on port ${backendPort}...`)
+    await startBackend(backendPort)
+    console.log('Backend started, waiting for server...')
+    await waitForServer(`${backendUrl}/api/v1/docs`)
+    console.log('Backend ready!')
+    mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
+  } catch (e) {
+    console.error('Backend start warning:', e.message)
+    dialog.showErrorBox(
+      'Backend Failed to Start',
+      `The backend server could not be started.\n\n${e.message}\n\nMake sure Python 3.11+ is installed on your system. If Python is already installed, try reinstalling this application.`
+    )
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null
