@@ -236,7 +236,7 @@ jobs:
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
-        args: --severity-threshold=high --file=package.json --package-manager=npm
+        args: --severity-threshold=high --file=frontend/package.json --package-manager=npm
 
   # Build Docker Images
   build-images:
