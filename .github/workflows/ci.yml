@@ -222,18 +222,21 @@ jobs:
       with:
         sarif_file: 'trivy-results.sarif'
 
-    - name: Set up Python for Snyk
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-
-    - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/cli@master
+    - name: Snyk: scan Python dependencies
+      uses: snyk/actions/python@master
       continue-on-error: true
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
-        args: --all-projects --severity-threshold=high
+        args: --severity-threshold=high
+
+    - name: Snyk: scan JavaScript dependencies
+      uses: snyk/actions/node@master
+      continue-on-error: true
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
 
   # Build Docker Images
   build-images:
