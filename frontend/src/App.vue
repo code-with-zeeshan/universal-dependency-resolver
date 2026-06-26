@@ -72,7 +72,9 @@ export default {
       if (window.udrDesktop) {
         try {
           backendUrl = await window.udrDesktop.getBackendUrl()
-        } catch {}
+        } catch (e) {
+          console.warn('Could not get backend URL via IPC:', e)
+        }
       } else if (window.__UDR_BACKEND_URL__) {
         backendUrl = window.__UDR_BACKEND_URL__
       }
@@ -85,7 +87,9 @@ export default {
             backendStatus.value = 'ready'
             return
           }
-        } catch {}
+        } catch (e) {
+          console.debug('Backend health check failed, retrying...', e.message)
+        }
         if (window.__UDR_BACKEND_READY__) {
           backendStatus.value = 'ready'
           return
