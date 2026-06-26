@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 const { spawn } = require('child_process')
 const http = require('http')
 const net = require('net')
@@ -12,9 +13,11 @@ let backendCrashed = false
 
 const isDev = !app.isPackaged
 const isWin = process.platform === 'win32'
+const isMac = process.platform === 'darwin'
 const backendDir = isDev
   ? path.join(__dirname, '..', 'backend')
   : path.join(process.resourcesPath, 'backend')
+const backendParentDir = path.dirname(backendDir)
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -27,6 +30,10 @@ function findFreePort() {
   })
 }
 
+function generateSecretKey() {
+  return crypto.randomBytes(48).toString('hex')
+}
+
 function getFallbackCommands() {
   const cmds = []
   const binDir = isDev
@@ -35,14 +42,25 @@ function getFallbackCommands() {
   const binName = isWin ? 'udr-backend.exe' : 'udr-backend'
   const binPath = path.join(binDir, binName)
   if (fs.existsSync(binPath)) {
-    cmds.push({ cmd: binPath, args: [] })
+    cmds.push({ cmd: binPath, args: [], isBinary: true })
   }
   const pythonName = isWin ? 'python' : 'python3'
-  cmds.push({ cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'] })
+  cmds.push({ cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'], isBinary: false })
   return cmds
 }
 
-function spawnBackend(cmd, args, port) {
+function getEnv(port) {
+  return {
+    ...process.env,
+    UDR_PORT: String(port),
+    UDR_HOST: '127.0.0.1',
+    UDR_DESKTOP: 'true',
+    PYTHONUNBUFFERED: '1',
+    SECRET_KEY: process.env.SECRET_KEY || generateSecretKey(),
+  }
+}
+
+function spawnBackend(cmd, args, port, isBinary) {
   return new Promise((resolve, reject) => {
     backendCrashed = false
 
@@ -50,15 +68,13 @@ function spawnBackend(cmd, args, port) {
       ? [...args, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
       : [String(port)]
 
+    // Binary: cwd inside backend/ (doesn't matter, everything bundled)
+    // System Python: cwd must be parent so backend/ is on sys.path
+    const cwd = isBinary ? backendDir : backendParentDir
+
     backendProcess = spawn(cmd, allArgs, {
-      cwd: backendDir,
-      env: {
-        ...process.env,
-        UDR_PORT: String(port),
-        UDR_HOST: '127.0.0.1',
-        UDR_DESKTOP: 'true',
-        PYTHONUNBUFFERED: '1',
-      },
+      cwd,
+      env: getEnv(port),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -128,7 +144,7 @@ async function startBackendWithFallback(port) {
   for (const fb of fallbacks) {
     try {
       console.log(`[backend] Trying: ${fb.cmd}`)
-      await spawnBackend(fb.cmd, fb.args, port)
+      await spawnBackend(fb.cmd, fb.args, port, fb.isBinary)
       console.log('[backend] Spawn succeeded, waiting for HTTP...')
       await waitForServer(`http://127.0.0.1:${port}/api/v1/docs`)
       console.log('[backend] Server ready!')
@@ -143,6 +159,20 @@ async function startBackendWithFallback(port) {
     }
   }
   throw lastError || new Error('All backend attempts failed')
+}
+
+function getPlatformHint() {
+  const hints = []
+  if (isMac) {
+    hints.push('- If the app is blocked by macOS, go to System Settings → Privacy & Security and click "Open Anyway"')
+  }
+  if (!isWin) {
+    hints.push('- Ensure the binary has execute permission: chmod +x <path-to-backend>')
+  }
+  if (isWin) {
+    hints.push('- The bundled backend may be blocked by antivirus. Try adding an exclusion for the app directory.')
+  }
+  return hints.length ? '\n' + hints.join('\n') : ''
 }
 
 async function createWindow() {
@@ -180,9 +210,9 @@ async function createWindow() {
     mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
   } catch (e) {
     console.error('Backend start failed:', e.message)
-    let msg = `The backend server could not be started.\n\n${e.message}`
+    let msg = `The backend server could not be started.\n\n${e.message}${getPlatformHint()}`
     if (e.message.includes('exited unexpectedly') || e.message.includes('crashed')) {
-      msg += '\n\nIf using the packaged app, the bundled backend binary may be blocked by antivirus or missing system libraries. Try running the Python backend directly:\n  python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8199'
+      msg += '\n\nThe bundled backend binary may be blocked by antivirus or missing system libraries. Try running the Python backend manually:\n  python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8199'
     }
     msg += '\n\nMake sure Python 3.11+ is installed. If Python is already installed, try running the backend manually.'
     dialog.showErrorBox('Backend Failed to Start', msg)
