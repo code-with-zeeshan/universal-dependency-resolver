@@ -92,7 +92,10 @@ monitoring = [
     "prometheus-client>=0.19,<1",
 ]
 all = [
-    "ud-resolver[system,security,postgres,monitoring]",
+    "ud-resolver[system]",
+    "ud-resolver[security]",
+    "ud-resolver[postgres]",
+    "ud-resolver[monitoring]",
 ]
 
 [project.urls]

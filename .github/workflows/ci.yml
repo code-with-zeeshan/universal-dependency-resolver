@@ -233,6 +233,7 @@ jobs:
     - name: "Snyk: scan JavaScript dependencies"
       uses: snyk/actions/node@master
       continue-on-error: true
+      working-directory: ./frontend
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
