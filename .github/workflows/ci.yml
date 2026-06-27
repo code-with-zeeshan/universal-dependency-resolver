@@ -43,6 +43,11 @@ jobs:
           flake8 backend --count --select=E9,F63,F7,F82 --show-source --statistics
           black --check --diff backend
 
+      - name: Security check
+        continue-on-error: true
+        run: |
+          bandit -r backend --exclude '**/tests/*' --severity-level medium
+
       - name: Type check
         continue-on-error: true
         run: |
@@ -65,85 +70,149 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
-  build-desktop:
+  integration-tests:
+    runs-on: ubuntu-latest
     needs: [test]
-    if: github.event_name == 'push'
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        arch: [x64]
-        include:
-          - os: macos-latest
-            arch: x64
-          - os: macos-14
-            arch: arm64
-      fail-fast: false
 
-    runs-on: ${{ matrix.os }}
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install desktop dependencies
-        run: npm install
-        working-directory: desktop
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install UPX
-        shell: bash
+      - name: Install dependencies
         run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl 2>/dev/null || true
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install upx 2>/dev/null || true
-          elif [[ "$RUNNER_OS" == "Windows" ]]; then
-            choco install upx -y 2>/dev/null || true
-          fi
+          pip install -e ".[dev,postgres,monitoring]"
 
-      - name: Build backend binary
-        shell: bash
-        run: |
-          pip install pyinstaller
-          pip install -e ".[system]"
-          Z3_LIB=$(python3 -c "import z3, os, sys; ext = 'dll' if sys.platform in ('win32', 'cygwin') else 'dylib' if sys.platform == 'darwin' else 'so'; print(os.path.join(os.path.dirname(z3.__file__), 'lib', f'libz3.{ext}'))")
-          UPX_FLAG=""
-          which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
-          pyinstaller --onedir --noconsole --noconfirm \
-            --name udr-backend \
-            $UPX_FLAG \
-            --add-binary "$Z3_LIB:z3/lib/" \
-            --distpath backend/dist \
-            --workpath ${{ runner.temp }}/pyibuild \
-            backend/run.py
-
-      - name: Build Electron app
-        shell: bash
-        run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            npx electron-builder --mac --arm64 --publish=never
-          else
-            npx electron-builder --publish=never
-          fi
-        working-directory: desktop
+      - name: Run integration tests
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          TESTING: "true"
+          SECRET_KEY: test-secret-key-for-ci
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/integration/ -v --tb=short
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push'
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        continue-on-error: true
         with:
-          name: udr-desktop-${{ matrix.os }}-${{ matrix.arch }}
-          path: |
-            desktop/release/*.AppImage
-            desktop/release/*.deb
-            desktop/release/*.dmg
-            desktop/release/*.exe
-          retention-days: 30
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Snyk scan Python dependencies
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  code-quality:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        continue-on-error: true
+        with:
+          languages: python
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        continue-on-error: true
