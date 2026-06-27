@@ -77,6 +77,7 @@ jobs:
             backend/run.py
 
       - name: Build Electron app
+        shell: bash
         run: |
           if [ "${{ matrix.arch }}" = "arm64" ]; then
             npx electron-builder --mac --arm64 --publish=never

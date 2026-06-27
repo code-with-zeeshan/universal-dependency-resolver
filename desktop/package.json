@@ -1,6 +1,6 @@
 {
   "name": "udr-desktop",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "description": "Universal Dependency Resolver — Desktop App",
   "homepage": "https://github.com/code-with-zeeshan/universal-dependency-resolver",
   "repository": {
@@ -61,7 +61,8 @@
         }
       ],
       "icon": "buildResources/icon.ico",
-      "legalTrademarks": "Universal Dependency Resolver"
+      "legalTrademarks": "Universal Dependency Resolver",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
