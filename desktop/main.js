@@ -49,7 +49,7 @@ async function startBackendWithFallback(port) {
       const crashedCheck = result.crashed
 
       console.log('[backend] Spawn succeeded, waiting for HTTP...')
-      await launcher.waitForServer(`http://127.0.0.1:${port}/api/v1/docs`, 30, () => {
+      await launcher.waitForServer(`http://127.0.0.1:${port}/api/v1/docs`, 120, () => {
         if (crashedCheck()) return true
         return backendCrashed
       })
@@ -119,12 +119,18 @@ async function createWindow() {
     mainWindow.loadFile(distPath)
   }
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
-  })
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
+    })
 
-  try {
-    console.log(`Starting backend on port ${backendPort}...`)
+    // Show startup progress
+    mainWindow.webContents.executeJavaScript(
+      `console.log('UDR Desktop: starting backend on port ${backendPort}...')`
+    )
+
+    try {
+      console.log(`Starting backend on port ${backendPort}...`)
+      mainWindow.webContents.executeJavaScript("document.title = 'UDR - Starting backend...'")
     await startBackendWithFallback(backendPort)
     mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
     createTray()

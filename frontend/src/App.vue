@@ -90,7 +90,7 @@ export default {
         backendUrl = window.__UDR_BACKEND_URL__
       }
 
-      const maxRetries = 30
+      const maxRetries = 120
       for (let i = 0; i < maxRetries; i++) {
         try {
           const res = await fetch(`${backendUrl}/api/v1/health`, { method: 'GET' })
@@ -104,6 +104,9 @@ export default {
         if (window.__UDR_BACKEND_READY__) {
           backendStatus.value = 'ready'
           return
+        }
+        if (i % 15 === 0 && i > 0) {
+          console.log(`Still waiting for backend... (${i * 2}s)`)
         }
         await new Promise(r => setTimeout(r, 2000))
       }

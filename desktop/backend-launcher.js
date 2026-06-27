@@ -99,7 +99,7 @@ function spawnBackend(cmd, args, port, isBinary, cwd) {
 
     setTimeout(() => {
       if (!started) resolve({ process: proc, crashed: () => crashed })
-    }, 15000)
+    }, 60000)
   })
 }
 
