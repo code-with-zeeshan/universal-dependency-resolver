@@ -56,6 +56,7 @@ docker-compose*.yml
 docs/
 *.md
 !README.md
+!README_PYPI.md
 
 # CI/CD
 .github/

@@ -14,7 +14,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml ./
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir ".[system,postgres,monitoring]"
+    pip install --default-timeout=120 --no-cache-dir ".[system,postgres,monitoring]"
 
 FROM python:3.11-slim
 
