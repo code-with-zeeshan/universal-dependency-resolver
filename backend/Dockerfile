@@ -5,7 +5,7 @@ ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION=1.0.0
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     gcc g++ git libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +28,7 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.title="Universal Dependency Resolver API" \
       org.opencontainers.image.description="Resolve dependencies across multiple package ecosystems"
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     curl ca-certificates postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates

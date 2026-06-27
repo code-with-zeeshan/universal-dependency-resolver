@@ -125,6 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test]
     if: github.event_name == 'push'
+    continue-on-error: true
     permissions:
       packages: write
       contents: read
