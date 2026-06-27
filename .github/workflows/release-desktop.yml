@@ -111,16 +111,16 @@ jobs:
             TAG="${{ github.event.release.tag_name }}"
             shopt -s nullglob
             for f in desktop/release/*; do
-              ext="${f##*.}"
-              if [ "$ext" = "blockmap" ]; then
-                echo "Skipping $f (blockmap)"
-                continue
-              fi
               base=$(basename "$f")
-              if echo "$base" | grep -qE '\.dmg$|\.exe$|\.AppImage$|\.deb$|\.zip$|\.tar\.gz$'; then
-                echo "Uploading $f to release $TAG..."
-                gh release upload "$TAG" "$f" --clobber
-              fi
+              case "$base" in
+                *.dmg|*.exe|*.AppImage|*.deb)
+                  echo "Uploading $base to release $TAG..."
+                  gh release upload "$TAG" "$f" --clobber
+                  ;;
+                *)
+                  echo "Skipping $base"
+                  ;;
+              esac
             done
           else
             echo "Skipping release upload (event: ${{ github.event_name }})"

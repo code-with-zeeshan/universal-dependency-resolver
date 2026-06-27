@@ -1,6 +1,6 @@
 {
   "name": "udr-desktop",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "Universal Dependency Resolver — Desktop App",
   "homepage": "https://github.com/code-with-zeeshan/universal-dependency-resolver",
   "repository": {
@@ -121,12 +121,6 @@
       "description": "Resolve dependencies across PyPI, npm, Cargo, Conda, Maven, and more. Detect conflicts, check system compatibility, and export to any format.",
       "maintainer": "UDR Team <team@udr.example.com>",
       "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "code-with-zeeshan",
-      "repo": "universal-dependency-resolver",
-      "releaseType": "release"
     }
   },
   "devDependencies": {
