@@ -13,11 +13,10 @@ Multi-ecosystem dependency resolver supporting PyPI, NPM, Conda, Maven, Crates.i
 - **CI/CD Ready**: GitHub Actions, Docker, K6 load testing
 
 ### Architecture
-The project is split into **three distributable components**:
+The project is split into **two distributable components**:
 
 - **Backend** (PyPI: `ud-resolver`) — Python FastAPI app with CLI, REST API, and Python library
-- **Frontend** (Vue.js 3) — browser-based GUI, served via Docker or bundled in desktop app
-- **Desktop** (Electron) — standalone app bundling back end + frontend, no setup required
+- **Desktop** (Electron) — standalone app with bundled backend binary and built-in GUI, no setup required
 
 See [COMPONENTS.md](COMPONENTS.md) for the full component guide with prerequisites and usage examples.
 
@@ -25,7 +24,6 @@ See [COMPONENTS.md](COMPONENTS.md) for the full component guide with prerequisit
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
 - Docker & Docker Compose v2 (optional)
 
 ### Quick Start
@@ -36,14 +34,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -e ".[dev]"
-uvicorn backend.api.main:app --reload
-
-# Frontend (separate terminal)
-cd frontend
-npm install
-npm run serve
-
-# Open http://localhost:8080
+python -m backend.cli serve --reload
 ```
 
 No PostgreSQL or Redis needed. SQLite + DictCache work out of the box.
@@ -53,7 +44,7 @@ No PostgreSQL or Redis needed. SQLite + DictCache work out of the box.
 ```bash
 docker compose up -d
 docker compose exec backend alembic upgrade head
-# Frontend: http://localhost:8080, API: http://localhost:8000
+# API: http://localhost:8000
 ```
 
 ### Running Tests
@@ -62,13 +53,10 @@ docker compose exec backend alembic upgrade head
 # Backend (422 tests)
 pytest -v
 
-# Frontend (65 tests)
-cd frontend && npm run test
-
 # Desktop (19 tests)
 cd desktop && npm test
 
-# All 506 tests pass
+# All 441 tests pass
 ```
 
 ### Code Quality
@@ -78,13 +66,12 @@ pip install -e ".[dev]"
 black backend/
 ruff check backend/
 mypy backend/ --ignore-missing-imports
-cd frontend && npm run lint
 ```
 
 ## Basic Usage
 
-### Via Web UI
-1. Open http://localhost:8080
+### Via Desktop GUI
+1. Launch the desktop app
 2. Add packages (e.g., "tensorflow", "react")
 3. Click Resolve
 4. Export as requirements.txt, Dockerfile, etc.
@@ -121,8 +108,7 @@ backend/         → Python FastAPI app
   data_sources/  → 13 ecosystem API clients
   database/      → SQLAlchemy models
   cli.py         → CLI interface
-desktop/         → Electron shell
-frontend/        → Vue.js web UI
+desktop/         → Electron shell + built-in GUI
 tests/           → 422 backend tests
 ```
 

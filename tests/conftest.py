@@ -7,7 +7,7 @@ import tempfile
 import os
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch
-from typing import Dict, Any, Generator
+from typing import Dict, Any
 import json
 
 # FastAPI testing

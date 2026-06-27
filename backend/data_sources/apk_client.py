@@ -1,20 +1,13 @@
 # data_sources/apk_client.py
-import aiohttp
-from typing import Dict, List, Optional, Any, Tuple, Set
+from typing import Dict, List, Optional, Any
 import logging
-from datetime import datetime
 import re
 import tarfile
 from io import BytesIO
-from urllib.parse import quote, urljoin
-from backend.core.cache import cache_manager, cached, CacheKeys
+from backend.core.cache import cached
 from backend.core.utils import normalize_package_name, parse_version, run_async
 from backend.settings import (
     CACHE_TTL,
-    USER_AGENTS,
-    RATE_LIMITS,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -30,10 +23,7 @@ class APKClient(BaseDataSourceClient):
             ecosystem="apk",
             base_url="https://dl-cdn.alpinelinux.org/alpine",
             cache_ttl=apk_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("apk", USER_AGENTS["default"]),
-            rate_limit=apk_config.get("rate_limit", RATE_LIMITS.get("apk", 600)),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
+            rate_limit=apk_config.get("rate_limit", 600),
         )
 
         self.repositories = apk_config.get(

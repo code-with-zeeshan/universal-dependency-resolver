@@ -1,5 +1,4 @@
 import pytest
-import platform
 from unittest.mock import patch, MagicMock
 from backend.core.system_scanner import (
     SystemScanner,

@@ -1,6 +1,5 @@
 # maven_client.py
 import asyncio
-import aiohttp
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Dict, Any, Tuple, Set
 from packaging import version
@@ -8,17 +7,11 @@ from datetime import datetime
 from fastapi import HTTPException
 from ..core.utils import normalize_package_name, parse_version
 import re
-from urllib.parse import urljoin
 from ..settings import (
     MAVEN_CENTRAL_URL,
     MAVEN_SEARCH_URL,
     MAVEN_ARTIFACT_URL,
     MAVEN_ADDITIONAL_REPOS,
-    CACHE_TTL,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
-    USER_AGENTS,
-    RATE_LIMITS,
     ENABLE_CACHE,
     get_ecosystem_config,
 )
@@ -36,11 +29,6 @@ class MavenClient(BaseDataSourceClient):
         super().__init__(
             ecosystem="maven",
             base_url=maven_config.get("search_url", MAVEN_SEARCH_URL),
-            cache_ttl=maven_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("maven", USER_AGENTS["default"]),
-            rate_limit=maven_config.get("rate_limit", RATE_LIMITS.get("maven", 300)),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
 
         self.artifact_url = MAVEN_ARTIFACT_URL

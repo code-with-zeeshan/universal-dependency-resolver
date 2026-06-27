@@ -4,16 +4,11 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                       Frontend Layer                              │
+│                       Desktop Layer                               │
 │  ┌──────────────────────────────────────────────────────────┐    │
-│  │  App.vue (sidebar nav)                                   │    │
-│  │    ├── DashboardPanel.vue                                │    │
-│  │    ├── PackagePanel.vue                                  │    │
-│  │    ├── ResolvePanel.vue                                  │    │
-│  │    ├── ProjectScanPanel.vue                              │    │
-│  │    ├── SystemPanel.vue                                   │    │
-│  │    │     └── SystemInfo.vue                              │    │
-│  │    └── AuthPanel.vue                                     │    │
+│  │  main.js (Electron main process)                         │    │
+│  │    ├── backend-launcher.js                               │    │
+│  │    └── preload.js                                        │    │
 │  └──────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
                             │
@@ -71,20 +66,7 @@
 
 | File | Imports/Uses | Imported By | Purpose |
 |------|--------------|-------------|---------|
-| **Frontend** | | | |
-| `App.vue` | All panels | - | Main Vue app with sidebar nav |
-| `DashboardPanel.vue` | systemService | App.vue | Health overview |
-| `PackagePanel.vue` | packageService | App.vue | Search/info/versions/deps |
-| `ResolvePanel.vue` | packageService | App.vue | Resolve & export |
-| `ProjectScanPanel.vue` | scanService | App.vue | GitHub/upload/local scan |
-| `SystemPanel.vue` | systemService, SystemInfo | App.vue | GPU/runtime/benchmarks |
-| `AuthPanel.vue` | authService | App.vue | Login/profile/API keys |
-| `SystemInfo.vue` | systemService | SystemPanel | System info display |
-| `services/packageService.js` | axios | Packages, Resolve | API client for packages |
-| `services/systemService.js` | axios | Dashboard, System | API client for system |
-| `services/scanService.js` | axios | ProjectScanPanel | API client for scan |
-| `services/auth.js` | axios | All services | Auth utilities |
-| `services/apiClient.js` | axios | All services | Shared Axios instance |
+
 | **Backend API** | | | |
 | `api/main.py` | All routes, middleware, auth | - | FastAPI app entry point |
 | `api/schemas.py` | - | routes | Pydantic schemas |
@@ -96,7 +78,7 @@
 | `api/routes/system.py` | system_scanner | main.py | System endpoints |
 | `api/routes/auth.py` | auth, models | main.py | Auth endpoints |
 | `api/routes/scan.py` | manifest_detector, cli | main.py | Scan endpoints |
-| `settings.py` | - | All modules | Config management |
+| `settings/` | - | All modules | Config management |
 | **Core Logic** | | | |
 | `core/conflict_resolver.py` | utils, cache, models | routes | Z3 SAT solver |
 | `core/data_aggregator.py` | data_sources/*, utils | routes | Aggregates package data |
@@ -121,7 +103,7 @@
 
 | Integration | Components | Protocol |
 |-------------|------------|----------|
-| Frontend → Backend | Vue services → FastAPI routes | REST API + JWT |
+| Desktop → Backend | backend-launcher → FastAPI routes | REST API + JWT |
 | API → Core | Routes → Core modules | Python imports |
 | Core → Data Sources | data_aggregator → *_client | Python async/await |
 | Core → Database | All modules → models | SQLAlchemy ORM |
@@ -132,7 +114,7 @@
 ```
                     .env.example
                          │
-settings.py ─────────────┴─────────┐
+settings/ ──────────────┴─────────┐
      │                             │
      ├──────────────┐              │
      ▼              ▼              ▼
@@ -169,41 +151,22 @@ routes/packages     routes/system  routes/auth
                     ▼
                api/main.py
                     │
-                    ▼
-            Frontend Services
-                    │
-        ┌───────────┼───────────┐
-        ▼           ▼           ▼
-packageService  systemService  auth.js  scanService
-        │           │           │           │
-        ▼           ▼           ▼           ▼
-  PackagePanel  Dashboard   AuthPanel  ProjectScanPanel
+                     ▼
+              Desktop App (Electron)
+                     │
+         ┌───────────┼───────────┐
+         ▼           ▼           ▼
+   Resolve GUI  System Info  Scan Project  Export
+         │           │           │           │
+         ▼           ▼           ▼           ▼
+         index.html — inline HTML/CSS/JS (no framework)
   ResolvePanel  SystemPanel
                 SystemInfo.vue
 ```
 
-## Frontend Component Hierarchy
 
-```
-App.vue (sidebar nav)
-├── DashboardPanel.vue
-├── PackagePanel.vue
-├── ResolvePanel.vue
-├── ProjectScanPanel.vue
-├── SystemPanel.vue
-│   └── SystemInfo.vue
-└── AuthPanel.vue
-```
 
-## Service Layer Flow
 
-```
-apiClient.js → shared Axios instance (base URL, interceptors)
-  ├── auth.js → JWT / API key management
-  ├── packageService.js → /api/v1/packages/*
-  ├── systemService.js → /api/v1/system/*
-  └── scanService.js → /api/v1/scan/*
-```
 
 ## Configuration and Environment Setup
 
@@ -216,9 +179,9 @@ apiClient.js → shared Axios instance (base URL, interceptors)
      ├── Optional Redis
      │   └── REDIS_URL (falls back to DictCache)
      │
-     ├── Auth
+     ├── Auth (UDR_MODE=saas)
      │   ├── SECRET_KEY
-     │   ├── ENABLE_AUTH
+     │   ├── UDR_MODE
      │   └── ENABLE_CSRF
      │
      ├── Desktop / Standalone
@@ -236,14 +199,14 @@ apiClient.js → shared Axios instance (base URL, interceptors)
 ┌──────────────────────────────────────────────────────────┐
 │                  docker-compose.yml                        │
 ├──────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  │
-│  │  Frontend    │  │   Backend    │  │   Database     │  │
-│  │  nginx:alpine│  │  python:3.11 │  │  postgres:15   │  │
-│  │  Port: 80    │  │  Port: 8000  │  │  Port: 5432    │  │
-│  └──────────────┘  └──────┬───────┘  └────────────────┘  │
-│                           │                               │
-│                    ┌──────┴───────┐                       │
-│                    │    Redis     │ (optional)            │
+│  ┌──────────────┐  ┌────────────────┐  │
+│  │   Backend    │  │   Database     │  │
+│  │  python:3.11 │  │  postgres:15   │  │
+│  │  Port: 8000  │  │  Port: 5432    │  │
+│  └──────┬───────┘  └────────────────┘  │
+│         │                               │
+│    ┌────┴───────┐                       │
+│    │   Redis    │ (optional)            │
 │                    │  redis:7     │                       │
 │                    └──────────────┘                       │
 └──────────────────────────────────────────────────────────┘
@@ -281,10 +244,6 @@ Without Docker: run directly with `DATABASE_URL=sqlite:///./udr.db` — no Postg
 ## Error Handling Flow
 
 ```
-Frontend:
-  validators.js → Input validation
-  Service layer → API error handling
-
 Backend:
   exceptions.py → Custom exception classes
   middleware.py → Global error handler (consistent {error: {message, type, ...}} format)
@@ -315,10 +274,6 @@ Multi-Level Cache:
 ## Testing Structure
 
 ```
-├── Frontend Tests
-│   ├── Unit (Jest, 5 spec files, 65 tests)
-│   └── E2E (Playwright, 20 tests)
-│
 ├── Desktop Tests (Node --test, 19 tests)
 │   └── backend-launcher.test.js
 │
@@ -336,10 +291,6 @@ Multi-Level Cache:
 ## Security Layers
 
 ```
-Frontend:
-  - Input validation (validators.js)
-  - CSRF protection (double-submit cookie)
-
 API Security (auth.py):
   - JWT authentication (access + refresh tokens)
   - API key authentication (X-API-Key header)
@@ -352,7 +303,7 @@ Backend:
   - Rate limiting (slowapi)
   - Security headers (HSTS, CSP, XFO)
   - Correlation ID middleware
-  - Auth guard: production refuses start with ENABLE_AUTH=false
+  - Auth: opt-in via UDR_MODE=saas
 ```
 
 ## Infrastructure Pipeline
@@ -361,7 +312,7 @@ Backend:
 Git Push → CI Workflow → Tests → Build → Deploy
                │                       │
                └── Docker ─────────────┘
-                   (Frontend + Backend)
+                   (Desktop + Backend)
 ```
 
 ## Project Directory
@@ -410,7 +361,7 @@ universal-dependency-resolver/
 │   │   └── compatibility_db.py
 │   ├── logging_config.py
 │   ├── manifest_detector.py
-│   ├── settings.py
+│   ├── settings/
 │   ├── tracing_config.py
 │   └── utils/
 │       └── errors.py
@@ -422,14 +373,6 @@ universal-dependency-resolver/
 │   ├── assets/ (tray icon)
 │   └── tests/ (backend-launcher.test.js)
 ├── docs/ (this directory)
-├── frontend/
-│   ├── src/
-│   │   ├── App.vue
-│   │   ├── components/ (7 panels)
-│   │   ├── services/ (5 services)
-│   │   ├── utils/validators.js
-│   │   └── icons/
-│   └── tests/
 ├── monitoring/
 │   ├── prometheus.yml
 │   ├── alert_rules.yml

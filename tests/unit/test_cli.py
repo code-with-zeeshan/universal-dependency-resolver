@@ -1,12 +1,19 @@
 """Tests for the CLI pipeline functions in backend/cli.py."""
 
-from unittest.mock import MagicMock
+import argparse
+import io
+import json
+import sys
+from unittest.mock import patch
+
+import pytest
 
 from backend.cli import (
     _parse_package_spec,
     _extract_cuda_variants,
     _select_best_cuda_variant,
     _aggregator_to_resolver_input,
+    _output_json,
 )
 
 
@@ -164,3 +171,104 @@ class TestAggregatorToResolverInput:
         result = _aggregator_to_resolver_input(agg_data, "pypi")
         assert "cuda" in result["system_requirements"]
         assert result["system_requirements"]["cuda"]["min_version"] == "11.7"
+
+
+class TestCliArgumentParsing:
+    """Test that CLI argument parsing works correctly."""
+
+    def test_serve_default_mode(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["serve"])
+        assert args.command == "serve"
+        assert args.mode == "local"
+
+    def test_serve_saas_mode(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["serve", "--mode", "saas"])
+        assert args.command == "serve"
+        assert args.mode == "saas"
+
+    def test_check_defaults(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["check"])
+        assert args.command == "check"
+        assert not args.verbose
+        assert not args.json
+
+    def test_check_json_flag(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["check", "--json"])
+        assert args.json
+
+    def test_info_json_flag(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["info", "--json"])
+        assert args.command == "info"
+        assert args.json
+
+    def test_lock_json_flag(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["lock", "--json"])
+        assert args.command == "lock"
+        assert args.json
+
+    def test_lock_dry_run(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["lock", "--dry-run"])
+        assert args.dry_run
+
+    def test_resolve_format_json(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["resolve", "numpy", "--format", "json"])
+        assert args.command == "resolve"
+        assert args.format == "json"
+        assert args.packages == ["numpy"]
+
+    def test_resolve_interactive(self):
+        from backend.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["resolve", "numpy@pypi", "express@npm", "-i"])
+        assert args.command == "resolve"
+        assert args.interactive
+        assert args.packages == ["numpy@pypi", "express@npm"]
+
+
+class TestOutputJson:
+    """Test the _output_json helper function."""
+
+    def test_output_json_exits_zero(self):
+        data = {"key": "value"}
+        with patch.object(sys, 'stdout') as mock_stdout:
+            with pytest.raises(SystemExit) as exc:
+                _output_json(data, argparse.Namespace())
+            assert exc.value.code == 0
+
+    def test_output_json_writes_valid_json(self):
+        data = {"packages": ["a", "b"], "count": 2}
+        string_out = io.StringIO()
+        with patch.object(sys, 'stdout', string_out):
+            try:
+                _output_json(data, argparse.Namespace())
+            except SystemExit:
+                pass
+        parsed = json.loads(string_out.getvalue())
+        assert parsed == data
+
+    def test_output_json_with_nested_data(self):
+        data = {"resolved": {"pkg": {"version": "1.0", "ecosystem": "pypi"}}}
+        string_out = io.StringIO()
+        with patch.object(sys, 'stdout', string_out):
+            try:
+                _output_json(data, argparse.Namespace())
+            except SystemExit:
+                pass
+        parsed = json.loads(string_out.getvalue())
+        assert parsed["resolved"]["pkg"]["version"] == "1.0"

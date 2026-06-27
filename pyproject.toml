@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ud-resolver"
-version = "1.1.19"
+version = "1.1.20"
 description = "A universal dependency resolver supporting multiple package ecosystems"
 readme = "README_PYPI.md"
 requires-python = ">=3.11,<4.0"
@@ -34,8 +34,6 @@ dependencies = [
     "beautifulsoup4>=4.12,<5",
     # Package Management & Versioning
     "packaging>=23.2,<27",
-    "tomli-w>=1.0,<2",
-    "toml>=0.10,<1",  # TODO: migrate to tomllib (stdlib) once code no longer uses `import toml`
     "pyyaml>=6.0.1,<7",
     # Algorithms & Solvers
     "networkx>=3.2.1,<4",
@@ -43,13 +41,18 @@ dependencies = [
     # Database
     "sqlalchemy>=2.0.23,<3",
     "alembic>=1.12,<2",
-    # API
+    # CLI & Formatting
+    "rich>=13.7,<14",
     "slowapi>=0.1.9,<1",
     "email-validator>=2.1,<3",
     "python-multipart>=0.0.6,<1",
     "jinja2>=3.1.2,<4",
     "structlog>=24.1,<25",
     "prometheus-fastapi-instrumentator>=6.1,<7",
+    # Security (auth, JWT, password hashing)
+    "python-jose[cryptography]>=3.3,<4",
+    "passlib[bcrypt]>=1.7.4,<2",
+    "bcrypt<5",
 ]
 
 [project.optional-dependencies]
@@ -59,11 +62,6 @@ system = [
     "distro>=1.8,<2",
     "gputil>=1.4,<2",
     "nvidia-ml-py>=12.535,<13",
-]
-security = [
-    "python-jose[cryptography]>=3.3,<4",
-    "passlib[bcrypt]>=1.7.4,<2",
-    "bcrypt<5",
 ]
 dev = [
     "pytest>=7.4,<8",
@@ -96,12 +94,7 @@ all = [
     "py-cpuinfo>=9.0,<10",
     "gputil>=1.4,<2",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
-    "pyjwt[crypto]>=2.8,<3",
-    "passlib[bcrypt]>=1.7.4,<3",
-    "python-jose[cryptography]>=3.3,<4",
-    "python-multipart>=0.0.6,<1",
     "httpx>=0.26,<1",
-    "slowapi>=0.1.9,<1",
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",
     "sqlalchemy[asyncio]>=2.0.23,<3",

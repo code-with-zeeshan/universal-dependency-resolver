@@ -1,8 +1,7 @@
 # tests/unit/test_core/test_data_aggregator.py
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, Mock, patch
-from backend.core.data_aggregator import DataAggregator, Ecosystem
+from backend.core.data_aggregator import DataAggregator
 
 
 class TestDataAggregator:

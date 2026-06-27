@@ -14,7 +14,7 @@ REDIS_URL="" \
 TESTING="true" \
 SECRET_KEY="dev-secret" \
 ENV="development" \
-ALLOWED_ORIGINS="http://localhost:8080,http://localhost:3000" \
+ALLOWED_ORIGINS="http://localhost:8000" \
 FEATURES_ENABLE_CSRF="false" \
 ENABLE_CACHE="false" \
 nohup "$PYTHON" -m backend.api.main \
@@ -22,14 +22,3 @@ nohup "$PYTHON" -m backend.api.main \
   > /tmp/backend.log 2>&1 &
 BACKEND_PID=$!
 echo "Backend started (PID $BACKEND_PID) — http://localhost:8000"
-
-# Start frontend
-cd frontend
-nohup npx vue-cli-service serve --port 8080 \
-  > /tmp/frontend.log 2>&1 &
-FRONTEND_PID=$!
-echo "Frontend started (PID $FRONTEND_PID) — http://localhost:8080"
-
-echo
-echo "Backend log:  tail -f /tmp/backend.log"
-echo "Frontend log: tail -f /tmp/frontend.log"

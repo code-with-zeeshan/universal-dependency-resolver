@@ -24,7 +24,6 @@ function getEnv(port, extraEnv = {}) {
     UDR_PORT: String(port),
     UDR_HOST: '127.0.0.1',
     UDR_DESKTOP: 'true',
-    ENABLE_AUTH: 'true',
     PYTHONUNBUFFERED: '1',
     SECRET_KEY: process.env.SECRET_KEY || generateSecretKey(),
     ...extraEnv,
@@ -57,7 +56,7 @@ function spawnBackend(cmd, args, port, isBinary, cwd) {
     let crashed = false
 
     const allArgs = args.length > 0
-      ? [...args, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'info']
+      ? [...args, '--host', '127.0.0.1', '--port', String(port)]
       : [String(port)]
 
     const proc = spawn(cmd, allArgs, {

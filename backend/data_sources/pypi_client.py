@@ -1,25 +1,18 @@
 # pypi_client.py
-from typing import Dict, List, Optional, Any, Tuple, Set
-from packaging import version
+from typing import Dict, List, Optional, Any, Set
 from packaging.requirements import Requirement
 from ..core.utils import normalize_package_name, parse_version, run_async
-from packaging.markers import Marker
 from datetime import datetime
 import logging
 import re
 import asyncio
 import xmlrpc.client
-from urllib.parse import quote
 from bs4 import BeautifulSoup
 from ..settings import (
     PYPI_URL,
     PYPI_JSON_URL,
     PYPI_XMLRPC_URL,
     CACHE_TTL,
-    USER_AGENTS,
-    RATE_LIMITS,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
 )
 from .base_client import BaseDataSourceClient
 
@@ -31,11 +24,6 @@ class PyPIClient(BaseDataSourceClient):
         super().__init__(
             ecosystem="pypi",
             base_url=PYPI_JSON_URL,
-            cache_ttl=CACHE_TTL,
-            user_agent=USER_AGENTS.get("pypi", USER_AGENTS["default"]),
-            rate_limit=RATE_LIMITS.get("pypi", 600),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
         self.search_url = f"{PYPI_URL}/search/"
         self.xmlrpc_url = PYPI_XMLRPC_URL

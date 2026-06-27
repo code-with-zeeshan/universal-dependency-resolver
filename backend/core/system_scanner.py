@@ -9,13 +9,17 @@ import socket
 import shutil
 import sys
 from typing import Dict, List, Optional, Any, Union, Tuple
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
-from enum import Enum
+from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from backend.core.utils import hash_system_info
+from backend.core.scanner_models import (
+    OSType, ContainerType,
+    GPUInfo, CPUInfo, MemoryInfo, DiskInfo, NetworkInterface,
+    RuntimeInfo, PackageInfo,
+)
 
 # Third-party imports with fallback
 try:
@@ -35,7 +39,6 @@ try:
         nvmlDeviceGetMemoryInfo,
         nvmlDeviceGetUtilizationRates,
         nvmlDeviceGetTemperature,
-        nvmlDeviceGetCurrPcieLinkWidth,
         nvmlSystemGetDriverVersion,
         nvmlSystemGetCudaDriverVersion,
         NVML_TEMPERATURE_GPU,
@@ -74,120 +77,6 @@ except ImportError:
     HAS_DISTRO = False
 
 logger = logging.getLogger(__name__)
-
-
-class OSType(Enum):
-    WINDOWS = "Windows"
-    LINUX = "Linux"
-    MACOS = "Darwin"
-    BSD = "BSD"
-    UNKNOWN = "Unknown"
-
-
-class ContainerType(Enum):
-    DOCKER = "docker"
-    PODMAN = "podman"
-    LXC = "lxc"
-    WSL = "wsl"
-    VM = "vm"
-    BARE_METAL = "bare_metal"
-
-
-@dataclass
-class GPUInfo:
-    """GPU information"""
-
-    id: int
-    name: str
-    memory_total: int  # MB
-    memory_free: int  # MB
-    memory_used: int  # MB
-    utilization: float  # %
-    temperature: Optional[float] = None
-    driver_version: Optional[str] = None
-    cuda_version: Optional[str] = None
-    compute_capability: Optional[str] = None
-
-
-@dataclass
-class CPUInfo:
-    """CPU information"""
-
-    brand: str
-    arch: str
-    bits: int
-    count_physical: int
-    count_logical: int
-    max_frequency: Optional[float] = None
-    min_frequency: Optional[float] = None
-    current_frequency: Optional[float] = None
-    cache_sizes: Dict[str, int] = field(default_factory=dict)
-    features: List[str] = field(default_factory=list)
-    temperature: Optional[float] = None
-
-
-@dataclass
-class MemoryInfo:
-    """Memory information"""
-
-    total: int  # bytes
-    available: int
-    used: int
-    free: int
-    percent: float
-    swap_total: int
-    swap_used: int
-    swap_free: int
-    swap_percent: float
-
-
-@dataclass
-class DiskInfo:
-    """Disk information"""
-
-    device: str
-    mountpoint: str
-    fstype: str
-    total: int  # bytes
-    used: int
-    free: int
-    percent: float
-
-
-@dataclass
-class NetworkInterface:
-    """Network interface information"""
-
-    name: str
-    addresses: List[Dict[str, str]]
-    is_up: bool
-    speed: Optional[int] = None  # Mbps
-    mtu: Optional[int] = None
-    stats: Dict[str, int] = field(default_factory=dict)
-
-
-@dataclass
-class RuntimeInfo:
-    """Runtime environment information"""
-
-    name: str
-    version: str
-    path: Optional[str] = None
-    architecture: Optional[str] = None
-    implementation: Optional[str] = None
-    additional_info: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class PackageInfo:
-    """Package information"""
-
-    name: str
-    version: str
-    manager: str
-    location: Optional[str] = None
-    dependencies: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class SystemScanner:

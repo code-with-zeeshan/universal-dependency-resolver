@@ -9,13 +9,12 @@ udr resolve numpy@pypi torch@pypi
 
 ## Components
 
-This project ships as **three components** — pick the one that fits your use case:
+This project ships as **two components** — pick the one that fits your use case:
 
 | Component | What it is | Install / Download |
 |---|---|---|
 | **Backend** | Core resolver engine — CLI, Python library, REST API | `pip install ud-resolver` |
-| **Frontend** | Browser-based web UI (Vue.js) | `docker pull` or bundled in desktop |
-| **Desktop** | Standalone app — backend + frontend bundled, no setup | `.exe` / `.dmg` / `.AppImage` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) |
+| **Desktop** | Standalone app — backend binary + built-in GUI, no setup | `.exe` / `.dmg` / `.AppImage` from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) |
 
 See [docs/COMPONENTS.md](docs/COMPONENTS.md) for detailed prerequisites, use cases, and examples.
 
@@ -116,7 +115,6 @@ asyncio.run(main())
 
 ```bash
 docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest
-docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-frontend:latest
 ```
 
 Or build and run locally:
@@ -125,12 +123,12 @@ Or build and run locally:
 cp .env.example .env
 docker compose up -d
 docker compose exec backend alembic upgrade head
-# Frontend: http://localhost:8080, API: http://localhost:8000
+# API: http://localhost:8000
 ```
 
 ### Desktop
 
-Download the installer from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. Features system tray, notifications, auto-update, and auth enabled by default. See [docs/COMPONENTS.md](docs/COMPONENTS.md#3-desktop-electron-standalone-app) for details.
+Download the installer from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. Features built-in GUI, system tray, notifications, and auto-update. See [docs/COMPONENTS.md](docs/COMPONENTS.md#2-desktop-electron-standalone-app) for details.
 
 ## API Quick Reference
 
@@ -169,14 +167,8 @@ Full reference in [docs/API.md](docs/API.md).
 # Backend
 python -m pytest tests/unit/
 
-# Frontend
-cd frontend && npm run test:unit
-
 # Desktop
 cd desktop && npm test
-
-# E2E (requires Chromium)
-cd frontend && npm run test:e2e
 ```
 
 ## How It Works
@@ -195,7 +187,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture.
 
 ---
 
-- [docs/COMPONENTS.md](docs/COMPONENTS.md) — component guide (backend / frontend / desktop)
+- [docs/COMPONENTS.md](docs/COMPONENTS.md) — component guide (backend / desktop)
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production deployment
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 - [LICENSE](LICENSE) — MIT

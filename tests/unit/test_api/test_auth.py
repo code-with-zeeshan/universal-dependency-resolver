@@ -3,8 +3,6 @@ Tests for backend.api.auth module
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, timedelta
 from jose import jwt
 
 from backend.settings import SECRET_KEY, ALGORITHM
@@ -14,7 +12,6 @@ from backend.api.auth import (
     get_password_hash,
     create_access_token,
     create_refresh_token,
-    get_current_user,
 )
 
 

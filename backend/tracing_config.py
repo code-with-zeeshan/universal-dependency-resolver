@@ -6,7 +6,6 @@ services (Grafana Cloud, Datadog, Honeycomb, New Relic, etc.)
 via standard OTEL environment variables.
 """
 
-import os
 import logging
 from typing import Optional
 

@@ -1,28 +1,19 @@
 # npm_client.py
 import asyncio
-from typing import Dict, List, Optional, Set, Tuple, Any, Union
-import json
+from typing import Dict, List, Optional, Set, Any, Union
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import quote
 from ..core.utils import normalize_package_name, parse_version
 import re
 from enum import Enum
-import hashlib
 from dataclasses import dataclass
-from collections import defaultdict
 from ..settings import (
     NPM_URL,
     NPM_SEARCH_URL,
     NPM_DOWNLOADS_API,
     NPM_MIRROR_URLS,
     CACHE_TTL,
-    CACHE_TTL_SHORT,
-    MAX_RETRIES,
-    REQUEST_TIMEOUT,
-    CONNECT_TIMEOUT,
-    USER_AGENTS,
-    RATE_LIMITS,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -64,10 +55,6 @@ class NPMClient(BaseDataSourceClient):
             ecosystem="npm",
             base_url=registry_url,
             cache_ttl=cache_ttl or npm_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("npm", USER_AGENTS["default"]),
-            rate_limit=npm_config.get("rate_limit", RATE_LIMITS.get("npm", 600)),
-            timeout=timeout or REQUEST_TIMEOUT,
-            max_retries=max_retries or MAX_RETRIES,
         )
 
         self.search_url = NPM_SEARCH_URL

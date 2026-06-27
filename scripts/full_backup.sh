@@ -33,7 +33,7 @@ done
 [ -d "uploads" ] && cp -r uploads "$BACKUP_ROOT/"
 
 # Logs
-for log_dir in logs backend/logs frontend/logs; do
+for log_dir in logs backend/logs; do
     [ -d "$log_dir" ] && cp -r "$log_dir" "$BACKUP_ROOT/logs/"
 done
 

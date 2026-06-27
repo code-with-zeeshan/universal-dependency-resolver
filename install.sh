@@ -31,23 +31,23 @@ install_system_deps() {
   local pm=$(detect_package_manager)
   case "$pm" in
     brew)
-      brew install python@3.12 node postgresql redis 2>/dev/null || true
+      brew install python@3.12 postgresql redis 2>/dev/null || true
       ;;
     apt)
       sudo apt-get update -qq
-      sudo apt-get install -y -qq python3.12 python3.12-venv python3-pip nodejs npm postgresql postgresql-client redis-server 2>/dev/null || true
+      sudo apt-get install -y -qq python3.12 python3.12-venv python3-pip postgresql postgresql-client redis-server 2>/dev/null || true
       ;;
     dnf|yum)
-      sudo "$pm" install -y python3.12 python3-pip nodejs npm postgresql redis 2>/dev/null || true
+      sudo "$pm" install -y python3.12 python3-pip postgresql redis 2>/dev/null || true
       ;;
     pacman)
-      sudo pacman -S --noconfirm python python-pip nodejs npm postgresql redis 2>/dev/null || true
+      sudo pacman -S --noconfirm python python-pip postgresql redis 2>/dev/null || true
       ;;
     choco)
-      choco install python nodejs postgresql redis-64 -y 2>/dev/null || true
+      choco install python postgresql redis-64 -y 2>/dev/null || true
       ;;
     *)
-      warn "No package manager detected. Please install Python 3.11+, Node.js 18+, PostgreSQL 15+, and Redis 7+ manually."
+      warn "No package manager detected. Please install Python 3.11+, PostgreSQL 15+, and Redis 7+ manually."
       ;;
   esac
 }
@@ -71,7 +71,6 @@ setup_docker() {
   docker compose exec backend alembic upgrade head 2>/dev/null || warn "Migration skipped (DB may not be ready yet)"
   echo
   ok "$APP is running!"
-  echo "  Frontend: http://localhost:8080"
   echo "  API:      http://localhost:8000/api/v1/docs"
   echo
   echo "Run 'docker compose logs -f' to follow logs."
@@ -86,16 +85,8 @@ setup_manual() {
   info "Installing Python backend..."
   python3 -m venv venv
   source venv/bin/activate
-  pip install --quiet -e ".[all]" 2>/dev/null || pip install --quiet -r backend/requirements.txt
+  pip install --quiet -e ".[all]" 2>/dev/null || pip install --quiet -e "."
   ok "Backend installed"
-
-  # Frontend
-  info "Installing Node.js frontend..."
-  cd frontend
-  npm install --silent 2>/dev/null
-  npm run build 2>/dev/null
-  cd ..
-  ok "Frontend built"
 
   # Database
   info "Setting up database..."
@@ -110,8 +101,7 @@ setup_manual() {
   echo "To start:"
   echo "  1. Start PostgreSQL and Redis"
   echo "  2. source venv/bin/activate"
-  echo "  3. uvicorn backend.api.main:app --port 8000 &"
-  echo "  4. cd frontend && npm run serve"
+  echo "  3. udr serve --mode local --port 8000 &"
   echo
   echo "Or use 'docker compose up' instead."
 }
@@ -133,11 +123,9 @@ main() {
 
   # Detect available tools
   HAS_PYTHON=$(command -v python3 &>/dev/null && echo 1 || echo 0)
-  HAS_NODE=$(command -v node &>/dev/null && echo 1 || echo 0)
   HAS_DOCKER=$(command -v docker &>/dev/null && docker compose version &>/dev/null 2>&1 && echo 1 || echo 0)
-  HAS_NPM=$(command -v npm &>/dev/null && echo 1 || echo 0)
 
-  echo "Detected: Python=$HAS_PYTHON Node=$HAS_NODE NPM=$HAS_NPM Docker=$HAS_DOCKER"
+  echo "Detected: Python=$HAS_PYTHON Docker=$HAS_DOCKER"
   echo
 
   # Choose install method
@@ -150,15 +138,15 @@ main() {
     fi
   fi
 
-  if [ "$HAS_PYTHON" = "0" ] || [ "$HAS_NODE" = "0" ]; then
-    warn "Missing Python or Node.js. Attempting to install system dependencies..."
+  if [ "$HAS_PYTHON" = "0" ]; then
+    warn "Missing Python. Attempting to install system dependencies..."
     install_system_deps
   fi
 
-  if command -v python3 &>/dev/null && command -v node &>/dev/null; then
+  if command -v python3 &>/dev/null; then
     setup_manual
   else
-    fail "Could not install dependencies. Please install Python 3.11+ and Node.js 18+ manually."
+    fail "Could not install dependencies. Please install Python 3.11+ manually."
   fi
 }
 

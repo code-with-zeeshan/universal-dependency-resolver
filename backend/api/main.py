@@ -3,9 +3,7 @@ import os
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Dict, Optional
-from starlette.responses import Response, FileResponse, HTMLResponse
+from starlette.responses import Response
 
 import structlog
 
@@ -34,12 +32,6 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
-from backend.api.schemas import (
-    PackageRequest,
-    ResolveRequest,
-    ExportRequest,
-    SystemInfo,
-)
 from backend.api.routes import packages, system, scan
 from backend.api.routes import auth
 from backend.api.middleware import setup_middleware
@@ -118,7 +110,7 @@ if PROMETHEUS_AVAILABLE:
     logger.info("Prometheus metrics enabled at /metrics")
 
 # Configure CORS
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -403,22 +395,6 @@ async def log_requests(request: Request, call_next):
 
     response.headers["X-Process-Time"] = f"{duration_ms / 1000:.3f}"
     return response
-
-
-# Serve frontend static files if the dist directory exists
-frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-if frontend_dist.is_dir():
-    @app.route("/{full_path:path}")
-    async def serve_frontend(request: Request, full_path: str):
-        if full_path.startswith("api/"):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
-        file_path = frontend_dist / full_path
-        if file_path.is_file():
-            return FileResponse(str(file_path))
-        index = frontend_dist / "index.html"
-        if index.is_file():
-            return HTMLResponse(content=index.read_text())
-        return JSONResponse({"detail": "Frontend not built"}, status_code=404)
 
 
 if __name__ == "__main__":

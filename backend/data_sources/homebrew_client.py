@@ -1,31 +1,15 @@
 # homebrew_client.py
 import asyncio
-from typing import Dict, List, Optional, Set, Tuple, Any, Union
-import json
+from typing import Dict, List, Optional, Any, Union
 import logging
-from datetime import datetime, timedelta
-from urllib.parse import quote
-from backend.core.cache import cache_manager, cached, CacheKeys
-from backend.core.utils import normalize_package_name, parse_version, run_async
-import re
+from backend.core.cache import cached
+from backend.core.utils import normalize_package_name, run_async
 from enum import Enum
-import hashlib
 from dataclasses import dataclass
-from collections import defaultdict
 from backend.settings import (
     HOMEBREW_URL,
     HOMEBREW_API_URL,
     CACHE_TTL,
-    CACHE_TTL_SHORT,
-    RATE_LIMIT_DELAY,
-    MAX_RETRIES,
-    REQUEST_TIMEOUT,
-    CONNECT_TIMEOUT,
-    USER_AGENTS,
-    RATE_LIMITS,
-    RETRY_BACKOFF_FACTOR,
-    RETRY_MAX_DELAY,
-    ENABLE_CACHE,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -70,12 +54,6 @@ class HomebrewClient(BaseDataSourceClient):
             ecosystem="homebrew",
             base_url=api_url,
             cache_ttl=cache_ttl or homebrew_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("homebrew", USER_AGENTS["default"]),
-            rate_limit=homebrew_config.get(
-                "rate_limit", RATE_LIMITS.get("homebrew", 600)
-            ),
-            timeout=timeout or REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
 
         self.base_url = HOMEBREW_URL

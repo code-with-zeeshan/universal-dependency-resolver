@@ -1,6 +1,6 @@
 # Components
 
-Universal Dependency Resolver ships as three components. Each targets a different audience and use case. This document explains what each component is, when to use it, and how.
+Universal Dependency Resolver ships as two components. Each targets a different audience and use case. This document explains what each component is, when to use it, and how.
 
 ## Quick Decision Guide
 
@@ -9,7 +9,7 @@ Universal Dependency Resolver ships as three components. Each targets a differen
 | Resolve dependencies in a CI/CD pipeline or script | **CLI** (installed via `pip install ud-resolver`) |
 | Call the resolver from Python code | **Python library** (same pip package) |
 | Deploy the resolver as a service (Docker, cloud) | **Backend API** (same pip package + `uvicorn`) |
-| Browse and resolve deps through a web interface | **Frontend** (Vue.js SPA) |
+| Use the resolver through a web interface | **Desktop app** (builds-in a GUI) or `udr serve` (API + Swagger) |
 | Use the resolver offline without any setup | **Desktop app** (Electron, bundled) |
 | Kick the tires / learn the tool quickly | **Desktop app** (no CLI knowledge needed) |
 
@@ -73,7 +73,7 @@ async def check_deps():
 
 #### API server — production deployment
 ```bash
-uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
+udr serve --host 0.0.0.0 --port 8000
 ```
 
 Or with Docker:
@@ -87,72 +87,23 @@ docker run -p 8000:8000 ghcr.io/code-with-zeeshan/universal-dependency-resolver-
 |---|---|
 | `[system]` | GPU & system scanning |
 | `[monitoring]` | OpenTelemetry & Sentry |
-| `[security]` | Auth & JWT |
 | `[postgres]` | PostgreSQL + Redis + Celery |
 | `[all]` | Everything |
+
+> **Note:** Auth (JWT, passlib, bcrypt) is now a core dependency — no `[security]` extra needed. Auth is disabled by default (`UDR_MODE=local`); enable with `UDR_MODE=saas`.
 
 ### API docs
 Once running: `http://localhost:8000/api/v1/docs` (Swagger UI)
 
 ---
 
-## 2. Frontend (Vue.js SPA)
-
-### What it is
-A browser-based graphical interface built with Vue.js 3 and Tailwind CSS. Connects to the backend API and provides a visual way to:
-- Search packages across 13 ecosystems
-- Dashboard with health overview, system status, and quick actions
-- View package info, versions, dependencies, compatibility
-- Compare packages side-by-side with ecosystem selection
-- Resolve dependency trees with SAT solver
-- Export to 12 formats
-- Scan projects (GitHub URL, upload archive, local directory)
-- View system info (OS, GPU, CUDA, runtime versions)
-- Run system benchmarks and compatibility checks
-- Analyze environment files (requirements.txt, package.json, Cargo.toml, etc.)
-- Manage authentication, user profile, and API keys
-
-### Where to get it
-
-**From source** (development):
-```bash
-cd frontend
-npm install
-npm run serve
-# → http://localhost:8080
-```
-
-**Docker** (production):
-```bash
-docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-frontend:latest
-```
-
-**Bundled** — the Desktop app (below) includes the frontend automatically.
-
-### Prerequisites
-- Node.js 18+ (only if running from source)
-- A running backend instance (default: expects `http://localhost:8000`)
-
-### How it connects to the backend
-```
-┌─────────────────┐      REST API       ┌──────────────────┐
-│   Frontend      │ ◄──────────────────► │   Backend API    │
-│   Vue.js SPA    │   /api/v1/*         │   FastAPI server │
-│   Port 8080     │                      │   Port 8000      │
-└─────────────────┘                      └──────────────────┘
-```
-
-The frontend is a static SPA. It does not run any resolver logic — all computation happens in the backend.
-
----
-
-## 3. Desktop (Electron standalone app)
+## 2. Desktop (Electron standalone app)
 
 ### What it is
 A cross-platform desktop application (Windows .exe, macOS .dmg, Linux .AppImage) that bundles:
 - The **backend** (compiled to a standalone binary via PyInstaller — no Python install needed)
-- The **frontend** (built as static files)
-- An **Electron shell** that spawns the backend on launch and opens the frontend
+- A **built-in GUI** (`desktop/index.html` — inline CSS/JS, no build step)
+- An **Electron shell** that spawns the backend on launch and opens the GUI
 
 The result: a single offline application with no server setup, no Python install, no terminal commands.
 
@@ -170,34 +121,35 @@ Download from [GitHub Releases](https://github.com/code-with-zeeshan/universal-d
 
 ### How it works
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Desktop App                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │  Electron    │  │  Frontend    │  │  Backend  │ │
-│  │  shell       │  │  (bundled    │  │  (PyIn-   │ │
-│  │  (main.js)   │  │   dist/)     │  │  staller) │ │
-│  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘ │
-│         │                  │                │       │
-│         └──────────────────┴────────────────┘       │
-│                    │                                 │
-│    1. Electron loads frontend (dist/index.html)      │
-│    2. Spawns backend binary on a free port           │
-│    3. Frontend polls backend at that port            │
-│    4. Ready: all interaction goes through REST API   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│               Desktop App                   │
+│  ┌──────────────┐  ┌─────────────────────┐  │
+│  │  Electron    │  │  Backend (PyIn-     │  │
+│  │  shell       │  │  staller binary)    │  │
+│  │  (main.js)   │  │                     │  │
+│  │  + GUI       │  │  REST API on        │  │
+│  │  (index.html)│  │  localhost:port     │  │
+│  └──────┬───────┘  └──────────┬──────────┘  │
+│         │                     │              │
+│         └─────────────────────┘              │
+│                    │                         │
+│    1. Electron loads index.html (built-in)   │
+│    2. Spawns backend binary on a free port   │
+│    3. GUI polls backend at that port         │
+│    4. Ready: resolve packages via GUI        │
+└─────────────────────────────────────────────┘
 ```
 
 ### Fallback chain
 If the bundled binary fails (antivirus, missing system libraries), the desktop app falls back to system Python:
 
 1. **PyInstaller binary** (bundled, preferred — no Python needed)
-2. **System Python** (`python3 -m uvicorn backend.api.main:app`) — requires Python 3.11+
+2. **System Python** (`udr serve`) — requires `pip install ud-resolver` and Python 3.11+
 
 ### Desktop-specific features
 - **Auto-update**: In production builds, the app checks for updates on launch and notifies you when a new version is available
 - **System tray**: Minimize to tray with quick-access menu (Show / Quit)
 - **Desktop notifications**: Alerts when backend starts and when updates are ready
-- **Auth enabled by default**: Authentication is automatically enabled with a randomly generated secret key
 
 ### Known platform notes
 - **Windows**: Antivirus may flag the PyInstaller binary. Add an exclusion for the app directory if needed.
@@ -210,17 +162,16 @@ If the bundled binary fails (antivirus, missing system libraries), the desktop a
 
 ```
 PyPI / GitHub Releases  ────►  ud-resolver (backend package)
-                                      │
-                                      ├──►  CLI (udr resolve, udr lock, ...)
-                                      ├──►  Python library (import backend.*)
-                                      └──►  API server (uvicorn)
-                                               │
-                                               ▼
+                                       │
+                                       ├──►  CLI (udr resolve, udr lock, ...)
+                                       ├──►  Python library (import backend.*)
+                                       └──►  API server (uvicorn)
+                                                │
+                                                ▼
 GitHub Packages (GHCR)  ────►  Backend Docker image
-                               Frontend Docker image
-                                      │
-                                      ▼
-GitHub Releases  ────►  Desktop app (backend + frontend bundled)
+                                       │
+                                       ▼
+GitHub Releases  ────►  Desktop app (backend binary + built-in GUI)
 ```
 
 ## Where to find each component
@@ -229,5 +180,4 @@ GitHub Releases  ────►  Desktop app (backend + frontend bundled)
 |---|---|---|
 | Backend (PyPI) | [pypi.org/project/ud-resolver](https://pypi.org/project/ud-resolver/) | `pip install ud-resolver` |
 | Backend (GHCR) | `ghcr.io/...-backend` | `docker pull` |
-| Frontend | `ghcr.io/...-frontend` | `docker pull` or bundled in desktop |
 | Desktop | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | Download `.zip` from release assets |

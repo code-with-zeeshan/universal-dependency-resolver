@@ -2,8 +2,6 @@
 import pytest
 from backend.core.export_generator import (
     ExportGenerator,
-    PackageInfo,
-    PackageEcosystem,
 )
 
 

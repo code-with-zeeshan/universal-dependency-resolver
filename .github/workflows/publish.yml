@@ -8,9 +8,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # for PyPI trusted publishing
-      contents: write    # for uploading release assets
-      packages: write    # for GitHub Packages
+      id-token: write
+      contents: write
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -35,4 +35,3 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.ref_name }} dist/*.whl dist/*.tar.gz --clobber
-

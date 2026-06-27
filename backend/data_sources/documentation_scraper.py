@@ -1,12 +1,10 @@
 # documentation_scraper.py
 import aiohttp
-import asyncio
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 import re
 from ..settings import (
     CACHE_TTL,
-    LOG_LEVEL,
     KNOWN_DOC_URLS,
     DOC_SCRAPER_TIMEOUT,
     USER_AGENTS,
@@ -14,9 +12,8 @@ from ..settings import (
     DOC_SCRAPER_FOLLOW_REDIRECTS,
 )
 import logging
-from urllib.parse import urljoin, urlparse, quote
+from urllib.parse import quote
 from datetime import datetime
-import hashlib
 from ..core.utils import normalize_package_name, parse_version, compare_versions
 
 logger = logging.getLogger(__name__)

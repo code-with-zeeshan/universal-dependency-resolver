@@ -1,8 +1,5 @@
 # tests/unit/test_core/test_conflict_resolver.py
 import asyncio
-import threading
-import time
-from typing import Dict, List
 
 import pytest
 from unittest.mock import MagicMock, patch, call

@@ -1,10 +1,8 @@
 # backend/api/routes/packages.py
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Request
-from typing import List, Optional, Dict, Tuple
-from pydantic import BaseModel, Field
-import asyncio
+from typing import List, Optional, Dict
+from pydantic import BaseModel
 import logging
-from datetime import datetime
 from packaging import version
 
 from backend.core.data_aggregator import DataAggregator
@@ -21,12 +19,29 @@ from backend.api.dependencies import (
     limiter,
 )
 from backend.api.schemas import (
-    PackageRequest,
     ResolveRequest,
     ExportRequest,
-    SystemInfo,
 )
 from backend.api.auth import get_current_user
+from backend.api.helpers.packages import (
+    _filter_by_python_version,
+    _sort_search_results,
+    _get_recursive_dependencies,
+    _count_dependencies,
+    _generate_compatibility_summary,
+    _extract_version_compatibility,
+    _get_package_metrics,
+    _validate_system_info,
+    _analyze_compatibility_reports,
+    _detect_package_ecosystem,
+    _filter_comparison_aspects,
+    _generate_comparison_summary,
+)
+from backend.api.helpers.compatibility import (
+    _check_version_compatibility_detailed,
+    _is_prerelease,
+    SystemSpec,
+)
 from backend.database.models import User
 
 # Configure logging
@@ -35,74 +50,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Keep all your existing models
 class PackageSearchRequest(BaseModel):
     query: str
     ecosystems: Optional[List[str]] = None
     limit: int = 20
-
-
-class PackageVersionInfo(BaseModel):
-    version: str
-    release_date: Optional[str]
-    python_requires: Optional[str]
-    size: Optional[int]
-    downloads: Optional[int]
-    compatible: Optional[bool] = None
-    compatibility_notes: Optional[List[str]] = None
-
-
-class PackageDetailResponse(BaseModel):
-    name: str
-    ecosystem: str
-    description: Optional[str]
-    versions: List[PackageVersionInfo]
-    latest_version: str
-    homepage: Optional[str]
-    repository: Optional[str]
-    license: Optional[str]
-    maintainers: Optional[List[str]]
-
-
-class SystemSpec(BaseModel):
-    os: Optional[str] = Field(
-        None, description="Operating system (linux, windows, macos)"
-    )
-    os_version: Optional[str] = Field(None, description="OS version")
-    architecture: Optional[str] = Field(
-        None, description="CPU architecture (x86_64, arm64)"
-    )
-    python_version: Optional[str] = Field(None, description="Python version")
-    cuda_version: Optional[str] = Field(None, description="CUDA version if available")
-    gpu_available: Optional[bool] = Field(False, description="GPU availability")
-
-    @classmethod
-    def from_string(cls, spec_string: str) -> "SystemSpec":
-        """Parse system spec from string format"""
-        spec = cls()
-
-        # Parse key=value pairs
-        parts = spec_string.split(",")
-        for part in parts:
-            if "=" in part:
-                key, value = part.split("=", 1)
-                key = key.strip().lower()
-                value = value.strip()
-
-                if key in ["os", "operating_system"]:
-                    spec.os = value.lower()
-                elif key == "os_version":
-                    spec.os_version = value
-                elif key in ["arch", "architecture"]:
-                    spec.architecture = value.lower()
-                elif key in ["python", "python_version", "py"]:
-                    spec.python_version = value
-                elif key in ["cuda", "cuda_version"]:
-                    spec.cuda_version = value
-                elif key in ["gpu", "gpu_available"]:
-                    spec.gpu_available = value.lower() in ["true", "yes", "1"]
-
-        return spec
 
 
 @router.get("/{ecosystem}/{name}")
@@ -675,386 +626,6 @@ async def compare_packages(
         logger.error(f"Failed to compare packages: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-# Helper functions
-def _check_version_compatibility(version_info: Dict, system_spec: str) -> bool:
-    """Check if a version is compatible with system specification"""
-    try:
-        spec = SystemSpec.from_string(system_spec)
-        is_compatible, _ = _check_version_compatibility_detailed(version_info, spec)
-        return is_compatible
-    except Exception:
-        return True  # Default to compatible if parsing fails
-
-
-def _check_version_compatibility_detailed(
-    version_info: Dict, system_spec: SystemSpec
-) -> Tuple[bool, List[str]]:
-    """Check version compatibility with detailed notes"""
-    compatibility_notes = []
-    is_compatible = True
-
-    # Check Python version compatibility
-    if system_spec.python_version and version_info.get("python_requires"):
-        python_requires = version_info["python_requires"]
-        if not _check_python_compatibility(system_spec.python_version, python_requires):
-            is_compatible = False
-            compatibility_notes.append(
-                f"Requires Python {python_requires}, but system has {system_spec.python_version}"
-            )
-
-    # Check OS compatibility
-    if system_spec.os and version_info.get("platforms"):
-        platforms = version_info["platforms"]
-        if not _check_os_compatibility(system_spec.os, platforms):
-            is_compatible = False
-            compatibility_notes.append(
-                f"Not available for {system_spec.os} (supports: {', '.join(platforms)})"
-            )
-
-    # Check architecture compatibility
-    if system_spec.architecture and version_info.get("architectures"):
-        architectures = version_info["architectures"]
-        if system_spec.architecture not in architectures:
-            is_compatible = False
-            compatibility_notes.append(
-                f"Not available for {system_spec.architecture} architecture"
-            )
-
-    # Check CUDA compatibility
-    if system_spec.cuda_version and version_info.get("cuda_required"):
-        cuda_versions = version_info.get("cuda_versions", [])
-        if cuda_versions and not _check_cuda_compatibility(
-            system_spec.cuda_version, cuda_versions
-        ):
-            is_compatible = False
-            compatibility_notes.append(
-                f"Requires CUDA {', '.join(cuda_versions)}, but system has {system_spec.cuda_version}"
-            )
-    elif not system_spec.gpu_available and version_info.get("gpu_required"):
-        is_compatible = False
-        compatibility_notes.append("Requires GPU but none available")
-
-    # Check for yanked versions
-    if version_info.get("yanked"):
-        compatibility_notes.append("This version has been yanked by maintainers")
-
-    return is_compatible, compatibility_notes
-
-
-def _check_python_compatibility(system_python: str, requires_python: str) -> bool:
-    """Check if system Python version satisfies requirement"""
-    try:
-        from packaging.specifiers import SpecifierSet
-
-        spec = SpecifierSet(requires_python)
-        system_version = version.parse(system_python)
-
-        return system_version in spec
-    except Exception as e:
-        logger.warning(f"Failed to check Python compatibility: {e}")
-        return True  # Default to compatible if parsing fails
-
-
-def _check_os_compatibility(system_os: str, supported_platforms: List[str]) -> bool:
-    """Check if OS is supported"""
-    if not supported_platforms or "any" in supported_platforms:
-        return True
-
-    os_mapping = {
-        "linux": ["linux", "manylinux", "unix", "posix"],
-        "windows": ["windows", "win", "win32", "win_amd64"],
-        "macos": ["macos", "darwin", "osx", "mac"],
-        "darwin": ["macos", "darwin", "osx", "mac"],
-    }
-
-    system_aliases = os_mapping.get(system_os.lower(), [system_os.lower()])
-
-    for platform in supported_platforms:
-        platform_lower = platform.lower()
-        if any(alias in platform_lower for alias in system_aliases):
-            return True
-
-    return False
-
-
-def _check_cuda_compatibility(system_cuda: str, required_cuda: List[str]) -> bool:
-    """Check if system CUDA version satisfies requirements"""
-    try:
-        system_version = version.parse(system_cuda)
-
-        for req_cuda in required_cuda:
-            # Handle different formats: "11.2", ">=11.0", "11.x"
-            if req_cuda.endswith(".x"):
-                # Match major version
-                req_major = int(req_cuda[:-2])
-                if system_version.major == req_major:
-                    return True
-            elif any(op in req_cuda for op in [">=", "<=", ">", "<", "=="]):
-                # Parse as specifier
-                from packaging.specifiers import SpecifierSet
-
-                spec = SpecifierSet(req_cuda.replace("cuda", "").strip())
-                if system_version in spec:
-                    return True
-            else:
-                # Exact match
-                req_version = version.parse(req_cuda)
-                if system_version == req_version:
-                    return True
-
-        return False
-    except Exception as e:
-        logger.warning(f"Failed to check CUDA compatibility: {e}")
-        return True  # Default to compatible if parsing fails
-
-
-def _is_prerelease(version_str: str) -> bool:
-    """Check if version is a pre-release"""
-    try:
-        v = version.parse(version_str)
-        return v.is_prerelease
-    except Exception:
-        # Check common pre-release patterns
-        prerelease_indicators = ["alpha", "beta", "rc", "dev", "pre", "a", "b"]
-        version_lower = version_str.lower()
-        return any(indicator in version_lower for indicator in prerelease_indicators)
-
-
-def _filter_by_python_version(results: List[Dict], python_version: str) -> List[Dict]:
-    """Filter search results by Python version compatibility"""
-    filtered = []
-
-    for result in results:
-        # Check if result has Python version info
-        if "python_requires" in result:
-            if _check_python_compatibility(python_version, result["python_requires"]):
-                filtered.append(result)
-        elif "python_versions" in result:
-            # Check if any supported version matches
-            if any(
-                _check_python_compatibility(python_version, f"=={pv}")
-                for pv in result["python_versions"]
-            ):
-                filtered.append(result)
-        else:
-            # No Python version info, include by default
-            filtered.append(result)
-
-    return filtered
-
-
-def _sort_search_results(results: List[Dict], sort_by: str) -> List[Dict]:
-    """Sort search results by specified criteria"""
-    if not results:
-        return results
-
-    if sort_by == "downloads":
-        return sorted(results, key=lambda x: x.get("downloads", 0), reverse=True)
-    elif sort_by == "name":
-        return sorted(results, key=lambda x: x.get("name", "").lower())
-    elif sort_by == "updated":
-        return sorted(
-            results, key=lambda x: x.get("last_updated", "1970-01-01"), reverse=True
-        )
-    else:  # relevance (default)
-        # Assume results are already sorted by relevance from search
-        return results
-
-
-async def _get_recursive_dependencies(
-    source,
-    package_name: str,
-    version: Optional[str],
-    max_depth: int,
-    current_depth: int = 0,
-    visited: Optional[set] = None,
-) -> Dict:
-    """Recursively get package dependencies"""
-    if visited is None:
-        visited = set()
-
-    # Avoid circular dependencies
-    key = f"{package_name}:{version or 'latest'}"
-    if key in visited or current_depth >= max_depth:
-        return {
-            "name": package_name,
-            "version": version or "latest",
-            "dependencies": {},
-            "circular_reference": key in visited,
-        }
-
-    visited.add(key)
-
-    # Get direct dependencies
-    try:
-        dependencies = await source.get_dependencies(package_name, version)
-    except Exception as e:
-        logger.warning(f"Failed to get dependencies for {package_name}: {e}")
-        dependencies = {}
-
-    # Build dependency tree
-    dep_tree = {
-        "name": package_name,
-        "version": version or "latest",
-        "dependencies": {},
-    }
-
-    # Recursively get dependencies for each dependency
-    for dep_type, deps in dependencies.items():
-        if dep_type not in ["required", "run"]:  # Focus on runtime dependencies
-            continue
-
-        dep_tree["dependencies"][dep_type] = {}
-
-        for dep_name, dep_spec in deps.items():
-            # For simplicity, don't resolve exact versions here
-            sub_deps = await _get_recursive_dependencies(
-                source, dep_name, None, max_depth, current_depth + 1, visited
-            )
-            dep_tree["dependencies"][dep_type][dep_name] = sub_deps
-
-    return dep_tree
-
-
-def _count_dependencies(dep_tree: Dict) -> Dict:
-    """Count total dependencies in tree"""
-    direct = 0
-    transitive = 0
-
-    def count_recursive(node, depth=0):
-        nonlocal direct, transitive
-
-        for dep_type, deps in node.get("dependencies", {}).items():
-            for dep_name, dep_node in deps.items():
-                if depth == 0:
-                    direct += 1
-                else:
-                    transitive += 1
-                count_recursive(dep_node, depth + 1)
-
-    count_recursive(dep_tree)
-
-    return {"direct": direct, "transitive": transitive, "total": direct + transitive}
-
-
-def _generate_compatibility_summary(package_info: Dict) -> Dict:
-    """Generate a compatibility summary from package info"""
-    summary = {
-        "python_versions": [],
-        "operating_systems": [],
-        "architectures": [],
-        "special_requirements": [],
-    }
-
-    # Extract from system requirements
-    sys_reqs = package_info.get("system_requirements", {})
-
-    if "python" in sys_reqs:
-        summary["python_versions"] = sys_reqs["python"].get("supported_versions", [])
-
-    if "os" in sys_reqs:
-        summary["operating_systems"] = sys_reqs["os"].get("supported", [])
-
-    if "architecture" in sys_reqs:
-        summary["architectures"] = sys_reqs["architecture"].get("supported", [])
-
-    # Special requirements
-    if sys_reqs.get("gpu", {}).get("required"):
-        summary["special_requirements"].append("GPU required")
-        if sys_reqs["gpu"].get("cuda_versions"):
-            summary["special_requirements"].append(
-                f"CUDA {', '.join(sys_reqs['gpu']['cuda_versions'])}"
-            )
-
-    return summary
-
-
-def _extract_version_compatibility(package_info: Dict, version: str) -> Dict:
-    """Extract compatibility info for a specific version"""
-    compatibility_matrix = package_info.get("compatibility_matrix", {})
-
-    if version in compatibility_matrix:
-        return compatibility_matrix[version]
-
-    # Try to find in versions list
-    for ecosystem_data in package_info.get("ecosystems", {}).values():
-        for version_info in ecosystem_data.get("versions", []):
-            if version_info.get("version") == version:
-                return {
-                    "python": version_info.get("python_versions", []),
-                    "platforms": version_info.get("platforms", []),
-                }
-
-    return {}
-
-
-async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
-    """Get package usage metrics"""
-    logger.debug(f"Fetching metrics for {ecosystem}/{package_name}")
-    return {
-        "downloads": {"last_day": 0, "last_week": 0, "last_month": 0},
-        "stars": 0,
-        "dependents": 0,
-        "last_updated": datetime.now().isoformat(),
-    }
-
-
-def _validate_system_info(system_info: Dict) -> bool:
-    """Validate system info structure"""
-    required_fields = ["os", "python_version"]
-    return all(field in system_info for field in required_fields)
-
-
-async def _analyze_compatibility_reports(
-    package_name: str, ecosystem: str, version: str
-):
-    """Background task to analyze compatibility reports"""
-    logger.info(
-        f"Analyzing compatibility reports for {ecosystem}/{package_name}@{version}"
-    )
-
-
-async def _detect_package_ecosystem(
-    package_name: str, aggregator: DataAggregator
-) -> str:
-    """Auto-detect package ecosystem"""
-    logger.debug(f"Auto-detecting ecosystem for package: {package_name}")
-
-    # Check all available ecosystems
-    all_ecosystems = [
-        "pypi",
-        "npm",
-        "conda",
-        "maven",
-        "crates",
-        "gomodules",
-        "apt",
-        "apk",
-        "cocoapods",
-        "rubygems",
-        "packagist",
-        "nuget",
-        "homebrew",
-    ]
-
-    # Check each ecosystem for the package
-    for ecosystem in all_ecosystems:
-        if ecosystem in aggregator.sources:
-            source = aggregator.sources[ecosystem]
-            try:
-                if hasattr(source, "package_exists"):
-                    exists = await source.package_exists(package_name)
-                    if exists:
-                        logger.info(f"Package {package_name} found in {ecosystem}")
-                        return ecosystem
-            except Exception as e:
-                logger.warning(f"Failed to check {ecosystem} for {package_name}: {e}")
-
-    logger.info(f"Package {package_name} not found, defaulting to PyPI")
-    return "pypi"  # Default to PyPI
-
-
 @router.get("/ecosystems")
 @limiter.limit("60/minute")
 async def get_supported_ecosystems(
@@ -1169,48 +740,3 @@ async def get_supported_ecosystems(
     }
 
     return {"status": "success", "ecosystems": ecosystems, "total": len(ecosystems)}
-
-
-def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
-    """Filter package info to requested comparison aspects"""
-    aspects_list = aspects.split(",")
-    filtered = {}
-
-    aspect_mapping = {
-        "dependencies": ["ecosystems.*.dependencies"],
-        "requirements": ["system_requirements", "compatibility_matrix"],
-        "versions": ["ecosystems.*.versions", "ecosystems.*.latest_version"],
-    }
-
-    for aspect in aspects_list:
-        if aspect in aspect_mapping:
-            for path in aspect_mapping[aspect]:
-                # Simple path extraction (would be more complex in production)
-                if "." not in path:
-                    if path in info:
-                        filtered[path] = info[path]
-
-    return filtered
-
-
-def _generate_comparison_summary(comparison_data: Dict) -> Dict:
-    """Generate summary of package comparison"""
-    summary = {
-        "common_dependencies": [],
-        "conflicting_requirements": [],
-        "compatibility_overlap": {},
-    }
-
-    # Find common dependencies
-    all_deps = []
-    for pkg_data in comparison_data.values():
-        deps = set()
-        for eco_data in pkg_data.get("ecosystems", {}).values():
-            for dep_dict in eco_data.get("dependencies", {}).values():
-                deps.update(dep_dict.keys())
-        all_deps.append(deps)
-
-    if all_deps:
-        summary["common_dependencies"] = list(set.intersection(*all_deps))
-
-    return summary

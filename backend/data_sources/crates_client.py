@@ -1,31 +1,19 @@
 # crates_client.py
-from typing import List, Optional, Dict, Any, Set, Tuple
+from typing import List, Optional, Dict, Any, Set
 from packaging import version
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import HTTPException
 import re
 import asyncio
 from urllib.parse import quote
 import logging
 from enum import Enum
-import tempfile
-from pathlib import Path
 from ..core.utils import normalize_package_name, parse_version
-import toml
-from .utils import safe_data_source_call
 from ..settings import (
     CRATES_URL,
     CRATES_DL_URL,
     CACHE_TTL,
     CACHE_TTL_SHORT,
-    RATE_LIMIT_DELAY,
-    MAX_RETRIES,
-    REQUEST_TIMEOUT,
-    USER_AGENTS,
-    RATE_LIMITS,
-    RETRY_BACKOFF_FACTOR,
-    ENABLE_CACHE,
-    MAX_CONNECTIONS,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -53,10 +41,6 @@ class CratesClient(BaseDataSourceClient):
             ecosystem="crates",
             base_url=crates_config.get("url", CRATES_URL),
             cache_ttl=cache_ttl or crates_config.get("cache_ttl", CACHE_TTL),
-            user_agent=user_agent or USER_AGENTS.get("crates", USER_AGENTS["default"]),
-            rate_limit=crates_config.get("rate_limit", RATE_LIMITS.get("crates", 300)),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
 
         self.download_url = CRATES_DL_URL

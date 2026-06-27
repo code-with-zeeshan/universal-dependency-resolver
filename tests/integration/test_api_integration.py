@@ -1,8 +1,7 @@
 """Integration tests for the FastAPI application with real database and services."""
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from datetime import datetime
+from unittest.mock import patch, AsyncMock
 
 from backend.database.models import Package, PackageVersion
 
@@ -285,7 +284,7 @@ class TestErrorHandling:
         assert "error" in data or "detail" in data
 
     def test_cors_headers_present(self, api_client):
-        response = api_client.get("/", headers={"Origin": "http://localhost:8080"})
+        response = api_client.get("/", headers={"Origin": "http://localhost:3000"})
         assert "access-control-allow-origin" in response.headers
 
     def test_request_id_header(self, api_client):

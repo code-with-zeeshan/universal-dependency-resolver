@@ -4,7 +4,7 @@ import time
 import uuid
 import json
 import gzip
-from typing import Callable, Optional, Dict, Any
+from typing import Callable
 from datetime import datetime, timezone
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse

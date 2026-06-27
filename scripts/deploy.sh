@@ -54,15 +54,14 @@ fi
 # Build images unless skipped
 if [ "$SKIP_BUILD" = false ]; then
     print_status "Building Docker images..."
-    docker build -t "udr-backend:$VERSION" ./backend
-    docker build -t "udr-frontend:$VERSION" ./frontend
-    print_success "Images built successfully!"
+    docker build -t "udr-backend:$VERSION" -f backend/Dockerfile .
+    print_success "Image built successfully!"
 fi
 
 case $ENVIRONMENT in
     staging)
         print_status "Deploying to staging environment..."
-        export BACKEND_IMAGE="udr-backend:$VERSION" FRONTEND_IMAGE="udr-frontend:$VERSION" ENVIRONMENT="staging"
+        export BACKEND_IMAGE="udr-backend:$VERSION" ENVIRONMENT="staging"
         docker-compose -f docker-compose.test.yml up -d --remove-orphans
         sleep 30
         docker-compose -f docker-compose.test.yml exec backend alembic upgrade head
@@ -81,7 +80,7 @@ case $ENVIRONMENT in
         print_status "Production deployment requires Docker Swarm or cloud orchestration."
         print_status "See docker-compose.prod.yml and .github/workflows/deploy.yml"
         print_status "Manual commands:"
-        echo "  export BACKEND_IMAGE=udr-backend:$VERSION FRONTEND_IMAGE=udr-frontend:$VERSION ENVIRONMENT=production"
+        echo "  export BACKEND_IMAGE=udr-backend:$VERSION ENVIRONMENT=production"
         echo "  docker stack deploy --compose-file docker-compose.prod.yml udr-production"
         ;;
 esac

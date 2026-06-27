@@ -1,9 +1,8 @@
 import aiohttp
 import asyncio
 import logging
-from typing import Dict, Optional, Any, Callable
+from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
-from functools import wraps
 
 from backend.settings import (
     CACHE_TTL,

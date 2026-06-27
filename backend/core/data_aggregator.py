@@ -4,15 +4,13 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
-from backend.core.cache import cache_manager, CacheKeys
+from backend.core.cache import cache_manager
 from backend.core.utils import (
     normalize_package_name,
     sanitize_ecosystem_name,
-    parse_version,
-    is_compatible_version,
     hash_system_info,
 )
 import json

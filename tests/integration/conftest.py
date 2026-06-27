@@ -8,7 +8,7 @@ when Redis is unavailable.
 import logging
 import os
 import pytest
-from typing import AsyncGenerator, Generator, Optional
+from typing import Generator
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -19,7 +19,6 @@ from sqlalchemy.pool import StaticPool
 from backend.database.models import (
     Base,
     engine as prod_engine,
-    SessionLocal as prod_SessionLocal,
 )
 
 logger = logging.getLogger(__name__)

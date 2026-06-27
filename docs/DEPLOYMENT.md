@@ -24,7 +24,7 @@
 ```bash
 pip install -e ".[dev]"
 # SQLite by default, no config needed
-uvicorn backend.api.main:app --reload
+python -m backend.cli serve --reload
 # → http://localhost:8000
 ```
 
@@ -49,13 +49,13 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on: [backend, frontend]
+    depends_on: [backend]
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file: .env.production
     depends_on:
       db: { condition: service_healthy }
@@ -64,14 +64,6 @@ services:
       replicas: 3
       resources:
         limits: { cpus: '1.0', memory: 1G }
-
-  frontend:
-    build: ./frontend
-    environment:
-      - VUE_APP_API_URL=https://api.example.com  # Replace with your domain
-    restart: unless-stopped
-    deploy:
-      replicas: 2
 
   db:
     image: postgres:15-alpine
@@ -116,7 +108,7 @@ Ideal for desktop app, single-user, or CI environments.
 - [ ] HTTPS enabled (TLS certificate)
 - [ ] CORS configured for your domain
 - [ ] Rate limiting enabled (default: on)
-- [ ] Auth enabled in production (`ENABLE_AUTH=true`)
+- [ ] Auth enabled if needed (`UDR_MODE=saas` for JWT + API key auth)
 - [ ] Database migrations applied
 - [ ] Backups configured (see scripts/backup_database.sh)
 - [ ] Monitoring (Prometheus metrics at `/metrics`)
@@ -131,12 +123,12 @@ DATABASE_URL=postgresql://user:password@host:5432/depresolver
 # Redis (optional — falls back to in-memory cache)
 REDIS_URL=redis://host:6379
 
-# Auth
+# Auth (local mode = no auth; saas mode = JWT + API key)
 SECRET_KEY=<generate-a-random-secret>  # python -c "import secrets; print(secrets.token_hex(32))"
-ENABLE_AUTH=true
+UDR_MODE=local  # Set to 'saas' for auth stack
 
 # CORS
-ALLOWED_ORIGINS=https://example.com  # Replace with your frontend domain
+ALLOWED_ORIGINS=http://localhost:3000  # Desktop client origin
 
 # Standalone (skip Redis/Postgres checks)
 UDR_STANDALONE=false

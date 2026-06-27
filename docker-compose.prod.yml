@@ -9,11 +9,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./logs/nginx:/var/log/nginx
     depends_on:
       - backend
-      - frontend
     restart: unless-stopped
     networks:
       - app-network
@@ -44,21 +42,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
-  # Frontend
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - NODE_ENV=production
-    environment:
-      - VUE_APP_API_URL=https://api.yourdomain.com
-    restart: unless-stopped
-    networks:
-      - app-network
-    deploy:
-      replicas: 2
 
   # Database
   db:

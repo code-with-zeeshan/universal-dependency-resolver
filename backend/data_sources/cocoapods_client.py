@@ -1,18 +1,11 @@
 # data_sources/cocoapods_client.py
-from typing import Dict, List, Optional, Any, Tuple, Set
+from typing import Dict, List, Optional, Any
 import logging
-from datetime import datetime
 from urllib.parse import quote
-import re
-from backend.core.cache import cache_manager, cached, CacheKeys
+from backend.core.cache import cached
 from backend.core.utils import normalize_package_name, parse_version, run_async
 from backend.settings import (
     CACHE_TTL,
-    USER_AGENTS,
-    RATE_LIMITS,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
-    RATE_LIMIT_DELAY,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -28,13 +21,6 @@ class CocoaPodsClient(BaseDataSourceClient):
         super().__init__(
             ecosystem="cocoapods",
             base_url=base_url,
-            cache_ttl=cocoapods_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("cocoapods", USER_AGENTS["default"]),
-            rate_limit=cocoapods_config.get(
-                "rate_limit", RATE_LIMITS.get("cocoapods", 600)
-            ),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
 
         self.specs_url = cocoapods_config.get("specs_url", "https://cdn.cocoapods.org")

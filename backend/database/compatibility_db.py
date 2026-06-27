@@ -1,10 +1,10 @@
 # compatibility_db.py
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional
 import hashlib
 import json
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_
 import logging
 
 from .models import (
@@ -24,8 +24,6 @@ from ..core.utils import (
     sanitize_ecosystem_name,
     hash_system_info,
     parse_version,
-    is_compatible_version,
-    compare_versions,
 )
 
 logger = logging.getLogger(__name__)

@@ -25,7 +25,7 @@ Install with extras for additional features:
 ```bash
 pip install "ud-resolver[system]"       # GPU & system scanning
 pip install "ud-resolver[monitoring]"   # OpenTelemetry & Sentry
-pip install "ud-resolver[security]"     # Auth & JWT support
+# Auth (JWT, API keys) — included in base install, no extra needed
 pip install "ud-resolver[postgres]"     # PostgreSQL + Redis + Celery
 pip install "ud-resolver[all]"          # Everything
 ```
@@ -147,7 +147,6 @@ The system runs as a FastAPI service with optional PostgreSQL and Redis.
 
 This package is the **backend component**. The project also ships:
 
-- **Web UI** — a browser-based GUI (Vue.js), available as a Docker image or bundled in the desktop app
-- **Desktop app** — standalone cross-platform application (Windows, macOS, Linux) with backend + frontend bundled, no Python or Node.js required
+- **Desktop app** — standalone cross-platform application (Windows, macOS, Linux) with backend binary + built-in GUI, no Python or Node.js required
 
 See the [full documentation](https://github.com/code-with-zeeshan/universal-dependency-resolver) for details.

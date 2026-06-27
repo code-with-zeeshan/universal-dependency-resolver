@@ -1,9 +1,8 @@
 import os
 import logging
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
-from slowapi.middleware import SlowAPIMiddleware
 
 from backend.core.system_scanner import SystemScanner
 from backend.core.data_aggregator import DataAggregator

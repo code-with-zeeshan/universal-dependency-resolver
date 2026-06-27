@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>UDR — Universal Dependency Resolver</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;height:100vh;display:flex;flex-direction:column}
+header{background:#16213e;padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #0f3460;-webkit-app-region:drag}
+header h1{font-size:18px;font-weight:600;color:#e94560}
+header span{color:#889;font-size:13px}
+header .right{margin-left:auto;display:flex;align-items:center;gap:10px;-webkit-app-region:no-drag}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+.status-dot.green{background:#4caf50;box-shadow:0 0 6px #4caf50}
+.status-dot.red{background:#e94560;box-shadow:0 0 6px #e94560}
+.status-dot.yellow{background:#ff9800;box-shadow:0 0 6px #ff9800}
+.layout{display:flex;flex:1;overflow:hidden}
+nav{width:180px;background:#16213e;border-right:1px solid #0f3460;padding:12px 8px;display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.nav-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border:none;background:transparent;color:#9aa;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s;width:100%;text-align:left}
+.nav-btn:hover{background:#1a1a3e;color:#e0e0e0}
+.nav-btn.active{background:#e94560;color:#fff}
+.nav-btn .icon{font-size:16px;width:20px;text-align:center}
+main{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.tab{display:none;flex-direction:column;gap:16px}
+.tab.active{display:flex}
+.card{background:#16213e;border-radius:8px;padding:16px 20px;border:1px solid #0f3460}
+.card h2{font-size:15px;margin-bottom:10px;color:#e94560;font-weight:600}
+.row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.row input,.row select{flex:1;min-width:160px;padding:8px 12px;border:1px solid #0f3460;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:13px}
+.row input:focus,.row select:focus{outline:none;border-color:#e94560}
+.row button{padding:8px 20px;background:#e94560;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;transition:background .15s}
+.row button:hover{background:#d63851}
+.row button:disabled{opacity:.5;cursor:default}
+.row button.secondary{background:#2a2a4e}
+.row button.secondary:hover{background:#3a3a6e}
+pre{background:#0d1b2e;padding:14px;border-radius:6px;overflow:auto;font-size:12px;max-height:360px;white-space:pre-wrap;word-break:break-all;border:1px solid #0f3460}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.info-item{background:#0d1b2e;padding:10px 14px;border-radius:6px;border:1px solid #0f3460}
+.info-item .label{font-size:11px;color:#889;text-transform:uppercase;margin-bottom:2px}
+.info-item .value{font-size:14px;font-weight:500}
+.error-msg{color:#e94560;font-size:13px;padding:8px 0}
+footer{padding:8px 20px;border-top:1px solid #0f3460;font-size:11px;color:#556;text-align:center}
+.version{color:#445;margin-left:auto}
+#statusText{font-size:12px;color:#889}
+</style>
+</head>
+<body>
+<header>
+<h1>UDR</h1><span>Universal Dependency Resolver</span>
+<div class="right">
+<span id="statusText">connecting...</span>
+<span id="statusDot" class="status-dot yellow"></span>
+</div>
+</header>
+<div class="layout">
+<nav id="tabNav">
+<button class="nav-btn active" data-tab="dashboard"><span class="icon">&#9733;</span> Dashboard</button>
+<button class="nav-btn" data-tab="resolve"><span class="icon">&#9881;</span> Resolve</button>
+<button class="nav-btn" data-tab="search"><span class="icon">&#8981;</span> Search</button>
+<button class="nav-btn" data-tab="system"><span class="icon">&#9000;</span> System</button>
+<button class="nav-btn" data-tab="scan"><span class="icon">&#128193;</span> Scan</button>
+<button class="nav-btn" data-tab="export"><span class="icon">&#8615;</span> Export</button>
+</nav>
+<main>
+<div class="tab active" id="tab-dashboard">
+<div class="card">
+<h2>API Status</h2>
+<div class="info-grid">
+<div class="info-item"><div class="label">Status</div><div class="value" id="dashStatus">Checking...</div></div>
+<div class="info-item"><div class="label">Version</div><div class="value" id="dashVersion">-</div></div>
+<div class="info-item"><div class="label">Mode</div><div class="value" id="dashMode">-</div></div>
+<div class="info-item"><div class="label">Ecosystems</div><div class="value" id="dashEco">-</div></div>
+</div>
+</div>
+<div class="card">
+<h2>Quick Actions</h2>
+<div class="row">
+<button onclick="switchTab('resolve')">Resolve Packages</button>
+<button class="secondary" onclick="switchTab('scan')">Scan Project</button>
+<button class="secondary" onclick="switchTab('system')">View System Info</button>
+<button class="secondary" onclick="switchTab('export')">Export Config</button>
+</div>
+</div>
+</div>
+
+<div class="tab" id="tab-resolve">
+<div class="card">
+<h2>Resolve Packages</h2>
+<div class="row">
+<input id="pkgInput" placeholder="Package names, space-separated (e.g. requests numpy torch)" value="requests">
+<select id="ecoSelect"></select>
+<button id="resolveBtn">Resolve</button>
+</div>
+<div style="font-size:11px;color:#667">Use <code>name@ecosystem</code> to override ecosystem per package (e.g. torch@conda)</div>
+</div>
+<div class="card" id="resolveResultCard" style="display:none">
+<h2>Resolution Result</h2>
+<pre id="resolveResultPre"></pre>
+</div>
+</div>
+
+<div class="tab" id="tab-search">
+<div class="card">
+<h2>Search Packages</h2>
+<div class="row">
+<input id="searchInput" placeholder="Search packages..." value="requests">
+<select id="searchEco"><option value="">All ecosystems</option></select>
+<button id="searchBtn">Search</button>
+</div>
+</div>
+<div class="card" id="searchResultCard" style="display:none">
+<h2>Search Results</h2>
+<pre id="searchResultPre"></pre>
+</div>
+</div>
+
+<div class="tab" id="tab-system">
+<div class="card">
+<h2>System Information</h2>
+<button id="refreshSysBtn" class="secondary" style="margin-bottom:10px">Refresh System Info</button>
+<div class="info-grid" id="sysInfoGrid">
+<div class="info-item"><div class="label">Loading...</div><div class="value">Please wait</div></div>
+</div>
+</div>
+<div class="card">
+<h2>Runtime Versions</h2>
+<pre id="runtimePre">Loading...</pre>
+</div>
+</div>
+
+<div class="tab" id="tab-scan">
+<div class="card">
+<h2>Scan Project Directory</h2>
+<p style="font-size:13px;color:#889;margin-bottom:12px">Select a project directory to detect manifest files and resolve all dependencies.</p>
+<div class="row">
+<input id="scanPath" placeholder="Click Browse to select a directory..." readonly>
+<button id="browseBtn">Browse</button>
+<button id="scanBtn" class="secondary">Scan Project</button>
+</div>
+</div>
+<div class="card" id="scanResultCard" style="display:none">
+<h2>Scan Results</h2>
+<pre id="scanResultPre"></pre>
+</div>
+</div>
+
+<div class="tab" id="tab-export">
+<div class="card">
+<h2>Export Formats</h2>
+<p style="font-size:13px;color:#889;margin-bottom:10px">Resolve some packages first, then export the results.</p>
+<pre id="exportFormatsPre">Loading export formats...</pre>
+</div>
+<div class="card">
+<h2>Export Resolved Packages</h2>
+<div class="row">
+<select id="exportFormatSelect"></select>
+<button id="exportBtn" class="secondary">Export</button>
+</div>
+<div class="card" id="exportResultCard" style="display:none">
+<h2>Export Output</h2>
+<pre id="exportResultPre"></pre>
+</div>
+</div>
+</div>
+</main>
+</div>
+<footer>UDR Desktop — <span id="footerStatus">connecting to backend...</span></footer>
+
+<script>
+const ECOSYSTEMS = [
+  ['pypi','PyPI (Python)'],['conda','Conda'],['npm','NPM (Node.js)'],
+  ['crates','Crates.io (Rust)'],['maven','Maven (Java)'],['gomodules','Go Modules'],
+  ['apt','APT (Debian)'],['apk','APK (Alpine)'],['cocoapods','CocoaPods (iOS)'],
+  ['homebrew','Homebrew (macOS)'],['nuget','NuGet (.NET)'],['packagist','Packagist (PHP)'],
+  ['rubygems','RubyGems']
+]
+
+function populateSelect(id, ecosystems) {
+  const sel = document.getElementById(id)
+  sel.innerHTML = ecosystems.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')
+}
+
+let BASE = 'http://127.0.0.1:8199'
+let lastResolved = null
+let exportFormats = []
+
+async function getBaseUrl() {
+  if (window.udrDesktop) {
+    try { BASE = await window.udrDesktop.getBackendUrl() || BASE } catch(e) {}
+  } else if (window.__UDR_BACKEND_URL__) {
+    BASE = window.__UDR_BACKEND_URL__
+  }
+}
+getBaseUrl()
+
+function setStatus(ok, msg) {
+  document.getElementById('statusDot').className = 'status-dot ' + (ok ? 'green' : 'red')
+  document.getElementById('statusText').textContent = msg
+  document.getElementById('footerStatus').textContent = msg
+}
+
+async function api(method, path, body) {
+  const opts = {method,headers:{'Content-Type':'application/json'}}
+  if(body) opts.body = JSON.stringify(body)
+  const r = await fetch(BASE + path, opts)
+  if (!r.ok) {
+    let detail = r.statusText
+    try { const j = await r.json(); detail = j.detail || detail } catch(e) {}
+    throw new Error(`${r.status}: ${detail}`)
+  }
+  return r.json()
+}
+
+function showError(prefix, e, el) {
+  const msg = e.cause === 'ERR_CONNECTION_REFUSED'
+    ? `Cannot connect to backend. Make sure the server is running on ${BASE}`
+    : e.message
+  if (el) el.textContent = prefix + msg
+  else console.error(prefix, msg)
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name))
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name))
+}
+
+document.getElementById('tabNav').addEventListener('click', e => {
+  const btn = e.target.closest('.nav-btn')
+  if (btn) switchTab(btn.dataset.tab)
+})
+
+populateSelect('ecoSelect', ECOSYSTEMS)
+populateSelect('searchEco', [['','All ecosystems'],...ECOSYSTEMS])
+
+async function init() {
+  try {
+    const health = await api('GET', '/api/v1/health')
+    setStatus(true, 'connected')
+    const root = await api('GET', '/')
+    document.getElementById('dashStatus').textContent = 'Healthy'
+    document.getElementById('dashVersion').textContent = root.version || health.version || '-'
+    document.getElementById('dashMode').textContent = root.mode || health.mode || 'local'
+    const ecoRes = await api('GET', '/api/v1/packages/ecosystems').catch(() => ({ecosystems:ECOSYSTEMS.map(e=>e[0])}))
+    document.getElementById('dashEco').textContent = (ecoRes.ecosystems || ecoRes.data || ECOSYSTEMS.map(e=>e[0])).length + ' available'
+    loadExportFormats()
+    loadSystemInfo()
+  } catch(e) {
+    setStatus(false, 'disconnected')
+    document.getElementById('dashStatus').textContent = 'Disconnected'
+  }
+}
+
+async function loadExportFormats() {
+  const el = document.getElementById('exportFormatsPre')
+  try {
+    const res = await api('GET', '/api/v1/packages/export-formats')
+    exportFormats = res.formats || []
+    const sel = document.getElementById('exportFormatSelect')
+    sel.innerHTML = exportFormats.map(f =>
+      `<option value="${f.format}">${f.format} — ${f.description}</option>`
+    ).join('')
+    el.textContent = JSON.stringify(exportFormats, null, 2)
+  } catch(e) {
+    el.textContent = 'Failed to load: ' + e.message
+  }
+}
+
+async function loadSystemInfo() {
+  const grid = document.getElementById('sysInfoGrid')
+  const pre = document.getElementById('runtimePre')
+  try {
+    const info = await api('GET', '/api/v1/system/info')
+    const s = info.system || info.data || {}
+    grid.innerHTML = [
+      ['OS', s.os || '-'],
+      ['CPU', s.cpu || '-'],
+      ['GPU', s.gpu || 'None detected'],
+      ['CUDA', s.cuda || 'Not available'],
+      ['Python', s.python || '-'],
+    ].map(([l,v]) => `<div class="info-item"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')
+    pre.textContent = JSON.stringify(info, null, 2)
+  } catch(e) {
+    grid.innerHTML = `<div class="info-item"><div class="label">Error</div><div class="value">${e.message}</div></div>`
+    pre.textContent = 'Error: ' + e.message
+  }
+}
+
+document.getElementById('resolveBtn').addEventListener('click', async () => {
+  const raw = document.getElementById('pkgInput').value.trim()
+  if(!raw) return
+  const eco = document.getElementById('ecoSelect').value
+  const packages = raw.split(/\s+/).map(p => {
+    if(p.includes('@')) {
+      const [name, e] = p.split('@')
+      return {name, ecosystem: e}
+    }
+    return {name: p, ecosystem: eco}
+  })
+  const btn = document.getElementById('resolveBtn')
+  btn.disabled = true; btn.textContent = 'Resolving...'
+  const card = document.getElementById('resolveResultCard')
+  const pre = document.getElementById('resolveResultPre')
+  card.style.display = 'block'; pre.textContent = 'Resolving...'
+  try {
+    const result = await api('POST', '/api/v1/packages/resolve', {packages})
+    lastResolved = result
+    pre.textContent = JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError('', e, pre)
+  }
+  btn.disabled = false; btn.textContent = 'Resolve'
+})
+
+document.getElementById('searchBtn').addEventListener('click', async () => {
+  const q = document.getElementById('searchInput').value.trim()
+  if(!q) return
+  const eco = document.getElementById('searchEco').value
+  const btn = document.getElementById('searchBtn')
+  btn.disabled = true; btn.textContent = 'Searching...'
+  const card = document.getElementById('searchResultCard')
+  const pre = document.getElementById('searchResultPre')
+  card.style.display = 'block'; pre.textContent = 'Searching...'
+  try {
+    const params = new URLSearchParams({q})
+    if(eco) params.set('ecosystems', eco)
+    const result = await api('GET', '/api/v1/packages/search?' + params.toString())
+    pre.textContent = JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError('', e, pre)
+  }
+  btn.disabled = false; btn.textContent = 'Search'
+})
+
+document.getElementById('refreshSysBtn').addEventListener('click', loadSystemInfo)
+
+document.getElementById('browseBtn').addEventListener('click', async () => {
+  if (window.udrDesktop) {
+    const dir = await window.udrDesktop.selectDirectory()
+    if (dir) document.getElementById('scanPath').value = dir
+  } else {
+    document.getElementById('scanPath').value = prompt('Enter directory path:')
+  }
+})
+
+document.getElementById('scanBtn').addEventListener('click', async () => {
+  const dir = document.getElementById('scanPath').value.trim()
+  if(!dir) return
+  const btn = document.getElementById('scanBtn')
+  btn.disabled = true; btn.textContent = 'Scanning...'
+  const card = document.getElementById('scanResultCard')
+  const pre = document.getElementById('scanResultPre')
+  card.style.display = 'block'; pre.textContent = 'Scanning project directory...'
+  try {
+    const result = await api('POST', '/api/v1/scan/local', {directory_path: dir})
+    pre.textContent = JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError('', e, pre)
+  }
+  btn.disabled = false; btn.textContent = 'Scan Project'
+})
+
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  if (!lastResolved) {
+    document.getElementById('exportResultCard').style.display = 'block'
+    document.getElementById('exportResultPre').textContent = 'No resolution results yet. Go to Resolve tab first.'
+    return
+  }
+  const fmt = document.getElementById('exportFormatSelect').value
+  const btn = document.getElementById('exportBtn')
+  btn.disabled = true; btn.textContent = 'Exporting...'
+  const card = document.getElementById('exportResultCard')
+  const pre = document.getElementById('exportResultPre')
+  card.style.display = 'block'; pre.textContent = 'Exporting...'
+  try {
+    const result = await api('POST', '/api/v1/packages/export', {
+      format: fmt,
+      resolved_packages: lastResolved.data || lastResolved,
+    })
+    pre.textContent = result.content || JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError('', e, pre)
+  }
+  btn.disabled = false; btn.textContent = 'Export'
+})
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('searchBtn').click()
+})
+document.getElementById('pkgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('resolveBtn').click()
+})
+
+init()
+</script>
+</body>
+</html>

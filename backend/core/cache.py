@@ -2,7 +2,7 @@
 import json
 import hashlib
 import time
-from typing import Any, Optional, Union, List, Dict, Callable
+from typing import Any, Optional, List, Dict, Callable
 import asyncio
 from functools import wraps
 from urllib.parse import urlparse
@@ -18,8 +18,6 @@ except ImportError:
 from backend.settings import (
     REDIS_URL,
     CACHE_TTL,
-    CACHE_TTL_SHORT,
-    CACHE_TTL_LONG,
     FEATURES,
 )
 

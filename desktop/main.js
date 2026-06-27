@@ -28,7 +28,7 @@ function getFallbackCommands() {
     cmds.push({ cmd: binPath, args: [], isBinary: true })
   }
   const pythonName = isWin ? 'python' : 'python3'
-  cmds.push({ cmd: pythonName, args: ['-m', 'uvicorn', 'backend.api.main:app'], isBinary: false })
+  cmds.push({ cmd: pythonName, args: ['-m', 'backend.cli', 'serve', '--mode', 'local'], isBinary: false })
   return cmds
 }
 
@@ -112,18 +112,16 @@ async function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:8080')
+    mainWindow.loadFile(path.join(__dirname, 'index.html'))
     mainWindow.webContents.openDevTools()
   } else {
-    const distPath = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html')
-    mainWindow.loadFile(distPath)
+    mainWindow.loadFile(path.join(__dirname, 'index.html'))
   }
 
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
     })
 
-    // Show startup progress
     mainWindow.webContents.executeJavaScript(
       `console.log('UDR Desktop: starting backend on port ${backendPort}...')`
     )
@@ -137,13 +135,11 @@ async function createWindow() {
     if (Notification.isSupported()) {
       new Notification({ title: 'UDR', body: 'Backend started successfully' })
     }
+    mainWindow.webContents.send('backend-ready')
   } catch (e) {
     console.error('Backend start failed:', e.message)
     let msg = `The backend server could not be started.\n\n${e.message}${launcher.getPlatformHint(isMac, isWin)}`
-    if (e.message.includes('exited unexpectedly') || e.message.includes('crashed')) {
-      msg += '\n\nThe bundled backend binary may be blocked by antivirus or missing system libraries. Try running the Python backend manually:\n  python3 -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8199'
-    }
-    msg += '\n\nMake sure Python 3.11+ is installed. If Python is already installed, try running the backend manually.'
+    msg += '\n\nIf this problem persists, install the Python package:\n  pip install ud-resolver\nThen run: udr serve\n\nOr try reinstalling the desktop app.'
     dialog.showErrorBox('Backend Failed to Start', msg)
   }
 

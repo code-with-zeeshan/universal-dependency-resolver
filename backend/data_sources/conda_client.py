@@ -1,6 +1,6 @@
 # conda_client.py
 import aiohttp
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 import json
 import logging
 from datetime import datetime
@@ -8,10 +8,8 @@ import re
 import yaml
 import tarfile
 import io
-from packaging.version import parse
-from urllib.parse import urljoin
 from ..core.utils import normalize_package_name, parse_version, run_async
-from ..settings import CONDA_CHANNELS, CACHE_TTL, USER_AGENTS
+from ..settings import CONDA_CHANNELS
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -22,11 +20,6 @@ class CondaClient(BaseDataSourceClient):
         super().__init__(
             ecosystem="conda",
             base_url="https://api.anaconda.org",
-            cache_ttl=CACHE_TTL,
-            user_agent=USER_AGENTS.get("conda", USER_AGENTS["default"]),
-            rate_limit=600,
-            timeout=30,
-            max_retries=3,
         )
 
         self.channels = CONDA_CHANNELS.copy()

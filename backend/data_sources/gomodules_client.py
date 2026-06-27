@@ -1,24 +1,16 @@
 # data_sources/gomodules_client.py
-import aiohttp
-from typing import Dict, List, Optional, Any, Tuple, Set
+from typing import Dict, List, Optional, Any
 import json
 import logging
-from datetime import datetime
-from urllib.parse import quote
 import re
-from backend.core.cache import cache_manager, cached, CacheKeys
+from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
     parse_version,
-    compare_versions,
     run_async,
 )
 from backend.settings import (
     CACHE_TTL,
-    USER_AGENTS,
-    RATE_LIMITS,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -33,11 +25,6 @@ class GoModulesClient(BaseDataSourceClient):
         super().__init__(
             ecosystem="gomodules",
             base_url=go_config.get("url", "https://proxy.golang.org"),
-            cache_ttl=go_config.get("cache_ttl", CACHE_TTL),
-            user_agent=USER_AGENTS.get("gomodules", USER_AGENTS["default"]),
-            rate_limit=go_config.get("rate_limit", RATE_LIMITS.get("gomodules", 600)),
-            timeout=REQUEST_TIMEOUT,
-            max_retries=MAX_RETRIES,
         )
 
         self.sum_db_url = go_config.get("sum_db_url", "https://sum.golang.org")

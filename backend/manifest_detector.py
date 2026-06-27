@@ -7,10 +7,9 @@ package to its ecosystem for resolution.
 """
 
 import json
-import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 # Map filename patterns → (ecosystem, parser_func)
@@ -151,8 +150,8 @@ class ManifestDetector:
 
     def _parse_pipfile(self, content: str) -> List[Dict]:
         try:
-            import toml
-            data = toml.loads(content)
+            import tomllib
+            data = tomllib.loads(content)
         except Exception:
             return []
         packages = []
@@ -186,8 +185,8 @@ class ManifestDetector:
 
     def _parse_pyproject(self, content: str) -> List[Dict]:
         try:
-            import toml
-            data = toml.loads(content)
+            import tomllib
+            data = tomllib.loads(content)
         except Exception:
             return []
         packages = []
@@ -266,8 +265,8 @@ class ManifestDetector:
 
     def _parse_cargo_toml(self, content: str) -> List[Dict]:
         try:
-            import toml
-            data = toml.loads(content)
+            import tomllib
+            data = tomllib.loads(content)
         except Exception:
             return []
         packages = []
@@ -284,8 +283,8 @@ class ManifestDetector:
 
     def _parse_cargo_lock(self, content: str) -> List[Dict]:
         try:
-            import toml
-            data = toml.loads(content)
+            import tomllib
+            data = tomllib.loads(content)
         except Exception:
             return []
         packages = []

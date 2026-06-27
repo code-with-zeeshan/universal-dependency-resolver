@@ -1,6 +1,6 @@
 # backend/api/routes/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from typing import List, Dict
+from typing import List
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -8,7 +8,6 @@ from datetime import datetime
 from backend.api.auth import (
     AuthService,
     get_current_user,
-    get_current_active_user,
     UserCreate,
     UserLogin,
     APIKeyCreate,

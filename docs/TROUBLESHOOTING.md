@@ -21,8 +21,7 @@ If Redis is set but unreachable:
 ### Port Already in Use
 
 ```bash
-lsof -i :8000  # Backend
-lsof -i :8080  # Frontend
+lsof -i :8000  # Backend (or whatever UDR_PORT is set to)
 ```
 
 ## Database Issues
@@ -52,15 +51,6 @@ pytest -v
 pytest --cov=backend
 ```
 
-### Frontend Tests Fail
-
-```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-npm run test
-```
-Requires Node.js 18+.
 
 ## API Issues
 
@@ -76,9 +66,8 @@ Wait for reset or increase via environment variables.
 
 ### Authentication Errors
 
-- Auth is **disabled by default** for the backend server (`ENABLE_AUTH=false` in development)
-- The Desktop app enables auth automatically with a randomly generated secret key
-- For production server: set `ENABLE_AUTH=true` and configure `SECRET_KEY`
+- Auth is **disabled by default** (`UDR_MODE=local` or `--mode local`)
+- For SaaS deployment: run with `UDR_MODE=saas` or `--mode saas` to enable JWT + API key auth
 - Tokens expire after configurable minutes (default: 30)
 
 ## Performance

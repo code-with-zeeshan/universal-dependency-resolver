@@ -1,8 +1,7 @@
 # conflict_resolver.py
-from typing import Dict, List, Set, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 import networkx as nx
 from packaging import version
-from packaging.specifiers import SpecifierSet
 import z3
 import logging
 import re
@@ -14,8 +13,6 @@ import uuid
 import platform
 
 from backend.utils.errors import (
-    ErrorCategory,
-    ErrorFactory,
     ResolverError,
     ResolverErrorCode,
     ensure_details_context,

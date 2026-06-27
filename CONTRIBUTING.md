@@ -49,7 +49,6 @@ Before contributing, ensure you have:
 
 - **Git** installed and configured
 - **Python 3.11+** for backend development
-- **Node.js 18+** for frontend development
 - **Docker & Docker Compose** for local development
 - **PostgreSQL 15+** (or use Docker)
 - **Redis 7+** (or use Docker)
@@ -75,11 +74,6 @@ python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 alembic upgrade head
-
-# Frontend
-cd frontend
-npm install
-npm run serve
 ```
 
 ## 🛠️ Development Setup
@@ -91,7 +85,7 @@ npm run serve
 pip install -e ".[dev]"
 
 # Run backend server
-uvicorn backend.api.main:app --reload
+python -m backend.cli serve --reload
 
 # Run tests
 pytest tests/ -v --cov=.
@@ -100,22 +94,16 @@ pytest tests/ -v --cov=.
 black .
 flake8 .
 ```
-### Frontend Development
+### Desktop App Development
 
 ```bash
-# Install dependencies
+cd desktop
 npm install
 
-# Start development server
-npm run serve
+# Run desktop app (dev mode, uses backend from venv)
+npm start
 
-# Run tests
-npm run test:unit
-
-# Lint code
-npm run lint
-
-# Build for production
+# Build desktop binaries
 npm run build
 ```
 ### Database Management
@@ -141,7 +129,7 @@ Type	                     Description	                        Labels
 ✨ Features	                Add new functionality	               enhancement, feature
 📚 Documentation	         Improve docs	                        documentation
 🧪 Tests	                 Add or improve tests	                testing
-🎨 UI/UX	                 Frontend improvements	                frontend, ui/ux
+🎨 UI/UX	                 GUI/UX improvements	                    ui/ux
 ⚡ Performance	             Optimize performance	                 performance
 🔧 Refactoring	             Code improvements	                     refactor
 🔒 Security	                 Security enhancements	                 security
@@ -238,7 +226,6 @@ Relates to #456
 
 Examples:
 feat(api): add support for Rust crates ecosystem
-fix(frontend): resolve package search timeout issue
 docs(readme): update installation instructions
 test(backend): add unit tests for conflict resolver
 ```
@@ -330,50 +317,13 @@ def resolve_dependencies(
     """
     pass
 ```
-### JavaScript/Vue.js (Frontend)
+### Desktop (Electron)
 
-* Style Guide: ESLint with Vue.js plugin
+* Style Guide: Standard JS with ESLint
 * Formatter: Prettier with 2-space indentation
-* Components: Use Composition API and <script setup>
-* Naming: PascalCase for components, camelCase for functions
-
-```bash
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-
-// Props with TypeScript-style definition
-const props = defineProps({
-  packages: {
-    type: Array,
-    required: true
-  }
-})
-
-// Reactive data
-const loading = ref(false)
-const results = ref([])
-
-// Computed properties
-const filteredResults = computed(() => {
-  return results.value.filter(result => result.compatible)
-})
-
-// Methods
-const searchPackages = async (query) => {
-  loading.value = true
-  try {
-    // Implementation
-  } finally {
-    loading.value = false
-  }
-}
-
-// Lifecycle
-onMounted(() => {
-  searchPackages()
-})
-</script>
-```
+* Main process: Use `main.js` for Electron lifecycle and IPC
+* Renderer: Inline HTML/CSS/JS in `index.html` (no framework)
+* Preload: Use `preload.js` for secure bridge between main/renderer
 ### Commit Message Format
 
 #### Use Conventional Commits:
@@ -399,7 +349,6 @@ Types:
 
 Examples:
 feat(api): add support for Go modules
-fix(frontend): resolve search input validation
 docs(readme): update installation instructions
 test(backend): add integration tests for conflict resolver
 ```
@@ -442,38 +391,12 @@ class TestConflictResolver:
         # Implementation
         pass
 ```
-### Frontend Testing
+### Desktop Testing
 
-```bash
-// Component test example
-import { mount } from '@vue/test-utils'
-import SystemInfo from '@/components/SystemInfo.vue'
-import systemService from '@/services/systemService'
-
-jest.mock('@/services/systemService')
-
-describe('SystemInfo.vue', () => {
-  it('renders system info section', () => {
-    const wrapper = mount(SystemInfo)
-    expect(wrapper.text()).toContain('System Information')
-  })
-
-  it('displays system data after loading', async () => {
-    systemService.getSystemInfo.mockResolvedValue({
-      platform: { system: 'Linux', release: '6.2' },
-      cpu: { brand: 'Intel Core i7', count: 4 },
-      memory: { total: 16000000000, available: 8000000000 }
-    })
-    const wrapper = mount(SystemInfo)
-    await new Promise(process.nextTick)
-    expect(wrapper.text()).toContain('Linux')
-  })
-})
-```
+The desktop app uses Electron + inline HTML/JS for the GUI. Tests are run via `pytest` for the backend (which the desktop launches internally). There is no separate frontend test suite.
 ### Test Coverage Requirements
 
 * Backend: Minimum 80% code coverage
-* Frontend: Minimum 70% code coverage
 * Critical paths: 95% coverage required
 * New features: Must include comprehensive tests
 

@@ -13,13 +13,12 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     event,
-    Table,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
 from datetime import datetime
 from contextlib import contextmanager
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import os
 import sys
 

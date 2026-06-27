@@ -1355,23 +1355,27 @@ def _get_compiler_version(compiler: str) -> Optional[str]:
 async def _benchmark_cpu() -> Dict[str, Any]:
     """Run CPU benchmark"""
     import time
-    import numpy as np
 
     results = {}
 
-    # Single-threaded benchmark
-    start = time.time()
-    size = 2000
-    a = np.random.rand(size, size)
-    b = np.random.rand(size, size)
-    c = np.dot(a, b)
-    single_thread_time = time.time() - start
+    try:
+        import numpy as np
 
-    results["matrix_multiply_single"] = {
-        "time_seconds": round(single_thread_time, 3),
-        "size": f"{size}x{size}",
-        "gflops": round((2 * size**3) / (single_thread_time * 1e9), 2),
-    }
+        # Single-threaded benchmark
+        start = time.time()
+        size = 2000
+        a = np.random.rand(size, size)
+        b = np.random.rand(size, size)
+        c = np.dot(a, b)
+        single_thread_time = time.time() - start
+
+        results["matrix_multiply_single"] = {
+            "time_seconds": round(single_thread_time, 3),
+            "size": f"{size}x{size}",
+            "gflops": round((2 * size**3) / (single_thread_time * 1e9), 2),
+        }
+    except ImportError:
+        results["matrix_multiply_single"] = {"error": "numpy not installed", "skipped": True}
 
     # Integer operations benchmark
     start = time.time()
@@ -1531,8 +1535,12 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
     """Run multi-core CPU benchmark"""
     import concurrent.futures
     import time
-    import numpy as np
     import multiprocessing
+
+    try:
+        import numpy as np
+    except ImportError:
+        return {"error": "numpy not installed", "skipped": True}
 
     def cpu_task(size=1000):
         a = np.random.rand(size, size)
@@ -1678,9 +1686,13 @@ def _compare_benchmark_results(benchmarks: Dict[str, Any]) -> Dict[str, Any]:
 
             for test, metrics in tests.items():
                 if test in benchmarks[category]:
+                    actual = benchmarks[category][test]
+                    if not isinstance(actual, dict):
+                        continue
+
                     for metric, ranges in metrics.items():
-                        if metric in benchmarks[category][test]:
-                            value = benchmarks[category][test][metric]
+                        if metric in actual:
+                            value = actual[metric]
 
                             rating = "poor"
                             for level in ["poor", "average", "good", "excellent"]:

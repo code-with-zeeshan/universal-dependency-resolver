@@ -1,15 +1,13 @@
 # backend/api/routes/scan.py
 import asyncio
 import io
-import json
 import logging
-import os
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from backend.manifest_detector import ManifestDetector
@@ -20,7 +18,6 @@ from backend.cli import (
     _aggregator_to_resolver_input,
     _resolve_transitive,
     _apply_cuda_variants,
-    _parse_package_spec,
 )
 
 logger = logging.getLogger(__name__)

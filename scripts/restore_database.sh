@@ -65,11 +65,9 @@ gunzip -c "$BACKUP_FILE" | psql "$DATABASE_URL"
 echo "Database restoration completed successfully!"
 
 # Run migrations to ensure schema is up to date
-if [ -f "backend/alembic.ini" ]; then
+if [ -f "alembic/alembic.ini" ]; then
     echo "Running database migrations..."
-    cd backend
-    alembic upgrade head
-    cd ..
+    alembic -c alembic/alembic.ini upgrade head
 fi
 
 echo "Restoration process complete!"
