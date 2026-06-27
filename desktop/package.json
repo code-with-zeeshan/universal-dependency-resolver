@@ -1,6 +1,6 @@
 {
   "name": "udr-desktop",
-  "version": "1.1.16",
+  "version": "1.1.17",
   "description": "Universal Dependency Resolver — Desktop App",
   "homepage": "https://github.com/code-with-zeeshan/universal-dependency-resolver",
   "repository": {
@@ -76,7 +76,7 @@
       "shortcutName": "UDR",
       "unicode": true,
       "warningsAsErrors": false,
-      "runAfterFinish": true,
+      "runAfterFinish": false,
       "license": "../LICENSE"
     },
     "mac": {
