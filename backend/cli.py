@@ -401,10 +401,10 @@ def cmd_check(args):
         table.add_column("Status", style="bold")
 
         table.add_row("OS", f"{info['platform']['system']} {info['platform']['release']}", "✅")
-        arch = info['platform'].get('machine', info['cpu']['arch'])
+        arch = info['platform'].get('machine', info.get('cpu', {}).get('arch', 'unknown'))
         table.add_row("Architecture", arch, "✅")
-        cpu_cores = info['cpu'].get('count_logical') or info['cpu'].get('count_physical') or info['cpu'].get('count', '?')
-        table.add_row("CPU", f"{info['cpu']['brand']} ({cpu_cores} cores)", "✅")
+        cpu_cores = info.get('cpu', {}).get('count_logical') or info.get('cpu', {}).get('count_physical') or info.get('cpu', {}).get('count', '?')
+        table.add_row("CPU", f"{info.get('cpu', {}).get('brand', 'Unknown')} ({cpu_cores} cores)", "✅")
 
         mem = info.get("memory", {})
         if mem:
@@ -427,7 +427,7 @@ def cmd_check(args):
 
         if args.verbose:
             table.add_row("Python path", py.get('path', py.get('location', '?')), "")
-            table.add_row("CPU arch", info['cpu']['arch'], "")
+            table.add_row("CPU arch", info.get('cpu', {}).get('arch', 'unknown'), "")
 
         console.print(table)
 
@@ -574,8 +574,8 @@ def cmd_info(args):
         table.add_column("Value")
 
         table.add_row("Architecture", info['platform']['machine'])
-        cpu_cores = info['cpu'].get('count_logical') or info['cpu'].get('count_physical') or info['cpu'].get('count', '?')
-        table.add_row("CPU", f"{info['cpu']['brand']} ({cpu_cores} cores)")
+        cpu_cores = info.get('cpu', {}).get('count_logical') or info.get('cpu', {}).get('count_physical') or info.get('cpu', {}).get('count', '?')
+        table.add_row("CPU", f"{info.get('cpu', {}).get('brand', 'Unknown')} ({cpu_cores} cores)")
         table.add_row("Python", info['runtime_versions']['python']['version'])
         py_path = info['runtime_versions']['python']
         table.add_row("Python path", py_path.get('path', py_path.get('location', '?')))
@@ -766,7 +766,7 @@ def cmd_lock(args):
             "system": {
                 "os": f"{system_info['platform']['system']} {system_info['platform']['release']}",
                 "python": system_info["runtime_versions"]["python"]["version"],
-                "cpu": system_info["cpu"]["brand"],
+                "cpu": system_info.get("cpu", {}).get("brand", "Unknown"),
                 "gpu": system_info["gpu"]["devices"][0]["name"] if system_info["gpu"]["available"] else None,
                 "cuda": system_info["gpu"].get("cuda") if system_info["gpu"]["available"] else None,
             },

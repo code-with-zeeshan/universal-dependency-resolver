@@ -416,6 +416,11 @@ class SystemScanner:
                 cpu_data.update(asdict(cpu_info))
             except Exception as e:
                 logger.error(f"cpuinfo error: {e}")
+                cpu_data.setdefault("brand", "Unknown")
+                cpu_data.setdefault("arch", platform.machine())
+                cpu_data.setdefault("bits", 64)
+                cpu_data.setdefault("count_logical", psutil.cpu_count(logical=True) if HAS_PSUTIL else 1)
+                cpu_data.setdefault("count_physical", psutil.cpu_count(logical=False) if HAS_PSUTIL else 1)
 
         # Additional info from psutil
         if HAS_PSUTIL:

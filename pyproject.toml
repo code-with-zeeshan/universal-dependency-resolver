@@ -121,3 +121,6 @@ udr = "backend.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["backend*"]
+
+[tool.setuptools.package-data]
+backend = ["core/templates/*.j2"]
