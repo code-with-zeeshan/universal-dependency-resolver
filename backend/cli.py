@@ -203,12 +203,15 @@ async def _resolve_transitive(
 
 
 def _apply_cuda_variants(resolved: Dict, package_details: Dict[str, Dict], system_info: Dict) -> Dict:
-    """After SAT resolution, select CUDA-tagged variants for PyPI packages."""
+    """After SAT resolution, select CUDA-tagged variants for PyPI packages.
+    Warns if CUDA variants exist but no GPU detected — skips blind selection.
+    """
     resolved_pkgs = resolved.get("resolved_packages", {})
     system_cuda = None
     if system_info and "gpu" in system_info:
         system_cuda = system_info["gpu"].get("cuda")
 
+    has_cuda_variants = False
     for pkg_name, pkg_info in resolved_pkgs.items():
         if pkg_info.get("ecosystem") != "pypi":
             continue
@@ -223,6 +226,11 @@ def _apply_cuda_variants(resolved: Dict, package_details: Dict[str, Dict], syste
 
         cuda_variants = _extract_cuda_variants(raw_versions, base_version)
         if cuda_variants:
+            has_cuda_variants = True
+            if not system_cuda:
+                err_console.print(f"  [yellow]⚠ CUDA variant available for {pkg_name} but no GPU detected[/yellow]")
+                err_console.print(f"     Use --cuda <version> to target a specific CUDA version")
+                continue
             best = _select_best_cuda_variant(cuda_variants, system_cuda)
             if best and best != base_version:
                 resolved_pkgs[pkg_name]["version"] = best
@@ -230,6 +238,9 @@ def _apply_cuda_variants(resolved: Dict, package_details: Dict[str, Dict], syste
                 resolved_pkgs[pkg_name]["cuda_version"] = next(
                     (v["cuda_version"] for v in cuda_variants if v["version"] == best), None
                 )
+
+    if has_cuda_variants and not system_cuda:
+        err_console.print("  [yellow]⚠ CUDA variants exist but were not selected — resolution is CPU-only[/yellow]")
 
     if resolved_pkgs:
         resolved["resolved_packages"] = resolved_pkgs
@@ -766,6 +777,13 @@ def cmd_lock(args):
             p.add_task("system", total=None)
             system_info = await scanner.scan_all()
 
+        # Override CUDA version if --cuda was provided
+        if args.cuda is not None:
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["cuda"] = args.cuda
+
         # 5. Resolve
         with Progress(SpinnerColumn(), TextColumn("Resolving dependencies..."), transient=True, console=err_console) as p:
             p.add_task("SAT solver", total=None)
@@ -1038,6 +1056,37 @@ def cmd_verify(args):
         sys.exit(1)
 
 
+def cmd_scan(args):
+    """Scan a remote repository or local path — detect manifests, resolve dependencies."""
+    if args.github:
+        _cmd_scan_github(args)
+    elif args.directory:
+        args.directory = args.directory
+        cmd_lock(args)
+    else:
+        console.print("[red]Specify --github <url> or --directory <path>[/red]")
+        sys.exit(1)
+
+
+def _cmd_scan_github(args):
+    """Clone a GitHub repo, detect manifests, resolve dependencies."""
+    try:
+        from backend.api.routes.scan import _download_github_repo
+
+        console.print(f"[bold]Scanning GitHub repo:[/bold] [cyan]{args.github}[/cyan]")
+        repo_path = _download_github_repo(args.github, args.branch)
+        console.print(f"  Cloned to: [dim]{repo_path}[/dim]")
+
+        # Reuse lock logic on the downloaded repo
+        original_directory = args.directory
+        args.directory = str(repo_path)
+        cmd_lock(args)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(Panel(f"[red]{e}[/red]", title="Scan Error"))
+        sys.exit(1)
 def cmd_list_ecosystems(args):
     """List all supported ecosystems."""
     table = Table(title=f"Supported Ecosystems ({len(ECOSYSTEMS)})", box=box.ROUNDED)
@@ -1168,6 +1217,7 @@ def _build_parser() -> argparse.ArgumentParser:
     lock_p.add_argument("--dry-run", action="store_true", help="Show what would be done without writing files")
     lock_p.add_argument("--interactive", "-i", action="store_true",
                         help="Interactive mode: select manifests + resolve conflicts manually")
+    lock_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1) — overrides auto-detection for GPU packages")
     lock_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
@@ -1196,6 +1246,17 @@ def _build_parser() -> argparse.ArgumentParser:
     update_p.add_argument("--interactive", "-i", action="store_true",
                           help="Interactive mode for resolving conflicts manually")
 
+    scan_p = sub.add_parser("scan", help="Scan a GitHub repo or local path without manual clone/cd")
+    scan_p.add_argument("--github", help="GitHub repository URL (e.g. https://github.com/user/repo)")
+    scan_p.add_argument("--branch", default="main", help="Git branch to scan (default: main)")
+    scan_p.add_argument("--directory", help="Local project directory to scan")
+    scan_p.add_argument("-y", "--yes", action="store_true", help="Update manifests without prompting")
+    scan_p.add_argument("--export", help="Export to a specific format")
+    scan_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1)")
+    scan_p.add_argument("--dry-run", action="store_true", help="Show what would be done without writing files")
+    scan_p.add_argument("--interactive", "-i", action="store_true",
+                        help="Interactive mode for selecting manifests and resolving conflicts")
+
     return parser
 
 
@@ -1212,6 +1273,7 @@ def main():
         "resolve": cmd_resolve,
         "info": cmd_info,
         "lock": cmd_lock,
+        "scan": cmd_scan,
         "graph": cmd_graph,
         "verify": cmd_verify,
         "list-ecosystems": cmd_list_ecosystems,
