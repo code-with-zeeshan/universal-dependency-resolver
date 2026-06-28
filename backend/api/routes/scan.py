@@ -7,13 +7,15 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
 from pydantic import BaseModel
 
 from backend.manifest_detector import ManifestDetector
 from backend.core.data_aggregator import DataAggregator
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
+from backend.core.export_generator import ExportGenerator
+from backend.api.auth import get_current_user
 from backend.cli import (
     _aggregator_to_resolver_input,
     _resolve_transitive,
@@ -56,12 +58,13 @@ def _download_github_repo(url: str, branch: str) -> Path:
     return tmp
 
 
-async def _run_resolution_pipeline(project_dir: Path) -> dict:
+async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[str] = None) -> dict:
     """Run manifest detection + resolution on a project directory."""
     detector = ManifestDetector(str(project_dir))
     aggregator = DataAggregator()
     resolver = ConflictResolver()
     scanner = SystemScanner()
+    exporter = ExportGenerator() if export_format else None
 
     manifests = detector.detect()
     if not manifests:
@@ -103,6 +106,23 @@ async def _run_resolution_pipeline(project_dir: Path) -> dict:
 
     resolved_pkgs = resolved.get("resolved_packages", {})
 
+    export_content = None
+    if export_format and exporter:
+        try:
+            export_content = exporter.generate(
+                {
+                    p["name"]: {
+                        "version": resolved_pkgs.get(p["name"], {}).get("version"),
+                        "ecosystem": p["ecosystem"],
+                    }
+                    for p in packages
+                },
+                format=export_format,
+                system_info=system_info,
+            )
+        except Exception as e:
+            logger.warning("Export failed: %s", e)
+
     return {
         "status": "success",
         "manifests": [{"filename": m["filename"], "ecosystem": m["ecosystem"]} for m in manifests],
@@ -125,16 +145,21 @@ async def _run_resolution_pipeline(project_dir: Path) -> dict:
             "gpu": system_info["gpu"]["devices"][0]["name"] if system_info["gpu"]["available"] else None,
             "cuda": system_info["gpu"].get("cuda") if system_info["gpu"]["available"] else None,
         },
+        "export": export_content,
     }
 
 
 @router.post("/scan/github")
-async def scan_github(req: GitHubScanRequest):
+async def scan_github(
+    req: GitHubScanRequest,
+    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    current_user=Depends(get_current_user),
+):
     """Clone a GitHub repo, detect manifests, resolve all dependencies."""
     loop = asyncio.get_event_loop()
     project_dir = await loop.run_in_executor(None, _download_github_repo, req.repo_url, req.branch)
     try:
-        result = await _run_resolution_pipeline(project_dir)
+        result = await _run_resolution_pipeline(project_dir, export_format=export)
         result["source"] = "github"
         result["repo_url"] = req.repo_url
         return result
@@ -144,7 +169,11 @@ async def scan_github(req: GitHubScanRequest):
 
 
 @router.post("/scan/upload")
-async def scan_upload(file: UploadFile = File(...)):
+async def scan_upload(
+    file: UploadFile = File(...),
+    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    current_user=Depends(get_current_user),
+):
     """Upload a project archive (zip), detect manifests, resolve all dependencies."""
     if not file.filename or not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip files are supported")
@@ -152,13 +181,17 @@ async def scan_upload(file: UploadFile = File(...)):
     try:
         content = await file.read()
         z = zipfile.ZipFile(io.BytesIO(content))
+        for entry in z.infolist():
+            dest = (tmp / entry.filename).resolve()
+            if not str(dest).startswith(str(tmp.resolve())):
+                raise HTTPException(status_code=400, detail="Illegal path in zip archive")
         z.extractall(path=str(tmp))
         # Try to find project root (handle single top-level dir)
         project_dir = tmp
         contents = sorted(tmp.iterdir())
         if len(contents) == 1 and contents[0].is_dir():
             project_dir = contents[0]
-        result = await _run_resolution_pipeline(project_dir)
+        result = await _run_resolution_pipeline(project_dir, export_format=export)
         result["source"] = "upload"
         result["filename"] = file.filename
         return result
@@ -168,12 +201,16 @@ async def scan_upload(file: UploadFile = File(...)):
 
 
 @router.post("/scan/local")
-async def scan_local(req: LocalScanRequest):
+async def scan_local(
+    req: LocalScanRequest,
+    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    current_user=Depends(get_current_user),
+):
     """Scan a local directory path (only works when backend runs on same machine)."""
     project_dir = Path(req.directory_path).resolve()
     if not project_dir.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {req.directory_path}")
-    result = await _run_resolution_pipeline(project_dir)
+    result = await _run_resolution_pipeline(project_dir, export_format=export)
     result["source"] = "local"
     result["directory_path"] = str(project_dir)
     return result

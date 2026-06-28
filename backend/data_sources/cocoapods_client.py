@@ -25,17 +25,15 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         self.specs_url = cocoapods_config.get("specs_url", "https://cdn.cocoapods.org")
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = self._normalize_pod_name(package_name)
         try:
-            import requests
-
-            response = requests.get(
+            session = self._get_session()
+            response = await session.get(
                 f"{self.base_url}/pods/{quote(package_name)}",
-                timeout=5,
                 headers={"User-Agent": self.user_agent},
             )
-            return response.status_code == 200
+            return response.status == 200
         except Exception:
             return False
 

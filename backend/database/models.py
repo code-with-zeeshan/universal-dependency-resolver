@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     event,
 )
+from sqlalchemy.event import listen
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
 from datetime import datetime
@@ -363,7 +364,15 @@ def get_engine():
                 pool_pre_ping=True,
             )
         _engine = create_engine(DATABASE_URL, **kwargs)
+        if DATABASE_URL.startswith("sqlite"):
+            listen(_engine, "connect", _enable_sqlite_fk)
     return _engine
+
+
+def _enable_sqlite_fk(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def get_session_local():

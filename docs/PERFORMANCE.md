@@ -1,174 +1,42 @@
-# Performance Guide
+# Performance
 
-## 🚀 Performance Optimizations
+## Startup time
 
-The Universal Dependency Resolver implements several performance optimizations to handle high-throughput dependency resolution efficiently.
+The CLI starts in ~0.85s on a modern machine. This is achieved through:
 
-## ⚡ Caching Strategy
+- **Lazy `import z3`**: Z3 is imported inside 7 methods of `ConflictResolver`, not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
+- **Lazy data source clients**: All 13 ecosystem clients are registered via `importlib.import_module()` in `_register_client()` builders. They are only imported when first accessed.
+- **Lazy aggregator**: `DataAggregator` creates clients on demand.
 
-### Redis-Based Caching
-- **Resolution Results**: 1-hour TTL for dependency resolution results
-- **Package Metadata**: 24-hour TTL for package information
-- **System Compatibility**: 6-hour TTL for compatibility checks
+## Resolution performance
 
-### Cache Keys
-```
-resolution:{packages_hash}:{system_hash}  # Resolution results
-package:{ecosystem}:{name}:{version}     # Package info
-compatibility:{system_hash}:{pkg_hash}   # Compatibility checks
-```
+- Simple resolutions (1-3 packages, single ecosystem): <1s (after metadata fetch)
+- Complex resolutions (multi-ecosystem, many constraints): depends on Z3 solver time
 
-## 🔄 Async Processing
+## Caching
 
-### Batch Resolution
-```python
-# Process multiple independent resolutions in parallel
-results = await resolver.resolve_batch(package_batches, system_info)
-```
+| Layer | Type | Default TTL |
+|---|---|---|
+| Package metadata | DictCache (in-memory) or Redis | 1 hour |
+| Resolution results | DictCache or Redis | 1 hour |
+| System info | DictCache (5-min TTL) | 5 minutes |
+| System scan results | In-memory, refreshed per resolve | Per request |
 
-### Thread Pool Execution
-- Synchronous Z3 operations run in thread pools
-- Non-blocking I/O for external API calls
-- Concurrent database operations
+## Network
 
-## 🗄️ Database Optimization
+- All registry API calls use `aiohttp` with connection pooling
+- Concurrent fetching via `asyncio.gather` for package metadata
+- 5-second timeout on individual registry requests
+- Configurable rate limits per ecosystem (default: 60-600 req/min)
 
-### Connection Pooling
-- Pool size: 10 connections
-- Max overflow: 20 connections
-- Connection timeout: 30 seconds
-- Connection recycle: 1 hour
+## Desktop app
 
-### Indexes
-- `idx_package_name_ecosystem` on (name, ecosystem)
-- `idx_package_release_date` on release_date
-- `idx_package_download_count` on download_count DESC
+- Backend runs as a subprocess on a local port
+- GUI communicates via localhost REST API (no network overhead)
+- No Python install needed — compiled to standalone binary via PyInstaller
 
-### Query Optimization
-- Batch inserts for bulk operations
-- Selective field loading
-- Connection health checks with `pool_pre_ping=True`
+## Bottlenecks
 
-## 📊 Monitoring & Metrics
-
-### Prometheus Metrics
-- Request latency histograms
-- Cache hit/miss ratios
-- Database connection pool status
-- Resolution success/failure rates
-
-### Health Checks
-```json
-{
-  "database": {
-    "status": "healthy",
-    "pool_size": 10,
-    "checked_in": 8,
-    "checked_out": 2,
-    "overflow": 0
-  }
-}
-```
-
-## 🔧 Performance Tuning
-
-### Environment Variables
-```bash
-# Cache settings
-CACHE_TTL=3600
-CACHE_TTL_SHORT=300
-CACHE_TTL_LONG=86400
-
-# Database settings
-DB_POOL_SIZE=10
-DB_MAX_OVERFLOW=20
-DB_POOL_TIMEOUT=30
-
-# Async settings
-MAX_WORKERS=4
-THREAD_POOL_SIZE=8
-```
-
-### Scaling Considerations
-- **Horizontal Scaling**: Stateless design supports multiple instances
-- **Redis Clustering**: Distributed cache for multi-instance deployments
-- **Database Sharding**: Partition by ecosystem for large-scale deployments
-
-## 📈 Benchmarking
-
-### Performance Targets
-- Resolution time: <500ms for simple cases
-- Cache hit rate: >80% for repeated requests
-- API response time: <200ms P95
-- Concurrent users: 1000+ with proper scaling
-
-### Load Testing
-```bash
-# Load testing with K6
-k6 run tests/performance/load_test.js
-```
-
-## 🚨 Performance Troubleshooting
-
-### Common Issues
-1. **High Latency**: Check database connection pool exhaustion
-2. **Cache Misses**: Verify Redis connectivity and TTL settings
-3. **Memory Usage**: Monitor thread pool sizes and connection leaks
-
-### Monitoring Queries
-
-**PostgreSQL** — check connection pool and slow queries:
-```sql
-SELECT * FROM pg_stat_activity;
-SELECT * FROM pg_stat_statements ORDER BY total_time DESC;
-```
-
-**Redis** — inspect cache state:
-```bash
-redis-cli INFO stats
-redis-cli MEMORY STATS
-```
-
-## 🔍 Profiling
-
-### Python Profiling
-```bash
-# Profile resolution performance
-python -m cProfile -s time backend/core/conflict_resolver.py
-
-# Memory profiling
-from memory_profiler import profile
-@profile
-def resolve_dependencies():
-    # implementation
-```
-
-### Database Profiling
-```sql
--- Enable query logging
-SET log_statement = 'all';
-SET log_duration = 'on';
-
--- Analyze query performance
-EXPLAIN ANALYZE SELECT * FROM packages WHERE name LIKE 'tensorflow%';
-```
-
-## 📚 Best Practices
-
-### Code Optimization
-- Use async/await for I/O operations
-- Implement proper error handling to avoid retries
-- Cache expensive computations
-- Use database indexes effectively
-
-### Infrastructure
-- Use connection pooling for databases
-- Implement proper load balancing
-- Monitor resource usage
-- Set up auto-scaling based on metrics
-
-### API Design
-- Implement efficient pagination
-- Use compression for large responses
-- Cache static content
-- Rate limit expensive operations
+- **First-ever resolution** for a package requires remote API calls. Subsequent resolutions hit cache.
+- **Z3 solver** time scales with constraint complexity. Simple version ranges are fast; complex cross-ecosystem constraints take longer.
+- **System scanning** GPU detection via `pynvml` is fast (<100ms). Full system scan <500ms.

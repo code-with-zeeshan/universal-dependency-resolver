@@ -9,10 +9,6 @@ import re
 from enum import Enum
 from dataclasses import dataclass
 from ..settings import (
-    NPM_URL,
-    NPM_SEARCH_URL,
-    NPM_DOWNLOADS_API,
-    NPM_MIRROR_URLS,
     CACHE_TTL,
     get_ecosystem_config,
 )
@@ -49,7 +45,7 @@ class NPMClient(BaseDataSourceClient):
         timeout: int = None,
     ):
         npm_config = get_ecosystem_config("npm")
-        registry_url = (registry_url or npm_config.get("url", NPM_URL)).rstrip("/")
+        registry_url = (registry_url or npm_config.get("url", "https://registry.npmjs.org")).rstrip("/")
         self.registry_url = registry_url
         super().__init__(
             ecosystem="npm",
@@ -57,9 +53,9 @@ class NPMClient(BaseDataSourceClient):
             cache_ttl=cache_ttl or npm_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.search_url = NPM_SEARCH_URL
-        self.downloads_url = NPM_DOWNLOADS_API
-        self.mirror_urls = NPM_MIRROR_URLS
+        self.search_url = "https://registry.npmjs.org/-/v1/search"
+        self.downloads_url = "https://api.npmjs.org/downloads"
+        self.mirror_urls = []
         self._semver_cache: Dict[str, VersionRequirement] = {}
 
     async def _make_request(

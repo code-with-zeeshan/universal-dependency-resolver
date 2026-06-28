@@ -8,10 +8,6 @@ from fastapi import HTTPException
 from ..core.utils import normalize_package_name, parse_version
 import re
 from ..settings import (
-    MAVEN_CENTRAL_URL,
-    MAVEN_SEARCH_URL,
-    MAVEN_ARTIFACT_URL,
-    MAVEN_ADDITIONAL_REPOS,
     ENABLE_CACHE,
     get_ecosystem_config,
 )
@@ -28,12 +24,12 @@ class MavenClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="maven",
-            base_url=maven_config.get("search_url", MAVEN_SEARCH_URL),
+            base_url=maven_config.get("search_url", "https://search.maven.org/solrsearch/select"),
         )
 
-        self.artifact_url = MAVEN_ARTIFACT_URL
-        self.maven_repo_url = maven_config.get("url", MAVEN_CENTRAL_URL)
-        self.additional_repos = MAVEN_ADDITIONAL_REPOS
+        self.artifact_url = "https://search.maven.org/artifact"
+        self.maven_repo_url = maven_config.get("url", "https://repo1.maven.org/maven2")
+        self.additional_repos = []
         self._pom_cache = {} if ENABLE_CACHE else None
 
     def _should_cache(self, url: str) -> bool:

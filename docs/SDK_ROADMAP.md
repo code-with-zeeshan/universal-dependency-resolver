@@ -1,18 +1,18 @@
 # SDK Status
 
-## CLI Tool — ✅ DONE
+## CLI — Done
 
-The CLI tool is already built into the backend:
+The CLI is built into the `ud-resolver` package:
 
 ```bash
-python -m backend.cli resolve flask>=2.0.0
-python -m backend.cli lock flask>=2.0.0
-python -m backend.cli scan /path/to/project
+udr resolve flask>=2.0.0
+udr lock
+udr check
 ```
 
-## Python SDK — BUILT-IN
+## Python SDK — Done
 
-The entire backend is importable as a Python library:
+The entire backend is importable:
 
 ```python
 from backend.core.data_aggregator import DataAggregator
@@ -25,11 +25,11 @@ info = await aggregator.get_package_info("flask", "pypi")
 
 ## Planned
 
-- **JavaScript/TypeScript SDK** — Q3 2026 (wraps the REST API)
-- **Go Client** — Stretch goal (low priority)
+- **JavaScript/TypeScript SDK** — wraps the REST API (community interest driven)
+- **Go client** — stretch goal
 
 The REST API at `http://localhost:8000/api/v1/` is fully documented via OpenAPI at `/api/v1/docs`.
 
 ## Contribute
 
-PRs welcome for JS/TS and Go SDKs. SDK prioritization is driven by community interest — open an issue or upvote existing ones to signal demand.
+PRs welcome for JS/TS and Go SDKs. Open an issue or upvote existing ones to signal demand.

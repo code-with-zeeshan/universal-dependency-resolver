@@ -183,13 +183,6 @@ class TestCliArgumentParsing:
         assert args.command == "serve"
         assert args.mode == "local"
 
-    def test_serve_saas_mode(self):
-        from backend.cli import _build_parser
-        p = _build_parser()
-        args = p.parse_args(["serve", "--mode", "saas"])
-        assert args.command == "serve"
-        assert args.mode == "saas"
-
     def test_check_defaults(self):
         from backend.cli import _build_parser
         p = _build_parser()

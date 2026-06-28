@@ -8,8 +8,6 @@ from backend.core.cache import cached
 from enum import Enum
 from dataclasses import dataclass
 from backend.settings import (
-    NUGET_URL,
-    NUGET_API_URL,
     CACHE_TTL,
     get_ecosystem_config,
 )
@@ -57,7 +55,7 @@ class NuGetClient(BaseDataSourceClient):
         nuget_config = get_ecosystem_config("nuget")
 
         service_index_url = (
-            service_index_url or nuget_config.get("api_url", NUGET_API_URL)
+            service_index_url or nuget_config.get("api_url", "https://api.nuget.org/v3/index.json")
         ).rstrip("/")
         super().__init__(
             ecosystem="nuget",
@@ -65,7 +63,7 @@ class NuGetClient(BaseDataSourceClient):
             cache_ttl=cache_ttl or nuget_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.base_url = NUGET_URL
+        self.base_url = "https://www.nuget.org"
         self.service_index_url = service_index_url
         self.search_url = None
         self.package_base_url = None
@@ -116,14 +114,13 @@ class NuGetClient(BaseDataSourceClient):
         self.package_base_url = "https://api.nuget.org/v3-flatcontainer"
         self.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
+            session = self._get_session()
             url = f"{self.package_base_url or 'https://api.nuget.org/v3-flatcontainer'}/{package_name.lower()}/index.json"
-            response = requests.head(url, timeout=5)
-            return response.status_code == 200
+            response = await session.head(url)
+            return response.status == 200
         except Exception:
             return False
 

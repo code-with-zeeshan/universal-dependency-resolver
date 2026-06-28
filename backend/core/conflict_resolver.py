@@ -1,8 +1,8 @@
 # conflict_resolver.py
-from typing import Dict, List, Optional, Any
+from __future__ import annotations
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import networkx as nx
 from packaging import version
-import z3
 import logging
 import re
 import asyncio
@@ -11,6 +11,9 @@ import json
 import copy
 import uuid
 import platform
+
+if TYPE_CHECKING:
+    import z3
 
 from backend.utils.errors import (
     ResolverError,
@@ -34,6 +37,7 @@ class ConflictResolver:
 
     def __init__(self):
         """Initialize the conflict resolver with Z3 solver and dependency graph."""
+        import z3
         self.dependency_graph = nx.DiGraph()
         self.solver = z3.Solver()
         self.version_vars = {}  # Maps package_version strings to Z3 variables
@@ -748,6 +752,7 @@ class ConflictResolver:
 
     def _create_constraints(self, packages: List[Dict], system_info: Dict) -> Dict:
         """Create constraint system for SAT solver"""
+        import z3
         constraints = {
             "package_versions": {},
             "system_requirements": {},
@@ -799,6 +804,7 @@ class ConflictResolver:
         constraints: Dict,
     ):
         """Add constraints based on system requirements"""
+        import z3
         for req_type, req_value in requirements.items():
             if req_type == "cuda" and "gpu" in system_info:
                 if system_info["gpu"]["cuda"]:
@@ -832,6 +838,7 @@ class ConflictResolver:
 
     def _add_dependency_constraints(self, constraints: Dict):
         """Add constraints for package dependencies"""
+        import z3
         for node in self.dependency_graph.nodes():
             node_data = self.dependency_graph.nodes[node]
             pkg_name = node_data.get("name")
@@ -882,6 +889,7 @@ class ConflictResolver:
 
     def _add_conflict_constraints(self, packages: List[Dict], constraints: Dict):
         """Add known conflict constraints"""
+        import z3
         # Example: CUDA 11.x packages conflict with CUDA 12.x packages
         cuda_11_packages = []
         cuda_12_packages = []
@@ -915,6 +923,7 @@ class ConflictResolver:
 
     def _solve_constraints(self, constraints: Dict, prefer_compatibility: bool) -> Dict:
         """Solve the constraint system"""
+        import z3
         result = self.solver.check()
 
         if result == z3.sat:
@@ -1092,6 +1101,7 @@ class ConflictResolver:
 
     def _analyze_conflicts(self) -> List[Dict]:
         """Analyze why constraints are unsatisfiable using unsat core"""
+        import z3
         conflicts = []
 
         # Enable unsat core generation

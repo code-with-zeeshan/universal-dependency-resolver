@@ -3,14 +3,7 @@ import aiohttp
 from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 import re
-from ..settings import (
-    CACHE_TTL,
-    KNOWN_DOC_URLS,
-    DOC_SCRAPER_TIMEOUT,
-    USER_AGENTS,
-    DOC_SCRAPER_MAX_PAGES,
-    DOC_SCRAPER_FOLLOW_REDIRECTS,
-)
+from ..settings import CACHE_TTL, USER_AGENTS
 import logging
 from urllib.parse import quote
 from datetime import datetime
@@ -23,12 +16,28 @@ class DocumentationScraper:
     def __init__(self):
         self.session = None
         self.scraped_urls = set()
-        self.known_docs = KNOWN_DOC_URLS.copy()  # Use all URLs from settings
+        self.known_docs = {
+            "tensorflow": "https://www.tensorflow.org/install",
+            "pytorch": "https://pytorch.org/get-started/locally/",
+            "tensorrt": "https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html",
+            "opencv": "https://docs.opencv.org/master/d7/d9f/tutorial_linux_install.html",
+            "cuda": "https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html",
+            "numpy": "https://numpy.org/install/",
+            "pandas": "https://pydata.org/docs/getting_started/install.html",
+            "scikit-learn": "https://scikit-learn.org/stable/install.html",
+            "keras": "https://keras.io/getting_started/",
+            "mxnet": "https://mxnet.apache.org/versions/1.9.1/get_started",
+            "jax": "https://github.com/google/jax#installation",
+            "transformers": "https://huggingface.co/docs/transformers/installation",
+            "fastai": "https://docs.fast.ai/#Installing",
+            "lightgbm": "https://lightgbm.readthedocs.io/en/latest/Installation-Guide.html",
+            "xgboost": "https://xgboost.readthedocs.io/en/stable/install.html",
+        }
         self.compatibility_cache = {}
         self.cache_ttl = CACHE_TTL
-        self.timeout = DOC_SCRAPER_TIMEOUT
-        self.max_pages = DOC_SCRAPER_MAX_PAGES
-        self.follow_redirects = DOC_SCRAPER_FOLLOW_REDIRECTS
+        self.timeout = 30
+        self.max_pages = 10
+        self.follow_redirects = True
         self.user_agent = USER_AGENTS.get("documentation", USER_AGENTS["default"])
 
         # Documentation search patterns

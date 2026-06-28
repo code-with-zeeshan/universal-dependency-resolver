@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a bug to help us improve
 title: ''
 labels: 'bug'
 assignees: ''
@@ -9,16 +9,16 @@ assignees: ''
 **Describe the bug**
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. See error
+**To reproduce**
+Steps to reproduce the behavior.
 
 **Expected behavior**
-A clear and concise description of what you expected to happen.
+What you expected to happen instead.
 
 **Environment:**
-- OS: [e.g. Ubuntu 20.04]
-- Python Version: [e.g. 3.9.16]
-- Browser: [e.g. Chrome 91]
+- OS: [e.g. Ubuntu 24.04, macOS 14, Windows 11]
+- Python version: [e.g. 3.12.2]
+- CLI or Desktop: [e.g. CLI `udr resolve`, Desktop app v1.1.0]
+
+**Additional context**
+Add any other context, logs, or screenshots.

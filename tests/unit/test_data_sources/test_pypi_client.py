@@ -150,24 +150,27 @@ class TestPyPIClient:
             result = client.get_package_info("nonexistent")
         assert result is None
 
-    def test_package_exists_returns_true(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
+    async def test_package_exists_returns_true(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 200
             mock_head.return_value = mock_response
-            assert client.package_exists("flask") is True
+            assert await client.package_exists("flask") is True
             mock_head.assert_called_once()
 
-    def test_package_exists_returns_false(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 404
+    async def test_package_exists_returns_false(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 404
             mock_head.return_value = mock_response
-            assert client.package_exists("nonexistent") is False
+            assert await client.package_exists("nonexistent") is False
 
-    def test_package_exists_handles_exception(self, client):
-        with patch("requests.head", side_effect=Exception("Network error")):
-            assert client.package_exists("flask") is False
+    async def test_package_exists_handles_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", side_effect=Exception("Network error")):
+            assert await client.package_exists("flask") is False
 
     @pytest.fixture
     def sample_processed_pypi_response(self):

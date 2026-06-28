@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Request
 from typing import List, Optional, Dict
 from pydantic import BaseModel
+import asyncio
 import logging
 from packaging import version
 
@@ -23,6 +24,8 @@ from backend.api.schemas import (
     ExportRequest,
 )
 from backend.api.auth import get_current_user
+from backend.settings import EXPORT_FORMAT_METADATA
+from backend.core.cache import cache_manager
 from backend.api.helpers.packages import (
     _filter_by_python_version,
     _sort_search_results,
@@ -56,31 +59,6 @@ class PackageSearchRequest(BaseModel):
     limit: int = 20
 
 
-@router.get("/{ecosystem}/{name}")
-@limiter.limit("30/minute")
-async def get_package_info(
-    request: Request,
-    ecosystem: str,
-    name: str,
-    aggregator: DataAggregator = Depends(get_data_aggregator),
-    current_user: User = Depends(get_current_user),
-):
-    """Get package information from specified ecosystem"""
-    try:
-        info = await aggregator.get_package_info(name, ecosystem)
-        if not info:
-            raise HTTPException(
-                status_code=404, detail=f"Package {name} not found in {ecosystem}"
-            )
-        return {"status": "success", "data": info}
-    except ValueError as e:
-        logger.error(f"Invalid package data: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Package fetch failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @router.post("/resolve")
 @limiter.limit("10/minute")
 async def resolve_dependencies(
@@ -93,23 +71,27 @@ async def resolve_dependencies(
 ):
     """Resolve dependencies for multiple packages"""
     try:
-        # Get system info if needed
-        system_info = (
-            await scanner.scan_all()
-            if resolve_request.auto_detect_system and not resolve_request.system_info
-            else resolve_request.system_info.dict()
-            if resolve_request.system_info
-            else {}
-        )
+        # Get system info if needed (cached for 5 minutes)
+        if resolve_request.auto_detect_system and not resolve_request.system_info:
+            system_info = await cache_manager.get("system_info")
+            if system_info is None:
+                system_info = await scanner.scan_all()
+                await cache_manager.set("system_info", system_info, ttl=300)
+        elif resolve_request.system_info:
+            system_info = resolve_request.system_info.model_dump()
+        else:
+            system_info = {}
 
-        # Get package information
-        packages_info = []
-        for pkg in resolve_request.packages:
+        # Get package information concurrently
+        async def _fetch_pkg_info(pkg):
             info = await aggregator.get_package_info(pkg.name, pkg.ecosystem)
-            if info:
-                packages_info.append(info)
-            else:
+            if info is None:
                 logger.warning(f"Package {pkg.name} not found in {pkg.ecosystem}")
+            return info
+
+        tasks = [_fetch_pkg_info(pkg) for pkg in resolve_request.packages]
+        results = await asyncio.gather(*tasks)
+        packages_info = [r for r in results if r is not None]
 
         # Resolve conflicts
         resolved = resolver.resolve_dependencies(
@@ -158,21 +140,8 @@ async def get_export_formats(
     """Get available export formats"""
     try:
         formats = [
-            {"format": fmt, "ecosystem": eco, "description": desc}
-            for fmt, eco, desc in [
-                ("requirements.txt", "python", "Python pip requirements file"),
-                ("package.json", "node", "Node.js package configuration"),
-                ("environment.yml", "conda", "Conda environment file"),
-                ("pyproject.toml", "python", "Poetry/PEP 517 configuration"),
-                ("Dockerfile", "multi", "Docker container definition"),
-                ("docker-compose.yml", "multi", "Docker Compose configuration"),
-                ("install.sh", "multi", "Shell installation script"),
-                ("install.bat", "multi", "Windows batch installation script"),
-                ("CMakeLists.txt", "cpp", "CMake build configuration"),
-                ("cargo.toml", "rust", "Rust Cargo configuration"),
-                ("build.gradle", "java", "Gradle build configuration"),
-                ("pom.xml", "java", "Maven project configuration"),
-            ]
+            {"format": fmt, "ecosystem": meta["ecosystem"], "description": meta["description"]}
+            for fmt, meta in EXPORT_FORMAT_METADATA.items()
         ]
         return {"status": "success", "formats": formats}
     except Exception as e:
@@ -509,122 +478,6 @@ async def get_package_compatibility(
         logger.error(f"Failed to get compatibility info: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-@router.post("/{ecosystem}/{package_name}/compatibility/report")
-@limiter.limit("30/minute")
-async def report_compatibility(
-    request: Request,
-    ecosystem: str,
-    package_name: str,
-    version: str,
-    system_info: Dict,
-    works: bool,
-    notes: Optional[str] = None,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
-    compatibility_db: CompatibilityDB = Depends(get_compatibility_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Submit a compatibility report"""
-    try:
-        logger.info(
-            f"Receiving compatibility report for: {ecosystem}/{package_name}@{version}"
-        )
-
-        # Validate system info
-        if not _validate_system_info(system_info):
-            logger.warning("Invalid system info format in compatibility report")
-            raise HTTPException(status_code=400, detail="Invalid system info format")
-
-        report_id = compatibility_db.add_compatibility_report(
-            package_name=package_name,
-            version=version,
-            ecosystem=ecosystem,
-            system_info=system_info,
-            works=works,
-            notes=notes,
-        )
-
-        logger.info(f"Compatibility report saved with ID: {report_id}")
-
-        # Background task to analyze and aggregate reports
-        background_tasks.add_task(
-            _analyze_compatibility_reports, package_name, ecosystem, version
-        )
-
-        return {
-            "status": "success",
-            "message": "Compatibility report submitted",
-            "report_id": report_id,
-        }
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.error(f"Invalid report data: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to submit compatibility report: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/compare")
-@limiter.limit("60/minute")
-async def compare_packages(
-    request: Request,
-    packages: str = Query(
-        ..., description="Comma-separated list of package:ecosystem pairs"
-    ),
-    aspects: Optional[str] = Query(
-        "all",
-        description="Aspects to compare: all, dependencies, requirements, versions",
-    ),
-    aggregator: DataAggregator = Depends(get_data_aggregator),
-    current_user: User = Depends(get_current_user),
-):
-    """Compare multiple packages side by side"""
-    try:
-        logger.info(f"Comparing packages: {packages}")
-
-        package_list = []
-        for pkg_str in packages.split(","):
-            if ":" in pkg_str:
-                name, ecosystem = pkg_str.split(":", 1)
-                package_list.append((name.strip(), ecosystem.strip()))
-            else:
-                # Auto-detect ecosystem
-                ecosystem = await _detect_package_ecosystem(pkg_str.strip(), aggregator)
-                package_list.append((pkg_str.strip(), ecosystem))
-
-        if len(package_list) > 5:
-            raise HTTPException(
-                status_code=400, detail="Maximum 5 packages can be compared at once"
-            )
-
-        comparison_data = {}
-        for name, ecosystem in package_list:
-            info = await aggregator.get_package_info(name, ecosystem)
-            if info:
-                key = f"{name}:{ecosystem}"
-
-                if aspects == "all":
-                    comparison_data[key] = info
-                else:
-                    # Filter to requested aspects
-                    comparison_data[key] = _filter_comparison_aspects(info, aspects)
-
-        # Generate comparison summary
-        summary = _generate_comparison_summary(comparison_data)
-
-        logger.info(f"Successfully compared {len(comparison_data)} packages")
-
-        return {"status": "success", "comparison": comparison_data, "summary": summary}
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.error(f"Invalid comparison data: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to compare packages: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/ecosystems")
 @limiter.limit("60/minute")

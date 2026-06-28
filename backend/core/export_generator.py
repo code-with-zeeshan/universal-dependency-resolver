@@ -2,7 +2,7 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
-from abc import ABC, abstractmethod
+
 from enum import Enum
 from dataclasses import dataclass
 import logging
@@ -57,20 +57,6 @@ class PackageInfo:
         )
 
 
-class ExportFormat(ABC):
-    """Abstract base class for export formats"""
-
-    @abstractmethod
-    def generate(
-        self,
-        packages: List[PackageInfo],
-        system_info: Dict[str, Any],
-        options: Dict[str, Any],
-    ) -> str:
-        """Generate output in specific format"""
-        pass
-
-
 class ExportGenerator:
     """Main export generator using Jinja2 templates"""
 
@@ -100,7 +86,7 @@ class ExportGenerator:
             "pom.xml": "pom.xml.j2",
         }
 
-        self.formats: Dict[str, ExportFormat] = {}
+        self.formats: Dict[str, Any] = {}
 
     def _add_template_filters(self):
         @staticmethod
@@ -126,7 +112,7 @@ class ExportGenerator:
 
         self.env.filters["tojson"] = tojson_no_sort
 
-    def register_format(self, name: str, format_handler: ExportFormat) -> None:
+    def register_format(self, name: str, format_handler: Any) -> None:
         """Register a new export format"""
         self.formats[name] = format_handler
 

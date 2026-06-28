@@ -75,23 +75,30 @@ class TestPackagistClient:
             result = client.get_package_info("laravel/laravel")
         assert result is not None
 
-    def test_package_exists_returns_true(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_true(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 200
             mock_head.return_value = mock_response
-            assert client.package_exists("laravel/laravel") is True
+            assert await client.package_exists("laravel/laravel") is True
+            mock_head.assert_called_once()
 
-    def test_package_exists_returns_false(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 404
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_false(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 404
             mock_head.return_value = mock_response
-            assert client.package_exists("nonexistent/pkg") is False
+            assert await client.package_exists("nonexistent/pkg") is False
 
-    def test_package_exists_handles_exception(self, client):
-        with patch("requests.head", side_effect=Exception("Network error")):
-            assert client.package_exists("laravel/laravel") is False
+    @pytest.mark.asyncio
+    async def test_package_exists_handles_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", side_effect=Exception("Network error")):
+            assert await client.package_exists("laravel/laravel") is False
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_package_data):

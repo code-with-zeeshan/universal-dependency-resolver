@@ -1,38 +1,14 @@
-# API Documentation
+# API Reference
 
-Auto-generated OpenAPI/Swagger docs at `http://localhost:8000/api/v1/docs` are the authoritative reference. This document provides a conceptual overview and usage examples.
+The Swagger UI at `http://localhost:8000/api/v1/docs` is the authoritative reference. This document provides an overview.
 
-## Overview
-
-| Property | Value |
-|----------|-------|
-| **Base URL** | `http://localhost:8000/api/v1` |
-| **Protocol** | HTTP (HTTPS in production) |
-| **Format** | JSON |
-| **Versioning** | URL-based (`/api/v1/`) |
-| **Documentation** | OpenAPI 3.0 at `/api/v1/docs` |
-
-### Supported Ecosystems
-
-| Ecosystem | Identifier | Search | Dependencies |
-|-----------|------------|--------|--------------|
-| PyPI | `pypi` | Yes | Yes |
-| NPM | `npm` | Yes | Yes |
-| Conda | `conda` | Yes | Yes |
-| Maven | `maven` | Yes | Yes |
-| Crates.io | `crates` | Yes | Yes |
-| Go Modules | `gomodules` | Limited | Yes |
-| NuGet | `nuget` | Yes | Yes |
-| RubyGems | `rubygems` | Yes | Yes |
-| Packagist (PHP) | `packagist` | Yes | Yes |
-| CocoaPods | `cocoapods` | Yes | Yes |
-| Homebrew | `homebrew` | Yes | Yes |
-| APT (Debian) | `apt` | Yes | Yes |
-| APK (Alpine) | `apk` | Yes | Yes |
+**Base URL:** `http://localhost:8000/api/v1`
 
 ## Authentication
 
-### JWT Tokens
+Auth is **disabled by default** (`ENABLE_AUTH=false`). All requests use an anonymous user context.
+
+To enable auth: set `ENABLE_AUTH=true` and configure `SECRET_KEY`.
 
 ```bash
 # Login
@@ -43,354 +19,159 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 # Use token
 curl -H "Authorization: Bearer <token>" \
   http://localhost:8000/api/v1/packages/search?q=flask
-```
 
-### API Keys
-
-```bash
+# Or use API key
 curl -H "X-API-Key: udr_<key>" \
   http://localhost:8000/api/v1/packages/search?q=flask
 ```
 
-### Auth Endpoints
+## Package endpoints (`/api/v1/packages`)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/auth/register` | POST | Register new user |
-| `/auth/login` | POST | Login, receive JWT |
-| `/auth/token` | POST | OAuth2 token endpoint |
-| `/auth/refresh` | POST | Refresh access token |
-| `/auth/logout` | POST | Logout (discard tokens) |
-| `/auth/profile` | GET | Get user profile |
-| `/auth/profile` | PUT | Update profile |
-| `/auth/change-password` | POST | Change password |
-| `/auth/api-keys` | GET | List API keys |
-| `/auth/api-keys` | POST | Create API key |
-| `/auth/api-keys/{id}` | DELETE | Revoke API key |
-| `/auth/verify` | GET | Verify token validity |
-| `/auth/check-username` | POST | Check username availability |
-| `/auth/check-email` | POST | Check email availability |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/search?q=<query>` | Search packages across ecosystems |
+| GET | `/ecosystems` | List supported ecosystems |
+| GET | `/{ecosystem}/{name}/details` | Rich package details with metrics |
+| GET | `/{ecosystem}/{name}/versions` | List all versions |
+| GET | `/{ecosystem}/{name}/dependencies` | Get dependencies |
+| GET | `/{ecosystem}/{name}/compatibility` | Compatibility info |
+| POST | `/resolve` | Resolve dependencies |
+| POST | `/export` | Export resolved dependencies |
+| GET | `/export-formats` | Available export formats |
 
-## Rate Limiting
+### Search
 
-Per-endpoint limits (implemented via slowapi):
+```
+GET /api/v1/packages/search?q=flask&ecosystems=pypi&limit=5
+```
 
-| Category | Limit | Window |
-|----------|-------|--------|
-| Search | 60 requests | 1 minute |
-| Package Info | 30-120 requests | 1 minute |
-| Dependencies | 120 requests | 1 minute |
-| Resolution | 10 requests | 1 minute |
-| Export | 20 requests | 1 minute |
-| System Info | 30 requests | 1 minute |
-| Auth (login) | 10 requests | 1 minute |
-| Auth (register) | 5 requests | 1 hour |
+| Param | Type | Description |
+|---|---|---|
+| `q` | string | **Required.** Search query |
+| `ecosystems` | string | Comma-separated ecosystem list |
+| `limit` | int | 1-100, default 20 |
 
-## Response Format
+### Resolve
 
-### Successful Response
+```
+POST /api/v1/packages/resolve
+Content-Type: application/json
 
-```json
 {
-  "status": "success",
-  "data": { ... }
+  "packages": [
+    {"name": "flask", "ecosystem": "pypi", "version": ">=2.0.0"},
+    {"name": "express", "ecosystem": "npm"}
+  ],
+  "system_info": {"os": {"system": "Linux"}},
+  "options": {"auto_detect_system": true}
 }
 ```
 
-### Error Response
+### Export
+
+```
+POST /api/v1/packages/export
+Content-Type: application/json
+
+{
+  "resolved_packages": {"flask": {"version": "2.3.3"}},
+  "format": "requirements.txt"
+}
+```
+
+Supported formats: `requirements.txt`, `package.json`, `environment.yml`, `pyproject.toml`, `Dockerfile`, `docker-compose.yml`, `install.sh`, `install.bat`, `CMakeLists.txt`, `Cargo.toml`, `build.gradle`, `pom.xml`.
+
+## System endpoints (`/api/v1/system`)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/info` | System information (OS, CPU, GPU, runtimes) |
+| POST | `/check-compatibility` | Check dependency-system compatibility |
+
+## Auth endpoints (`/api/v1/auth`)
+
+Only available when `ENABLE_AUTH=true`.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/register` | Register new user |
+| POST | `/login` | Login, receive JWT |
+| POST | `/token` | OAuth2 token endpoint |
+| POST | `/refresh` | Refresh access token |
+| POST | `/logout` | Logout |
+| GET | `/profile` | Get user profile |
+| PUT | `/profile` | Update profile |
+| POST | `/change-password` | Change password |
+| GET | `/api-keys` | List API keys |
+| POST | `/api-keys` | Create API key |
+| DELETE | `/api-keys/{key_id}` | Revoke API key |
+| GET | `/verify` | Verify token validity |
+| POST | `/check-username` | Check username availability |
+| POST | `/check-email` | Check email availability |
+
+## Scan endpoints (`/api/v1/scan`)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/github` | Scan a GitHub repository |
+| POST | `/upload` | Scan an uploaded archive (multipart) |
+| POST | `/local` | Scan a local directory |
+
+All scan endpoints detect manifests, resolve dependencies, and return results.
+
+## Lock endpoints (`/api/v1`)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/verify` | Validate a lock file |
+| POST | `/graph` | Get dependency graph from lock file |
+| POST | `/update` | Re-resolve and update a package in lock file |
+
+## Other
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | API metadata and endpoint list |
+| GET | `/api/v1/health` | Health check (database, external APIs) |
+
+## Rate limiting
+
+| Category | Limit | Window |
+|---|---|---|
+| Search | 60 requests | 1 minute |
+| Resolve | 10 requests | 1 minute |
+| Export | 20 requests | 1 minute |
+| General | 30 requests | 1 minute |
+
+## Response format
+
+Success:
+
+```json
+{"status": "success", "data": {...}}
+```
+
+Error:
 
 ```json
 {
   "error": {
-    "message": "Package 'invalid-package' not found in pypi",
+    "message": "Package not found",
     "type": "http_error",
-    "status_code": 404,
-    "timestamp": "2024-01-15T10:30:00Z"
+    "status_code": 404
   }
 }
 ```
 
-## Package Endpoints
-
-All under `/api/v1/packages`.
-
-### Search Packages
-
-```http
-GET /api/v1/packages/search?q=<query>&ecosystems=<list>&limit=<n>&sort_by=<field>&python_version=<ver>
-```
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `q` | string | Yes | Search query |
-| `ecosystems` | string | No | Comma-separated list |
-| `limit` | int | No | 1-100, default 20 |
-| `sort_by` | string | No | `relevance`, `downloads`, `name`, `updated` |
-| `python_version` | string | No | Filter by Python version |
-
-**Example:**
-```bash
-curl "http://localhost:8000/api/v1/packages/search?q=flask&ecosystems=pypi&limit=5"
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "query": "flask",
-  "total_count": 42,
-  "results": {
-    "pypi": [
-      { "name": "Flask", "version": "2.3.3", "description": "A simple framework...", "downloads": 50000000 }
-    ]
-  },
-  "filters_applied": {
-    "ecosystems": ["pypi"],
-    "sort_by": "relevance"
-  }
-}
-```
-
-### Get Package Info
-
-```http
-GET /api/v1/packages/{ecosystem}/{name}
-```
-
-**Example:**
-```bash
-curl "http://localhost:8000/api/v1/packages/pypi/flask"
-```
-
-### Get Package Details
-
-```http
-GET /api/v1/packages/{ecosystem}/{name}/details?include_metrics=true
-```
-
-### Get Package Versions
-
-```http
-GET /api/v1/packages/{ecosystem}/{name}/versions?include_prerelease=true&compatible_with=os=linux,python=3.9
-```
-
-### Get Package Dependencies
-
-```http
-GET /api/v1/packages/{ecosystem}/{name}/dependencies?version=2.3.3&recursive=true&max_depth=2
-```
-
-### Get Package Compatibility
-
-```http
-GET /api/v1/packages/{ecosystem}/{name}/compatibility?version=2.13.0
-```
-
-### Report Compatibility
-
-```http
-POST /api/v1/packages/{ecosystem}/{name}/compatibility/report
-```
-
-```json
-{
-  "version": "2.13.0",
-  "system_info": { "os": "linux", "python_version": "3.9" },
-  "works": true,
-  "notes": "Installed successfully"
-}
-```
-
-### Resolve Dependencies
-
-```http
-POST /api/v1/packages/resolve
-```
-
-```json
-{
-  "packages": [
-    { "name": "flask", "ecosystem": "pypi", "version": ">=2.0.0" },
-    { "name": "django", "ecosystem": "pypi", "version": ">=4.0.0" }
-  ],
-  "system_info": { "os": "linux", "python": "3.9" },
-  "options": {
-    "auto_detect_system": true,
-    "prefer_compatibility": true
-  }
-}
-```
-
-### Export Configuration
-
-```http
-POST /api/v1/packages/export
-```
-
-```json
-{
-  "resolved_packages": { "flask": "2.3.3", "django": "4.2.5" },
-  "format": "requirements.txt",
-  "options": { "include_comments": true, "pin_versions": true }
-}
-```
-
-### Get Export Formats
-
-```http
-GET /api/v1/packages/export-formats
-```
-
-Returns 12 supported formats: requirements.txt, package.json, environment.yml, pyproject.toml, Dockerfile, docker-compose.yml, install.sh, install.bat, CMakeLists.txt, cargo.toml, build.gradle, pom.xml.
-
-### Compare Packages
-
-```http
-GET /api/v1/packages/compare?packages=flask:pypi,express:npm
-```
-
-### List Ecosystems
-
-```http
-GET /api/v1/packages/ecosystems
-```
-
-## System Endpoints
-
-All under `/api/v1/system`.
-
-### Get System Info
-
-```http
-GET /api/v1/system/info?detailed=true
-```
-
-**Response (simple):**
-```json
-{
-  "status": "success",
-  "system": {
-    "os": "Linux 5.15.0",
-    "cpu": "Intel(R) Core(TM) i7",
-    "gpu": "NVIDIA GeForce RTX 2060",
-    "cuda": "12.0",
-    "python": "3.13.1"
-  }
-}
-```
-
-### Check System Compatibility
-
-```http
-POST /api/v1/system/check-compatibility
-```
-
-### Get GPU Info
-
-```http
-GET /api/v1/system/gpu/info
-```
-
-### Get Runtime Info
-
-```http
-GET /api/v1/system/runtime/{runtime}
-```
-
-Runtimes: python, node, java, docker, rust, go, julia, r, dotnet, ruby, php, kotlin, scala.
-
-### Analyze Environment File
-
-```http
-POST /api/v1/system/analyze-environment
-```
-
-Upload a requirements.txt, package.json, pyproject.toml, etc. to analyze packages and detect conflicts.
-
-### Run Benchmarks
-
-```http
-GET /api/v1/system/benchmarks?comprehensive=true
-```
-
-CPU, memory, disk, GPU (if available) benchmarks.
-
-## Scan Endpoints
-
-### Scan GitHub Repository
-
-```http
-POST /api/v1/scan/github
-Content-Type: application/json
-
-{ "repo_url": "https://github.com/user/project", "branch": "main" }
-```
-
-Downloads repo, detects manifests (package.json, requirements.txt, etc.), resolves all dependencies.
-
-### Scan Uploaded Archive
-
-```http
-POST /api/v1/scan/upload
-Content-Type: multipart/form-data
-
-file: <project.zip>
-```
-
-### Scan Local Directory
-
-```http
-POST /api/v1/scan/local
-Content-Type: application/json
-
-{ "directory_path": "/path/to/project" }
-```
-
-Only works when backend runs on the same machine.
-
-## Health Check
-
-```http
-GET /api/v1/health
-```
-
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "version": "1.0.0",
-  "checks": {
-    "database": { "status": "healthy" },
-    "external_apis": { "status": "healthy" }
-  }
-}
-```
-
-Redis is checked only if `REDIS_URL` is configured. Its status does not affect overall health.
-
-## Root Endpoint
-
-```http
-GET /
-```
-
-Returns API name, version, and links to docs and endpoints.
-
-## HTTP Status Codes
+## Status codes
 
 | Code | Description |
-|------|-------------|
+|---|---|
 | 200 | Success |
-| 201 | Created |
-| 400 | Bad Request |
-| 401 | Unauthorized |
+| 400 | Bad request |
+| 401 | Unauthorized (auth enabled) |
 | 403 | Forbidden |
-| 404 | Not Found |
-| 409 | Conflict |
-| 422 | Validation Error |
-| 429 | Rate Limit Exceeded |
-| 500 | Internal Server Error |
-| 502 | Bad Gateway |
-| 503 | Service Unavailable |
+| 404 | Not found |
+| 422 | Validation error |
+| 429 | Rate limit exceeded |
+| 500 | Internal server error |

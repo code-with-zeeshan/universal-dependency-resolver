@@ -32,8 +32,7 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
-from backend.api.routes import packages, system, scan
-from backend.api.routes import auth
+from backend.api.routes import packages, system, scan, lock as lock_routes, auth as auth_routes
 from backend.api.middleware import setup_middleware
 from backend.logging_config import setup_logging
 from backend.tracing_config import setup_tracing
@@ -313,13 +312,20 @@ async def health_check(request: Request) -> dict:
 
 
 # Include routers with versioned prefix
+# Register auth router only when auth is enabled (saas mode)
+enable_auth = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+if enable_auth:
+    app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
+else:
+    logger.info("Auth endpoints disabled (ENABLE_AUTH=false)")
+
 app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
 app.include_router(packages.router, prefix="/api/v1/packages", tags=["Packages"])
 
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 
 app.include_router(scan.router, prefix="/api/v1", tags=["Scan"])
+app.include_router(lock_routes.router, prefix="/api/v1", tags=["Lock"])
 
 
 # Optional: Add middleware for response time tracking

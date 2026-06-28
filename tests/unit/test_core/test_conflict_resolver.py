@@ -103,8 +103,8 @@ class TestConflictResolver:
         edges = list(resolver.dependency_graph.edges())
         assert len(edges) == 2  # Two dependencies from package-a
 
-    @patch("backend.core.conflict_resolver.z3.Solver.check")
-    @patch("backend.core.conflict_resolver.z3.Solver.model")
+    @patch("z3.Solver.check")
+    @patch("z3.Solver.model")
     def test_solve_constraints_satisfiable(self, mock_model, mock_check, resolver):
         """Test constraint solving when satisfiable"""
         mock_check.return_value = z3.sat
@@ -124,7 +124,7 @@ class TestConflictResolver:
 
         assert result["status"] == "satisfiable"
 
-    @patch("backend.core.conflict_resolver.z3.Solver.check")
+    @patch("z3.Solver.check")
     def test_solve_constraints_unsatisfiable(self, mock_check, resolver):
         """Test constraint solving when unsatisfiable"""
         mock_check.return_value = z3.unsat
@@ -289,8 +289,7 @@ class TestConflictResolver:
         )
         assert key != key3
 
-    @patch("backend.core.conflict_resolver.z3")
-    def test_solver_reset(self, mock_z3, resolver):
+    def test_solver_reset(self, resolver):
         """Test that solver state is properly reset"""
         # Add some state
         resolver.version_vars["test"] = "value"

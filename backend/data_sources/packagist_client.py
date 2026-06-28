@@ -8,8 +8,6 @@ from backend.core.cache import cached
 from enum import Enum
 from dataclasses import dataclass
 from backend.settings import (
-    PACKAGIST_URL,
-    PACKAGIST_API_URL,
     CACHE_TTL,
     get_ecosystem_config,
 )
@@ -48,7 +46,7 @@ class PackagistClient(BaseDataSourceClient):
         packagist_config = get_ecosystem_config("packagist")
 
         api_url = (
-            api_url or packagist_config.get("api_url", PACKAGIST_API_URL)
+            api_url or packagist_config.get("api_url", "https://repo.packagist.org/p2")
         ).rstrip("/")
         super().__init__(
             ecosystem="packagist",
@@ -56,19 +54,18 @@ class PackagistClient(BaseDataSourceClient):
             cache_ttl=cache_ttl or packagist_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.base_url = PACKAGIST_URL
-        self.search_url = f"{PACKAGIST_URL}/search.json"
+        self.base_url = "https://packagist.org"
+        self.search_url = "https://packagist.org/search.json"
         self._version_cache: Dict[str, ComposerVersionRequirement] = {}
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
-            response = requests.head(
-                f"{self.base_url}/packages/{package_name}.json", timeout=5
+            session = self._get_session()
+            response = await session.head(
+                f"{self.base_url}/packages/{package_name}.json"
             )
-            return response.status_code == 200
+            return response.status == 200
         except Exception:
             return False
 

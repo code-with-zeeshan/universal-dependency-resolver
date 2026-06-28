@@ -12,7 +12,7 @@ from typing import Generator
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
@@ -52,7 +52,7 @@ def _redis_reachable(url: str, timeout: int = 2) -> bool:
         return False
 
 
-USING_SQLITE = False
+USING_SQLITE = DATABASE_URL.startswith("sqlite")
 
 if DATABASE_URL.startswith("postgresql"):
     if not _postgres_reachable(DATABASE_URL):
@@ -75,12 +75,18 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ.setdefault("OTEL_ENABLED", "false")
 os.environ.setdefault("ENABLE_AUTH", "false")
 
+def _enable_sqlite_fk(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
 if USING_SQLITE:
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    event.listen(engine, "connect", _enable_sqlite_fk)
 else:
     engine = create_engine(
         DATABASE_URL,
@@ -112,7 +118,16 @@ def _patch_engine():
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
-    """Provide a transactional database session rolled back after each test."""
+    """Provide a transactional database session rolled back after each test.
+
+    Cleans all tables at the start to remove data left by API tests
+    (which use a different session via the FastAPI app's get_db()).
+    """
+    with engine.connect() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(text(f"DELETE FROM {table.name}"))
+        conn.commit()
+
     connection = engine.connect()
     transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)

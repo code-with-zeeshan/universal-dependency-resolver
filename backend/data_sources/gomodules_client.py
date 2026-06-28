@@ -30,15 +30,14 @@ class GoModulesClient(BaseDataSourceClient):
         self.sum_db_url = go_config.get("sum_db_url", "https://sum.golang.org")
         self.pkg_dev_url = "https://pkg.go.dev"
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = self._normalize_go_module_path(package_name)
         try:
-            import requests
-
-            response = requests.head(
-                f"{self.base_url}/{package_name}/@v/list", timeout=5
+            session = self._get_session()
+            response = await session.head(
+                f"{self.base_url}/{package_name}/@v/list"
             )
-            return response.status_code == 200
+            return response.status == 200
         except Exception:
             return False
 

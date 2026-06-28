@@ -7,8 +7,6 @@ from backend.core.utils import normalize_package_name, run_async
 from enum import Enum
 from dataclasses import dataclass
 from backend.settings import (
-    HOMEBREW_URL,
-    HOMEBREW_API_URL,
     CACHE_TTL,
     get_ecosystem_config,
 )
@@ -47,32 +45,29 @@ class HomebrewClient(BaseDataSourceClient):
     ):
         homebrew_config = get_ecosystem_config("homebrew")
 
-        api_url = (api_url or homebrew_config.get("api_url", HOMEBREW_API_URL)).rstrip(
-            "/"
-        )
+        api_url = (api_url or homebrew_config.get("api_url", "https://formulae.brew.sh/api")).rstrip("/")
         super().__init__(
             ecosystem="homebrew",
             base_url=api_url,
             cache_ttl=cache_ttl or homebrew_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.base_url = HOMEBREW_URL
+        self.base_url = "https://brew.sh"
         self.formula_api = f"{api_url}/formula"
         self.cask_api = f"{api_url}/cask"
 
-    def package_exists(
+    async def package_exists(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
     ) -> bool:
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
+            session = self._get_session()
             if package_type == PackageType.FORMULA:
                 url = f"{self.formula_api}/{package_name}.json"
             else:
                 url = f"{self.cask_api}/{package_name}.json"
-            response = requests.head(url, timeout=5)
-            return response.status_code == 200
+            response = await session.head(url)
+            return response.status == 200
         except Exception:
             return False
 

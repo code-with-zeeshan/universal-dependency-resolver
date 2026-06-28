@@ -1,97 +1,107 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-## Startup Issues
+## Installation
 
-### Database Connection Failed
+### `pip install ud-resolver` fails
 
-**Solutions:**
-1. Check `DATABASE_URL` in `.env` (default: `sqlite:///./udr.db`)
-2. For PostgreSQL: verify it's running and credentials are correct
-3. For SQLite: ensure the parent directory is writable
-4. Reset: `rm -f udr.db && alembic upgrade head`
+- Make sure you have Python 3.11 – 3.13 installed
+- On Linux, you may need `python3-dev` or `python3.12-dev` for compiling native extensions
+- Try `pip install --upgrade pip` first
+- If Z3 fails to install, try `pip install z3-solver` first, then `pip install ud-resolver`
 
-### Redis Connection Failed
+## CLI
 
-Redis is **optional**. If `REDIS_URL` is not set, the app uses DictCache (in-memory) and runs fine.
+### `udr` command not found
 
-If Redis is set but unreachable:
-- Check connection with `redis-cli ping`
-- The app logs a warning and falls back to DictCache automatically
+- Make sure your Python Scripts/bin directory is on PATH:
+  - Linux/macOS: `$(python3 -m site --user-base)/bin`
+  - Windows: `%APPDATA%\Python\Scripts`
+- Or run as module: `python -m backend.cli resolve ...`
 
-### Port Already in Use
+### Resolution is slow
 
-```bash
-lsof -i :8000  # Backend (or whatever UDR_PORT is set to)
-```
+- First resolution fetches data from remote registries — this is normal
+- Subsequent resolutions are cached (DictCache by default, TTL configurable)
+- Consider using `[system]` extra for local system scanning
 
-## Database Issues
+### `lock` command finds no manifests
 
-### SQLite Performance
-SQLite is fine for single-user/desktop use. For multi-user production, use PostgreSQL.
+- `udr lock` scans the current directory for manifest files
+- Supported: requirements.txt, package.json, Cargo.toml, pyproject.toml, build.gradle, pom.xml, environment.yml, CMakeLists.txt, Dockerfile, and more
+- Use `--manifest path/to/file` to specify explicitly
 
-### PostgreSQL Connection Pool Exhausted
+## API Server
 
-```bash
-# Increase pool size in .env
-DATABASE_POOL_SIZE=20
-DATABASE_MAX_OVERFLOW=30
-```
-
-## Test Issues
-
-### PostgreSQL Requirement
-
-Integration tests default to SQLite (`sqlite:////tmp/test_integration.db`) — no PostgreSQL is required to run tests.
+### Port already in use
 
 ```bash
-# Run all tests (no Docker needed)
-pytest -v
-
-# With coverage
-pytest --cov=backend
+lsof -i :8000
+kill <PID>
 ```
 
+Or use a different port: `udr serve --port 8001`
 
-## API Issues
+### Database errors
+
+```bash
+# SQLite: delete the database file to reset
+rm udr.db
+
+# Check DATABASE_URL in environment
+echo $DATABASE_URL   # default: sqlite:///./udr.db
+```
 
 ### 429 Too Many Requests
 
-Rate limits:
+Rate limits are per-endpoint:
+
 - Search: 60/min
 - Resolve: 10/min
 - Export: 20/min
-- Auth (login): 10/min
 
-Wait for reset or increase via environment variables.
+Wait for reset or adjust in settings.
 
-### Authentication Errors
+### Auth errors
 
-- Auth is **disabled by default** (`UDR_MODE=local` or `--mode local`)
-- For SaaS deployment: run with `UDR_MODE=saas` or `--mode saas` to enable JWT + API key auth
-- Tokens expire after configurable minutes (default: 30)
-
-## Performance
-
-### High Memory Usage
-- SQLite is memory-efficient for single-user
-- For multi-user, use PostgreSQL
-- Monitor with `docker stats` or health endpoint
-
-### Cache Hit Rate Low
-- DictCache has no persistence (cleared on restart)
-- For persistent cache, configure Redis
-- Tune `CACHE_TTL` in environment
+Auth is **disabled by default**. To enable: set `ENABLE_AUTH=true` and configure `SECRET_KEY` in `.env`.
 
 ## Desktop App
 
-### Backend Fails to Start
-- The Electron app spawns the Python backend automatically
+### Backend fails to start
+
 - Check the error dialog for details
-- Ensure Python 3.11+ is available on PATH
-- On Windows, use the bundled Python from install
+- Ensure Python 3.11+ is on PATH (if not using PyInstaller binary)
+- On Windows, antivirus may block the PyInstaller binary — add an exclusion
 
-## Getting Help
+### macOS: "app is damaged" or Gatekeeper blocks it
 
-- **API Docs**: `http://localhost:8000/api/v1/docs`
-- **Health Check**: `http://localhost:8000/api/v1/health`
-- **GitHub Issues**: Report bugs and feature requests
+- Right-click → Open, or
+- System Settings → Privacy & Security → "Open Anyway"
+
+### Linux: AppImage doesn't run
+
+```bash
+# Install FUSE
+sudo apt install fuse  # Debian/Ubuntu
+
+# Or extract and run directly
+./UDR-*.AppImage --appimage-extract
+./squashfs-root/AppRun
+```
+
+## Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -q
+
+# Run with output
+python -m pytest tests/ -v
+```
+
+Integration tests default to SQLite. Set `DATABASE_URL=postgresql://...` to test against PostgreSQL. Redis is optional — tests without it will skip Redis-dependent tests automatically.
+
+## Getting help
+
+- Open a [GitHub Issue](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues)
+- Check the Swagger UI at `http://localhost:8000/api/v1/docs`

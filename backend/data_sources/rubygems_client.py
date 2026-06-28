@@ -8,8 +8,6 @@ from backend.core.cache import cached
 from enum import Enum
 from dataclasses import dataclass
 from backend.settings import (
-    RUBYGEMS_URL,
-    RUBYGEMS_API_URL,
     CACHE_TTL,
     get_ecosystem_config,
 )
@@ -43,27 +41,24 @@ class RubyGemsClient(BaseDataSourceClient):
     ):
         rubygems_config = get_ecosystem_config("rubygems")
 
-        api_url = (api_url or rubygems_config.get("api_url", RUBYGEMS_API_URL)).rstrip(
-            "/"
-        )
+        api_url = (api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")).rstrip("/")
         super().__init__(
             ecosystem="rubygems",
             base_url=api_url,
             cache_ttl=cache_ttl or rubygems_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.base_url = RUBYGEMS_URL
+        self.base_url = "https://rubygems.org"
         self._version_cache: Dict[str, RubyVersionRequirement] = {}
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
-            response = requests.head(
-                f"{self.base_url}/gems/{package_name}.json", timeout=5
+            session = self._get_session()
+            response = await session.head(
+                f"{self.base_url}/gems/{package_name}.json"
             )
-            return response.status_code == 200
+            return response.status == 200
         except Exception:
             return False
 

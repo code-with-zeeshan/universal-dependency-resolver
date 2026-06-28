@@ -30,16 +30,6 @@ from .middleware import (
     get_user_agent,
 )
 
-# Import exceptions
-from .exceptions import (
-    DependencyResolverError,
-    ValidationError,
-    PackageNotFoundError,
-    EcosystemNotSupportedError,
-    ConflictResolutionError,
-    RateLimitExceededError,
-)
-
 # Import auth components
 from .auth import (
     Token,
@@ -78,13 +68,6 @@ __all__ = [
     "MaintenanceModeMiddleware",
     "AuditLogMiddleware",
     "CSRFProtectionMiddleware",
-    # Exceptions
-    "DependencyResolverError",
-    "ValidationError",
-    "PackageNotFoundError",
-    "EcosystemNotSupportedError",
-    "ConflictResolutionError",
-    "RateLimitExceededError",
     # Auth
     "Token",
     "UserCreate",

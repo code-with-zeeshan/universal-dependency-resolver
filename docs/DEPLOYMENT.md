@@ -1,147 +1,75 @@
-# Deployment Guide
+# Deployment
 
-## Overview
+This is a CLI tool and Python library, not a server application. However, you can run the API server for programmatic access.
 
-| Method | Complexity | Best For |
-|--------|------------|----------|
-| Direct (no Docker) | Low | Desktop (manual), development, single-user |
-| Docker Compose | Low-Medium | Development, small deployments |
-| Cloud | Medium | Production, managed infrastructure |
-
-## Prerequisites
-
-**Minimum:**
-- CPU: 2 cores, RAM: 4GB, Storage: 10GB
-
-**For Docker:**
-- Docker 20.10+ and Docker Compose v2
-
-**For cloud:**
-- Container registry (GitHub Container Registry, Docker Hub, etc.)
-
-## Quick Start (No Docker)
+## Quick start
 
 ```bash
-pip install -e ".[dev]"
-# SQLite by default, no config needed
-python -m backend.cli serve --reload
-# → http://localhost:8000
+pip install ud-resolver
+udr serve --host 0.0.0.0 --port 8000
 ```
 
-## Docker Compose
+## Production considerations
+
+### Database
+
+By default the server uses SQLite (`./udr.db`). For multi-user or higher-throughput scenarios, configure PostgreSQL:
 
 ```bash
-docker compose up -d
-docker compose exec backend alembic upgrade head
-curl http://localhost:8000/api/v1/health
+export DATABASE_URL=postgresql://user:password@host:5432/udr
 ```
 
-PostgreSQL and Redis are optional. The backend defaults to SQLite + in-memory cache. Set `DATABASE_URL` and `REDIS_URL` in `.env` to use them.
+### Authentication
 
-### Production Compose
-
-Create `docker-compose.prod.yml`:
-
-```yaml
-services:
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on: [backend]
-    restart: unless-stopped
-
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    env_file: .env.production
-    depends_on:
-      db: { condition: service_healthy }
-    restart: unless-stopped
-    deploy:
-      replicas: 3
-      resources:
-        limits: { cpus: '1.0', memory: 1G }
-
-  db:
-    image: postgres:15-alpine
-    env_file: .env.production
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --maxmemory 512mb
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-
-networks:
-  app-network:
-    driver: bridge
-
-volumes:
-  postgres_data:
-  redis_data:
-```
-
-## Standalone Mode
-
-Set `UDR_STANDALONE=true` to skip Redis validation. The app uses:
-- SQLite (no PostgreSQL needed)
-- DictCache (no Redis needed)
-
-Ideal for desktop app, single-user, or CI environments.
-
-> **Tip**: The [Desktop app](COMPONENTS.md#3-desktop-electron-standalone-app) uses standalone mode automatically — no configuration needed.
-
-## Production Checklist
-
-- [ ] HTTPS enabled (TLS certificate)
-- [ ] CORS configured for your domain
-- [ ] Rate limiting enabled (default: on)
-- [ ] Auth enabled if needed (`UDR_MODE=saas` for JWT + API key auth)
-- [ ] Database migrations applied
-- [ ] Backups configured (see scripts/backup_database.sh)
-- [ ] Monitoring (Prometheus metrics at `/metrics`)
-- [ ] Sentry DSN configured for error tracking (optional)
-
-## Environment Variables
+Auth is disabled by default. To enable:
 
 ```bash
-# Database (default: sqlite:///./udr.db)
-DATABASE_URL=postgresql://user:password@host:5432/depresolver
-
-# Redis (optional — falls back to in-memory cache)
-REDIS_URL=redis://host:6379
-
-# Auth (local mode = no auth; saas mode = JWT + API key)
-SECRET_KEY=<generate-a-random-secret>  # python -c "import secrets; print(secrets.token_hex(32))"
-UDR_MODE=local  # Set to 'saas' for auth stack
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:3000  # Desktop client origin
-
-# Standalone (skip Redis/Postgres checks)
-UDR_STANDALONE=false
+export ENABLE_AUTH=true
+export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
 ```
 
-## Backup & Recovery
+### Caching
+
+By default the server uses `DictCache` (in-memory, cleared on restart). For persistent caching across restarts, configure Redis:
 
 ```bash
-# Backup
-pg_dump -h $DB_HOST -U $DB_USER -d depresolver | gzip > backup.sql.gz
-
-# Restore
-gunzip -c backup.sql.gz | psql -h $DB_HOST -U $DB_USER -d depresolver
+export REDIS_URL=redis://host:6379
 ```
 
-For SQLite, just copy `udr.db`.
+### Running as a service
+
+```bash
+# systemd service example
+[Unit]
+Description=UDR API Server
+After=network.target
+
+[Service]
+Type=simple
+User=udr
+ExecStart=/usr/local/bin/udr serve --host 0.0.0.0 --port 8000
+Environment=DATABASE_URL=postgresql://...
+Environment=REDIS_URL=redis://...
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Environment variables
+
+See `.env.example` in the repository root.
+
+## Backup
+
+For SQLite:
+
+```bash
+cp udr.db udr.db.backup
+```
+
+For PostgreSQL:
+
+```bash
+pg_dump -h $DB_HOST -U $DB_USER -d udr | gzip > udr_backup.sql.gz
+```

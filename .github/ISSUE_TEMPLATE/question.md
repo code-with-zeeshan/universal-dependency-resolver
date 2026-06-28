@@ -7,25 +7,16 @@ assignees: ''
 
 ---
 
-**Question Category**
-<!-- Select one: -->
-- [ ] Installation/Setup
-- [ ] Usage/How-to
-- [ ] Architecture/Design
-- [ ] API/Integration
-- [ ] Deployment
-- [ ] Other
-
-**Your Question**
-<!-- Ask your question clearly and provide context -->
+**Question**
+Ask your question clearly and provide context.
 
 **What have you tried?**
-<!-- Describe what you've already attempted or researched -->
+Describe what you've already attempted or researched.
 
 **Environment (if relevant)**
-- OS: 
+- OS:
 - Version:
-- Docker: Yes/No
+- CLI or Desktop:
 
-**Additional Context**
-<!-- Add any other context, code examples, or screenshots -->
+**Additional context**
+Add any other context or code examples.

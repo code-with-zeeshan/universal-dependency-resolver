@@ -155,16 +155,16 @@ class TestPackageInfo:
         patcher.stop()
 
     def test_package_info_returns_data(self, api_client, app_url):
-        response = api_client.get(f"{app_url}/packages/pypi/flask")
+        response = api_client.get(f"{app_url}/packages/pypi/flask/details")
         assert response.status_code == 200
 
     def test_package_info_structure(self, api_client, app_url):
-        response = api_client.get(f"{app_url}/packages/pypi/flask")
+        response = api_client.get(f"{app_url}/packages/pypi/flask/details")
         data = response.json()
-        assert "data" in data or "name" in data
+        assert "data" in data
 
     def test_package_info_invalid_ecosystem(self, api_client, app_url):
-        response = api_client.get(f"{app_url}/packages/invalid/pytest")
+        response = api_client.get(f"{app_url}/packages/invalid/pytest/details")
         assert response.status_code in (400, 404)
 
 

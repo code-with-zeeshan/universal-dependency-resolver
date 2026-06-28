@@ -74,6 +74,9 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+# ruff
+.ruff_cache/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -234,9 +237,6 @@ backups/
 docker-volumes/
 .docker/
 
-# Docker Compose override files
-docker-compose.override.yml
-docker-compose.local.yml
 
 # =============================================================================
 # IDE & Editors
@@ -450,8 +450,6 @@ user_files/
 *.backup
 *.old
 
-# Migration backups
-alembic/versions/*.backup
 
 # =============================================================================
 # Cloud & Infrastructure

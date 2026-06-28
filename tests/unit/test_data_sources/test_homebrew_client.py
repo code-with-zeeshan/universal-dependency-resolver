@@ -78,24 +78,30 @@ class TestHomebrewClient:
         assert result is not None
         assert result["name"] == "curl"
 
-    def test_package_exists_returns_true(self, client):
-        with patch.object(
-            client,
-            "get_package_info_async",
-            new_callable=AsyncMock,
-            return_value={"name": "curl"},
-        ):
-            assert client.package_exists("curl", PackageType.FORMULA) is True
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_true(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_head.return_value = mock_response
+            assert await client.package_exists("curl", PackageType.FORMULA) is True
+            mock_head.assert_called_once()
 
-    def test_package_exists_returns_false(self, client):
-        with patch.object(
-            client, "get_package_info_async", new_callable=AsyncMock, return_value=None
-        ):
-            assert client.package_exists("nonexistent", PackageType.FORMULA) is False
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_false(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 404
+            mock_head.return_value = mock_response
+            assert await client.package_exists("nonexistent", PackageType.FORMULA) is False
 
-    def test_package_exists_handles_exception(self, client):
-        with patch("requests.head", side_effect=Exception("Error")):
-            assert client.package_exists("curl", PackageType.FORMULA) is False
+    @pytest.mark.asyncio
+    async def test_package_exists_handles_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", side_effect=Exception("Network error")):
+            assert await client.package_exists("curl", PackageType.FORMULA) is False
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_formula_data):

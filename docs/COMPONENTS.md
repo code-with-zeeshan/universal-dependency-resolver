@@ -1,62 +1,65 @@
 # Components
 
-Universal Dependency Resolver ships as two components. Each targets a different audience and use case. This document explains what each component is, when to use it, and how.
-
-## Quick Decision Guide
+Universal Dependency Resolver ships in two forms. Each targets a different use case.
 
 | You want to... | Use |
 |---|---|
-| Resolve dependencies in a CI/CD pipeline or script | **CLI** (installed via `pip install ud-resolver`) |
-| Call the resolver from Python code | **Python library** (same pip package) |
-| Deploy the resolver as a service (Docker, cloud) | **Backend API** (same pip package + `uvicorn`) |
-| Use the resolver through a web interface | **Desktop app** (builds-in a GUI) or `udr serve` (API + Swagger) |
-| Use the resolver offline without any setup | **Desktop app** (Electron, bundled) |
-| Kick the tires / learn the tool quickly | **Desktop app** (no CLI knowledge needed) |
+| Resolve deps in a CI/CD pipeline or script | **CLI** (`pip install ud-resolver`, then `udr resolve ...`) |
+| Call the resolver from Python code | **Python library** (same `pip install ud-resolver`) |
+| Use a web GUI, no terminal | **Desktop app** (download from Releases) |
+| Expose the resolver as a service | **`udr serve`** (same pip package, starts a FastAPI server) |
 
 ---
 
-## 1. Backend (`pip install ud-resolver`)
+## 1. Backend (CLI / Library / API)
 
 ### What it is
-The core resolver engine — a Python FastAPI application with:
-- REST API for resolving, scanning, exporting
-- CLI entry point for scripting and CI/CD
-- Python library for programmatic use
-- SAT-based conflict resolver (Z3), system scanner, 13 ecosystem data sources
 
-### Where to get it
+The core resolver engine — a Python application with:
+
+- **CLI** — 9 commands for resolving, locking, checking, and exporting
+- **Python library** — import `backend.*` directly
+- **REST API** — FastAPI server with Swagger docs
+
+### Install
+
 ```bash
 pip install ud-resolver
 ```
 
-Or from source:
-```bash
-git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
-cd universal-dependency-resolver
-pip install -e .
-```
+Extras:
+
+| Flag | Adds |
+|---|---|
+| `[system]` | GPU & system scanning (`psutil`, `pynvml`, `cpuinfo`) |
+| `[postgres]` | PostgreSQL support |
+| `[monitoring]` | OpenTelemetry & Sentry |
+| `[all]` | Everything |
 
 ### Prerequisites
-- Python 3.11 – 3.13
+
+Python 3.11 – 3.13. No other services required — SQLite + in-memory cache work out of the box.
+
+### Quick start
+
+```bash
+udr resolve numpy pandas scikit-learn
+udr serve --port 8000
+# API docs at http://localhost:8000/api/v1/docs
+```
 
 ### Use cases
 
-#### CLI — CI/CD pipelines, ad-hoc resolution
+**CLI — CI/CD pipelines, ad-hoc resolution:**
+
 ```bash
-# Resolve cross-ecosystem dependencies
 udr resolve flask>=2.0 react@^18
-
-# Lock a project's dependencies
 udr lock
-
-# Check system compatibility
 udr check
-
-# Start the API server
-udr serve --port 8000
 ```
 
-#### Python library — embed in your own tools
+**Python library — embed in your own tools:**
+
 ```python
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.data_aggregator import DataAggregator
@@ -64,120 +67,64 @@ from backend.core.data_aggregator import DataAggregator
 async def check_deps():
     agg = DataAggregator()
     info = await agg.get_package_info("torch", ecosystem="pypi")
-    print(info["versions"])
-
     resolver = ConflictResolver()
     result = resolver.resolve([{"name": "torch", "version": ">=2.0"}])
-    return result
 ```
 
-#### API server — production deployment
+**API server — programmatic access:**
+
 ```bash
-udr serve --host 0.0.0.0 --port 8000
+curl -X POST http://localhost:8000/api/v1/packages/resolve \
+  -H "Content-Type: application/json" \
+  -d '{"packages": [{"name": "flask", "ecosystem": "pypi", "version": ">=2.0"}]}'
 ```
-
-Or with Docker:
-```bash
-docker pull ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest
-docker run -p 8000:8000 ghcr.io/code-with-zeeshan/universal-dependency-resolver-backend:latest
-```
-
-### Extras
-| Install flag | Adds |
-|---|---|
-| `[system]` | GPU & system scanning |
-| `[monitoring]` | OpenTelemetry & Sentry |
-| `[postgres]` | PostgreSQL + Redis + Celery |
-| `[all]` | Everything |
-
-> **Note:** Auth (JWT, passlib, bcrypt) is now a core dependency — no `[security]` extra needed. Auth is disabled by default (`UDR_MODE=local`); enable with `UDR_MODE=saas`.
-
-### API docs
-Once running: `http://localhost:8000/api/v1/docs` (Swagger UI)
 
 ---
 
-## 2. Desktop (Electron standalone app)
+## 2. Desktop (Electron app)
 
 ### What it is
+
 A cross-platform desktop application (Windows .exe, macOS .dmg, Linux .AppImage) that bundles:
-- The **backend** (compiled to a standalone binary via PyInstaller — no Python install needed)
-- A **built-in GUI** (`desktop/index.html` — inline CSS/JS, no build step)
-- An **Electron shell** that spawns the backend on launch and opens the GUI
 
-The result: a single offline application with no server setup, no Python install, no terminal commands.
+- The backend compiled to a standalone binary via PyInstaller
+- A GUI (`desktop/index.html` — inline CSS/JS, no framework)
+- An Electron shell that spawns the backend on launch
 
-### Where to get it
+No Python, Node.js, or any runtime required.
+
+### Download
+
 Download from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases):
 
 | Platform | File |
 |---|---|
-| Windows 10+ | `udr-desktop-windows-latest.zip` → run the installer `.exe` |
+| Windows 10+ | `udr-desktop-windows-latest.zip` → run installer `.exe` |
 | macOS 11+ | `udr-desktop-macos-latest.zip` → mount `.dmg`, drag to Applications |
-| Linux (x86_64) | `udr-desktop-ubuntu-latest.zip` → run the `.AppImage` |
-
-### Prerequisites
-- **None.** The app is self-contained. No Python, Node.js, or other runtime required.
+| Linux (x86_64) | `udr-desktop-ubuntu-latest.zip` → run `.AppImage` |
 
 ### How it works
+
 ```
-┌─────────────────────────────────────────────┐
-│               Desktop App                   │
-│  ┌──────────────┐  ┌─────────────────────┐  │
-│  │  Electron    │  │  Backend (PyIn-     │  │
-│  │  shell       │  │  staller binary)    │  │
-│  │  (main.js)   │  │                     │  │
-│  │  + GUI       │  │  REST API on        │  │
-│  │  (index.html)│  │  localhost:port     │  │
-│  └──────┬───────┘  └──────────┬──────────┘  │
-│         │                     │              │
-│         └─────────────────────┘              │
-│                    │                         │
-│    1. Electron loads index.html (built-in)   │
-│    2. Spawns backend binary on a free port   │
-│    3. GUI polls backend at that port         │
-│    4. Ready: resolve packages via GUI        │
-└─────────────────────────────────────────────┘
+1. Electron loads index.html (built-in GUI)
+2. Spawns backend binary on a free port
+3. GUI communicates with backend via REST API
+4. Ready: resolve packages, view results, export
 ```
 
-### Fallback chain
-If the bundled binary fails (antivirus, missing system libraries), the desktop app falls back to system Python:
+If the bundled binary fails (antivirus, missing system libraries), the app falls back to system Python (`udr serve` from `pip install ud-resolver`).
 
-1. **PyInstaller binary** (bundled, preferred — no Python needed)
-2. **System Python** (`udr serve`) — requires `pip install ud-resolver` and Python 3.11+
+### Desktop features
 
-### Desktop-specific features
-- **Auto-update**: In production builds, the app checks for updates on launch and notifies you when a new version is available
-- **System tray**: Minimize to tray with quick-access menu (Show / Quit)
-- **Desktop notifications**: Alerts when backend starts and when updates are ready
+- 14 tabbed views: Resolve, Lock, Verify, Graph, Scan, Export, System Info, etc.
+- Formatted HTML tables — no raw JSON shown to users
+- Loading spinners and human-readable error messages
+- System tray with quick-access menu
+- Auto-update checks on launch
+- Desktop notifications
 
-### Known platform notes
-- **Windows**: Antivirus may flag the PyInstaller binary. Add an exclusion for the app directory if needed.
-- **macOS**: The app is not signed. If Gatekeeper blocks it: right-click → Open, or go to System Settings → Privacy & Security → "Open Anyway".
+### Platform notes
+
+- **Windows**: Antivirus may flag the PyInstaller binary. Add an exclusion if needed.
+- **macOS**: Not signed. If Gatekeeper blocks: right-click → Open, or System Settings → Privacy & Security → "Open Anyway".
 - **Linux**: AppImages require FUSE. If unavailable: `./UDR-*.AppImage --appimage-extract && ./squashfs-root/AppRun`.
-
----
-
-## Relationship diagram
-
-```
-PyPI / GitHub Releases  ────►  ud-resolver (backend package)
-                                       │
-                                       ├──►  CLI (udr resolve, udr lock, ...)
-                                       ├──►  Python library (import backend.*)
-                                       └──►  API server (uvicorn)
-                                                │
-                                                ▼
-GitHub Packages (GHCR)  ────►  Backend Docker image
-                                       │
-                                       ▼
-GitHub Releases  ────►  Desktop app (backend binary + built-in GUI)
-```
-
-## Where to find each component
-
-| Component | Published to | How to get |
-|---|---|---|
-| Backend (PyPI) | [pypi.org/project/ud-resolver](https://pypi.org/project/ud-resolver/) | `pip install ud-resolver` |
-| Backend (GHCR) | `ghcr.io/...-backend` | `docker pull` |
-| Desktop | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | Download `.zip` from release assets |

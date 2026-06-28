@@ -10,8 +10,6 @@ import logging
 from enum import Enum
 from ..core.utils import normalize_package_name, parse_version
 from ..settings import (
-    CRATES_URL,
-    CRATES_DL_URL,
     CACHE_TTL,
     CACHE_TTL_SHORT,
     get_ecosystem_config,
@@ -39,11 +37,11 @@ class CratesClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="crates",
-            base_url=crates_config.get("url", CRATES_URL),
+            base_url=crates_config.get("url", "https://crates.io/api/v1"),
             cache_ttl=cache_ttl or crates_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.download_url = CRATES_DL_URL
+        self.download_url = "https://crates.io/api/v1/crates"
         self.cache_ttl_short = CACHE_TTL_SHORT
 
     async def search_packages(

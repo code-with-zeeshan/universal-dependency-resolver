@@ -74,23 +74,30 @@ class TestCocoaPodsClient:
         assert result is not None
         assert result["name"] == "Alamofire"
 
-    def test_package_exists_returns_true(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_head.return_value = mock_response
-            assert client.package_exists("Alamofire") is True
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_true(self, client):
+        session = client._get_session()
+        with patch.object(session, "get", new_callable=AsyncMock) as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_get.return_value = mock_response
+            assert await client.package_exists("Alamofire") is True
+            mock_get.assert_called_once()
 
-    def test_package_exists_returns_false(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 404
-            mock_head.return_value = mock_response
-            assert client.package_exists("nonexistent") is False
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_false(self, client):
+        session = client._get_session()
+        with patch.object(session, "get", new_callable=AsyncMock) as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 404
+            mock_get.return_value = mock_response
+            assert await client.package_exists("nonexistent") is False
 
-    def test_package_exists_handles_exception(self, client):
-        with patch("requests.get", side_effect=Exception("Network error")):
-            assert client.package_exists("Alamofire") is False
+    @pytest.mark.asyncio
+    async def test_package_exists_handles_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "get", side_effect=Exception("Network error")):
+            assert await client.package_exists("Alamofire") is False
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_pod_data):

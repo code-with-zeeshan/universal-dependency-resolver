@@ -101,23 +101,30 @@ class TestGoModulesClient:
         assert result is not None
         assert result["name"] == "github.com/example/mymodule"
 
-    def test_package_exists_returns_true(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_true(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 200
             mock_head.return_value = mock_response
-            assert client.package_exists("github.com/example/mymodule") is True
+            assert await client.package_exists("github.com/example/mymodule") is True
+            mock_head.assert_called_once()
 
-    def test_package_exists_returns_false(self, client):
-        with patch("requests.head") as mock_head:
-            mock_response = MagicMock()
-            mock_response.status_code = 404
+    @pytest.mark.asyncio
+    async def test_package_exists_returns_false(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
+            mock_response = AsyncMock()
+            mock_response.status = 404
             mock_head.return_value = mock_response
-            assert client.package_exists("github.com/example/mymodule") is False
+            assert await client.package_exists("github.com/example/mymodule") is False
 
-    def test_package_exists_handles_exception(self, client):
-        with patch("requests.head", side_effect=Exception("Network error")):
-            assert client.package_exists("github.com/example/mymodule") is False
+    @pytest.mark.asyncio
+    async def test_package_exists_handles_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "head", side_effect=Exception("Network error")):
+            assert await client.package_exists("github.com/example/mymodule") is False
 
     @pytest.mark.asyncio
     async def test_search_packages(self, client):

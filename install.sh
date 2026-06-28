@@ -17,93 +17,20 @@ ok()    { echo -e "${COLOR_GREEN}[OK]${COLOR_RESET}   $*"; }
 warn()  { echo -e "${COLOR_YELLOW}[WARN]${COLOR_RESET} $*"; }
 fail()  { echo -e "${COLOR_RED}[FAIL]${COLOR_RESET} $*"; exit 1; }
 
-detect_package_manager() {
-  if command -v brew &>/dev/null; then echo "brew"
-  elif command -v apt-get &>/dev/null; then echo "apt"
-  elif command -v dnf &>/dev/null; then echo "dnf"
-  elif command -v yum &>/dev/null; then echo "yum"
-  elif command -v pacman &>/dev/null; then echo "pacman"
-  elif command -v choco &>/dev/null; then echo "choco"
-  else echo "unknown"; fi
-}
-
-install_system_deps() {
-  local pm=$(detect_package_manager)
-  case "$pm" in
-    brew)
-      brew install python@3.12 postgresql redis 2>/dev/null || true
-      ;;
-    apt)
-      sudo apt-get update -qq
-      sudo apt-get install -y -qq python3.12 python3.12-venv python3-pip postgresql postgresql-client redis-server 2>/dev/null || true
-      ;;
-    dnf|yum)
-      sudo "$pm" install -y python3.12 python3-pip postgresql redis 2>/dev/null || true
-      ;;
-    pacman)
-      sudo pacman -S --noconfirm python python-pip postgresql redis 2>/dev/null || true
-      ;;
-    choco)
-      choco install python postgresql redis-64 -y 2>/dev/null || true
-      ;;
-    *)
-      warn "No package manager detected. Please install Python 3.11+, PostgreSQL 15+, and Redis 7+ manually."
-      ;;
-  esac
-}
-
-install_docker() {
-  if command -v docker &>/dev/null && docker compose version &>/dev/null 2>&1; then
-    return 0
-  fi
-  warn "Docker not found."
-  read -rp "Install Docker? (y/N): " ans
-  if [[ "$ans" =~ ^[Yy] ]]; then
-    curl -fsSL https://get.docker.com | sh
-    ok "Docker installed"
-  fi
-}
-
-setup_docker() {
-  echo
-  info "Starting $APP via Docker Compose..."
-  docker compose up -d --build
-  docker compose exec backend alembic upgrade head 2>/dev/null || warn "Migration skipped (DB may not be ready yet)"
-  echo
-  ok "$APP is running!"
-  echo "  API:      http://localhost:8000/api/v1/docs"
-  echo
-  echo "Run 'docker compose logs -f' to follow logs."
-  echo "Run 'docker compose down' to stop."
-}
-
-setup_manual() {
-  echo
-  info "Setting up $APP manually..."
-
-  # Backend
-  info "Installing Python backend..."
+install_from_source() {
+  info "Installing from source..."
   python3 -m venv venv
   source venv/bin/activate
-  pip install --quiet -e ".[all]" 2>/dev/null || pip install --quiet -e "."
+  pip install --quiet -e "."
   ok "Backend installed"
-
-  # Database
-  info "Setting up database..."
-  if command -v createdb &>/dev/null; then
-    createdb udr 2>/dev/null || warn "Database 'udr' may already exist"
-  fi
-  alembic upgrade head 2>/dev/null || warn "Migration skipped"
-
   echo
   ok "$APP installed!"
   echo
-  echo "To start:"
-  echo "  1. Start PostgreSQL and Redis"
-  echo "  2. source venv/bin/activate"
-  echo "  3. udr serve --mode local --port 8000 &"
-  echo
-  echo "Or use 'docker compose up' instead."
+  echo "Usage:"
+  echo "  source venv/bin/activate"
+  echo "  udr resolve numpy pandas --json"
+  echo "  udr check --deps requirements.txt"
+  echo "  udr --help"
 }
 
 main() {
@@ -114,40 +41,20 @@ main() {
   echo "========================================"
   echo
 
-  # Check git repo
-  if [ ! -f "pyproject.toml" ] && [ ! -f "backend/cli.py" ]; then
-    warn "Not in the project directory. Cloning..."
-    git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
-    cd universal-dependency-resolver
+  if ! command -v python3 &>/dev/null; then
+    fail "Python 3.11+ is required. Install it first: https://www.python.org/downloads/"
   fi
 
-  # Detect available tools
-  HAS_PYTHON=$(command -v python3 &>/dev/null && echo 1 || echo 0)
-  HAS_DOCKER=$(command -v docker &>/dev/null && docker compose version &>/dev/null 2>&1 && echo 1 || echo 0)
-
-  echo "Detected: Python=$HAS_PYTHON Docker=$HAS_DOCKER"
-  echo
-
-  # Choose install method
-  if [ "$HAS_DOCKER" = "1" ]; then
-    info "Docker Compose available — this is the easiest path."
-    read -rp "Install via Docker? (Y/n): " ans
-    if [[ ! "$ans" =~ ^[Nn] ]]; then
-      setup_docker
-      exit 0
-    fi
+  # Quick install via pip
+  if [[ ! -f pyproject.toml ]]; then
+    info "Installing from PyPI..."
+    pip install ud-resolver
+    ok "Installed! Run 'udr --help' to get started."
+    exit 0
   fi
 
-  if [ "$HAS_PYTHON" = "0" ]; then
-    warn "Missing Python. Attempting to install system dependencies..."
-    install_system_deps
-  fi
-
-  if command -v python3 &>/dev/null; then
-    setup_manual
-  else
-    fail "Could not install dependencies. Please install Python 3.11+ manually."
-  fi
+  # Source install for contributors
+  install_from_source
 }
 
 main "$@"

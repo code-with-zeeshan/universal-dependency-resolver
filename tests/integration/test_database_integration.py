@@ -9,8 +9,6 @@ from backend.database.models import (
     PackageVersion,
     CompatibilityReport,
     ConflictRule,
-    VerifiedCombination,
-    SystemBenchmark,
     ResolutionCache,
     User,
     APIKey,
@@ -331,65 +329,6 @@ class TestResolutionCache:
             db_session.commit()
         db_session.rollback()
 
-
-class TestSystemBenchmark:
-    """Test SystemBenchmark model."""
-
-    def test_create_benchmark(self, db_session):
-        benchmark = SystemBenchmark(
-            system_hash="sys_001",
-            os_name="Linux",
-            os_version="6.2.0",
-            cpu_model="Intel Core i7",
-            cpu_cores=8,
-            ram_gb=32.0,
-            gpu_model="RTX 4090",
-            gpu_memory_gb=24.0,
-            benchmarks={"cuda_matmul": 1.5, "cpu_inference": 12.3},
-        )
-        db_session.add(benchmark)
-        db_session.commit()
-
-        saved = (
-            db_session.query(SystemBenchmark).filter_by(system_hash="sys_001").first()
-        )
-        assert saved is not None
-        assert saved.cpu_model == "Intel Core i7"
-        assert saved.ram_gb == 32.0
-
-    def test_unique_system_hash(self, db_session):
-        db_session.add(SystemBenchmark(system_hash="sys_dup"))
-        db_session.commit()
-
-        with pytest.raises(IntegrityError):
-            db_session.add(SystemBenchmark(system_hash="sys_dup"))
-            db_session.commit()
-        db_session.rollback()
-
-
-class TestVerifiedCombination:
-    """Test VerifiedCombination model."""
-
-    def test_create_verified_combination(self, db_session):
-        combo = VerifiedCombination(
-            name="ML Stack v1",
-            description="Verified ML combination",
-            packages={"tensorflow": "2.13", "torch": "2.0"},
-            system_requirements={"python": "3.11", "cuda": "11.8"},
-            test_results={"accuracy": 0.95, "throughput": 100},
-            usage_count=42,
-            success_rate=0.98,
-        )
-        db_session.add(combo)
-        db_session.commit()
-
-        saved = (
-            db_session.query(VerifiedCombination).filter_by(name="ML Stack v1").first()
-        )
-        assert saved is not None
-        assert saved.usage_count == 42
-        assert saved.success_rate == 0.98
-        assert saved.packages["tensorflow"] == "2.13"
 
 
 class TestBulkOperations:

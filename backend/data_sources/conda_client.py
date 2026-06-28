@@ -9,7 +9,6 @@ import yaml
 import tarfile
 import io
 from ..core.utils import normalize_package_name, parse_version, run_async
-from ..settings import CONDA_CHANNELS
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -22,24 +21,30 @@ class CondaClient(BaseDataSourceClient):
             base_url="https://api.anaconda.org",
         )
 
-        self.channels = CONDA_CHANNELS.copy()
+        channels = {
+            "defaults": "https://repo.anaconda.com/pkgs/main",
+            "conda-forge": "https://conda.anaconda.org/conda-forge",
+            "pytorch": "https://conda.anaconda.org/pytorch",
+            "nvidia": "https://conda.anaconda.org/nvidia",
+            "bioconda": "https://conda.anaconda.org/bioconda",
+            "r": "https://conda.anaconda.org/r",
+        }
+        self.channels = channels.copy()
         self.repodata_urls = {
             channel: f"{url}/{{platform}}/repodata.json"
-            for channel, url in CONDA_CHANNELS.items()
+            for channel, url in channels.items()
         }
         self._repodata_cache = {}
         self._dependency_cache = {}
 
-    def package_exists(self, package_name: str) -> bool:
+    async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
-            response = requests.get(
-                f"https://api.anaconda.org/package/conda-forge/{package_name}",
-                timeout=5,
+            session = self._get_session()
+            response = await session.get(
+                f"https://api.anaconda.org/package/conda-forge/{package_name}"
             )
-            return response.status_code == 200
+            return response.status == 200
         except Exception:
             return False
 

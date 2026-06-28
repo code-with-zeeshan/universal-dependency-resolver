@@ -6,23 +6,22 @@ services (Grafana Cloud, Datadog, Honeycomb, New Relic, etc.)
 via standard OTEL environment variables.
 """
 
+import os
 import logging
 from typing import Optional
 
-from backend.settings import (
-    OTEL_ENABLED,
-    OTEL_EXPORTER_OTLP_PROTOCOL,
-    OTEL_EXPORTER_OTLP_ENDPOINT,
-    OTEL_EXPORTER_OTLP_HEADERS,
-    OTEL_EXPORTER_OTLP_COMPRESSION,
-    OTEL_EXPORTER_OTLP_TIMEOUT,
-    OTEL_SAMPLER_TYPE,
-    OTEL_SAMPLER_ARG,
-    OTEL_SERVICE_NAME,
-    OTEL_SERVICE_VERSION,
-    OTEL_RESOURCE_ATTRIBUTES,
-    ENV,
-)
+OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() == "true"
+OTEL_EXPORTER_OTLP_PROTOCOL = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+OTEL_EXPORTER_OTLP_HEADERS = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+OTEL_EXPORTER_OTLP_COMPRESSION = os.getenv("OTEL_EXPORTER_OTLP_COMPRESSION", "gzip")
+OTEL_EXPORTER_OTLP_TIMEOUT = int(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "10"))
+OTEL_SAMPLER_TYPE = os.getenv("OTEL_SAMPLER_TYPE", "parentbased_traceidratio")
+OTEL_SAMPLER_ARG = os.getenv("OTEL_SAMPLER_ARG", "0.1")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "universal-dependency-resolver")
+OTEL_SERVICE_VERSION = os.getenv("OTEL_SERVICE_VERSION", "1.0.0")
+OTEL_RESOURCE_ATTRIBUTES = os.getenv("OTEL_RESOURCE_ATTRIBUTES", "")
+ENV = os.getenv("ENV", "development")
 
 logger = logging.getLogger(__name__)
 

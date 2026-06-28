@@ -16,23 +16,10 @@ from backend.core.utils import (
 import json
 import hashlib
 from collections import defaultdict
+import importlib
 import aiohttp
 
-from backend.data_sources.pypi_client import PyPIClient
-from backend.data_sources.npm_client import NPMClient
-from backend.data_sources.conda_client import CondaClient
-from backend.data_sources.maven_client import MavenClient
-from backend.data_sources.crates_client import CratesClient
-from backend.data_sources.documentation_scraper import DocumentationScraper
-from backend.data_sources.rubygems_client import RubyGemsClient
-from backend.data_sources.packagist_client import PackagistClient
-from backend.data_sources.nuget_client import NuGetClient
-from backend.data_sources.homebrew_client import HomebrewClient
-from backend.data_sources.gomodules_client import GoModulesClient
-from backend.data_sources.cocoapods_client import CocoaPodsClient
-from backend.data_sources.apk_client import APKClient
-from backend.data_sources.apt_client import APTClient
-from backend.database.compatibility_db import CompatibilityDB
+
 from backend.settings import OSV_API_URL
 
 logger = logging.getLogger(__name__)
@@ -108,23 +95,31 @@ class CompatibilityIssue:
     resolution: Optional[str] = None
 
 
-_CLIENT_BUILDERS = {
-    Ecosystem.PYPI: lambda: PyPIClient(),
-    Ecosystem.NPM: lambda: NPMClient(),
-    Ecosystem.CONDA: lambda: CondaClient(),
-    Ecosystem.MAVEN: lambda: MavenClient(),
-    Ecosystem.CRATES: lambda: CratesClient(),
-    Ecosystem.GOMODULES: lambda: GoModulesClient(),
-    Ecosystem.APT: lambda: APTClient(),
-    Ecosystem.APK: lambda: APKClient(),
-    Ecosystem.COCOAPODS: lambda: CocoaPodsClient(),
-    Ecosystem.HOMEBREW: lambda: HomebrewClient(),
-    Ecosystem.NUGET: lambda: NuGetClient(),
-    Ecosystem.PACKAGIST: lambda: PackagistClient(),
-    Ecosystem.RUBYGEMS: lambda: RubyGemsClient(),
-    Ecosystem.DOCS: lambda: DocumentationScraper(),
-    Ecosystem.CUSTOM_DB: lambda: CompatibilityDB(),
-}
+_CLIENT_BUILDERS: Dict[Ecosystem, Any] = {}
+
+
+def _register_client(ecosystem: Ecosystem, module: str, class_name: str):
+    """Register a lazy-loaded data source client builder."""
+    _CLIENT_BUILDERS[ecosystem] = lambda: getattr(
+        importlib.import_module(module), class_name
+    )()
+
+
+_register_client(Ecosystem.PYPI, "backend.data_sources.pypi_client", "PyPIClient")
+_register_client(Ecosystem.NPM, "backend.data_sources.npm_client", "NPMClient")
+_register_client(Ecosystem.CONDA, "backend.data_sources.conda_client", "CondaClient")
+_register_client(Ecosystem.MAVEN, "backend.data_sources.maven_client", "MavenClient")
+_register_client(Ecosystem.CRATES, "backend.data_sources.crates_client", "CratesClient")
+_register_client(Ecosystem.GOMODULES, "backend.data_sources.gomodules_client", "GoModulesClient")
+_register_client(Ecosystem.APT, "backend.data_sources.apt_client", "APTClient")
+_register_client(Ecosystem.APK, "backend.data_sources.apk_client", "APKClient")
+_register_client(Ecosystem.COCOAPODS, "backend.data_sources.cocoapods_client", "CocoaPodsClient")
+_register_client(Ecosystem.HOMEBREW, "backend.data_sources.homebrew_client", "HomebrewClient")
+_register_client(Ecosystem.NUGET, "backend.data_sources.nuget_client", "NuGetClient")
+_register_client(Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "PackagistClient")
+_register_client(Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient")
+_register_client(Ecosystem.DOCS, "backend.data_sources.documentation_scraper", "DocumentationScraper")
+_register_client(Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB")
 
 
 class DataAggregator:
@@ -1148,13 +1143,15 @@ class DataAggregator:
         self, requirement: SystemRequirement, system_info: Dict
     ) -> bool:
         """Check if system meets requirement"""
+        from backend.core.utils import is_compatible_version
+
         if requirement.name not in system_info:
-            return True  # Assume compatible if no info
+            return requirement.optional
 
-        system_version = system_info[requirement.name]
-
-        # Simple version comparison - would use proper version parsing in production
-        return True  # Placeholder
+        system_version = str(system_info[requirement.name])
+        if requirement.version_spec:
+            return is_compatible_version(system_version, requirement.version_spec)
+        return True
 
     def _generate_compatibility_recommendations(self, report: Dict):
         """Generate recommendations based on compatibility analysis"""
@@ -1182,38 +1179,4 @@ class DataAggregator:
                         )
 
 
-# Example usage
-async def example_usage():
-    async with DataAggregator() as aggregator:
-        # Get comprehensive package info
-        info = await aggregator.get_package_info(
-            "requests",
-            include_dependencies=True,
-            include_versions=True,
-            include_documentation=True,
-        )
 
-        print(f"Package: {info['name']}")
-        print(f"Ecosystems: {list(info['ecosystems'].keys())}")
-        print(f"Quality Score: {info['quality_metrics']['overall_score']:.2f}")
-
-        # Search across ecosystems
-        results = await aggregator.search_packages("machine learning", limit=5)
-        for eco, packages in results.items():
-            print(f"\n{eco}: {len(packages)} results")
-
-        # Check compatibility
-        packages = [
-            {"name": "numpy", "version": "1.24.0", "ecosystem": "pypi"},
-            {"name": "pandas", "version": "2.0.0", "ecosystem": "pypi"},
-        ]
-
-        compatibility = await aggregator.check_compatibility(
-            packages, {"python": "3.9.0", "os": "linux", "arch": "x86_64"}
-        )
-
-        print(f"\nOverall Compatible: {compatibility['overall_compatible']}")
-
-
-if __name__ == "__main__":
-    asyncio.run(example_usage())

@@ -8,12 +8,7 @@ import re
 import asyncio
 import xmlrpc.client
 from bs4 import BeautifulSoup
-from ..settings import (
-    PYPI_URL,
-    PYPI_JSON_URL,
-    PYPI_XMLRPC_URL,
-    CACHE_TTL,
-)
+from ..settings import CACHE_TTL
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -23,21 +18,23 @@ class PyPIClient(BaseDataSourceClient):
     def __init__(self):
         super().__init__(
             ecosystem="pypi",
-            base_url=PYPI_JSON_URL,
+            base_url="https://pypi.org/pypi",
         )
-        self.search_url = f"{PYPI_URL}/search/"
-        self.xmlrpc_url = PYPI_XMLRPC_URL
+        self.search_url = "https://pypi.org/search/"
+        self.xmlrpc_url = "https://pypi.org/pypi"
         self._search_cache = {}
         self._search_cache_ttl = CACHE_TTL // 2
 
-    def package_exists(self, package_name: str) -> bool:
-        """Quick check if package exists on PyPI"""
+    async def package_exists(self, package_name: str) -> bool:
+        """Check if package exists on PyPI"""
         package_name = normalize_package_name(package_name)
         try:
-            import requests
-
-            response = requests.head(f"{self.base_url}/{package_name}/json", timeout=5)
-            return response.status_code == 200
+            session = self._get_session()
+            response = await asyncio.wait_for(
+                session.head(f"{self.base_url}/{package_name}/json"),
+                timeout=5,
+            )
+            return response.status == 200
         except Exception:
             return False
 
