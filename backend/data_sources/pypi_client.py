@@ -65,9 +65,9 @@ class PyPIClient(BaseDataSourceClient):
         self, data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Process raw PyPI data with enhanced extraction"""
-        info = data.get("info", {})
-        releases = data.get("releases", {})
-        urls = data.get("urls", [])
+        info = data.get("info") or {}
+        releases = data.get("releases") or {}
+        urls = data.get("urls") or []
 
         # Get latest stable version
         latest_version = info.get("version")
@@ -139,14 +139,14 @@ class PyPIClient(BaseDataSourceClient):
 
         # Extract dependencies with enhanced parsing
         dependencies = await self._extract_dependencies_enhanced(
-            info.get("requires_dist", []), info.get("requires_python")
+            info.get("requires_dist") or [], info.get("requires_python")
         )
 
         # Extract system requirements with more detail
         system_requirements = self._extract_system_requirements_enhanced(info, urls)
 
         # Extract development status
-        dev_status = self._extract_development_status(info.get("classifiers", []))
+        dev_status = self._extract_development_status(info.get("classifiers") or [])
 
         return {
             "name": info.get("name"),
@@ -162,14 +162,14 @@ class PyPIClient(BaseDataSourceClient):
             "maintainer": info.get("maintainer"),
             "maintainer_email": info.get("maintainer_email"),
             "license": info.get("license"),
-            "keywords": self._parse_keywords(info.get("keywords", "")),
-            "classifiers": info.get("classifiers", []),
+            "keywords": self._parse_keywords(info.get("keywords") or ""),
+            "classifiers": info.get("classifiers") or [],
             "dependencies": dependencies,
             "system_requirements": system_requirements,
             "python_requires": info.get("requires_python"),
             "downloads": self._extract_download_stats(info),
             "development_status": dev_status,
-            "project_urls": info.get("project_urls", {}),
+            "project_urls": info.get("project_urls") or {},
         }
 
     def _extract_python_versions_from_wheel(self, filename: str) -> Set[str]:
@@ -231,6 +231,8 @@ class PyPIClient(BaseDataSourceClient):
             "extras": {},
         }
 
+        if not requires_dist:
+            return deps
         for req_str in requires_dist:
             if not req_str:
                 continue
@@ -348,9 +350,9 @@ class PyPIClient(BaseDataSourceClient):
         """Extract system requirements with enhanced detection"""
         requirements = {}
 
-        classifiers = info.get("classifiers", [])
+        classifiers = info.get("classifiers") or []
         description = (
-            info.get("description", "") + " " + info.get("summary", "")
+            (info.get("description") or "") + " " + (info.get("summary") or "")
         ).lower()
 
         # Check for GPU/CUDA requirements
@@ -583,7 +585,7 @@ class PyPIClient(BaseDataSourceClient):
 
     def _extract_repository_url(self, info: Dict[str, Any]) -> Optional[str]:
         """Extract repository URL from project URLs"""
-        project_urls = info.get("project_urls", {})
+        project_urls = info.get("project_urls") or {}
 
         # Common repository URL keys
         repo_keys = ["Source", "Repository", "Code", "GitHub", "GitLab", "Bitbucket"]
@@ -593,8 +595,8 @@ class PyPIClient(BaseDataSourceClient):
                 return project_urls[key]
 
         # Check home page if it's a repository
-        home_page = info.get("home_page", "")
-        if any(
+        home_page = info.get("home_page")
+        if home_page and any(
             host in home_page for host in ["github.com", "gitlab.com", "bitbucket.org"]
         ):
             return home_page
@@ -603,7 +605,7 @@ class PyPIClient(BaseDataSourceClient):
 
     def _extract_documentation_url(self, info: Dict[str, Any]) -> Optional[str]:
         """Extract documentation URL from project URLs"""
-        project_urls = info.get("project_urls", {})
+        project_urls = info.get("project_urls") or {}
 
         # Common documentation URL keys
         doc_keys = ["Documentation", "Docs", "Doc", "Manual", "Guide"]
@@ -637,7 +639,7 @@ class PyPIClient(BaseDataSourceClient):
 
     def _extract_download_stats(self, info: Dict[str, Any]) -> Dict[str, Any]:
         """Extract download statistics"""
-        downloads = info.get("downloads", {})
+        downloads = info.get("downloads") or {}
 
         return {
             "last_day": downloads.get("last_day", 0),
@@ -856,7 +858,7 @@ class PyPIClient(BaseDataSourceClient):
         if data is None:
             return {}
 
-        info = data.get("info", {})
+        info = data.get("info") or {}
         return await self._extract_dependencies_enhanced(
-            info.get("requires_dist", []), info.get("requires_python")
+            info.get("requires_dist") or [], info.get("requires_python")
         )

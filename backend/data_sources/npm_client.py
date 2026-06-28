@@ -60,9 +60,9 @@ class NPMClient(BaseDataSourceClient):
 
     async def _make_request(
         self,
+        method: str,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Optional[Dict[str, Any]]:
         urls_to_try = [url]
         if self.mirror_urls and "registry.npmjs.org" in url:
@@ -71,7 +71,7 @@ class NPMClient(BaseDataSourceClient):
                 urls_to_try.append(mirror_url)
 
         for attempt_url in urls_to_try:
-            result = await self._get(attempt_url, params=params, headers=headers)
+            result = await super()._make_request(method, attempt_url, **kwargs)
             if result is not None:
                 return result
         return None
@@ -87,7 +87,7 @@ class NPMClient(BaseDataSourceClient):
         query = normalize_package_name(query)
         params = {"text": query, "size": min(limit, 250)}
 
-        data = await self._make_request(self.search_url, params=params)
+        data = await self._make_request("GET", self.search_url, params=params)
         if not data:
             return []
 
@@ -141,7 +141,7 @@ class NPMClient(BaseDataSourceClient):
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
 
-        data = await self._make_request(url)
+        data = await self._make_request("GET", url)
         if not data:
             return None
 
@@ -222,7 +222,7 @@ class NPMClient(BaseDataSourceClient):
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}/{version}"
 
-        data = await self._make_request(url)
+        data = await self._make_request("GET", url)
         if not data:
             return None
 
@@ -604,7 +604,7 @@ class NPMClient(BaseDataSourceClient):
             stats = {}
             for period, endpoint in endpoints.items():
                 url = f"{self.downloads_url}{endpoint}"
-                data = await self._make_request(url)
+                data = await self._make_request("GET", url)
                 if data:
                     stats[period] = data.get("downloads", 0)
                 else:

@@ -42,19 +42,19 @@ class ManifestDetector:
         self.directory = Path(directory).resolve()
 
     def detect(self) -> List[Dict]:
-        """Scan directory for known manifests. Returns list of manifest info dicts."""
+        """Scan directory recursively for known manifests. Returns list of manifest info dicts."""
         found = []
         seen = set()
         for fname, ecosystem, parser_key in MANIFEST_PATTERNS:
-            fp = self.directory / fname
-            if fp.is_file() and fname not in seen:
-                seen.add(fname)
-                found.append({
-                    "path": str(fp),
-                    "filename": fname,
-                    "ecosystem": ecosystem,
-                    "parser": parser_key,
-                })
+            for fp in self.directory.rglob(fname):
+                if fp.is_file() and fname not in seen:
+                    seen.add(fname)
+                    found.append({
+                        "path": str(fp),
+                        "filename": fname,
+                        "ecosystem": ecosystem,
+                        "parser": parser_key,
+                    })
         return found
 
     def parse(self, manifest: Dict) -> List[Dict]:

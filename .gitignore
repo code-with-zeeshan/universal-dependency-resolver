@@ -487,3 +487,6 @@ heapdump*
 
 #zencoder
 .zencoder/udr-lock.json
+
+# lock file
+udr-lock.json

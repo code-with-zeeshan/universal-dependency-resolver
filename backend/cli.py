@@ -247,15 +247,15 @@ def _apply_cuda_variants(resolved: Dict, package_details: Dict[str, Dict], syste
     return resolved
 
 
-def _run_resolution(
+async def _run_resolution(
     aggregator, resolver, resolver_inputs, system_info, package_details,
     interactive: bool = False,
 ) -> Dict:
     """Run resolution with SAT solver, fallback, CUDA variants, and interactive mode."""
     try:
-        resolved = asyncio.run(_resolve_transitive(
+        resolved = await _resolve_transitive(
             aggregator, resolver, resolver_inputs, system_info,
-        ))
+        )
     except Exception as exc:
         err_console.print(f"[yellow]SAT resolution fell back to alternatives:[/yellow] {exc}")
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
@@ -277,39 +277,43 @@ def _run_resolution(
 def _fetch_package_data(
     aggregator, specs: List[Tuple[str, str]]
 ) -> Tuple[List[Dict], Dict[str, Dict]]:
-    """Fetch package metadata concurrently. Returns (resolver_inputs, package_details)."""
-    async def _fetch():
-        resolver_inputs = []
-        package_details = {}
+    """Fetch package metadata concurrently (sync version). Returns (resolver_inputs, package_details)."""
+    return asyncio.run(_fetch_package_data_async(aggregator, specs))
 
-        async def fetch_one(pkg_name: str, eco: str) -> Optional[Tuple[Dict, Dict]]:
-            try:
-                data = await aggregator.get_package_info(
-                    pkg_name, ecosystem=eco,
-                    include_dependencies=True,
-                    include_versions=True,
-                )
-                if data:
-                    rinput = _aggregator_to_resolver_input(data, eco)
-                    return (rinput, data)
-            except Exception as exc:
-                err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")
-            return None
 
-        results = await asyncio.gather(*[fetch_one(n, e) for n, e in specs])
+async def _fetch_package_data_async(
+    aggregator, specs: List[Tuple[str, str]]
+) -> Tuple[List[Dict], Dict[str, Dict]]:
+    """Fetch package metadata concurrently (async version). Returns (resolver_inputs, package_details)."""
+    resolver_inputs = []
+    package_details = {}
 
-        for spec, result in zip(specs, results):
-            pkg_name = spec[0]
-            if result:
-                rinput, data = result
-                resolver_inputs.append(rinput)
-                package_details[pkg_name] = data
-            else:
-                err_console.print(f"  [yellow]Warning:[/yellow] {pkg_name} not found")
+    async def fetch_one(pkg_name: str, eco: str) -> Optional[Tuple[Dict, Dict]]:
+        try:
+            data = await aggregator.get_package_info(
+                pkg_name, ecosystem=eco,
+                include_dependencies=True,
+                include_versions=True,
+            )
+            if data:
+                rinput = _aggregator_to_resolver_input(data, eco)
+                return (rinput, data)
+        except Exception as exc:
+            err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")
+        return None
 
-        return resolver_inputs, package_details
+    results = await asyncio.gather(*[fetch_one(n, e) for n, e in specs])
 
-    return asyncio.run(_fetch())
+    for spec, result in zip(specs, results):
+        pkg_name = spec[0]
+        if result:
+            rinput, data = result
+            resolver_inputs.append(rinput)
+            package_details[pkg_name] = data
+        else:
+            err_console.print(f"  [yellow]Warning:[/yellow] {pkg_name} not found")
+
+    return resolver_inputs, package_details
 
 
 def _build_resolved_table(resolved: Dict, title: str = None) -> Table:
@@ -787,7 +791,7 @@ def cmd_lock(args):
         # 5. Resolve
         with Progress(SpinnerColumn(), TextColumn("Resolving dependencies..."), transient=True, console=err_console) as p:
             p.add_task("SAT solver", total=None)
-            resolved = _run_resolution(
+            resolved = await _run_resolution(
                 aggregator, resolver, resolver_inputs, system_info, package_details,
                 interactive=args.interactive,
             )
@@ -1103,7 +1107,7 @@ def cmd_list_ecosystems(args):
 
 def cmd_update(args):
     """Re-resolve a single package and update the lock file."""
-    try:
+    async def _update():
         from backend.core import DataAggregator, ConflictResolver, SystemScanner
 
         lock_path = Path(args.directory) / "udr-lock.json"
@@ -1116,7 +1120,7 @@ def cmd_update(args):
         packages_in_lock = lock_data.get("packages", {})
         if package_name not in packages_in_lock:
             console.print(f"[red]Package '{package_name}' not found in lock file[/red]")
-            sys.exit(1)
+            return 1
 
         pkg_info = packages_in_lock[package_name]
         ecosystem = pkg_info.get("ecosystem", "pypi")
@@ -1124,17 +1128,17 @@ def cmd_update(args):
 
         with Progress(SpinnerColumn(), TextColumn("Scanning system..."), transient=True, console=err_console) as p:
             p.add_task("system", total=None)
-            system_info = asyncio.run(scanner.scan_all())
+            system_info = await scanner.scan_all()
 
         specs = [(package_name, ecosystem)]
-        resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
+        resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:
             console.print(f"[red]Could not fetch metadata for {package_name}[/red]")
-            sys.exit(1)
+            return 1
 
         err_console.print("[dim]Running SAT resolution...[/dim]")
-        resolved = _run_resolution(
+        resolved = await _run_resolution(
             aggregator, resolver, resolver_inputs, system_info, package_details,
             interactive=args.interactive,
         )
@@ -1144,12 +1148,12 @@ def cmd_update(args):
 
         if not new_version:
             console.print(f"[red]Could not resolve {package_name}[/red]")
-            sys.exit(1)
+            return 1
 
         old_version = pkg_info.get("resolved_version")
         if new_version == old_version:
             console.print(f"[green]{package_name} is already at version {new_version} — no update needed[/green]")
-            return
+            return 0
 
         lock_data["packages"][package_name]["resolved_version"] = new_version
         lock_data["packages"][package_name]["cuda_variant"] = rp.get(package_name, {}).get("cuda_variant", False)
@@ -1159,6 +1163,10 @@ def cmd_update(args):
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
         console.print(f"[green]Updated[/green] {package_name}: {old_version} → [bold]{new_version}[/bold]")
         console.print(f"[dim]Lock file: {lock_path}[/dim]")
+        return 0
+
+    try:
+        sys.exit(asyncio.run(_update()))
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(130)

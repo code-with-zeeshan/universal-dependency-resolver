@@ -1,22 +1,23 @@
 {
   "version": "2.0",
-  "generated_at": "2026-06-28T19:22:02.668291",
+  "generated_at": "2026-06-28T19:59:08.969619",
   "resolver": "sat",
   "system": {
     "os": "Linux 6.12.90+",
     "python": "3.13.1",
     "cpu": "Intel(R) Xeon(R) CPU @ 2.80GHz",
     "gpu": null,
-    "cuda": "12.1"
+    "cuda": null
   },
   "manifests": [
-    "pyproject.toml"
+    "pyproject.toml",
+    "package.json"
   ],
   "packages": {
     "fastapi": {
       "name": "fastapi",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<0.137,>=0.115.0",
@@ -25,7 +26,7 @@
     "uvicorn": {
       "name": "uvicorn",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.0.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<0.50,>=0.24",
@@ -34,7 +35,7 @@
     "pydantic": {
       "name": "pydantic",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.0.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<3,>=2.5.0",
@@ -43,7 +44,7 @@
     "aiohttp": {
       "name": "aiohttp",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<4,>=3.9",
@@ -52,7 +53,7 @@
     "beautifulsoup4": {
       "name": "beautifulsoup4",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "4.0.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<5,>=4.12",
@@ -61,7 +62,7 @@
     "packaging": {
       "name": "packaging",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "14.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<27,>=23.2",
@@ -70,7 +71,7 @@
     "pyyaml": {
       "name": "pyyaml",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "3.01",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<7,>=6.0.1",
@@ -79,7 +80,7 @@
     "networkx": {
       "name": "networkx",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.23",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<4,>=3.2.1",
@@ -88,7 +89,7 @@
     "z3-solver": {
       "name": "z3-solver",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "4.10.0.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<4.15.5,>=4.12",
@@ -97,7 +98,7 @@
     "sqlalchemy": {
       "name": "sqlalchemy",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<3,>=2.0.23",
@@ -106,7 +107,7 @@
     "rich": {
       "name": "rich",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<14,>=13.7",
@@ -115,7 +116,7 @@
     "slowapi": {
       "name": "slowapi",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<1,>=0.1.9",
@@ -124,7 +125,7 @@
     "python-multipart": {
       "name": "python-multipart",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.0.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<1,>=0.0.6",
@@ -133,7 +134,7 @@
     "jinja2": {
       "name": "jinja2",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "2.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<4,>=3.1.2",
@@ -142,7 +143,7 @@
     "structlog": {
       "name": "structlog",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<25,>=24.1",
@@ -151,7 +152,7 @@
     "prometheus-fastapi-instrumentator": {
       "name": "prometheus-fastapi-instrumentator",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "1.1.1",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<7,>=6.1",
@@ -160,7 +161,7 @@
     "python-jose": {
       "name": "python-jose",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "0.1.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<4,>=3.3",
@@ -169,7 +170,7 @@
     "passlib": {
       "name": "passlib",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "1.3.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<2,>=1.7.4",
@@ -178,32 +179,39 @@
     "bcrypt": {
       "name": "bcrypt",
       "ecosystem": "pypi",
-      "resolved_version": null,
+      "resolved_version": "1.0.0",
       "cuda_variant": false,
       "cuda_version": null,
       "original_constraint": "<5",
       "source": "pyproject.toml"
+    },
+    "electron": {
+      "name": "electron",
+      "ecosystem": "npm",
+      "resolved_version": "0.1.0",
+      "cuda_variant": false,
+      "cuda_version": null,
+      "original_constraint": "^28.0.0",
+      "source": "package.json"
+    },
+    "electron-builder": {
+      "name": "electron-builder",
+      "ecosystem": "npm",
+      "resolved_version": "1.0.0",
+      "cuda_variant": false,
+      "cuda_version": null,
+      "original_constraint": "^24.0.0",
+      "source": "package.json"
+    },
+    "electron-updater": {
+      "name": "electron-updater",
+      "ecosystem": "npm",
+      "resolved_version": "0.0.1",
+      "cuda_variant": false,
+      "cuda_version": null,
+      "original_constraint": "^6.0.0",
+      "source": "package.json"
     }
   },
-  "warnings": [
-    "No compatible version found for fastapi",
-    "No compatible version found for uvicorn",
-    "No compatible version found for pydantic",
-    "No compatible version found for aiohttp",
-    "No compatible version found for beautifulsoup4",
-    "No compatible version found for packaging",
-    "No compatible version found for pyyaml",
-    "No compatible version found for networkx",
-    "No compatible version found for z3-solver",
-    "No compatible version found for sqlalchemy",
-    "No compatible version found for rich",
-    "No compatible version found for slowapi",
-    "No compatible version found for python-multipart",
-    "No compatible version found for jinja2",
-    "No compatible version found for structlog",
-    "No compatible version found for prometheus-fastapi-instrumentator",
-    "No compatible version found for python-jose",
-    "No compatible version found for passlib",
-    "No compatible version found for bcrypt"
-  ]
+  "warnings": []
 }

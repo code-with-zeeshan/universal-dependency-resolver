@@ -403,8 +403,12 @@ class DataAggregator:
                     kwargs["include_versions"] = include_versions
 
             # Call the appropriate method
+            method = None
             if hasattr(client, f"{method_name}_async"):
                 method = getattr(client, f"{method_name}_async")
+            elif asyncio.iscoroutinefunction(getattr(client, method_name, None)):
+                method = getattr(client, method_name)
+            if method is not None:
                 result = await method(*args, **kwargs)
             else:
                 method = getattr(client, method_name)
