@@ -72,7 +72,8 @@
       "unicode": true,
       "warningsAsErrors": false,
       "runAfterFinish": false,
-      "license": "../LICENSE"
+      "license": "../LICENSE",
+      "closeApp": true
     },
     "mac": {
       "target": [

@@ -181,11 +181,22 @@ function createTray() {
 
 app.whenReady().then(createWindow)
 
+function killBackend() {
+  if (!backendProcess) return
+  try {
+    if (isWin) {
+      // Windows: kill the entire process tree (backend + any Python children)
+      const { execSync } = require('child_process')
+      execSync(`taskkill /pid ${backendProcess.pid} /T /F`, { stdio: 'ignore' })
+    } else {
+      backendProcess.kill('SIGKILL')
+    }
+  } catch { /* ignore */ }
+  backendProcess = null
+}
+
 app.on('window-all-closed', () => {
-  if (backendProcess) {
-    backendProcess.kill()
-    backendProcess = null
-  }
+  killBackend()
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -194,8 +205,10 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', () => {
-  if (backendProcess) {
-    backendProcess.kill()
-    backendProcess = null
-  }
+  killBackend()
+})
+
+// If app is forced to quit, make sure backend is still killed
+app.on('will-quit', () => {
+  killBackend()
 })

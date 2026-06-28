@@ -40,6 +40,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Sync desktop version from pyproject.toml
+        run: python scripts/sync-version.py
+
       - name: Install UPX compressor
         shell: bash
         run: |
