@@ -49,7 +49,7 @@ See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
 - **System scanning** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java
 - **GPU-aware resolution** — Automatically resolves CUDA variants (e.g., `torch` → `torch 2.1.2+cu121`)
 - **12 export formats** — requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat
-- **9 CLI commands** — `serve`, `check`, `resolve`, `info`, `lock`, `graph`, `verify`, `list-ecosystems`, `update`
+- **10 CLI commands** — `serve`, `check`, `resolve`, `info`, `lock`, `scan`, `graph`, `verify`, `list-ecosystems`, `update`
 - **24 API endpoints** — Full REST API for programmatic use
 - **Desktop GUI** — 14 tabbed views, formatted tables, loading states, auto-update
 
@@ -77,6 +77,13 @@ udr list-ecosystems
 
 # Re-resolve a single package and update lock
 udr update flask
+
+# Scan a GitHub repo without cloning
+udr scan --github https://github.com/user/repo
+
+# Override CUDA version for GPU packages on CPU-only machines
+udr lock --cuda 12.1
+udr scan --github https://github.com/user/repo --cuda 11.8
 
 # System information
 udr check
