@@ -486,4 +486,4 @@ heapdump*
 .idea/
 
 #zencoder
-.zencoder/
+.zencoder/udr-lock.json
