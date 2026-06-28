@@ -38,20 +38,21 @@ class LocalScanRequest(BaseModel):
 def _download_github_repo(url: str, branch: str) -> Path:
     """Download a GitHub repo as zipball and extract to temp dir."""
     import re
-    import requests
+    import urllib.request
 
     match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", url)
     if not match:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     owner, repo = match.group(1), match.group(2).rstrip(".git")
     api_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
-    resp = requests.get(api_url, timeout=60, stream=True)
-    if resp.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"GitHub API returned {resp.status_code}")
+    req = urllib.request.Request(api_url, headers={"User-Agent": "UDR/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        if resp.status != 200:
+            raise HTTPException(status_code=400, detail=f"GitHub API returned {resp.status}")
+        data = resp.read()
     tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
-    z = zipfile.ZipFile(io.BytesIO(resp.content))
+    z = zipfile.ZipFile(io.BytesIO(data))
     z.extractall(path=str(tmp))
-    # The zip contains a top-level directory like owner-repo-commitSHA
     contents = list(tmp.iterdir())
     if contents and contents[0].is_dir():
         return contents[0]
