@@ -37,7 +37,7 @@ console = Console()
 err_console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
-VERSION = "1.1.20"
+VERSION = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text().split('version = "')[1].split('"')[0] if (Path(__file__).resolve().parent.parent / "pyproject.toml").is_file() else "unknown"
 
 
 def _parse_package_spec(spec: str, default_ecosystem: str = "pypi") -> Tuple[str, str]:
@@ -370,12 +370,19 @@ def _validate_manifest_update_line(line: str, pkg_name: str, resolved_ver: str) 
 # =============================================================================
 
 def cmd_serve(args):
-    from backend.api.main import app
-    import uvicorn
-    console.print("[bold green]Starting UDR API server...[/bold green]")
-    console.print(f"  Mode: [cyan]{args.mode}[/cyan]")
-    console.print(f"  Host: [yellow]{args.host}[/yellow]  Port: [yellow]{args.port}[/yellow]")
-    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    try:
+        from backend.api.main import app
+        import uvicorn
+        console.print("[bold green]Starting UDR API server...[/bold green]")
+        console.print(f"  Mode: [cyan]{args.mode}[/cyan]")
+        console.print(f"  Host: [yellow]{args.host}[/yellow]  Port: [yellow]{args.port}[/yellow]")
+        uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Server stopped[/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(Panel(f"[red]{e}[/red]", title="Server Error"))
+        sys.exit(1)
 
 
 def cmd_check(args):
@@ -400,8 +407,9 @@ def cmd_check(args):
         table.add_column("Value")
         table.add_column("Status", style="bold")
 
-        table.add_row("OS", f"{info['platform']['system']} {info['platform']['release']}", "✅")
-        arch = info['platform'].get('machine', info.get('cpu', {}).get('arch', 'unknown'))
+        plat = info.get("platform", {})
+        table.add_row("OS", f"{plat.get('system', '?')} {plat.get('release', '?')}", "✅")
+        arch = plat.get('machine', info.get('cpu', {}).get('arch', 'unknown'))
         table.add_row("Architecture", arch, "✅")
         cpu_cores = info.get('cpu', {}).get('count_logical') or info.get('cpu', {}).get('count_physical') or info.get('cpu', {}).get('count', '?')
         table.add_row("CPU", f"{info.get('cpu', {}).get('brand', 'Unknown')} ({cpu_cores} cores)", "✅")
@@ -414,16 +422,21 @@ def cmd_check(args):
             mem_status = "⚠" if pct > 90 else "✅"
             table.add_row("Memory", f"{total:.1f} GB total, {avail:.1f} GB free", mem_status)
 
-        if info["gpu"]["available"]:
-            gpu = info["gpu"]["devices"][0]
-            cuda = info["gpu"].get("cuda", "not found")
-            table.add_row("GPU", f"{gpu['name']} ({gpu['memory_total']} MB)", "✅")
-            table.add_row("CUDA", cuda, "✅" if cuda and cuda != "not found" else "⚠")
+        gpu_info = info.get("gpu", {})
+        if gpu_info.get("available"):
+            gpu_devices = gpu_info.get("devices", [])
+            if gpu_devices:
+                gpu = gpu_devices[0]
+                cuda = gpu_info.get("cuda", "not found")
+                table.add_row("GPU", f"{gpu.get('name', '?')} ({gpu.get('memory_total', '?')} MB)", "✅")
+                table.add_row("CUDA", cuda, "✅" if cuda and cuda != "not found" else "⚠")
+            else:
+                table.add_row("GPU", "No GPU devices", "ℹ")
         else:
             table.add_row("GPU", "None detected", "ℹ")
 
-        py = info["runtime_versions"]["python"]
-        table.add_row("Python", py['version'], "✅")
+        py = info.get("runtime_versions", {}).get("python", {})
+        table.add_row("Python", py.get('version', '?'), "✅")
 
         if args.verbose:
             table.add_row("Python path", py.get('path', py.get('location', '?')), "")
@@ -569,16 +582,17 @@ def cmd_info(args):
         if getattr(args, 'json', False):
             return _output_json(info, args)
 
-        table = Table(title=f"System: {info['platform']['system']} {info['platform']['release']}", box=box.ROUNDED)
+        plat = info.get("platform", {})
+        table = Table(title=f"System: {plat.get('system', '?')} {plat.get('release', '?')}", box=box.ROUNDED)
         table.add_column("Property", style="cyan")
         table.add_column("Value")
 
-        table.add_row("Architecture", info['platform']['machine'])
+        table.add_row("Architecture", plat.get('machine', '?'))
         cpu_cores = info.get('cpu', {}).get('count_logical') or info.get('cpu', {}).get('count_physical') or info.get('cpu', {}).get('count', '?')
         table.add_row("CPU", f"{info.get('cpu', {}).get('brand', 'Unknown')} ({cpu_cores} cores)")
-        table.add_row("Python", info['runtime_versions']['python']['version'])
-        py_path = info['runtime_versions']['python']
-        table.add_row("Python path", py_path.get('path', py_path.get('location', '?')))
+        py_info = info.get("runtime_versions", {}).get("python", {})
+        table.add_row("Python", py_info.get('version', '?'))
+        table.add_row("Python path", py_info.get('path', py_info.get('location', '?')))
 
         mem = info.get("memory", {})
         if mem:
@@ -586,12 +600,15 @@ def cmd_info(args):
             avail = mem.get("available", 0) / (1024**3)
             table.add_row("Memory", f"{total:.1f} GB total, {avail:.1f} GB free")
 
-        if info["gpu"]["available"]:
-            gpu = info["gpu"]["devices"][0]
-            table.add_row("GPU", f"{gpu['name']} ({gpu['memory_total']} MB)")
-            cuda = info["gpu"].get("cuda", "not found")
-            if cuda and cuda != "not found":
-                table.add_row("CUDA", cuda)
+        gpu_info = info.get("gpu", {})
+        if gpu_info.get("available"):
+            gpu_devices = gpu_info.get("devices", [])
+            if gpu_devices:
+                gpu = gpu_devices[0]
+                table.add_row("GPU", f"{gpu.get('name', '?')} ({gpu.get('memory_total', '?')} MB)")
+                cuda = gpu_info.get("cuda", "not found")
+                if cuda and cuda != "not found":
+                    table.add_row("CUDA", cuda)
 
         console.print(table)
 
@@ -759,16 +776,23 @@ def cmd_lock(args):
 
         # 6. Build lock data
         resolved_pkgs = resolved.get("resolved_packages", {})
+        plat = system_info.get("platform", {})
+        gpu_info = system_info.get("gpu", {})
+        gpu_name = None
+        if gpu_info.get("available"):
+            gpu_devices = gpu_info.get("devices", [])
+            if gpu_devices:
+                gpu_name = gpu_devices[0].get("name")
         lock_data = {
             "version": "2.0",
             "generated_at": __import__("datetime").datetime.now().isoformat(),
             "resolver": "sat",
             "system": {
-                "os": f"{system_info['platform']['system']} {system_info['platform']['release']}",
-                "python": system_info["runtime_versions"]["python"]["version"],
+                "os": f"{plat.get('system', '?')} {plat.get('release', '?')}",
+                "python": system_info.get("runtime_versions", {}).get("python", {}).get("version", "?"),
                 "cpu": system_info.get("cpu", {}).get("brand", "Unknown"),
-                "gpu": system_info["gpu"]["devices"][0]["name"] if system_info["gpu"]["available"] else None,
-                "cuda": system_info["gpu"].get("cuda") if system_info["gpu"]["available"] else None,
+                "gpu": gpu_name,
+                "cuda": gpu_info.get("cuda") if gpu_info.get("available") else None,
             },
             "manifests": [m["filename"] for m in manifests],
             "packages": {},
@@ -887,116 +911,130 @@ def cmd_graph(args):
     """Display dependency tree for one or more packages."""
     from backend.core import DataAggregator, ConflictResolver
 
-    specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
-    aggregator = DataAggregator()
-    resolver = ConflictResolver()
-    system_info = resolver._get_default_system_info()
+    try:
+        specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
+        aggregator = DataAggregator()
+        resolver = ConflictResolver()
+        system_info = resolver._get_default_system_info()
 
-    resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
+        resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
 
-    if not resolver_inputs:
-        console.print("[red]No packages could be resolved[/red]")
+        if not resolver_inputs:
+            console.print("[red]No packages could be resolved[/red]")
+            sys.exit(1)
+
+        err_console.print("[dim]Resolving dependencies for dependency tree...[/dim]")
+        resolved = asyncio.run(_resolve_transitive(
+            aggregator, resolver, resolver_inputs, system_info,
+        ))
+
+        rp = resolved.get("resolved_packages", {})
+        if not rp:
+            console.print("[yellow]No packages resolved.[/yellow]")
+            return
+
+        tree = Tree("[bold]Dependency Tree[/bold]")
+
+        for name, info in rp.items():
+            eco = info.get("ecosystem", "?")
+            ver = info.get("version", "?")
+            node = tree.add(f"[cyan]{name}[/cyan] [yellow]{ver}[/yellow] ({eco})")
+            deps = info.get("dependencies", {}).get(eco, {})
+            for dep_name, dep_ver in deps.items():
+                node.add(f"[white]{dep_name}[/white] [dim]{dep_ver}[/dim]")
+
+        console.print(tree)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(Panel(f"[red]{e}[/red]", title="Graph Error"))
         sys.exit(1)
-
-    err_console.print("[dim]Resolving dependencies for dependency tree...[/dim]")
-    resolved = asyncio.run(_resolve_transitive(
-        aggregator, resolver, resolver_inputs, system_info,
-    ))
-
-    rp = resolved.get("resolved_packages", {})
-    if not rp:
-        console.print("[yellow]No packages resolved.[/yellow]")
-        return
-
-    tree = Tree(f"[bold]Dependency Tree[/bold]")
-
-    for name, info in rp.items():
-        eco = info.get("ecosystem", "?")
-        ver = info.get("version", "?")
-        node = tree.add(f"[cyan]{name}[/cyan] [yellow]{ver}[/yellow] ({eco})")
-        deps = info.get("dependencies", {}).get(eco, {})
-        for dep_name, dep_ver in deps.items():
-            node.add(f"[white]{dep_name}[/white] [dim]{dep_ver}[/dim]")
-
-    console.print(tree)
 
 
 def cmd_verify(args):
     """Validate lock file: check all resolved versions still exist."""
-    from backend.core import DataAggregator
+    try:
+        from backend.core import DataAggregator
 
-    lock_path = Path(args.lock_file)
-    lock_data = _read_lock_file(lock_path)
-    aggregator = DataAggregator()
+        lock_path = Path(args.lock_file)
+        lock_data = _read_lock_file(lock_path)
+        aggregator = DataAggregator()
 
-    packages = lock_data.get("packages", {})
-    if not packages:
-        console.print("[yellow]No packages in lock file[/yellow]")
-        return
+        packages = lock_data.get("packages", {})
+        if not packages:
+            console.print("[yellow]No packages in lock file[/yellow]")
+            return
 
-    issues = []
-    ok_count = 0
+        issues = []
+        ok_count = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[green]{task.completed}/{task.total}[/green]"),
-        console=err_console,
-    ) as progress:
-        verify_task = progress.add_task("Verifying packages...", total=len(packages))
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[green]{task.completed}/{task.total}[/green]"),
+            console=err_console,
+        ) as progress:
+            verify_task = progress.add_task("Verifying packages...", total=len(packages))
 
-        async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
-            eco = info.get("ecosystem", "pypi")
-            ver = info.get("resolved_version")
-            if not ver:
-                return {"name": name, "issue": "No resolved version", "severity": "warning"}
-            try:
-                data = await aggregator.get_package_info(
-                    name, ecosystem=eco, include_versions=True,
-                )
-                if data:
-                    versions = data.get("versions", {}).get(eco, [])
-                    version_strings = [
-                        v.get("version", "") if isinstance(v, dict) else str(v)
-                        for v in versions
-                    ]
-                    if ver not in version_strings:
-                        return {"name": name, "issue": f"Version {ver} no longer available", "severity": "error"}
+            async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+                eco = info.get("ecosystem", "pypi")
+                ver = info.get("resolved_version")
+                if not ver:
+                    return {"name": name, "issue": "No resolved version", "severity": "warning"}
+                try:
+                    data = await aggregator.get_package_info(
+                        name, ecosystem=eco, include_versions=True,
+                    )
+                    if data:
+                        versions = data.get("versions", {}).get(eco, [])
+                        version_strings = [
+                            v.get("version", "") if isinstance(v, dict) else str(v)
+                            for v in versions
+                        ]
+                        if ver not in version_strings:
+                            return {"name": name, "issue": f"Version {ver} no longer available", "severity": "error"}
+                    else:
+                        return {"name": name, "issue": "Package not found on registry", "severity": "error"}
+                except Exception as exc:
+                    return {"name": name, "issue": str(exc), "severity": "error"}
+                return None
+
+            results = asyncio.run(asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()]))
+
+            for result in results:
+                if result:
+                    issues.append(result)
+                    progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
                 else:
-                    return {"name": name, "issue": "Package not found on registry", "severity": "error"}
-            except Exception as exc:
-                return {"name": name, "issue": str(exc), "severity": "error"}
-            return None
+                    ok_count += 1
+                progress.advance(verify_task)
 
-        results = asyncio.run(asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()]))
+        summary = Table(title=f"Lock File Verification — {lock_path.name}", box=box.ROUNDED)
+        summary.add_column("Status", style="bold")
+        summary.add_column("Count")
+        summary.add_row("✅ OK", str(ok_count))
+        summary.add_row("⚠ Issues", str(len(issues)))
+        console.print(summary)
 
-        for result in results:
-            if result:
-                issues.append(result)
-                progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
-            else:
-                ok_count += 1
-            progress.advance(verify_task)
+        if issues:
+            issue_table = Table(box=box.SIMPLE)
+            issue_table.add_column("Severity", style="bold")
+            issue_table.add_column("Package")
+            issue_table.add_column("Issue")
+            for iss in issues:
+                sev_icon = "[red]ERROR[/red]" if iss["severity"] == "error" else "[yellow]WARN[/yellow]"
+                issue_table.add_row(sev_icon, iss["name"], iss["issue"])
+            console.print(issue_table)
 
-    summary = Table(title=f"Lock File Verification — {lock_path.name}", box=box.ROUNDED)
-    summary.add_column("Status", style="bold")
-    summary.add_column("Count")
-    summary.add_row("✅ OK", str(ok_count))
-    summary.add_row("⚠ Issues", str(len(issues)))
-    console.print(summary)
-
-    if issues:
-        issue_table = Table(box=box.SIMPLE)
-        issue_table.add_column("Severity", style="bold")
-        issue_table.add_column("Package")
-        issue_table.add_column("Issue")
-        for iss in issues:
-            sev_icon = "[red]ERROR[/red]" if iss["severity"] == "error" else "[yellow]WARN[/yellow]"
-            issue_table.add_row(sev_icon, iss["name"], iss["issue"])
-        console.print(issue_table)
-
-    if issues and any(i["severity"] == "error" for i in issues):
+        if issues and any(i["severity"] == "error" for i in issues):
+            sys.exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(Panel(f"[red]{e}[/red]", title="Verify Error"))
         sys.exit(1)
 
 
@@ -1016,61 +1054,68 @@ def cmd_list_ecosystems(args):
 
 def cmd_update(args):
     """Re-resolve a single package and update the lock file."""
-    from backend.core import DataAggregator, ConflictResolver, SystemScanner
+    try:
+        from backend.core import DataAggregator, ConflictResolver, SystemScanner
 
-    lock_path = Path(args.directory) / "udr-lock.json"
-    lock_data = _read_lock_file(lock_path)
-    aggregator = DataAggregator()
-    resolver = ConflictResolver()
-    scanner = SystemScanner()
+        lock_path = Path(args.directory) / "udr-lock.json"
+        lock_data = _read_lock_file(lock_path)
+        aggregator = DataAggregator()
+        resolver = ConflictResolver()
+        scanner = SystemScanner()
 
-    package_name = args.package
-    packages_in_lock = lock_data.get("packages", {})
-    if package_name not in packages_in_lock:
-        console.print(f"[red]Package '{package_name}' not found in lock file[/red]")
+        package_name = args.package
+        packages_in_lock = lock_data.get("packages", {})
+        if package_name not in packages_in_lock:
+            console.print(f"[red]Package '{package_name}' not found in lock file[/red]")
+            sys.exit(1)
+
+        pkg_info = packages_in_lock[package_name]
+        ecosystem = pkg_info.get("ecosystem", "pypi")
+        console.print(f"Re-resolving [cyan]{package_name}[/cyan] ([yellow]{ecosystem}[/yellow])...")
+
+        with Progress(SpinnerColumn(), TextColumn("Scanning system..."), transient=True, console=err_console) as p:
+            p.add_task("system", total=None)
+            system_info = asyncio.run(scanner.scan_all())
+
+        specs = [(package_name, ecosystem)]
+        resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
+
+        if not resolver_inputs:
+            console.print(f"[red]Could not fetch metadata for {package_name}[/red]")
+            sys.exit(1)
+
+        err_console.print("[dim]Running SAT resolution...[/dim]")
+        resolved = _run_resolution(
+            aggregator, resolver, resolver_inputs, system_info, package_details,
+            interactive=args.interactive,
+        )
+
+        rp = resolved.get("resolved_packages", {})
+        new_version = rp.get(package_name, {}).get("version") if rp else None
+
+        if not new_version:
+            console.print(f"[red]Could not resolve {package_name}[/red]")
+            sys.exit(1)
+
+        old_version = pkg_info.get("resolved_version")
+        if new_version == old_version:
+            console.print(f"[green]{package_name} is already at version {new_version} — no update needed[/green]")
+            return
+
+        lock_data["packages"][package_name]["resolved_version"] = new_version
+        lock_data["packages"][package_name]["cuda_variant"] = rp.get(package_name, {}).get("cuda_variant", False)
+        lock_data["packages"][package_name]["cuda_version"] = rp.get(package_name, {}).get("cuda_version")
+        lock_data["generated_at"] = __import__("datetime").datetime.now().isoformat()
+
+        lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
+        console.print(f"[green]Updated[/green] {package_name}: {old_version} → [bold]{new_version}[/bold]")
+        console.print(f"[dim]Lock file: {lock_path}[/dim]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(Panel(f"[red]{e}[/red]", title="Update Error"))
         sys.exit(1)
-
-    pkg_info = packages_in_lock[package_name]
-    ecosystem = pkg_info.get("ecosystem", "pypi")
-    console.print(f"Re-resolving [cyan]{package_name}[/cyan] ([yellow]{ecosystem}[/yellow])...")
-
-    with Progress(SpinnerColumn(), TextColumn("Scanning system..."), transient=True, console=err_console) as p:
-        p.add_task("system", total=None)
-        system_info = asyncio.run(scanner.scan_all())
-
-    specs = [(package_name, ecosystem)]
-    resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
-
-    if not resolver_inputs:
-        console.print(f"[red]Could not fetch metadata for {package_name}[/red]")
-        sys.exit(1)
-
-    err_console.print("[dim]Running SAT resolution...[/dim]")
-    resolved = _run_resolution(
-        aggregator, resolver, resolver_inputs, system_info, package_details,
-        interactive=args.interactive,
-    )
-
-    rp = resolved.get("resolved_packages", {})
-    new_version = rp.get(package_name, {}).get("version") if rp else None
-
-    if not new_version:
-        console.print(f"[red]Could not resolve {package_name}[/red]")
-        sys.exit(1)
-
-    old_version = pkg_info.get("resolved_version")
-    if new_version == old_version:
-        console.print(f"[green]{package_name} is already at version {new_version} — no update needed[/green]")
-        return
-
-    lock_data["packages"][package_name]["resolved_version"] = new_version
-    lock_data["packages"][package_name]["cuda_variant"] = rp[package_name].get("cuda_variant", False)
-    lock_data["packages"][package_name]["cuda_version"] = rp[package_name].get("cuda_version")
-    lock_data["generated_at"] = __import__("datetime").datetime.now().isoformat()
-
-    lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
-    console.print(f"[green]Updated[/green] {package_name}: {old_version} → [bold]{new_version}[/bold]")
-    console.print(f"[dim]Lock file: {lock_path}[/dim]")
 
 
 # =============================================================================
