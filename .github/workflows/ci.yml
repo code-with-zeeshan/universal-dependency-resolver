@@ -54,7 +54,7 @@ jobs:
           PYTHONPATH: .
           ENABLE_CSRF: "false"
         run: |
-          python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=term-missing --cov-report=xml
+          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml
 
       - name: Run data source tests
         env:
