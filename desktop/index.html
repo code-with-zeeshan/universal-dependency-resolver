@@ -634,9 +634,16 @@ let ECOSYSTEMS = []
 async function loadEcosystems() {
   try {
     const res = await api('GET', '/api/v1/packages/ecosystems')
-    const ecoData = res.ecosystems || res.data || []
-    ECOSYSTEMS = ecoData.map(e => [typeof e === 'string' ? e : (e.id || e.name || e), typeof e === 'string' ? e : (e.name || e.id || e)])
+    const ecoData = res.ecosystems || res.data || res
+    if (Array.isArray(ecoData)) {
+      ECOSYSTEMS = ecoData.map(e => [typeof e === 'string' ? e : (e.id || e.name || e), typeof e === 'string' ? e : (e.name || e.id || e)])
+    } else if (typeof ecoData === 'object' && ecoData !== null) {
+      ECOSYSTEMS = Object.keys(ecoData).map(k => [k, ecoData[k].name || k])
+    }
   } catch(e) {
+    /* fallback below */
+  }
+  if (!ECOSYSTEMS.length) {
     ECOSYSTEMS = [
       ['pypi','PyPI (Python)'],['conda','Conda'],['npm','NPM (Node.js)'],
       ['crates','Crates.io (Rust)'],['maven','Maven (Java)'],['gomodules','Go Modules'],
@@ -678,10 +685,8 @@ async function init() {
     document.getElementById('dashStatus').textContent = 'Healthy'
     document.getElementById('dashVersion').textContent = root.version || health.version || '-'
     document.getElementById('dashMode').textContent = root.mode || health.mode || 'local'
-    const ecoRes = await api('GET', '/api/v1/packages/ecosystems').catch(() => ({ecosystems:[]}))
-    const ecoCount = (ecoRes.ecosystems || ecoRes.data || []).length
-    document.getElementById('dashEco').textContent = (ecoCount || ECOSYSTEMS.length) + ' available'
     await populateAllEcosystemSelects()
+    document.getElementById('dashEco').textContent = ECOSYSTEMS.length + ' available'
     await loadExportFormats()
     loadSystemInfo()
   } catch(e) {
