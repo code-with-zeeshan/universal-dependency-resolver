@@ -7,6 +7,7 @@ on:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'desktop-v'))
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -15,6 +16,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify CI passed for this commit
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          echo "Checking CI status for commit $SHA..."
+          CONCLUSION=$(gh run list --workflow CI --commit "$SHA" --json conclusion,status --jq \
+            '[.[] | select(.status == "completed")] | .[0].conclusion // "none"')
+          echo "CI conclusion: $CONCLUSION"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "❌ CI did not pass for this commit (conclusion: $CONCLUSION)."
+            echo "   Publishing is blocked until CI passes."
+            echo "   To bypass, use 'workflow_dispatch' or push a green commit and create a new release."
+            exit 1
+          fi
+          echo "✅ CI passed for commit $SHA"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,7 +43,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build==1.5.0
 
       - name: Build distributions
         run: python -m build
@@ -35,6 +56,8 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Upload wheel to release
         env:
