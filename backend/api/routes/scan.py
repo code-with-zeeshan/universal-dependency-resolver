@@ -166,14 +166,14 @@ async def _run_resolution_pipeline(
         ],
         "resolution": resolved,
         "system": {
-            "os": f"{system_info['platform']['system']} {system_info['platform']['release']}",
-            "python": system_info["runtime_versions"]["python"]["version"],
-            "cpu": system_info["cpu"]["brand"],
-            "gpu": system_info["gpu"]["devices"][0]["name"]
-            if system_info["gpu"]["available"]
+            "os": f"{system_info.get('platform', {}).get('system', 'Unknown')} {system_info.get('platform', {}).get('release', 'Unknown')}",
+            "python": system_info.get('runtime_versions', {}).get('python', {}).get('version', 'Unknown'),
+            "cpu": system_info.get('cpu', {}).get('brand', 'Unknown'),
+            "gpu": system_info.get('gpu', {}).get('devices', [{}])[0].get('name', 'Unknown')
+            if system_info.get('gpu', {}).get('available', False)
             else None,
-            "cuda": system_info["gpu"].get("cuda")
-            if system_info["gpu"]["available"]
+            "cuda": system_info.get('gpu', {}).get('cuda')
+            if system_info.get('gpu', {}).get('available', False)
             else None,
         },
         "export": export_content,

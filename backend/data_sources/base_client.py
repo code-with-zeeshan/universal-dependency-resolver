@@ -59,6 +59,11 @@ class BaseDataSourceClient:
         if self.session:
             await self.session.close()
 
+    async def close(self):
+        if self.session:
+            await self.session.close()
+            self.session = None
+
     def _get_session(self) -> aiohttp.ClientSession:
         if self.session is None:
             self.session = aiohttp.ClientSession()

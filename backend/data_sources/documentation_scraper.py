@@ -68,6 +68,11 @@ class DocumentationScraper:
         if self.session:
             await self.session.close()
 
+    async def close(self):
+        if self.session:
+            await self.session.close()
+            self.session = None
+
     async def scrape_installation_requirements(self, package_name: str) -> Dict:
         """Scrape installation requirements from official documentation"""
         package_name = normalize_package_name(package_name)

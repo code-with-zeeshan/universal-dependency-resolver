@@ -514,25 +514,37 @@ def _validate_manifest_update_line(
     line: str, pkg_name: str, resolved_ver: str
 ) -> Optional[str]:
     """Update a single manifest line if it references the given package.
-    Handles pip options, comments, and avoids substring matches.
+    Handles pip options, comments, TOML quoting, and avoids substring matches.
     """
     stripped = line.strip()
     if not stripped or stripped.startswith("#") or stripped.startswith("-"):
         return None
+
+    # Detect quote style (TOML uses " or ')
+    quote = ""
+    for q in ['"', "'"]:
+        if stripped.startswith(q):
+            quote = q
+            break
+
     for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
         if op in stripped:
-            before_op = stripped.split(op)[0].strip()
+            before_op = stripped.split(op)[0].strip().strip("\"'")
+            if before_op != pkg_name:
+                continue
             after_op = stripped.split(op, 1)[1].strip()
             after_op = after_op.split("#")[0].split(" --")[0].strip()
-            after_op = after_op.split(";")[0].strip()
-            if before_op == pkg_name:
-                indent = line[: len(line) - len(line.lstrip())]
-                trailing = (
-                    line[line.rfind(after_op) + len(after_op) :]
-                    if after_op in line
-                    else ""
-                )
-                return f"{indent}{pkg_name}=={resolved_ver}{trailing}"
+            after_op = after_op.split(";")[0].strip().rstrip("\"'").rstrip(",")
+            indent = line[: len(line) - len(line.lstrip())]
+            trailing = ""
+            raw = line.strip()
+            # Reconstruct trailing (comma, comments, etc.) from raw line
+            after_version_pos = raw.rfind(after_op) + len(after_op) if after_op else -1
+            if after_version_pos > 0:
+                trailing = raw[after_version_pos:]
+            if quote:
+                return f'{indent}{quote}{pkg_name}=={resolved_ver}{quote}{trailing}'
+            return f"{indent}{pkg_name}=={resolved_ver}{trailing}"
     if stripped.startswith(pkg_name + " "):
         indent = line[: len(line) - len(line.lstrip())]
         rest = stripped[len(pkg_name) :]
@@ -793,6 +805,7 @@ def cmd_resolve(args):
             for w in warnings:
                 console.print(f"  [yellow]⚠[/yellow] {w}")
 
+        await aggregator.close()
         return 0
 
     try:
@@ -1291,6 +1304,7 @@ def cmd_lock(args):
                         f"  [green]Updated[/green] {pkg['source']}: {pkg['name']} → {resolved_ver}"
                     )
 
+        await aggregator.close()
         return 0
 
     try:
@@ -1455,6 +1469,7 @@ def cmd_graph(args):
                 node.add(f"[white]{dep_name}[/white] [dim]{dep_ver}[/dim]")
 
         console.print(tree)
+        await aggregator.close()
 
     try:
         asyncio.run(_graph())
@@ -1560,6 +1575,7 @@ async def _cmd_verify_async(args):
             issue_table.add_row(sev_icon, iss["name"], iss["issue"])
         console.print(issue_table)
 
+    await aggregator.close()
     if issues and any(i["severity"] == "error" for i in issues):
         return 1
     return 0
