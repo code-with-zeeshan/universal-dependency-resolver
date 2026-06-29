@@ -1207,8 +1207,6 @@ def cmd_lock(args):
                     pname, pinfo["ecosystem"], "[red]unresolved[/red]", "", ""
                 )
 
-        console.print(summary_table)
-
         if total_vulns > 0:
             vuln_table = Table(
                 title=f"[red]{total_vulns} known vulnerabilities[/red]", box=box.SIMPLE
@@ -1231,6 +1229,25 @@ def cmd_lock(args):
             console.print(vuln_table)
 
         console.print(summary_table)
+
+        # Write readable report alongside lock file
+        try:
+            report_lines = [
+                f"UDR Lock Report — {lock_path.name}",
+                f"Generated: {lock_data['generated_at']}",
+                f"Resolved: {rp_count}/{total_pkgs} packages",
+                "",
+            ]
+            for pname, pinfo in lock_data["packages"].items():
+                ver = pinfo.get("resolved_version") or "unresolved"
+                ptype = "direct" if pinfo.get("direct") else "transitive"
+                vuln_count = len(pinfo.get("vulnerabilities", []))
+                vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
+                report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
+            report_path = lock_path.with_suffix(".report.txt")
+            report_path.write_text("\n".join(report_lines) + "\n")
+        except Exception:
+            pass
 
         # 9. Export if requested
         if args.export:

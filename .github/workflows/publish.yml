@@ -19,6 +19,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Populate release body from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          python3 scripts/extract_changelog.py "$VER" > /tmp/release_body.md
+          gh release edit "$TAG" --notes-file /tmp/release_body.md
+          echo "✅ Release body updated from CHANGELOG.md"
+
       - name: Verify CI passed for this commit
         if: github.event_name != 'workflow_dispatch'
         env:

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-06-29
+
+### Added
+- CHANGELOG.md content auto-populated as release body on publish
+- CLI report file (`udr-lock-report.txt`) generated alongside lock file
+- `close()` method on `BaseDataSourceClient` and `DocumentationScraper` for proper aiohttp session cleanup
+
+### Fixed
+- `udr info` / `udr check` KeyError on 'brand'/'arch' in restricted environments (was only fixed in source, now verified)
+- `udr lock` "PackageLoader: no templates directory" (wheel package-data fix in pyproject.toml)
+- API scan route KeyError on `system_info["cpu"]["brand"]` — switched to `.get()` with defaults
+- CLI "Unclosed client session" resource leak — DataAggregator sessions now properly closed
+- `udr lock` manifest update did not handle TOML-quoted strings (`"requests>=2.28"`)
+- `udr lock` printed resolved table twice (duplicate `console.print(summary_table)` removed)
+
 ## [1.2.3] - 2026-06-29
 
 ### Added
