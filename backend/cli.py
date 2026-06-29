@@ -543,7 +543,7 @@ def _validate_manifest_update_line(
             if after_version_pos > 0:
                 trailing = raw[after_version_pos:]
             if quote:
-                return f'{indent}{quote}{pkg_name}=={resolved_ver}{quote}{trailing}'
+                return f"{indent}{quote}{pkg_name}=={resolved_ver}{quote}{trailing}"
             return f"{indent}{pkg_name}=={resolved_ver}{trailing}"
     if stripped.startswith(pkg_name + " "):
         indent = line[: len(line) - len(line.lstrip())]
@@ -1872,7 +1872,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
     lock_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
-    lock_p.add_argument("--report", "-r", action="store_true", help="Write readable report file (udr-lock-report.txt) alongside lock file")
+    lock_p.add_argument(
+        "--report",
+        "-r",
+        action="store_true",
+        help="Write readable report file (udr-lock-report.txt) alongside lock file",
+    )
 
     graph_p = sub.add_parser(
         "graph", help="Show dependency tree for one or more packages"
