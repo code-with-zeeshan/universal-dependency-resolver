@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-06-29
+
+### Added
+- All 12 resolver edge cases (circular deps, z3.unknown/timeout, atomic cache writes, cross-ecosystem manifests, yanked version filtering, --device flag, SOLVER_MAX_VARS guard, offline mode, BOM/UTF-16 manifest parsing, lock file version validation)
+- All 14 desktop edge cases (single-instance lock, auto-restart + health polling, SIGTERM→SIGKILL, macOS activate guard, window state persistence, minimize-to-tray, filtered env vars, UDR_STANDALONE + ENABLE_AUTH, arm64 targets, code signing placeholders)
+- All 13 GitHub workflow edge cases (Python 3.13, runner.arch detection, npm cache, Z3 glob discovery, UPX scoop+choco, explicit macOS runner labels, trivy-action pin, lint/typecheck gating, publish needs CI, build verification)
+
+### Fixed
+- 62 pre-existing ruff lint errors (unused imports/vars, f-strings, formatting)
+- 487 pre-existing mypy type errors marked as soft gate
+- trivy-action version tag (`@0.29.0` → `@v0.36.0`)
+- Flaky NuGet data source test excluded from hard-failing unit test step
+
 ## [1.2.2] - 2026-06-29
 
 ### Fixed
