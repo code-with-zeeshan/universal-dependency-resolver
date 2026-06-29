@@ -58,8 +58,7 @@
       ],
       "icon": "buildResources/icon.ico",
       "legalTrademarks": "Universal Dependency Resolver",
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "sign": false
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
