@@ -2,7 +2,7 @@
 import asyncio
 from typing import Dict, List, Optional, Any
 import logging
-from backend.core.utils import normalize_package_name, parse_version, run_async
+from backend.core.utils import parse_version, run_async
 import re
 from backend.core.cache import cached
 from enum import Enum
@@ -115,10 +115,10 @@ class NuGetClient(BaseDataSourceClient):
         self.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
 
     async def package_exists(self, package_name: str) -> bool:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
         try:
             session = self._get_session()
-            url = f"{self.package_base_url or 'https://api.nuget.org/v3-flatcontainer'}/{package_name.lower()}/index.json"
+            url = f"{self.package_base_url or 'https://api.nuget.org/v3-flatcontainer'}/{package_name}/index.json"
             response = await session.head(url)
             return response.status == 200
         except Exception:
@@ -131,7 +131,7 @@ class NuGetClient(BaseDataSourceClient):
         include_prerelease: bool = False,
         target_framework: Optional[str] = None,
     ) -> List[Dict]:
-        query = normalize_package_name(query)
+        query = query.lower()
 
         if not self.search_url:
             await self._initialize_service_endpoints()
@@ -179,12 +179,12 @@ class NuGetClient(BaseDataSourceClient):
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
     ) -> Optional[Dict]:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
 
         if not self.registration_base_url:
             await self._initialize_service_endpoints()
 
-        url = f"{self.registration_base_url}/{package_name.lower()}/index.json"
+        url = f"{self.registration_base_url}/{package_name}/index.json"
         data = await self._get(url)
         if not data:
             return None
@@ -272,24 +272,27 @@ class NuGetClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> Dict:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
         return run_async(self.get_package_info_async(package_name))
 
     async def get_package_version(
         self, package_name: str, version: str
     ) -> Optional[Dict]:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
 
         if not self.registration_base_url:
             await self._initialize_service_endpoints()
 
-        url = f"{self.registration_base_url}/{package_name.lower()}/{version.lower()}.json"
+        url = f"{self.registration_base_url}/{package_name}/{version.lower()}.json"
         data = await self._get(url)
 
         if not data:
             return None
 
         catalog_entry = data.get("catalogEntry", {})
+        # NuGet API returns catalogEntry as a string URL, not a dict
+        if isinstance(catalog_entry, str):
+            catalog_entry = await self._get(catalog_entry) or {}
         return self._process_catalog_entry(catalog_entry)
 
     async def get_versions(
@@ -298,7 +301,7 @@ class NuGetClient(BaseDataSourceClient):
         include_prereleases: bool = True,
         include_unlisted: bool = False,
     ) -> List[Dict]:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
 
         info = await self.get_package_info_async(package_name, include_versions=True)
         if not info or not info.get("versions"):
@@ -322,7 +325,7 @@ class NuGetClient(BaseDataSourceClient):
         version: Optional[str] = None,
         target_framework: Optional[str] = None,
     ) -> Dict[str, Any]:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
 
         if version:
             pkg_data = await self.get_package_version(package_name, version)
@@ -384,7 +387,7 @@ class NuGetClient(BaseDataSourceClient):
                     {
                         "version": version,
                         "download_count": v.get("downloads", 0),
-                        "published": v.get("@id"),
+                        "published": v.get("published"),
                     }
                 )
 
@@ -507,7 +510,7 @@ class NuGetClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        package_name = normalize_package_name(package_name)
+        package_name = package_name.lower()
 
         pkg_data = await self.get_package_version(package_name, version)
         if not pkg_data:

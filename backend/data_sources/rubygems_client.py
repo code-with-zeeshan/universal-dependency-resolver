@@ -48,7 +48,6 @@ class RubyGemsClient(BaseDataSourceClient):
             cache_ttl=cache_ttl or rubygems_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self.base_url = "https://rubygems.org"
         self._version_cache: Dict[str, RubyVersionRequirement] = {}
 
     async def package_exists(self, package_name: str) -> bool:

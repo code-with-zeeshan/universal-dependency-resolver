@@ -73,7 +73,7 @@ class TestNuGetClient:
             ):
                 result = await client.get_package_info_async("Newtonsoft.Json")
         assert result is not None
-        assert result["name"] == "newtonsoft-json"
+        assert result["name"] == "newtonsoft.json"
         assert result["version"] == "13.0.3"
 
     @pytest.mark.asyncio
@@ -107,7 +107,7 @@ class TestNuGetClient:
                 await client.get_package_info_async("Newtonsoft.Json")
         mock_get.assert_called_once()
         url = mock_get.call_args[0][0]
-        assert "newtonsoft" in url.lower()
+        assert "newtonsoft.json" in url.lower()
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):

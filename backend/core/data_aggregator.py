@@ -41,6 +41,7 @@ class Ecosystem(Enum):
     RUBYGEMS = "rubygems"
     DOCS = "docs"
     CUSTOM_DB = "custom_db"
+    PUB = "pub"
 
 
 class ConflictSeverity(Enum):
@@ -120,6 +121,7 @@ _register_client(Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "
 _register_client(Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient")
 _register_client(Ecosystem.DOCS, "backend.data_sources.documentation_scraper", "DocumentationScraper")
 _register_client(Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB")
+_register_client(Ecosystem.PUB, "backend.data_sources.pub_client", "PubClient")
 
 
 class DataAggregator:
@@ -186,7 +188,18 @@ class DataAggregator:
         include_documentation: bool = True,
     ) -> Dict[str, Any]:
         """Get comprehensive package information from all sources"""
-        package_name = normalize_package_name(package_name)
+        if ecosystem and isinstance(ecosystem, str):
+            eco_str = ecosystem
+        elif ecosystem and isinstance(ecosystem, Ecosystem):
+            eco_str = ecosystem.value
+        else:
+            eco_str = ""
+        # Only normalize for PyPI-style ecosystems where dots/underscores
+        # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods
+        # use dots as semantic separators.
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods"}
+        if eco_str not in _dot_sensitive:
+            package_name = normalize_package_name(package_name)
 
         # Check cache
         cache_key = self._get_cache_key(
@@ -376,7 +389,9 @@ class DataAggregator:
         include_versions: bool,
     ) -> Dict:
         """Fetch package data from a specific ecosystem"""
-        package_name = normalize_package_name(package_name)
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods"}
+        if ecosystem.value not in _dot_sensitive:
+            package_name = normalize_package_name(package_name)
         try:
             client = self._get_client(ecosystem)
 
@@ -516,6 +531,7 @@ class DataAggregator:
             # Handle different dependency categories
             categories = {
                 "dependencies": False,
+                "required": False,
                 "dev_dependencies": True,
                 "devDependencies": True,
                 "test_dependencies": True,
@@ -746,6 +762,26 @@ class DataAggregator:
                         )
 
         aggregated["conflicts"] = conflicts
+
+        # Build cross-ecosystem dependency map
+        # Detects deps that belong to a different ecosystem than the parent
+        cross_eco = []
+        dep_ecosystems = aggregated.get("dependencies", {})
+        # If the package has dependency entries under multiple ecosystem keys,
+        # those represent cross-ecosystem references worth tracking
+        if len(dep_ecosystems) > 1:
+            for parent_eco, deps_data in dep_ecosystems.items():
+                for dep in deps_data.get("all", []):
+                    for other_eco in dep_ecosystems:
+                        if other_eco != parent_eco:
+                            cross_eco.append({
+                                "source_ecosystem": parent_eco,
+                                "target_ecosystem": other_eco,
+                                "dependency": dep.name,
+                                "version_spec": dep.version_spec,
+                            })
+                            break
+        aggregated["cross_ecosystem_deps"] = cross_eco
 
     def _are_version_specs_compatible(self, specs: List[str]) -> bool:
         """Check if multiple version specifications are compatible"""

@@ -38,11 +38,17 @@ udr serve --mode saas                  # enable full auth stack (JWT, rate limit
 **Flags:**
 
 | Flag | Default | Description |
-|---|---|---|
+|---|---|---|---|
 | `--host` | `127.0.0.1` | Bind address |
 | `--port` | `8000` | Bind port |
 | `--reload` | `False` | Enable hot-reload for development |
 | `--mode` | `local` | `local` (no auth, no rate limits) or `saas` (JWT auth, rate limiting) |
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `SOLVER_TIMEOUT` | `30` | Seconds before SAT solver falls back to per-package alternatives (used by `lock`/`scan`/`update`; `resolve` always uses fast path) |
 
 **Exit codes:**
 
@@ -131,7 +137,7 @@ udr info --json                        # raw JSON, then exit
 
 ## `resolve`
 
-Resolve dependencies for one or more packages from any ecosystem using the Z3 SAT solver. Outputs resolved versions with CUDA awareness.
+Resolve compatible versions for one or more packages from any ecosystem. Uses per-package version matching (fast) for direct resolution; full SAT solver with transitive walk is used by `lock`/`scan` commands.
 
 **Usage:**
 

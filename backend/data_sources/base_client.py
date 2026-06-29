@@ -89,12 +89,14 @@ class BaseDataSourceClient:
         self._request_timestamps.append(now)
 
     async def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
-        """Actual HTTP request without circuit breaker."""
+        """Actual HTTP request without circuit breaker.
+        Returns None for 404, raises IOError for network/server errors."""
         await self._throttle()
         session = self._get_session()
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self.user_agent)
 
+        last_error = None
         for attempt in range(self.max_retries):
             try:
                 async with session.request(
@@ -103,24 +105,26 @@ class BaseDataSourceClient:
                     if resp.status == 404:
                         return None
                     if resp.status >= 500 and attempt < self.max_retries - 1:
-                        backoff = RETRY_BACKOFF_FACTOR**attempt
+                        backoff = RETRY_BACKOFF_FACTOR ** attempt
                         await asyncio.sleep(backoff)
                         continue
                     resp.raise_for_status()
                     return await resp.json()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last_error = e
                 if attempt == self.max_retries - 1:
                     logger.error(
                         f"{self.ecosystem} request failed after {self.max_retries} retries: {e}"
                     )
-                    return None
-                await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
-        return None
+                    break
+                await asyncio.sleep(RETRY_BACKOFF_FACTOR ** attempt)
+        raise IOError(f"{self.ecosystem} request failed: {last_error}") from last_error
 
     async def _circuit_breaker_call(
         self, method: str, url: str, **kwargs
     ) -> Optional[Dict]:
-        """Execute request with circuit breaker pattern."""
+        """Execute request with circuit breaker pattern.
+        404s (None results) do NOT count as circuit failures."""
         now = datetime.now()
 
         if self._circuit_state == "OPEN":
@@ -138,9 +142,9 @@ class BaseDataSourceClient:
                 )
                 return None
 
-        result = await self._make_request(method, url, **kwargs)
-
-        if result is None:
+        try:
+            result = await self._make_request(method, url, **kwargs)
+        except IOError:
             self._circuit_failure_count += 1
             logger.debug(
                 f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}"
@@ -157,20 +161,21 @@ class BaseDataSourceClient:
                 logger.warning(
                     f"Circuit OPENED for {self.ecosystem} after {self._circuit_failure_count} failures"
                 )
-        else:
-            if self._circuit_state == "HALF_OPEN":
-                self._circuit_half_open_successes += 1
-                if (
-                    self._circuit_half_open_successes
-                    >= self._circuit_half_open_max_successes
-                ):
-                    self._circuit_state = "CLOSED"
-                    self._circuit_failure_count = 0
-                    logger.info(
-                        f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes"
-                    )
-            else:
+            return None
+
+        if self._circuit_state == "HALF_OPEN":
+            self._circuit_half_open_successes += 1
+            if (
+                self._circuit_half_open_successes
+                >= self._circuit_half_open_max_successes
+            ):
+                self._circuit_state = "CLOSED"
                 self._circuit_failure_count = 0
+                logger.info(
+                    f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes"
+                )
+        else:
+            self._circuit_failure_count = 0
 
         return result
 

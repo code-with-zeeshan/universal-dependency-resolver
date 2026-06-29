@@ -103,6 +103,14 @@ class CondaClient(BaseDataSourceClient):
 
     async def _process_package_data_enhanced(self, data: Dict) -> Dict:
         latest_version = data.get("latest_version")
+        if not latest_version and files:
+            # Derive latest from files list
+            all_vers = sorted(
+                set(f.get("version") for f in files if f.get("version")),
+                key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                reverse=True,
+            )
+            latest_version = all_vers[0] if all_vers else None
         channel_name = data.get("channel_name", "conda-forge")
 
         versions_info = []
@@ -117,13 +125,21 @@ class CondaClient(BaseDataSourceClient):
                 continue
 
             if version_str not in version_map:
+                attrs = file_info.get("attrs", {})
+                depends = attrs.get("depends", [])
+                deps = {}
+                for dep_str in depends:
+                    dep_name, constraint = self._parse_conda_dependency(dep_str)
+                    if dep_name:
+                        deps[dep_name] = constraint
+
                 version_map[version_str] = {
                     "version": version_str,
                     "parsed_version": parsed_version,
                     "builds": [],
                     "platforms": set(),
                     "python_versions": set(),
-                    "dependencies": None,
+                    "dependencies": deps if deps else None,
                 }
 
             attrs = file_info.get("attrs", {})
@@ -159,9 +175,7 @@ class CondaClient(BaseDataSourceClient):
             reverse=True,
         )
 
-        dependencies = await self._extract_dependencies_from_repodata(
-            data.get("name"), latest_version, channel_name
-        )
+        dependencies = self._extract_deps_from_files(files)
 
         system_requirements = self._extract_system_requirements(data, files)
 
@@ -182,6 +196,17 @@ class CondaClient(BaseDataSourceClient):
             "platforms": list(set(f["attrs"].get("subdir", "noarch") for f in files)),
         }
 
+    def _extract_deps_from_files(self, files: List) -> Dict:
+        deps = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        for file_info in files:
+            attrs = file_info.get("attrs", {})
+            depends = attrs.get("depends", [])
+            for dep_str in depends:
+                dep_name, constraint = self._parse_conda_dependency(dep_str)
+                if dep_name:
+                    deps["run"][dep_name] = constraint
+        return deps
+
     async def _extract_dependencies_from_repodata(
         self, package_name: str, version: str, channel: str
     ) -> Dict:
@@ -193,63 +218,14 @@ class CondaClient(BaseDataSourceClient):
             if (datetime.now() - timestamp).total_seconds() < self._cache_ttl:
                 return cached_data
 
-        dependencies = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        dependencies = await self._extract_dependencies_from_package_metadata(
+            package_name, version, channel
+        )
 
-        try:
-            platforms = ["noarch", "linux-64", "osx-64", "win-64"]
-
-            for platform in platforms:
-                repodata = await self._fetch_repodata(channel, platform)
-                if not repodata:
-                    continue
-
-                packages = repodata.get("packages", {})
-
-                for filename, pkg_info in packages.items():
-                    if (
-                        pkg_info.get("name") == package_name
-                        and pkg_info.get("version") == version
-                    ):
-                        if "depends" in pkg_info:
-                            for dep in pkg_info["depends"]:
-                                dep_name, constraint = self._parse_conda_dependency(dep)
-                                if dep_name:
-                                    dep_name = normalize_package_name(dep_name)
-                                    dependencies["run"][dep_name] = constraint
-
-                        if "requirements" in pkg_info:
-                            reqs = pkg_info["requirements"]
-                            if isinstance(reqs, dict):
-                                for req_type, req_list in reqs.items():
-                                    if req_type in dependencies and isinstance(
-                                        req_list, list
-                                    ):
-                                        for dep in req_list:
-                                            (
-                                                dep_name,
-                                                constraint,
-                                            ) = self._parse_conda_dependency(dep)
-                                            if dep_name:
-                                                dep_name = normalize_package_name(
-                                                    dep_name
-                                                )
-                                                dependencies[req_type][
-                                                    dep_name
-                                                ] = constraint
-
-                        self._dependency_cache[cache_key] = (
-                            dependencies,
-                            datetime.now(),
-                        )
-                        return dependencies
-
-            return await self._extract_dependencies_from_package_metadata(
-                package_name, version, channel
-            )
-
-        except Exception as e:
-            logger.error(f"Error extracting dependencies for {package_name}: {e}")
-
+        self._dependency_cache[cache_key] = (
+            dependencies,
+            datetime.now(),
+        )
         return dependencies
 
     async def _fetch_repodata(self, channel: str, platform: str) -> Optional[Dict]:
@@ -295,55 +271,24 @@ class CondaClient(BaseDataSourceClient):
             if not info or "files" not in info:
                 return dependencies
 
-            target_file = None
             for file_info in info["files"]:
-                if file_info.get("version") == version:
-                    if "noarch" in file_info.get("basename", ""):
-                        target_file = file_info
-                        break
-                    elif not target_file and "linux-64" in file_info.get(
-                        "basename", ""
-                    ):
-                        target_file = file_info
+                if file_info.get("version") != version:
+                    continue
+                attrs = file_info.get("attrs", {})
+                depends = attrs.get("depends", [])
+                for dep_str in depends:
+                    dep_name, constraint = self._parse_conda_dependency(dep_str)
+                    if dep_name:
+                        dependencies["run"][dep_name] = constraint
 
-            if not target_file:
-                return dependencies
-
-            download_url = target_file.get("download_url")
-            if download_url:
-                metadata = await self._download_and_extract_metadata(download_url)
-                if metadata:
-                    if "depends" in metadata:
-                        for dep in metadata["depends"]:
-                            dep_name, constraint = self._parse_conda_dependency(dep)
-                            if dep_name:
-                                dep_name = normalize_package_name(dep_name)
-                                dependencies["run"][dep_name] = constraint
-
-                    if "requirements" in metadata:
-                        reqs = metadata["requirements"]
-                        if isinstance(reqs, dict):
-                            for req_type, req_list in reqs.items():
-                                if req_type in dependencies and isinstance(
-                                    req_list, list
-                                ):
-                                    for dep in req_list:
-                                        (
-                                            dep_name,
-                                            constraint,
-                                        ) = self._parse_conda_dependency(dep)
-                                        if dep_name:
-                                            dep_name = normalize_package_name(dep_name)
-                                            dependencies[req_type][
-                                                dep_name
-                                            ] = constraint
-                        elif isinstance(reqs, list):
-                            for dep in reqs:
+                reqs = attrs.get("requirements", {})
+                if isinstance(reqs, dict):
+                    for req_type, req_list in reqs.items():
+                        if req_type in dependencies and isinstance(req_list, list):
+                            for dep in req_list:
                                 dep_name, constraint = self._parse_conda_dependency(dep)
                                 if dep_name:
-                                    dep_name = normalize_package_name(dep_name)
-                                    dependencies["run"][dep_name] = constraint
-
+                                    dependencies[req_type][dep_name] = constraint
         except Exception as e:
             logger.error(f"Error extracting dependencies from package metadata: {e}")
 

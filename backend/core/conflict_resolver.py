@@ -716,7 +716,7 @@ class ConflictResolver:
             )
 
     def _build_dependency_graph(self, packages: List[Dict]):
-        """Build a graph of package dependencies"""
+        """Build a graph of package dependencies, including cross-ecosystem deps"""
         self.dependency_graph.clear()
 
         for package in packages:
@@ -727,10 +727,20 @@ class ConflictResolver:
             # Add dependencies as edges
             for dep_ecosystem, deps in package.get("dependencies", {}).items():
                 for dep_name, dep_constraint in deps.items():
-                    # Dependency names are already normalized
                     dep_id = f"{dep_name}@{dep_ecosystem}"
                     self.dependency_graph.add_edge(
                         pkg_id, dep_id, constraint=dep_constraint
+                    )
+
+            # Add cross-ecosystem dependency edges
+            for xdep in package.get("cross_ecosystem_deps", []):
+                target_eco = xdep.get("target_ecosystem", package.get("ecosystem", "unknown"))
+                dep_name = xdep.get("dependency", "")
+                if dep_name:
+                    dep_id = f"{dep_name}@{target_eco}"
+                    self.dependency_graph.add_edge(
+                        pkg_id, dep_id, constraint=xdep.get("version_spec", "*"),
+                        cross_ecosystem=True,
                     )
 
     def _create_version_mapping(self, package_name: str, versions: List[str]):
@@ -769,8 +779,18 @@ class ConflictResolver:
             self._create_version_mapping(pkg_name, versions)
 
             # Create boolean variable for each version
+            constraint = package.get("version_constraint", "*")
+            if constraint != "*":
+                try:
+                    from packaging.specifiers import SpecifierSet
+                    SpecifierSet(constraint)
+                except Exception:
+                    constraint = "*"
             version_vars = []
             for v in versions:
+                if constraint != "*" and not is_compatible_version(v, constraint):
+                    continue
+
                 var_name = f"{pkg_name}_{v}"
                 var = z3.Bool(var_name)
                 version_vars.append(var)
@@ -783,6 +803,9 @@ class ConflictResolver:
                     )
 
             constraints["package_versions"][pkg_name] = version_vars
+
+            if not version_vars:
+                continue
 
             # Exactly one version must be selected
             self.solver.add(z3.Or(version_vars))
@@ -853,6 +876,13 @@ class ConflictResolver:
                 if not constraint_str:
                     continue
 
+                # Skip deps with unparseable constraints (e.g. path-based, git urls)
+                try:
+                    from packaging.specifiers import SpecifierSet
+                    SpecifierSet(constraint_str)
+                except Exception:
+                    continue
+
                 # Get successor package info
                 successor_data = self.dependency_graph.nodes.get(successor, {})
                 dep_name = successor_data.get("name", successor.split("@")[0])
@@ -883,9 +913,6 @@ class ConflictResolver:
                                 self.solver.add(
                                     z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars))
                                 )
-                            else:
-                                # No valid dependency versions - this package version cannot be selected
-                                self.solver.add(z3.Not(pkg_var_ref))
 
     def _add_conflict_constraints(self, packages: List[Dict], constraints: Dict):
         """Add known conflict constraints"""
@@ -977,9 +1004,37 @@ class ConflictResolver:
         """Find versions compatible with system requirements"""
         compatible = []
 
-        for version_info in package.get("versions", []):
-            if self._check_version_compatibility(version_info, system_info):
-                compatible.append(version_info["version"])
+        # Check package-level system requirements
+        sys_reqs = package.get("system_requirements", {})
+        python_req = sys_reqs.get("python", {})
+        min_python = python_req.get("min_version", "")
+
+        cuda_req = sys_reqs.get("cuda", {})
+        min_cuda = cuda_req.get("min_version", "")
+
+        # Support both "versions" (list of dicts) and "available_versions" (list of strings)
+        raw_versions = package.get("versions") or package.get("available_versions", [])
+        for version_info in raw_versions:
+            if isinstance(version_info, dict):
+                version_str = version_info.get("version", "")
+                v_sys = version_info.get("system_requirements", {})
+                if not self._check_version_compatibility(version_info, system_info):
+                    continue
+            else:
+                version_str = str(version_info)
+                v_sys = {}
+
+            # Apply package-level system requirements
+            if min_python:
+                sys_python = system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+                if sys_python and compare_versions(sys_python, min_python) < 0:
+                    continue
+            if min_cuda:
+                sys_cuda = system_info.get("gpu", {}).get("cuda", "")
+                if sys_cuda and compare_versions(sys_cuda, min_cuda) < 0:
+                    continue
+
+            compatible.append(version_str)
 
         # Sort using compare_versions
         return sorted(

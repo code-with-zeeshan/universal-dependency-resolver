@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 from typing import Dict, List, Tuple
+from .core.utils import normalize_package_name
 
 
 # Map filename patterns → (ecosystem, parser_func)
@@ -45,7 +46,8 @@ class ManifestDetector:
         """Scan directory recursively for known manifests. Returns list of manifest info dicts."""
         found = []
         seen = set()
-        for fname, ecosystem, parser_key in MANIFEST_PATTERNS:
+        for fname, raw_ecosystem, parser_key in MANIFEST_PATTERNS:
+            ecosystem = self.ECOSYSTEM_ALIASES.get(raw_ecosystem, raw_ecosystem)
             for fp in self.directory.rglob(fname):
                 if fp.is_file() and fname not in seen:
                     seen.add(fname)
@@ -79,17 +81,25 @@ class ManifestDetector:
             all_packages.extend(packages)
         return all_packages
 
+    ECOSYSTEM_ALIASES = {
+        "cargo": "crates",
+        "go": "gomodules",
+    }
+
     def normalize(self, packages: List[Dict]) -> List[Dict]:
         """Normalize parsed packages to {name, ecosystem, constraint} format."""
         normalized = []
         for pkg in packages:
-            name = pkg.get("name", "").strip()
-            if not name:
+            raw_name = pkg.get("name", "").strip()
+            if not raw_name:
                 continue
+            name = normalize_package_name(raw_name) if normalize_package_name(raw_name) else raw_name
+            raw_eco = pkg.get("_ecosystem", "pypi")
+            ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
             constraint = pkg.get("version", "*") or "*"
             normalized.append({
                 "name": name,
-                "ecosystem": pkg.get("_ecosystem", "pypi"),
+                "ecosystem": ecosystem,
                 "constraint": constraint,
                 "source": pkg.get("_manifest", "unknown"),
             })

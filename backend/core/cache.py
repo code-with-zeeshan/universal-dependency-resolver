@@ -1,6 +1,8 @@
 # backend/core/cache.py
 import json
 import hashlib
+import os
+import tempfile
 import time
 from typing import Any, Optional, List, Dict, Callable
 import asyncio
@@ -25,13 +27,41 @@ logger = logging.getLogger(__name__)
 
 
 class DictCache:
-    """Pure-Python in-memory dict cache with TTL support.
+    """Pure-Python in-memory + file-backed cache with TTL support.
 
-    Acts as a drop-in replacement for aiocache when Redis is unavailable.
+    Persists to a JSON file so cached data survives process restarts.
     """
 
-    def __init__(self):
+    def __init__(self, persist_path: Optional[str] = None):
         self._store: Dict[str, tuple[Any, float]] = {}
+        self._persist_path = persist_path or os.path.join(
+            tempfile.gettempdir(), "udr_cache.json"
+        )
+        self._dirty = False
+        self._load_from_disk()
+
+    def _load_from_disk(self):
+        try:
+            if os.path.exists(self._persist_path):
+                with open(self._persist_path, "r") as f:
+                    raw = json.load(f)
+                now = time.time()
+                for key, (value, expiry) in raw.items():
+                    if expiry is None or expiry > now:
+                        self._store[key] = (value, expiry)
+        except Exception as exc:
+            logger.debug(f"Cache load from disk skipped: {exc}")
+
+    def _save_to_disk(self):
+        if not self._dirty:
+            return
+        try:
+            os.makedirs(os.path.dirname(self._persist_path), exist_ok=True)
+            with open(self._persist_path, "w") as f:
+                json.dump(self._store, f, default=str)
+            self._dirty = False
+        except Exception as exc:
+            logger.debug(f"Cache save to disk failed: {exc}")
 
     async def get(self, key: str) -> Optional[Any]:
         entry = self._store.get(key)
@@ -40,30 +70,40 @@ class DictCache:
         value, expiry = entry
         if expiry is not None and time.time() > expiry:
             del self._store[key]
+            self._dirty = True
             return None
         return value
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         expiry = (time.time() + ttl) if ttl is not None else None
         self._store[key] = (value, expiry)
+        self._dirty = True
+        self._save_to_disk()
 
     async def delete(self, key: str) -> None:
         self._store.pop(key, None)
+        self._dirty = True
+        self._save_to_disk()
 
     async def clear(self) -> None:
         self._store.clear()
+        self._dirty = True
+        self._save_to_disk()
 
     async def close(self) -> None:
+        self._save_to_disk()
         self._store.clear()
 
     async def incr(self, key: str, delta: int = 1) -> int:
         entry = self._store.get(key)
         if entry is None:
             self._store[key] = (delta, None)
+            self._dirty = True
             return delta
         value, expiry = entry
         value = (value or 0) + delta
         self._store[key] = (value, expiry)
+        self._dirty = True
         return value
 
     async def ping(self) -> bool:

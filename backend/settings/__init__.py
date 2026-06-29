@@ -79,7 +79,7 @@ ECOSYSTEMS = [
     "pypi", "conda", "npm", "crates", "maven",
     "gomodules", "apt", "apk", "cocoapods",
     "homebrew", "nuget", "packagist", "rubygems",
-    "docs", "custom_db",
+    "pub", "docs", "custom_db",
 ]
 ECOSYSTEM_NAMES = {
     "pypi": "PyPI (Python)", "conda": "Conda", "npm": "NPM (Node.js)",

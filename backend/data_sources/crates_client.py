@@ -113,9 +113,24 @@ class CratesClient(BaseDataSourceClient):
 
             msrv = self._extract_msrv(crate)
 
+            # Build lightweight version list from the versions payload already returned
+            versions = []
+            seen = set()
+            for v in versions_data:
+                ver = v["num"]
+                if ver not in seen:
+                    seen.add(ver)
+                    versions.append({
+                        "version": ver,
+                        "release_date": v.get("created_at"),
+                        "yanked": v.get("yanked", False),
+                    })
+
             return {
                 "name": crate["name"],
                 "ecosystem": "crates",
+                "version": latest_stable or crate["max_version"],
+                "versions": versions[:200],  # cap at 200 to avoid huge payloads
                 "info": {
                     "name": crate["name"],
                     "latest_version": crate["max_version"],
@@ -200,7 +215,18 @@ class CratesClient(BaseDataSourceClient):
                         ):
                             continue
 
-                features = await self._get_version_features(package_name, version_str)
+                # Only fetch features/msrv for the first 50 versions when no filters
+                features = {}
+                rust_version = None
+                if not filters or len(versions) < 50:
+                    try:
+                        features = await self._get_version_features(package_name, version_str)
+                    except Exception:
+                        features = {}
+                    try:
+                        rust_version = await self._get_version_msrv(package_name, version_str)
+                    except Exception:
+                        rust_version = None
 
                 versions.append(
                     {
@@ -212,13 +238,10 @@ class CratesClient(BaseDataSourceClient):
                         "downloads": version_data.get("downloads", 0),
                         "features": features,
                         "license": version_data.get("license"),
-                        "rust_version": await self._get_version_msrv(
-                            package_name, version_str
-                        ),
+                        "rust_version": rust_version,
                         "system_requirements": {
                             "rust_versions": [
-                                await self._get_version_msrv(package_name, version_str)
-                                or "1.60+"
+                                rust_version or "1.60+"
                             ],
                             "os": ["any"],
                         },

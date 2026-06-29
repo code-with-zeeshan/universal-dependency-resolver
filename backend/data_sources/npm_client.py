@@ -720,13 +720,16 @@ class NPMClient(BaseDataSourceClient):
                 logger.warning(f"Skipping invalid npm version: {version}")
                 continue
 
+            engines = data.get("engines", {})
+            if not isinstance(engines, dict):
+                engines = {}
             versions.append(
                 {
                     "version": version,
                     "deprecated": data.get("deprecated"),
                     "published": time_data.get(version),
-                    "node": data.get("engines", {}).get("node"),
-                    "npm": data.get("engines", {}).get("npm"),
+                    "node": engines.get("node"),
+                    "npm": engines.get("npm"),
                     "dist": {
                         "tarball": data.get("dist", {}).get("tarball"),
                         "shasum": data.get("dist", {}).get("shasum"),

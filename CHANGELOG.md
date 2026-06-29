@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-06-29
+
+### Fixed
+- **NuGet returns None for all packages** — `normalize_package_name` was destroying dots in package names (`Newtonsoft.Json` → `newtonsoft-json`, 404 on all API calls). Changed to `package_name.lower()` to preserve dots.
+- **NuGet `get_package_version` crashes** — `catalogEntry` is a string URL in NuGet's version API, not a dict. Added fetch-on-demand for string catalog entries.
+- **NuGet `_extract_version_info` sets published to a URL** — `v.get("@id")` returned an API URL instead of a date. Changed to `v.get("published")`.
+- **NuGet tests codify the bug** — test assertions expected `newtonsoft-json`; fixed to expect `newtonsoft.json`.
+- **NPM client unit tests (5) fail** — `_make_request` signature changed from `(self, url)` to `(self, method, url, **kwargs)`. Tests now pass method as first arg; mirror tests mock `BaseDataSourceClient._make_request` instead of the removed `_get`.
+- **Pub transitive resolution timeout** — `resolve path@pub` hung 90+ seconds in SAT solver on Pub's deep dep trees. `cmd_resolve` now uses `_resolve_with_alternatives` directly (fast per-package matching) instead of the full transitive SAT solver path.
+- **`_find_compatible_versions` ignores `available_versions`** — the fallback path only checked `versions` (list of dicts) but `resolver_inputs` use `available_versions` (list of strings). Now handles both formats with package-level system requirement checks.
+
+### Changed
+- `cmd_resolve` bypasses `_resolve_transitive` — `resolve` command uses alternatives-based resolution for performance. Full SAT transitive resolution still used by `lock`/`scan`/`update`.
+- `_run_resolution` wraps `_resolve_transitive` in `asyncio.wait_for(timeout=SOLVER_TIMEOUT)` — configurable via `SOLVER_TIMEOUT` env var (default 30s). Fallback output normalized with `resolved_packages` key for table display.
+
 ## [1.2.1] - 2026-06-28
 
 ### Added

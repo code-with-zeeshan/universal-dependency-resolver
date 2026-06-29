@@ -129,7 +129,7 @@ class TestNPMClient:
         ) as mock_request:
             await client.search_packages("express", limit=10)
         mock_request.assert_called_once()
-        url = mock_request.call_args[0][0]
+        url = mock_request.call_args[0][1]
         assert "search" in url.lower()
 
     @pytest.mark.asyncio
@@ -306,7 +306,7 @@ class TestNPMClient:
         assert result is not None
         assert result["name"] == "@scope/test-package"
         mock_request.assert_called_once()
-        url = mock_request.call_args[0][0]
+        url = mock_request.call_args[0][1]
         assert "@scope/test-package" in url
 
     @pytest.mark.asyncio
@@ -474,23 +474,27 @@ class TestNPMClient:
         client.mirror_urls = ["https://mirror.example.com"]
         client.registry_url = "https://registry.npmjs.org"
 
-        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = [None, {"result": "from_mirror"}]
+        with patch.object(
+            client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock
+        ) as mock_base:
+            mock_base.side_effect = [None, {"result": "from_mirror"}]
             result = await client._make_request(
-                "https://registry.npmjs.org/package/test"
+                "GET", "https://registry.npmjs.org/package/test"
             )
         assert result == {"result": "from_mirror"}
-        assert mock_get.call_count == 2
+        assert mock_base.call_count == 2
 
     @pytest.mark.asyncio
     async def test_make_request_returns_first_success(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = [{"result": "primary"}]
+        with patch.object(
+            client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock
+        ) as mock_base:
+            mock_base.side_effect = [{"result": "primary"}]
             result = await client._make_request(
-                "https://registry.npmjs.org/package/test"
+                "GET", "https://registry.npmjs.org/package/test"
             )
         assert result == {"result": "primary"}
-        assert mock_get.call_count == 1
+        assert mock_base.call_count == 1
 
     @pytest.mark.asyncio
     async def test_make_request_all_fail(self, client):
@@ -498,9 +502,11 @@ class TestNPMClient:
             "https://mirror1.example.com",
             "https://mirror2.example.com",
         ]
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock, return_value=None
+        ):
             result = await client._make_request(
-                "https://registry.npmjs.org/package/test"
+                "GET", "https://registry.npmjs.org/package/test"
             )
         assert result is None
 

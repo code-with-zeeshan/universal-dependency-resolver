@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Set
@@ -32,6 +33,7 @@ from rich.tree import Tree
 from rich import box
 
 from backend.settings import ECOSYSTEMS, ECOSYSTEM_NAMES
+from backend.core.constraint_normalizer import normalize_constraint
 
 console = Console()
 err_console = Console(stderr=True)
@@ -73,6 +75,15 @@ def _normalize_cuda(cuda_str: str) -> int:
         return 0
 
 
+def _extract_severity(vuln: Dict) -> str:
+    sev = vuln.get("severity", [])
+    if isinstance(sev, list) and sev:
+        return sev[0].get("score", sev[0].get("type", "UNKNOWN"))
+    if isinstance(sev, str):
+        return sev
+    return "UNKNOWN"
+
+
 def _select_best_cuda_variant(variants: List[Dict], system_cuda: Optional[str]) -> Optional[str]:
     """Select the best CUDA variant matching system CUDA version."""
     if not variants:
@@ -90,39 +101,60 @@ def _select_best_cuda_variant(variants: List[Dict], system_cuda: Optional[str]) 
     return variants[0]["version"]
 
 
-def _aggregator_to_resolver_input(agg_data: Dict, ecosystem: str) -> Dict:
+def _aggregator_to_resolver_input(agg_data: Dict, ecosystem: str, constraint: str = None) -> Dict:
     """Convert DataAggregator output to ConflictResolver input format."""
     available_versions = []
     raw_versions = agg_data.get("versions", {}).get(ecosystem, [])
     for vinfo in raw_versions:
         ver = vinfo.get("version", "") if isinstance(vinfo, dict) else str(vinfo)
-        if "+" not in ver:
+        if not re.search(r'\+cu\d', ver):
             available_versions.append(ver)
 
     deps = {}
     eco_deps = agg_data.get("dependencies", {}).get(ecosystem, {})
     for dep in eco_deps.get("all", []):
-        deps[dep.name] = dep.version_spec
+        deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
 
+    sys_reqs = _extract_system_requirements(agg_data, ecosystem)
+
+    norm_constraint = normalize_constraint(constraint or "*", ecosystem)
+
+    return {
+        "name": agg_data.get("name"),
+        "ecosystem": ecosystem,
+        "version_constraint": norm_constraint,
+        "available_versions": sorted(set(available_versions), reverse=True),
+        "dependencies": {ecosystem: deps},
+        "system_requirements": sys_reqs,
+        "cross_ecosystem_deps": agg_data.get("cross_ecosystem_deps", []),
+    }
+
+
+def _extract_system_requirements(agg_data: Dict, ecosystem: str) -> Dict:
+    """Extract system requirements generically for any ecosystem."""
     sys_reqs = {}
     eco_reqs = agg_data.get("system_requirements", {}).get(ecosystem, [])
+    runtime_map = {
+        "pypi": "python",
+        "npm": "node",
+        "crates": "rust",
+        "rubygems": "ruby",
+        "packagist": "php",
+        "nuget": "dotnet",
+    }
+    runtime_field = runtime_map.get(ecosystem, ecosystem)
+
     for req in eco_reqs:
-        if req.type == "runtime" and req.name == "python" and req.version_spec:
+        if req.type == "runtime" and req.name == runtime_field and req.version_spec:
             min_ver = req.version_spec.lstrip(">= ")
-            sys_reqs["python"] = {"min_version": min_ver}
+            sys_reqs[runtime_field] = {"min_version": min_ver}
 
     eco_data = agg_data.get("ecosystem", {}).get(ecosystem, {})
     cuda_req = eco_data.get("system_requirements", {}).get("cuda")
     if cuda_req:
         sys_reqs["cuda"] = cuda_req
 
-    return {
-        "name": agg_data.get("name"),
-        "ecosystem": ecosystem,
-        "available_versions": sorted(set(available_versions)),
-        "dependencies": {ecosystem: deps},
-        "system_requirements": sys_reqs,
-    }
+    return sys_reqs
 
 
 async def _resolve_transitive(
@@ -130,9 +162,12 @@ async def _resolve_transitive(
     resolver,
     packages: List[Dict],
     system_info: Dict,
-    max_depth: int = 3,
+    max_depth: int = 10,
 ) -> Dict:
-    """Resolve dependencies recursively, fetching transitive deps."""
+    """Resolve dependencies recursively, fetching transitive deps.
+    Follows deps across ecosystems by checking all available ecosystems
+    for each package's dependency data.
+    """
     visited = set()
     queue = list(packages)
     all_packages = {}
@@ -160,39 +195,76 @@ async def _resolve_transitive(
                 if not info:
                     continue
 
-                eco = pkg["ecosystem"]
-                eco_deps = info.get("dependencies", {}).get(eco, {})
-                for dep in eco_deps.get("all", []):
-                    dep_key = (dep.name, eco)
-                    if dep_key not in visited and dep_key not in all_packages:
-                        dep_pkg = {
-                            "name": dep.name,
-                            "ecosystem": eco,
-                            "available_versions": [],
-                            "dependencies": {eco: {}},
-                            "system_requirements": {},
-                        }
-                        dep_info = await aggregator.get_package_info(
-                            dep.name, ecosystem=eco,
-                            include_dependencies=True,
-                            include_versions=True,
-                        )
-                        if dep_info:
-                            dep_pkg["available_versions"] = _aggregator_to_resolver_input(
-                                dep_info, eco
-                            ).get("available_versions", [])
-                            dep_deps = dep_info.get("dependencies", {}).get(eco, {})
-                            dep_pkg["dependencies"][eco] = {
-                                d.name: d.version_spec for d in dep_deps.get("all", [])
-                            }
-                            dep_reqs = dep_info.get("system_requirements", {}).get(eco, [])
-                            for req in dep_reqs:
-                                if req.type == "runtime" and req.name == "python" and req.version_spec:
-                                    dep_pkg["system_requirements"]["python"] = {
-                                        "min_version": req.version_spec.lstrip(">= ")
-                                    }
-                        all_packages[dep_key] = dep_pkg
-                        next_round.append(dep_pkg)
+                # Check ALL ecosystems for deps (cross-ecosystem support)
+                all_deps = info.get("dependencies", {})
+                cross_eco_deps = []
+                for dep_eco, dep_data in all_deps.items():
+                    for dep in dep_data.get("all", []):
+                        # Determine the dep's ecosystem:
+                        # If it came from a different ecosystem key, use that
+                        dep_key_eco = dep_eco if dep_eco != pkg["ecosystem"] else pkg["ecosystem"]
+                        dep_ecosystem = getattr(dep, "ecosystem", None)
+                        if dep_ecosystem and dep_ecosystem.value != pkg["ecosystem"]:
+                            dep_key_eco = dep_ecosystem.value
+                        dep_eco_val = dep_key_eco
+
+                        dep_key = (dep.name, dep_eco_val)
+                        if dep_key not in visited and dep_key not in all_packages:
+                            dep_pkg = None
+                            try:
+                                dep_info = await aggregator.get_package_info(
+                                    dep.name, ecosystem=dep_eco_val,
+                                    include_dependencies=True,
+                                    include_versions=True,
+                                )
+                                if dep_info:
+                                    dep_avail = _aggregator_to_resolver_input(dep_info, dep_eco_val).get("available_versions", [])
+                                    if dep_avail:
+                                        dep_pkg = {
+                                            "name": dep.name,
+                                            "ecosystem": dep_eco_val,
+                                            "available_versions": dep_avail,
+                                            "dependencies": {dep_eco_val: {}},
+                                            "system_requirements": {},
+                                        }
+                                        dep_deps = dep_info.get("dependencies", {}).get(dep_eco_val, {})
+                                        dep_pkg["dependencies"][dep_eco_val] = {
+                                            d.name: normalize_constraint(d.version_spec, dep_eco_val) for d in dep_deps.get("all", [])
+                                        }
+                                        dep_reqs = dep_info.get("system_requirements", {}).get(dep_eco_val, [])
+                                        for req in dep_reqs:
+                                            if req.type == "runtime" and req.name == "python" and req.version_spec:
+                                                dep_pkg["system_requirements"]["python"] = {
+                                                    "min_version": req.version_spec.lstrip(">= ")
+                                                }
+                                        # Track cross-ecosystem deps
+                                        if dep_eco_val != pkg["ecosystem"]:
+                                            if "cross_ecosystem_deps" not in dep_pkg:
+                                                dep_pkg["cross_ecosystem_deps"] = []
+                                            dep_pkg["cross_ecosystem_deps"].append({
+                                                "source": f"{pkg['name']}@{pkg['ecosystem']}",
+                                                "target_ecosystem": dep_eco_val,
+                                            })
+                            except Exception as exc:
+                                logger.warning("Failed to fetch transitive deps for %s/%s: %s", dep.name, dep_eco_val, exc)
+                            if dep_pkg:
+                                all_packages[dep_key] = dep_pkg
+                                next_round.append(dep_pkg)
+
+                        # Track cross-ecosystem reference even if already visited
+                        if dep_key in all_packages and dep_eco_val != pkg["ecosystem"]:
+                            existing = all_packages.get(dep_key)
+                            if existing and "cross_ecosystem_deps" not in existing:
+                                existing["cross_ecosystem_deps"] = []
+                            if existing and not any(
+                                x.get("source") == f"{pkg['name']}@{pkg['ecosystem']}"
+                                for x in existing.get("cross_ecosystem_deps", [])
+                            ):
+                                existing.setdefault("cross_ecosystem_deps", []).append({
+                                    "source": f"{pkg['name']}@{pkg['ecosystem']}",
+                                    "target_ecosystem": dep_eco_val,
+                                })
+
             except Exception as exc:
                 logger.warning("Failed to fetch transitive deps for %s/%s: %s", pkg["name"], pkg["ecosystem"], exc)
 
@@ -252,13 +324,16 @@ async def _run_resolution(
     interactive: bool = False,
 ) -> Dict:
     """Run resolution with SAT solver, fallback, CUDA variants, and interactive mode."""
+    timeout = int(os.environ.get("SOLVER_TIMEOUT", 30))
     try:
-        resolved = await _resolve_transitive(
-            aggregator, resolver, resolver_inputs, system_info,
+        resolved = await asyncio.wait_for(
+            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            timeout=timeout,
         )
-    except Exception as exc:
-        err_console.print(f"[yellow]SAT resolution fell back to alternatives:[/yellow] {exc}")
+    except (asyncio.TimeoutError, Exception) as exc:
+        logger.warning("Transitive resolution %s: falling back to alternatives", exc)
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        resolved["resolved_packages"] = resolved.pop("packages", {})
 
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
 
@@ -269,6 +344,7 @@ async def _run_resolution(
             title="Conflict Detected",
         ))
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        resolved["resolved_packages"] = resolved.pop("packages", {})
         resolved = _apply_cuda_variants(resolved, package_details, system_info)
 
     return resolved
@@ -552,12 +628,9 @@ def cmd_resolve(args):
             console.print("[red]No packages could be resolved[/red]")
             return 1
 
-        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True, console=err_console) as p:
-            p.add_task("Resolving dependencies with SAT solver...", total=None)
-            resolved = _run_resolution(
-                aggregator, resolver, resolver_inputs, system_info, package_details,
-                interactive=args.interactive,
-            )
+        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        resolved["resolved_packages"] = resolved.pop("packages", {})
+        resolved = _apply_cuda_variants(resolved, package_details, system_info)
 
         if args.format == "json":
             json.dump(resolved, sys.stdout, indent=2, default=str)
@@ -568,6 +641,21 @@ def cmd_resolve(args):
                 console.print(table)
             else:
                 console.print("[yellow]No packages resolved.[/yellow]")
+
+            # Show vulnerabilities inline
+            vulns_found = []
+            for pkg_name, detail in package_details.items():
+                for v in detail.get("security", {}).get("vulnerabilities", []):
+                    if v.get("id"):
+                        vulns_found.append((pkg_name, v))
+            if vulns_found:
+                console.print(f"\n[red]⚠ {len(vulns_found)} known vulnerabilities[/red]")
+                for pname, v in vulns_found[:10]:
+                    sev = _extract_severity(v)
+                    sev_tag = f"[red]{sev}[/red]" if sev in ("CRITICAL", "HIGH") else f"[yellow]{sev}[/yellow]"
+                    console.print(f"  {pname}: {v.get('id','?')} ({sev_tag}) — {v.get('summary','')[:80]}")
+                if len(vulns_found) > 10:
+                    console.print(f"  ... and {len(vulns_found) - 10} more")
 
             warnings = resolved.get("warnings", [])
             for w in warnings:
@@ -768,7 +856,7 @@ def cmd_lock(args):
                 if result:
                     _, data = result
                     package_details[pkg["name"]] = data
-                    rinput = _aggregator_to_resolver_input(data, pkg["ecosystem"])
+                    rinput = _aggregator_to_resolver_input(data, pkg["ecosystem"], constraint=pkg.get("constraint"))
                     resolver_inputs.append(rinput)
                 progress.advance(fetch_task)
 
@@ -821,16 +909,38 @@ def cmd_lock(args):
             "warnings": resolved.get("warnings", []),
         }
 
+        # Build manifest metadata lookup for preserving original constraint/source
+        manifest_pkg_info = {}
         for p in packages:
-            rp = resolved_pkgs.get(p["name"], {})
-            lock_data["packages"][p["name"]] = {
-                "name": p["name"],
-                "ecosystem": p["ecosystem"],
+            manifest_pkg_info[p["name"]] = {
+                "constraint": p.get("constraint", "*"),
+                "source": p.get("source", "unknown"),
+            }
+
+        for pkg_name, rp in resolved_pkgs.items():
+            manifest_info = manifest_pkg_info.get(pkg_name, {})
+            is_direct = pkg_name in manifest_pkg_info
+            # Extract vulnerability info from fetched metadata
+            pkg_detail = package_details.get(pkg_name, {})
+            vulns = pkg_detail.get("security", {}).get("vulnerabilities", [])
+            lock_data["packages"][pkg_name] = {
+                "name": pkg_name,
+                "ecosystem": rp.get("ecosystem", "?"),
                 "resolved_version": rp.get("version"),
+                "direct": is_direct,
                 "cuda_variant": rp.get("cuda_variant", False),
                 "cuda_version": rp.get("cuda_version"),
-                "original_constraint": p["constraint"],
-                "source": p["source"],
+                "original_constraint": manifest_info.get("constraint", "*"),
+                "source": manifest_info.get("source", "transitive"),
+                "vulnerabilities": [
+                    {
+                        "id": v.get("id", ""),
+                        "summary": v.get("summary", ""),
+                        "severity": _extract_severity(v),
+                        "fixed_version": v.get("fixed_version"),
+                    }
+                    for v in vulns if v.get("id")
+                ],
             }
 
         # 7. JSON output
@@ -842,18 +952,41 @@ def cmd_lock(args):
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
 
         rp_count = len([p for p in lock_data["packages"].values() if p["resolved_version"]])
-        summary_table = Table(title=f"Resolved {rp_count}/{len(packages)} packages — {lock_path.name}", box=box.ROUNDED)
+        total_pkgs = len(lock_data["packages"])
+        summary_table = Table(title=f"Resolved {rp_count}/{total_pkgs} packages — {lock_path.name}", box=box.ROUNDED)
         summary_table.add_column("Package", style="cyan")
         summary_table.add_column("Ecosystem")
         summary_table.add_column("Resolved Version", style="bold green")
+        summary_table.add_column("Type")
         summary_table.add_column("Notes")
 
+        total_vulns = 0
         for pname, pinfo in lock_data["packages"].items():
             if pinfo["resolved_version"]:
                 cuda_str = f"(+cu{pinfo['cuda_version']})" if pinfo.get("cuda_variant") else ""
-                summary_table.add_row(pname, pinfo['ecosystem'], pinfo['resolved_version'], cuda_str)
+                ptype = "direct" if pinfo.get("direct") else "transitive"
+                vuln_count = len(pinfo.get("vulnerabilities", []))
+                vuln_str = f"[red]{vuln_count} CVE[/red]" if vuln_count else ""
+                total_vulns += vuln_count
+                notes = f"{cuda_str} {vuln_str}".strip()
+                summary_table.add_row(pname, pinfo['ecosystem'], pinfo['resolved_version'], ptype, notes)
             else:
-                summary_table.add_row(pname, pinfo['ecosystem'], "[red]unresolved[/red]", "")
+                summary_table.add_row(pname, pinfo['ecosystem'], "[red]unresolved[/red]", "", "")
+
+        console.print(summary_table)
+
+        if total_vulns > 0:
+            vuln_table = Table(title=f"[red]{total_vulns} known vulnerabilities[/red]", box=box.SIMPLE)
+            vuln_table.add_column("Package", style="cyan")
+            vuln_table.add_column("CVE ID", style="yellow")
+            vuln_table.add_column("Severity")
+            vuln_table.add_column("Summary")
+            for pname, pinfo in lock_data["packages"].items():
+                for v in pinfo.get("vulnerabilities", []):
+                    sev = v.get("severity", "UNKNOWN")
+                    sev_tag = f"[red]{sev}[/red]" if sev in ("CRITICAL", "HIGH") else f"[yellow]{sev}[/yellow]"
+                    vuln_table.add_row(pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80])
+            console.print(vuln_table)
 
         console.print(summary_table)
 
@@ -865,11 +998,12 @@ def cmd_lock(args):
                 try:
                     export_content = exporter.generate(
                         {
-                            p["name"]: {
-                                "version": lock_data["packages"][p["name"]]["resolved_version"],
-                                "ecosystem": p["ecosystem"],
+                            pname: {
+                                "version": pinfo["resolved_version"],
+                                "ecosystem": pinfo["ecosystem"],
                             }
-                            for p in packages
+                            for pname, pinfo in lock_data["packages"].items()
+                            if pinfo["resolved_version"]
                         },
                         format=export_format,
                         system_info=system_info,
@@ -885,10 +1019,12 @@ def cmd_lock(args):
             return 0
 
         # 10. Prompt to update manifests
-        if not args.yes:
+        if not args.yes and sys.stdin.isatty():
             proceed = Confirm.ask("\nUpdate manifests in-place with pinned versions?", default=False)
             if not proceed:
                 return 0
+        elif not args.yes:
+            pass  # non-TTY, skip prompt (treat as no)
 
         for pkg in packages:
             manifest_path = directory / pkg["source"]
@@ -929,26 +1065,122 @@ def cmd_lock(args):
 # New commands
 # =============================================================================
 
+def _generate_install_command(ecosystem: str, packages: List[Tuple[str, str]]) -> Optional[str]:
+    """Generate an install command for a set of packages in a given ecosystem."""
+    if not packages:
+        return None
+    installers = {
+        "pypi": ("pip", "install"),
+        "npm": ("npm", "install"),
+        "crates": ("cargo", "add"),
+        "gomodules": ("go", "get"),
+        "conda": ("conda", "install"),
+        "rubygems": ("gem", "install"),
+        "packagist": ("composer", "require"),
+        "pub": ("dart", "pub", "add"),
+        "nuget": ("dotnet", "add", "package"),
+        "cocoapods": ("pod", "install"),
+        "maven": ("mvn", "dependency:copy-dependencies"),
+    }
+    installer = installers.get(ecosystem)
+    if not installer:
+        logger.warning(f"No installer known for ecosystem: {ecosystem}")
+        return None
+    if ecosystem == "npm":
+        specs = [f"{name}@{ver}" for name, ver in packages]
+    elif ecosystem == "pub":
+        specs = [f"{name}:{ver}" for name, ver in packages]
+    elif ecosystem in ("gomodules", "cocoapods"):
+        specs = [f"{name}@{ver}" for name, ver in packages]
+    else:
+        specs = [f"{name}=={ver}" for name, ver in packages]
+    return " ".join(list(installer) + specs)
+
+
+def cmd_install(args):
+    """Install packages from a udr-lock.json lock file."""
+    directory = Path(args.directory).resolve()
+    lock_path = directory / "udr-lock.json"
+    if args.lock_file:
+        lock_path = Path(args.lock_file).resolve()
+
+    lock_data = _read_lock_file(lock_path)
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[red]No packages in lock file[/red]")
+        return 1
+
+    eco_groups: Dict[str, List[Tuple[str, str]]] = {}
+    for pkg_name, pinfo in packages.items():
+        eco = pinfo.get("ecosystem", "pypi")
+        ver = pinfo.get("resolved_version")
+        if not ver:
+            continue
+        if eco not in eco_groups:
+            eco_groups[eco] = []
+        eco_groups[eco].append((pkg_name, ver))
+
+    if not eco_groups:
+        console.print("[red]No resolved packages to install[/red]")
+        return 1
+
+    install_commands: List[Tuple[str, str]] = []
+    for eco, pkgs in eco_groups.items():
+        if args.ecosystem and eco != args.ecosystem:
+            continue
+        cmd = _generate_install_command(eco, pkgs)
+        if cmd:
+            install_commands.append((eco, cmd))
+
+    if not install_commands:
+        console.print("[yellow]No install commands could be generated — no installer known for these ecosystems[/yellow]")
+        return 1
+
+    console.print("[bold]Install Plan[/bold]")
+    for eco, cmd in install_commands:
+        console.print(f"  [cyan]{eco}[/cyan] ({len(eco_groups[eco])} pkgs): [dim]{cmd}[/dim]")
+
+    if args.dry_run:
+        console.print("[yellow]── dry run — no installations performed ──[/yellow]")
+        return 0
+
+    if not args.yes:
+        proceed = Confirm.ask("\nProceed with installation?", default=False)
+        if not proceed:
+            return 0
+
+    success = True
+    for eco, cmd in install_commands:
+        console.print(f"\n[cyan]Installing {eco} packages...[/cyan]")
+        result = subprocess.call(cmd, shell=True)
+        if result != 0:
+            console.print(f"[red]Failed to install {eco} packages (exit code {result})[/red]")
+            success = False
+
+    if success:
+        console.print("\n[bold green]All packages installed successfully[/bold green]")
+    return 0 if success else 1
+
 def cmd_graph(args):
     """Display dependency tree for one or more packages."""
     from backend.core import DataAggregator, ConflictResolver
 
-    try:
-        specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
+    async def _graph():
         aggregator = DataAggregator()
         resolver = ConflictResolver()
         system_info = resolver._get_default_system_info()
 
-        resolver_inputs, package_details = _fetch_package_data(aggregator, specs)
+        specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
+        resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:
             console.print("[red]No packages could be resolved[/red]")
-            sys.exit(1)
+            return
 
         err_console.print("[dim]Resolving dependencies for dependency tree...[/dim]")
-        resolved = asyncio.run(_resolve_transitive(
+        resolved = await _resolve_transitive(
             aggregator, resolver, resolver_inputs, system_info,
-        ))
+        )
 
         rp = resolved.get("resolved_packages", {})
         if not rp:
@@ -966,6 +1198,9 @@ def cmd_graph(args):
                 node.add(f"[white]{dep_name}[/white] [dim]{dep_ver}[/dim]")
 
         console.print(tree)
+
+    try:
+        asyncio.run(_graph())
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(130)
@@ -974,84 +1209,89 @@ def cmd_graph(args):
         sys.exit(1)
 
 
+async def _cmd_verify_async(args):
+    from backend.core import DataAggregator
+
+    lock_path = Path(args.lock_file)
+    lock_data = _read_lock_file(lock_path)
+    aggregator = DataAggregator()
+
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]No packages in lock file[/yellow]")
+        return 0
+
+    issues = []
+    ok_count = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[green]{task.completed}/{task.total}[/green]"),
+        console=err_console,
+    ) as progress:
+        verify_task = progress.add_task("Verifying packages...", total=len(packages))
+
+        async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+            eco = info.get("ecosystem", "pypi")
+            ver = info.get("resolved_version")
+            if not ver:
+                return {"name": name, "issue": "No resolved version", "severity": "warning"}
+            try:
+                data = await aggregator.get_package_info(
+                    name, ecosystem=eco, include_versions=True,
+                )
+                if data:
+                    versions = data.get("versions", {}).get(eco, [])
+                    version_strings = [
+                        v.get("version", "") if isinstance(v, dict) else str(v)
+                        for v in versions
+                    ]
+                    if ver not in version_strings:
+                        return {"name": name, "issue": f"Version {ver} no longer available", "severity": "error"}
+                else:
+                    return {"name": name, "issue": "Package not found on registry", "severity": "error"}
+            except Exception as exc:
+                return {"name": name, "issue": str(exc), "severity": "error"}
+            return None
+
+        results = await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
+
+        for result in results:
+            if result:
+                issues.append(result)
+                progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
+            else:
+                ok_count += 1
+            progress.advance(verify_task)
+
+    summary = Table(title=f"Lock File Verification — {lock_path.name}", box=box.ROUNDED)
+    summary.add_column("Status", style="bold")
+    summary.add_column("Count")
+    summary.add_row("✅ OK", str(ok_count))
+    summary.add_row("⚠ Issues", str(len(issues)))
+    console.print(summary)
+
+    if issues:
+        issue_table = Table(box=box.SIMPLE)
+        issue_table.add_column("Severity", style="bold")
+        issue_table.add_column("Package")
+        issue_table.add_column("Issue")
+        for iss in issues:
+            sev_icon = "[red]ERROR[/red]" if iss["severity"] == "error" else "[yellow]WARN[/yellow]"
+            issue_table.add_row(sev_icon, iss["name"], iss["issue"])
+        console.print(issue_table)
+
+    if issues and any(i["severity"] == "error" for i in issues):
+        return 1
+    return 0
+
+
 def cmd_verify(args):
     """Validate lock file: check all resolved versions still exist."""
     try:
-        from backend.core import DataAggregator
-
-        lock_path = Path(args.lock_file)
-        lock_data = _read_lock_file(lock_path)
-        aggregator = DataAggregator()
-
-        packages = lock_data.get("packages", {})
-        if not packages:
-            console.print("[yellow]No packages in lock file[/yellow]")
-            return
-
-        issues = []
-        ok_count = 0
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[green]{task.completed}/{task.total}[/green]"),
-            console=err_console,
-        ) as progress:
-            verify_task = progress.add_task("Verifying packages...", total=len(packages))
-
-            async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
-                eco = info.get("ecosystem", "pypi")
-                ver = info.get("resolved_version")
-                if not ver:
-                    return {"name": name, "issue": "No resolved version", "severity": "warning"}
-                try:
-                    data = await aggregator.get_package_info(
-                        name, ecosystem=eco, include_versions=True,
-                    )
-                    if data:
-                        versions = data.get("versions", {}).get(eco, [])
-                        version_strings = [
-                            v.get("version", "") if isinstance(v, dict) else str(v)
-                            for v in versions
-                        ]
-                        if ver not in version_strings:
-                            return {"name": name, "issue": f"Version {ver} no longer available", "severity": "error"}
-                    else:
-                        return {"name": name, "issue": "Package not found on registry", "severity": "error"}
-                except Exception as exc:
-                    return {"name": name, "issue": str(exc), "severity": "error"}
-                return None
-
-            results = asyncio.run(asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()]))
-
-            for result in results:
-                if result:
-                    issues.append(result)
-                    progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
-                else:
-                    ok_count += 1
-                progress.advance(verify_task)
-
-        summary = Table(title=f"Lock File Verification — {lock_path.name}", box=box.ROUNDED)
-        summary.add_column("Status", style="bold")
-        summary.add_column("Count")
-        summary.add_row("✅ OK", str(ok_count))
-        summary.add_row("⚠ Issues", str(len(issues)))
-        console.print(summary)
-
-        if issues:
-            issue_table = Table(box=box.SIMPLE)
-            issue_table.add_column("Severity", style="bold")
-            issue_table.add_column("Package")
-            issue_table.add_column("Issue")
-            for iss in issues:
-                sev_icon = "[red]ERROR[/red]" if iss["severity"] == "error" else "[yellow]WARN[/yellow]"
-                issue_table.add_row(sev_icon, iss["name"], iss["issue"])
-            console.print(issue_table)
-
-        if issues and any(i["severity"] == "error" for i in issues):
-            sys.exit(1)
+        sys.exit(asyncio.run(_cmd_verify_async(args)))
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(130)
@@ -1093,6 +1333,11 @@ def _cmd_scan_github(args):
         sys.exit(1)
 def cmd_list_ecosystems(args):
     """List all supported ecosystems."""
+    if getattr(args, 'json', False):
+        data = [{"name": eco, "display": ECOSYSTEM_NAMES.get(eco, eco.replace("_", " ").title()), "identifier": eco} for eco in ECOSYSTEMS]
+        json.dump(data, sys.stdout, indent=2)
+        print()
+        return
     table = Table(title=f"Supported Ecosystems ({len(ECOSYSTEMS)})", box=box.ROUNDED)
     table.add_column("Name", style="cyan")
     table.add_column("Display Name")
@@ -1205,9 +1450,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "packages", nargs="+",
         help="Package names (use pkg@ecosystem syntax, e.g. numpy@pypi express@npm)",
     )
+    _eco_choices = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
     resolve_p.add_argument(
         "--ecosystem", "-e", default="pypi",
-        choices=["pypi", "npm", "cargo", "go", "conda", "maven", "crates", "nuget", "rubygems"],
+        choices=_eco_choices,
         help="Default ecosystem (used for packages without @ecosystem suffix)",
     )
     resolve_p.add_argument("--format", "-f", default="text", choices=["text", "json"], help="Output format")
@@ -1233,9 +1479,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "packages", nargs="+",
         help="Package names (use pkg@ecosystem syntax)",
     )
+    _eco_choices = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
     graph_p.add_argument(
         "--ecosystem", "-e", default="pypi",
-        choices=["pypi", "npm", "cargo", "go", "conda", "maven", "crates", "nuget", "rubygems"],
+        choices=_eco_choices,
         help="Default ecosystem",
     )
 
@@ -1254,10 +1501,25 @@ def _build_parser() -> argparse.ArgumentParser:
     update_p.add_argument("--interactive", "-i", action="store_true",
                           help="Interactive mode for resolving conflicts manually")
 
+    install_p = sub.add_parser("install", help="Install packages from udr-lock.json lock file")
+    install_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    install_p.add_argument("--lock-file", "-l", help="Path to lock file (default: <directory>/udr-lock.json)")
+    install_p.add_argument("--ecosystem", "-e", choices=_eco_choices, help="Only install packages from this ecosystem")
+    install_p.add_argument("--dry-run", "-n", action="store_true", help="Show install commands without executing")
+    install_p.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+
+    restore_p = sub.add_parser("restore", help="Alias for install — restore packages from lock file")
+    restore_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    restore_p.add_argument("--lock-file", "-l", help="Path to lock file (default: <directory>/udr-lock.json)")
+    restore_p.add_argument("--ecosystem", "-e", choices=_eco_choices, help="Only install packages from this ecosystem")
+    restore_p.add_argument("--dry-run", "-n", action="store_true", help="Show install commands without executing")
+    restore_p.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+
     scan_p = sub.add_parser("scan", help="Scan a GitHub repo or local path without manual clone/cd")
     scan_p.add_argument("--github", help="GitHub repository URL (e.g. https://github.com/user/repo)")
     scan_p.add_argument("--branch", default="main", help="Git branch to scan (default: main)")
     scan_p.add_argument("--directory", help="Local project directory to scan")
+    scan_p.add_argument("--manifest", "-m", help="Only process a specific manifest file")
     scan_p.add_argument("-y", "--yes", action="store_true", help="Update manifests without prompting")
     scan_p.add_argument("--export", help="Export to a specific format")
     scan_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1)")
@@ -1271,6 +1533,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def main():
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Suppress noisy version-parse warnings from data sources
+    logging.getLogger("backend.core.utils").setLevel(logging.ERROR)
+    logging.getLogger("backend.data_sources.base_client").setLevel(logging.ERROR)
 
     if getattr(args, 'mode', None):
         os.environ["UDR_MODE"] = args.mode
@@ -1286,6 +1552,8 @@ def main():
         "verify": cmd_verify,
         "list-ecosystems": cmd_list_ecosystems,
         "update": cmd_update,
+        "install": cmd_install,
+        "restore": cmd_install,
     }
     dispatch[args.command](args)
 
