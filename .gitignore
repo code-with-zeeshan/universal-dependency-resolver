@@ -496,3 +496,4 @@ heapdump*
 
 # lock file
 udr-lock.json
+*.report.txt

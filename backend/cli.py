@@ -1230,24 +1230,26 @@ def cmd_lock(args):
 
         console.print(summary_table)
 
-        # Write readable report alongside lock file
-        try:
-            report_lines = [
-                f"UDR Lock Report — {lock_path.name}",
-                f"Generated: {lock_data['generated_at']}",
-                f"Resolved: {rp_count}/{total_pkgs} packages",
-                "",
-            ]
-            for pname, pinfo in lock_data["packages"].items():
-                ver = pinfo.get("resolved_version") or "unresolved"
-                ptype = "direct" if pinfo.get("direct") else "transitive"
-                vuln_count = len(pinfo.get("vulnerabilities", []))
-                vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
-                report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
-            report_path = lock_path.with_suffix(".report.txt")
-            report_path.write_text("\n".join(report_lines) + "\n")
-        except Exception:
-            pass
+        # Write readable report alongside lock file (opt-in via --report)
+        if args.report:
+            try:
+                report_lines = [
+                    f"UDR Lock Report — {lock_path.name}",
+                    f"Generated: {lock_data['generated_at']}",
+                    f"Resolved: {rp_count}/{total_pkgs} packages",
+                    "",
+                ]
+                for pname, pinfo in lock_data["packages"].items():
+                    ver = pinfo.get("resolved_version") or "unresolved"
+                    ptype = "direct" if pinfo.get("direct") else "transitive"
+                    vuln_count = len(pinfo.get("vulnerabilities", []))
+                    vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
+                    report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
+                report_path = lock_path.with_suffix(".report.txt")
+                report_path.write_text("\n".join(report_lines) + "\n")
+                console.print(f"[green]Report saved:[/green] {report_path}")
+            except Exception:
+                pass
 
         # 9. Export if requested
         if args.export:
@@ -1870,6 +1872,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
     lock_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
+    lock_p.add_argument("--report", "-r", action="store_true", help="Write readable report file (udr-lock-report.txt) alongside lock file")
 
     graph_p = sub.add_parser(
         "graph", help="Show dependency tree for one or more packages"
