@@ -55,6 +55,15 @@ jobs:
       - name: Install build tools
         run: pip install build==1.5.0
 
+      - name: Inject tag version into pyproject.toml (safety net)
+        shell: bash
+        run: |
+          TAG_VER="${{ github.ref_name }}"
+          TAG_VER="${TAG_VER#v}"
+          echo "Injecting version from tag: $TAG_VER"
+          sed -i "s/^version = .*/version = \"$TAG_VER\"/" pyproject.toml
+          echo "pyproject.toml now: $(grep '^version' pyproject.toml)"
+
       - name: Build distributions
         run: python -m build
 

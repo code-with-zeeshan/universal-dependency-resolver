@@ -60,6 +60,25 @@ jobs:
       - name: Sync desktop version from pyproject.toml
         run: python scripts/sync-version.py
 
+      - name: Override version from git tag (safety net)
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_VER="${{ github.event.release.tag_name }}"
+            TAG_VER="${TAG_VER#v}"
+            echo "Injecting tag version: $TAG_VER"
+            python3 -c "
+import json
+pkg = json.load(open('desktop/package.json'))
+old = pkg['version']
+pkg['version'] = '$TAG_VER'
+json.dump(pkg, open('desktop/package.json', 'w'), indent=2)
+print(f'desktop/package.json: {old} -> $TAG_VER (from tag)')
+"
+          else
+            echo "No release tag — using pyproject.toml version"
+          fi
+
       - name: Install UPX compressor
         shell: bash
         run: |
