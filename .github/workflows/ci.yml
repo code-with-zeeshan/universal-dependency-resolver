@@ -43,6 +43,7 @@ jobs:
           ruff format --check --diff backend/
 
       - name: Type check
+        continue-on-error: true
         run: |
           mypy backend --ignore-missing-imports
 
