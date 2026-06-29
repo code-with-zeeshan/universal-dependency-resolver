@@ -51,13 +51,15 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
       "icon": "buildResources/icon.ico",
       "legalTrademarks": "Universal Dependency Resolver",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "sign": false
     },
     "nsis": {
       "oneClick": false,
@@ -79,14 +81,17 @@
         {
           "target": "dmg",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
       "icon": "buildResources/icon.icns",
       "category": "public.app-category.developer-tools",
       "darkModeSupport": true,
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "title": "UDR ${version}",
@@ -115,13 +120,15 @@
         {
           "target": "AppImage",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         },
         {
           "target": "deb",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],

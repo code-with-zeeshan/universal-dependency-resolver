@@ -2,6 +2,7 @@
 import asyncio
 import io
 import logging
+import os
 import tempfile
 import zipfile
 from pathlib import Path
@@ -21,6 +22,8 @@ from backend.cli import (
     _resolve_transitive,
     _apply_cuda_variants,
 )
+
+SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,8 +102,11 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
     system_info = await scanner.scan_all()
 
     try:
-        resolved = await _resolve_transitive(aggregator, resolver, resolver_inputs, system_info)
-    except Exception:
+        resolved = await asyncio.wait_for(
+            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            timeout=SOLVER_API_TIMEOUT,
+        )
+    except (asyncio.TimeoutError, Exception):
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
 
     resolved = _apply_cuda_variants(resolved, package_details, system_info)

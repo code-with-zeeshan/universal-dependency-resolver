@@ -11,6 +11,7 @@ import json
 import copy
 import uuid
 import platform
+import os
 
 if TYPE_CHECKING:
     import z3
@@ -31,6 +32,8 @@ from .cache import cached
 
 logger = logging.getLogger(__name__)
 
+SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "5000"))
+
 
 class ConflictResolver:
     """Resolves dependency conflicts using constraint satisfaction and graph algorithms."""
@@ -43,6 +46,7 @@ class ConflictResolver:
         self.version_vars = {}  # Maps package_version strings to Z3 variables
         self.version_to_int = {}  # Maps version strings to integers for Z3
         self.int_to_version = {}  # Reverse mapping
+        self.offline_mode = False
 
     # Additional error handling enhancements
     def resolve_dependencies(
@@ -108,10 +112,16 @@ class ConflictResolver:
                 )
                 return self._format_solution(solution)
 
-            logger.warning(
-                "Dependency resolution unsatisfiable, attempting alternatives",
-                extra={"event": "dependency_resolution_unsat", **resolution_context},
-            )
+            if solution["status"] == "timeout":
+                logger.warning(
+                    "Solver timeout, attempting alternatives",
+                    extra={"event": "dependency_resolution_timeout", **resolution_context},
+                )
+            else:
+                logger.warning(
+                    "Dependency resolution unsatisfiable, attempting alternatives",
+                    extra={"event": "dependency_resolution_unsat", **resolution_context},
+                )
             return self._resolve_with_alternatives(normalized_packages, system_info)
 
         except ResolverError as exc:
@@ -771,6 +781,7 @@ class ConflictResolver:
         }
 
         # Variable for each package version
+        total_vars = 0
         for package in packages:
             pkg_name = package["name"]  # Already normalized
             versions = package.get("available_versions", [])
@@ -803,9 +814,19 @@ class ConflictResolver:
                     )
 
             constraints["package_versions"][pkg_name] = version_vars
+            total_vars += len(version_vars)
 
             if not version_vars:
                 continue
+
+            # Max-vars guard to prevent memory blowup on huge graphs
+            if total_vars > SOLVER_MAX_VARS:
+                logger.warning(
+                    f"Solver variable limit ({SOLVER_MAX_VARS}) reached at {total_vars} vars, "
+                    f"limiting further package versions",
+                    extra={"event": "solver_max_vars_reached", "total_vars": total_vars},
+                )
+                break
 
             # Exactly one version must be selected
             self.solver.add(z3.Or(version_vars))
@@ -970,6 +991,9 @@ class ConflictResolver:
                         break
 
             return solution
+        elif result == z3.unknown:
+            logger.warning("Z3 solver returned unknown (likely timeout or incomplete)")
+            return {"status": "timeout", "conflicts": [], "message": "Solver timed out or could not determine satisfiability"}
         else:
             return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
 
@@ -1102,6 +1126,19 @@ class ConflictResolver:
             return list(nx.topological_sort(subgraph))
         except nx.NetworkXUnfeasible:
             # Graph has cycles, return arbitrary order
+            try:
+                cycles = list(nx.simple_cycles(subgraph))
+                cycle_strs = [" -> ".join(c) for c in cycles[:5]]
+                logger.warning(
+                    "Circular dependencies detected in installation order",
+                    extra={
+                        "event": "circular_dependency_detected",
+                        "cycles": cycle_strs,
+                        "package_count": len(packages),
+                    },
+                )
+            except Exception:
+                pass
             return list(packages.keys())
 
     def _get_ecosystem(self, package_name: str) -> str:

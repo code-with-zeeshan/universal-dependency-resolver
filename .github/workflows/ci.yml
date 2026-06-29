@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -38,24 +38,30 @@ jobs:
           pip install -e ".[dev,system,postgres]"
 
       - name: Lint
-        continue-on-error: true
         run: |
           ruff check backend/
           ruff format --check --diff backend/
 
       - name: Type check
-        continue-on-error: true
         run: |
           mypy backend --ignore-missing-imports
 
-      - name: Run tests
+      - name: Run unit tests
         env:
           TESTING: "true"
           SECRET_KEY: test-secret-key-for-ci
           PYTHONPATH: .
           ENABLE_CSRF: "false"
         run: |
-          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml
+          python -m pytest tests/unit/ -v --tb=long --cov=backend --cov-report=term-missing --cov-report=xml
+
+      - name: Run data source tests
+        env:
+          TESTING: "true"
+          SECRET_KEY: test-secret-key-for-ci
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/unit/ -v --tb=long -k "data_source" --timeout=120 || true
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -124,7 +130,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.29.0
         continue-on-error: true
         with:
           scan-type: fs

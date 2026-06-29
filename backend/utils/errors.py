@@ -14,6 +14,7 @@ class ErrorCategory(str, Enum):
     SYSTEM_INFO = "system_info_error"
     SOLVER = "solver_error"
     UNSATISFIABLE = "unsatisfiable"
+    CIRCULAR_DEPENDENCY = "circular_dependency"
     INTERNAL = "internal_error"
     BATCH = "batch_error"
     NETWORK = "network_error"
@@ -27,6 +28,7 @@ class ResolverErrorCode(str, Enum):
     SYSTEM_INFO_ERROR = "system_info_error"
     SOLVER_ERROR = "solver_error"
     UNSATISFIABLE = "unsatisfiable"
+    CIRCULAR_DEPENDENCY = "circular_dependency"
     INTERNAL_ERROR = "internal_error"
     BATCH_ERROR = "batch_error"
     NETWORK_ERROR = "network_error"
@@ -82,6 +84,7 @@ class ErrorFactory:
         ErrorCategory.SYSTEM_INFO: "System information validation failed.",
         ErrorCategory.SOLVER: "Solver encountered an error while resolving dependencies.",
         ErrorCategory.UNSATISFIABLE: "Dependency constraints are unsatisfiable.",
+        ErrorCategory.CIRCULAR_DEPENDENCY: "Circular dependency detected.",
         ErrorCategory.INTERNAL: "An unexpected internal error occurred.",
         ErrorCategory.BATCH: "Batch resolution failed.",
         ErrorCategory.NETWORK: "Network request to external service failed.",
@@ -93,6 +96,7 @@ class ErrorFactory:
         ErrorCategory.SYSTEM_INFO: 400,
         ErrorCategory.SOLVER: 500,
         ErrorCategory.UNSATISFIABLE: 409,
+        ErrorCategory.CIRCULAR_DEPENDENCY: 409,
         ErrorCategory.INTERNAL: 500,
         ErrorCategory.BATCH: 500,
         ErrorCategory.NETWORK: 502,

@@ -7,10 +7,13 @@ package to its ecosystem for resolution.
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 from .core.utils import normalize_package_name
+
+logger = logging.getLogger(__name__)
 
 
 # Map filename patterns → (ecosystem, parser_func)
@@ -57,12 +60,37 @@ class ManifestDetector:
                         "ecosystem": ecosystem,
                         "parser": parser_key,
                     })
+        unique_ecosystems = set(m["ecosystem"] for m in found)
+        if len(unique_ecosystems) > 1:
+            logger.warning(
+                f"Multiple ecosystem manifests detected: {', '.join(sorted(unique_ecosystems))}. "
+                "All packages will be resolved together; use --manifest to target a single file."
+            )
         return found
+
+    def _read_with_encoding_fallback(self, path: Path) -> str:
+        raw = path.read_bytes()
+        if raw[:3] == b"\xef\xbb\xbf":
+            raw = raw[3:]
+        elif raw[:2] == b"\xff\xfe":
+            raw = raw.decode("utf-16-le", errors="replace").encode("utf-8", errors="replace")
+            raw = raw.decode("utf-8", errors="replace")
+            return raw
+        elif raw[:2] == b"\xfe\xff":
+            raw = raw.decode("utf-16-be", errors="replace").encode("utf-8", errors="replace")
+            raw = raw.decode("utf-8", errors="replace")
+            return raw
+        for enc in ("utf-8", "latin-1", "cp1252"):
+            try:
+                return raw.decode(enc)
+            except (UnicodeDecodeError, LookupError):
+                continue
+        return raw.decode("utf-8", errors="replace")
 
     def parse(self, manifest: Dict) -> List[Dict]:
         """Parse a single manifest file. Returns list of {name, version, ...} dicts."""
         path = Path(manifest["path"])
-        content = path.read_text(encoding="utf-8", errors="replace")
+        content = self._read_with_encoding_fallback(path)
         parser_key = manifest["parser"]
         parser = self._get_parser(parser_key)
         try:

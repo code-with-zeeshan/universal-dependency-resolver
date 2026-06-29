@@ -188,9 +188,14 @@ class BaseDataSourceClient:
     async def cached_get(
         self, cache_key: str, url: str, ttl: Optional[int] = None
     ) -> Optional[Dict]:
+        import os as _os
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
+
+        if _os.environ.get("UDR_OFFLINE", "").lower() == "true":
+            logger.warning(f"Offline mode: skipping network request for {url}")
+            return None
 
         data = await self._get(url)
         if data is not None:

@@ -20,14 +20,28 @@ function generateSecretKey() {
 
 function getEnv(port, extraEnv = {}) {
   return {
-    ...process.env,
+    ...extraEnv,
     UDR_PORT: String(port),
     UDR_HOST: '127.0.0.1',
     UDR_DESKTOP: 'true',
+    UDR_STANDALONE: 'true',
+    ENABLE_AUTH: 'true',
     PYTHONUNBUFFERED: '1',
     SECRET_KEY: process.env.SECRET_KEY || generateSecretKey(),
-    ...extraEnv,
   }
+}
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    http.get(url, (res) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        resolve()
+      } else {
+        reject(new Error(`HTTP ${res.statusCode}`))
+      }
+      res.resume()
+    }).on('error', reject)
+  })
 }
 
 function waitForServer(url, maxRetries = 30, onCrashed = null) {
@@ -51,7 +65,7 @@ function waitForServer(url, maxRetries = 30, onCrashed = null) {
   })
 }
 
-function spawnBackend(cmd, args, port, isBinary, cwd) {
+function spawnBackend(cmd, args, port, isBinary, cwd, envOverride) {
   return new Promise((resolve, reject) => {
     let crashed = false
 
@@ -61,7 +75,7 @@ function spawnBackend(cmd, args, port, isBinary, cwd) {
 
     const proc = spawn(cmd, allArgs, {
       cwd,
-      env: getEnv(port),
+      env: envOverride || getEnv(port),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -120,6 +134,7 @@ module.exports = {
   findFreePort,
   generateSecretKey,
   getEnv,
+  httpGet,
   spawnBackend,
   waitForServer,
   getPlatformHint,

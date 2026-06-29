@@ -12,10 +12,16 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        arch: [x64]
         include:
-          - os: macos-latest
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-latest
+            arch: x64
+          - os: windows-2025-arm
+            arch: arm64
+          - os: macos-13
             arch: x64
           - os: macos-14
             arch: arm64
@@ -30,6 +36,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: desktop/node_modules
+          key: desktop-npm-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          restore-keys: |
+            desktop-npm-
 
       - name: Install desktop dependencies
         run: npm install
@@ -51,7 +65,7 @@ jobs:
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install upx 2>/dev/null || true
           elif [[ "$RUNNER_OS" == "Windows" ]]; then
-            choco install upx -y 2>/dev/null || true
+            scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || true
           fi
           which upx && upx --version | head -1 || echo "UPX not available"
 
@@ -60,7 +74,17 @@ jobs:
         run: |
           pip install pyinstaller
           pip install -e ".[system]"
-          Z3_LIB=$(python3 -c "import z3, os, sys; ext = 'dll' if sys.platform in ('win32', 'cygwin') else 'dylib' if sys.platform == 'darwin' else 'so'; print(os.path.join(os.path.dirname(z3.__file__), 'lib', f'libz3.{ext}'))")
+          Z3_LIB=$(python3 << 'PYEOF'
+          import z3, os, sys, glob
+          ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+          ext = ext_map.get(sys.platform, '.so')
+          lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
+          if not os.path.isdir(lib_dir):
+              lib_dir = os.path.join(os.path.dirname(z3.__file__))
+          matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+          print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+          PYEOF
+          )
           UPX_FLAG=""
           which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
           pyinstaller --onedir --noconsole --noconfirm \
@@ -74,10 +98,16 @@ jobs:
       - name: Build Electron app
         shell: bash
         run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            npx electron-builder --mac --arm64 --publish=never
+          ARCH_FLAG=""
+          if [[ "${{ runner.arch }}" == "ARM64" || "${{ matrix.arch }}" == "arm64" ]]; then
+            ARCH_FLAG="--arm64"
+          fi
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            npx electron-builder --mac $ARCH_FLAG --publish=never
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            npx electron-builder --win $ARCH_FLAG --publish=never
           else
-            npx electron-builder --publish=never
+            npx electron-builder --linux $ARCH_FLAG --publish=never
           fi
         working-directory: desktop
         env:

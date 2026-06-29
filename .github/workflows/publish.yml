@@ -7,6 +7,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    needs: [test, integration-tests]
     permissions:
       id-token: write
       contents: write
@@ -26,9 +27,14 @@ jobs:
       - name: Build distributions
         run: python -m build
 
+      - name: Verify built wheel
+        run: |
+          pip install dist/*.whl
+          python -c "from backend import __version__; print(f'Wheel OK: {__version__}')"
+          pip uninstall -y ud-resolver
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        continue-on-error: true
 
       - name: Upload wheel to release
         env:

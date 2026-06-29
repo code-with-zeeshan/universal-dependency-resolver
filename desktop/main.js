@@ -8,6 +8,7 @@ let backendProcess = null
 let backendPort = 8199
 let backendCrashed = false
 let tray = null
+let healthCheckInterval = null
 
 const isDev = !app.isPackaged
 const isWin = process.platform === 'win32'
@@ -17,6 +18,101 @@ const backendDir = isDev
   : path.join(process.resourcesPath, 'backend')
 const backendParentDir = path.dirname(backendDir)
 
+const HEALTH_CHECK_INTERVAL_MS = 30000
+const HEALTH_CHECK_URL = '/api/v1/health'
+
+// ── Window state persistence ──────────────────────────────────────────
+const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json')
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+function saveWindowState(win) {
+  if (!win) return
+  try {
+    const bounds = win.getBounds()
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, isMaximized: win.isMaximized() }))
+  } catch { /* ignore */ }
+}
+
+// ── Env var filtering ────────────────────────────────────────────────
+function getFilteredEnv(port) {
+  const { execSync } = require('child_process')
+  const safeKeys = new Set([
+    'PATH', 'HOME', 'USER', 'USERNAME', 'TEMP', 'TMP', 'TMPDIR',
+    'LANG', 'LC_ALL', 'SHELL', 'PWD', 'PYTHONUNBUFFERED', 'VIRTUAL_ENV',
+    'CONDA_PREFIX', 'CONDA_DEFAULT_ENV',
+  ])
+  const filtered = {}
+  for (const key of safeKeys) {
+    if (process.env[key] !== undefined) filtered[key] = process.env[key]
+  }
+  return launcher.getEnv(port, filtered)
+}
+
+// ── Single-instance lock ──────────────────────────────────────────────
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
+// ── Backend restart logic ─────────────────────────────────────────────
+async function restartBackend() {
+  console.log('[backend] Attempting restart...')
+  killBackend()
+  backendCrashed = false
+  const newPort = await launcher.findFreePort()
+  backendPort = newPort
+  try {
+    await startBackendWithFallback(newPort)
+    console.log('[backend] Restart successful')
+    if (mainWindow) {
+      mainWindow.webContents.send('backend-ready')
+      mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = 'http://127.0.0.1:${newPort}';`)
+    }
+    startHealthCheck()
+  } catch (e) {
+    console.error('[backend] Restart failed:', e.message)
+  }
+}
+
+function startHealthCheck() {
+  stopHealthCheck()
+  healthCheckInterval = setInterval(async () => {
+    try {
+      await launcher.httpGet(`http://127.0.0.1:${backendPort}${HEALTH_CHECK_URL}`)
+    } catch {
+      console.warn('[backend] Health check failed, attempting restart...')
+      if (mainWindow) {
+        mainWindow.webContents.executeJavaScript("document.title = 'UDR - Backend reconnecting...'")
+      }
+      await restartBackend()
+    }
+  }, HEALTH_CHECK_INTERVAL_MS)
+}
+
+function stopHealthCheck() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval)
+    healthCheckInterval = null
+  }
+}
+
+// ── Fallback commands ─────────────────────────────────────────────────
 function getFallbackCommands() {
   const cmds = []
   const binDir = isDev
@@ -43,7 +139,8 @@ async function startBackendWithFallback(port) {
     try {
       console.log(`[backend] Trying: ${fb.cmd}`)
       const cwd = fb.isBinary ? backendDir : backendParentDir
-      const result = await launcher.spawnBackend(fb.cmd, fb.args, port, fb.isBinary, cwd)
+      const env = getFilteredEnv(port)
+      const result = await launcher.spawnBackend(fb.cmd, fb.args, port, fb.isBinary, cwd, env)
       backendProcess = result.process
       backendCrashed = false
       const crashedCheck = result.crashed
@@ -59,8 +156,7 @@ async function startBackendWithFallback(port) {
       lastError = err
       console.warn(`[backend] ${fb.cmd} failed: ${err.message}`)
       if (backendProcess) {
-        backendProcess.kill()
-        backendProcess = null
+        killBackend()
       }
     }
   }
@@ -98,9 +194,10 @@ async function createWindow() {
     }
   }
 
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 860,
+  const savedState = loadWindowState()
+  const winOptions = {
+    width: savedState ? savedState.width : 1280,
+    height: savedState ? savedState.height : 860,
     minWidth: 900,
     minHeight: 600,
     title: 'Universal Dependency Resolver',
@@ -109,7 +206,17 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  })
+  }
+  if (savedState && savedState.x !== undefined && savedState.y !== undefined) {
+    winOptions.x = savedState.x
+    winOptions.y = savedState.y
+  }
+
+  mainWindow = new BrowserWindow(winOptions)
+
+  if (savedState && savedState.isMaximized) {
+    mainWindow.maximize()
+  }
 
   if (isDev) {
     mainWindow.loadFile(path.join(__dirname, 'index.html'))
@@ -118,17 +225,17 @@ async function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'index.html'))
   }
 
-    mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
-    })
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
+  })
 
-    mainWindow.webContents.executeJavaScript(
-      `console.log('UDR Desktop: starting backend on port ${backendPort}...')`
-    )
+  mainWindow.webContents.executeJavaScript(
+    `console.log('UDR Desktop: starting backend on port ${backendPort}...')`
+  )
 
-    try {
-      console.log(`Starting backend on port ${backendPort}...`)
-      mainWindow.webContents.executeJavaScript("document.title = 'UDR - Starting backend...'")
+  try {
+    console.log(`Starting backend on port ${backendPort}...`)
+    mainWindow.webContents.executeJavaScript("document.title = 'UDR - Starting backend...'")
     await startBackendWithFallback(backendPort)
     mainWindow.webContents.executeJavaScript('window.__UDR_BACKEND_READY__ = true')
     createTray()
@@ -136,12 +243,32 @@ async function createWindow() {
       new Notification({ title: 'UDR', body: 'Backend started successfully' })
     }
     mainWindow.webContents.send('backend-ready')
+    startHealthCheck()
   } catch (e) {
     console.error('Backend start failed:', e.message)
     let msg = `The backend server could not be started.\n\n${e.message}${launcher.getPlatformHint(isMac, isWin)}`
     msg += '\n\nIf this problem persists, install the Python package:\n  pip install ud-resolver\nThen run: udr serve\n\nOr try reinstalling the desktop app.'
     dialog.showErrorBox('Backend Failed to Start', msg)
   }
+
+  // Window state persistence on resize/move
+  let saveTimer = null
+  const debouncedSave = () => {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => saveWindowState(mainWindow), 500)
+  }
+  mainWindow.on('resize', debouncedSave)
+  mainWindow.on('move', debouncedSave)
+  mainWindow.on('maximize', debouncedSave)
+  mainWindow.on('unmaximize', debouncedSave)
+
+  // Minimize to tray instead of closing (Windows/Linux)
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting && !isMac) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -167,48 +294,60 @@ function createTray() {
     if (!fs.existsSync(iconPath)) return
     tray = new Tray(iconPath)
     const contextMenu = Menu.buildFromTemplate([
-      { label: 'Show UDR', click: () => mainWindow && mainWindow.show() },
+      { label: 'Show UDR', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } } },
       { type: 'separator' },
       { label: 'Quit', click: () => { app.isQuitting = true; app.quit() } },
     ])
     tray.setToolTip('Universal Dependency Resolver')
     tray.setContextMenu(contextMenu)
-    tray.on('click', () => mainWindow && mainWindow.show())
+    tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } })
   } catch (e) {
     console.warn('Tray creation failed:', e.message)
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  if (gotLock) createWindow()
+})
 
 function killBackend() {
   if (!backendProcess) return
   try {
     if (isWin) {
-      // Windows: kill the entire process tree (backend + any Python children)
       const { execSync } = require('child_process')
       execSync(`taskkill /pid ${backendProcess.pid} /T /F`, { stdio: 'ignore' })
     } else {
-      backendProcess.kill('SIGKILL')
+      backendProcess.kill('SIGTERM')
+      const pid = backendProcess.pid
+      setTimeout(() => {
+        try { process.kill(pid, 'SIGKILL') } catch { /* already dead */ }
+      }, 3000)
     }
   } catch { /* ignore */ }
   backendProcess = null
 }
 
 app.on('window-all-closed', () => {
-  killBackend()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
-  if (mainWindow === null) createWindow()
+  if (mainWindow === null && backendProcess) {
+    createWindow()
+  } else if (mainWindow === null) {
+    createWindow()
+  } else {
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
 
 app.on('before-quit', () => {
+  stopHealthCheck()
   killBackend()
 })
 
-// If app is forced to quit, make sure backend is still killed
 app.on('will-quit', () => {
+  stopHealthCheck()
   killBackend()
 })

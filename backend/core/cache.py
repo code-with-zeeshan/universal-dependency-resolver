@@ -4,6 +4,7 @@ import hashlib
 import os
 import tempfile
 import time
+import shutil
 from typing import Any, Optional, List, Dict, Callable
 import asyncio
 from functools import wraps
@@ -57,8 +58,10 @@ class DictCache:
             return
         try:
             os.makedirs(os.path.dirname(self._persist_path), exist_ok=True)
-            with open(self._persist_path, "w") as f:
+            tmp_path = self._persist_path + ".tmp"
+            with open(tmp_path, "w") as f:
                 json.dump(self._store, f, default=str)
+            shutil.move(tmp_path, self._persist_path)
             self._dirty = False
         except Exception as exc:
             logger.debug(f"Cache save to disk failed: {exc}")

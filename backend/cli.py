@@ -108,7 +108,10 @@ def _aggregator_to_resolver_input(agg_data: Dict, ecosystem: str, constraint: st
     for vinfo in raw_versions:
         ver = vinfo.get("version", "") if isinstance(vinfo, dict) else str(vinfo)
         if not re.search(r'\+cu\d', ver):
-            available_versions.append(ver)
+            yanked = vinfo.get("yanked", False) if isinstance(vinfo, dict) else False
+            deprecated = vinfo.get("deprecated", False) if isinstance(vinfo, dict) else False
+            if not yanked and not deprecated:
+                available_versions.append(ver)
 
     deps = {}
     eco_deps = agg_data.get("dependencies", {}).get(ecosystem, {})
@@ -418,16 +421,25 @@ def _output_json(data: Any, args) -> None:
     sys.exit(0)
 
 
+LOCK_FILE_VERSION = "2.0"
+LOCK_SUPPORTED_VERSIONS = {"1.0", "2.0"}
+
+
 def _read_lock_file(lock_path: Path) -> Dict:
     """Read and parse a udr-lock.json file."""
     if not lock_path.is_file():
         console.print(f"[red]Lock file not found:[/red] {lock_path}")
         sys.exit(1)
     try:
-        return json.loads(lock_path.read_text())
+        data = json.loads(lock_path.read_text())
     except json.JSONDecodeError as exc:
         console.print(f"[red]Invalid lock file:[/red] {exc}")
         sys.exit(1)
+    ver = data.get("version", "0.0")
+    if ver not in LOCK_SUPPORTED_VERSIONS:
+        console.print(f"[red]Unsupported lock file version: {ver} (expected one of: {', '.join(sorted(LOCK_SUPPORTED_VERSIONS))})[/red]")
+        sys.exit(1)
+    return data
 
 
 def _validate_manifest_update_line(line: str, pkg_name: str, resolved_ver: str) -> Optional[str]:
@@ -771,6 +783,7 @@ def cmd_lock(args):
         aggregator = DataAggregator()
         resolver = ConflictResolver()
         scanner = SystemScanner()
+        resource_cleanup = []
         exporter = ExportGenerator()
 
         # 1. Detect manifests
@@ -875,6 +888,25 @@ def cmd_lock(args):
                 system_info["gpu"] = {}
             system_info["gpu"]["available"] = True
             system_info["gpu"]["cuda"] = args.cuda
+
+        # Handle --device flag
+        if args.device is not None:
+            if args.device == "cpu":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = False
+                system_info["gpu"]["cuda"] = ""
+            elif args.device == "mps":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["type"] = "mps"
+                system_info["gpu"]["cuda"] = ""
+            elif args.device == "cuda":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {"available": True, "type": "cuda"}
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["type"] = "cuda"
 
         # 5. Resolve
         with Progress(SpinnerColumn(), TextColumn("Resolving dependencies..."), transient=True, console=err_console) as p:
@@ -1431,6 +1463,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Universal Dependency Resolver — resolve dependencies across ecosystems",
     )
     parser.add_argument("--version", action="version", version=f"udr {VERSION}")
+    parser.add_argument("--offline", action="store_true", help="Offline mode: use cached data only, no network requests")
     sub = parser.add_subparsers(dest="command", required=True)
 
     serve_p = sub.add_parser("serve", help="Start the API server")
@@ -1472,6 +1505,8 @@ def _build_parser() -> argparse.ArgumentParser:
     lock_p.add_argument("--interactive", "-i", action="store_true",
                         help="Interactive mode: select manifests + resolve conflicts manually")
     lock_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1) — overrides auto-detection for GPU packages")
+    lock_p.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None,
+                        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)")
     lock_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
@@ -1540,6 +1575,9 @@ def main():
 
     if getattr(args, 'mode', None):
         os.environ["UDR_MODE"] = args.mode
+
+    if getattr(args, 'offline', None):
+        os.environ["UDR_OFFLINE"] = "true"
 
     dispatch = {
         "serve": cmd_serve,

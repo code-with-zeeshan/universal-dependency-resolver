@@ -1,6 +1,7 @@
 # backend/api/routes/lock.py
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional, Any
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -17,6 +18,8 @@ from backend.cli import (
     _apply_cuda_variants,
     _parse_package_spec,
 )
+
+SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -118,7 +121,13 @@ async def dependency_graph(
     if not resolver_inputs:
         raise HTTPException(status_code=404, detail="No packages could be resolved")
 
-    resolved = await _resolve_transitive(aggregator, resolver, resolver_inputs, system_info)
+    try:
+        resolved = await asyncio.wait_for(
+            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            timeout=SOLVER_API_TIMEOUT,
+        )
+    except (asyncio.TimeoutError, Exception):
+        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
     rp = resolved.get("resolved_packages", {})
 
@@ -183,8 +192,11 @@ async def update_package(
         raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
 
     try:
-        resolved = await _resolve_transitive(aggregator, resolver, resolver_inputs, system_info)
-    except Exception:
+        resolved = await asyncio.wait_for(
+            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            timeout=SOLVER_API_TIMEOUT,
+        )
+    except (asyncio.TimeoutError, Exception):
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
 
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
