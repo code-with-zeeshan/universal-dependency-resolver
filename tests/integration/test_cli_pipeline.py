@@ -1,4 +1,7 @@
-"""Integration tests for the CLI pipeline - end-to-end resolve/lock/install flow."""
+"""Integration tests for the CLI pipeline - end-to-end resolve/lock/install flow.
+
+Generates its own test manifests in a temporary directory so it's portable.
+"""
 
 import json
 import subprocess
@@ -9,16 +12,90 @@ import pytest
 
 CLI = [sys.executable, "-m", "backend.cli"]
 
-TEST_DIR = Path("/tmp/opencode/test-all-ecosystems")
+
+def _create_manifests(base: Path) -> Path:
+    """Generate test manifests under base/ and return the path."""
+    base.mkdir(parents=True, exist_ok=True)
+
+    (base / "requirements.txt").write_text(
+        "Flask>=2.3,<4\nDjango>=4.2,<6\nnumpy>=1.24,<3\npandas>=2.0,<3\n"
+        "scipy>=1.11,<2\nrequests>=2.28,<3\nbeautifulsoup4>=4.12,<5\nmatplotlib>=3.7,<4\n"
+    )
+    (base / "pyproject.toml").write_text(
+        "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\n"
+        "dependencies = [\n"
+        "    \"fastapi>=0.115.0,<0.137\", \"pydantic>=2.5.0,<3\", \"uvicorn>=0.24,<0.50\",\n"
+        "    \"sqlalchemy>=2.0.23,<3\", \"alembic>=1.12,<2\", \"httpx>=0.27,<1\",\n"
+        "    \"pytest>=8.0,<9\", \"ruff>=0.3.0,<1\", \"rich>=13.7,<14\", \"click>=8.1,<9\",\n"
+        "]\n"
+    )
+
+    (base / "conda").mkdir(exist_ok=True)
+    (base / "conda" / "environment.yml").write_text(
+        "name: test-conda\nchannels:\n  - conda-forge\n  - defaults\n"
+        "dependencies:\n  - numpy>=1.24\n  - scipy>=1.11\n  - pandas>=2.0\n"
+        "  - matplotlib>=3.7\n  - pip\n  - requests>=2.28\n  - httpx>=0.27\n"
+    )
+
+    (base / "dart").mkdir(exist_ok=True)
+    (base / "dart" / "pubspec.yaml").write_text(
+        "name: test_dart\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n"
+        "dependencies:\n  http: ^1.1.0\n  path: ^1.9.0\n  provider: ^6.1.0\n"
+        "  riverpod: ^2.5.0\n  json_annotation: ^4.8.0\n"
+    )
+
+    (base / "go").mkdir(exist_ok=True)
+    (base / "go" / "go.mod").write_text(
+        "module test-go\ngo 1.21\nrequire (\n"
+        "    github.com/spf13/cobra v1.8.0\n    k8s.io/klog/v2 v2.120.0\n"
+        "    github.com/gorilla/mux v1.8.1\n    github.com/prometheus/client_golang v1.19.0\n"
+        "    golang.org/x/sync v0.7.0\n)\n"
+    )
+
+    (base / "node").mkdir(exist_ok=True)
+    (base / "node" / "package.json").write_text(
+        '{"dependencies": {"express": "^4.18.0", "lodash": "^4.17.21", '
+        '"axios": "^1.6.0", "react": "^18.2.0", "vue": "^3.4.0"}, '
+        '"devDependencies": {"typescript": "^5.4.0", "eslint": "^8.56.0", "webpack": "^5.90.0"}}'
+    )
+
+    (base / "php").mkdir(exist_ok=True)
+    (base / "php" / "composer.json").write_text(
+        '{\n    "require": {\n'
+        '        "laravel/framework": ">=10.0",\n        "phpunit/phpunit": ">=10.5",\n'
+        '        "monolog/monolog": ">=3.5",\n        "guzzlehttp/guzzle": ">=7.8",\n'
+        '        "doctrine/orm": ">=3.0",\n        "mockery/mockery": ">=1.6"\n    }\n}\n'
+    )
+
+    (base / "ruby").mkdir(exist_ok=True)
+    (base / "ruby" / "Gemfile").write_text(
+        'source "https://rubygems.org"\n'
+        'gem "rails", ">= 7.0"\ngem "rspec", ">= 3.12"\n'
+        'gem "devise", ">= 4.9"\ngem "sidekiq", ">= 7.2"\ngem "nokogiri", ">= 1.16"\n'
+    )
+
+    (base / "rust").mkdir(exist_ok=True)
+    (base / "rust" / "Cargo.toml").write_text(
+        "[package]\nname = \"test-rust\"\nversion = \"0.1.0\"\n"
+        "[dependencies]\nserde = \"1.0\"\ntokio = \"1.35\"\nreqwest = \"0.12\"\n"
+        "clap = \"4.5\"\nanyhow = \"1.0\"\nthiserror = \"1.0\"\n"
+    )
+
+    return base
 
 
-def run_cli(*args, timeout=60):
+@pytest.fixture(scope="session")
+def test_dir(tmp_path_factory):
+    return _create_manifests(tmp_path_factory.mktemp("test-ecosystems"))
+
+
+def run_cli(*args, cwd=None, timeout=60):
     result = subprocess.run(
         CLI + list(args),
         capture_output=True,
         text=True,
         timeout=timeout,
-        cwd=str(TEST_DIR),
+        cwd=str(cwd),
     )
     return result.stdout + result.stderr
 
@@ -26,60 +103,59 @@ def run_cli(*args, timeout=60):
 class TestCLICommands:
     """Validate all CLI commands produce expected output."""
 
-    def test_list_ecosystems(self):
-        output = run_cli("list-ecosystems")
+    def test_list_ecosystems(self, test_dir):
+        output = run_cli("list-ecosystems", cwd=test_dir)
         assert "pypi" in output
         assert "npm" in output
         assert "crates" in output
         assert "pub" in output
         assert "16" in output or "Supported Ecosystems" in output
 
-    def test_check_command(self):
-        output = run_cli("check")
+    def test_check_command(self, test_dir):
+        output = run_cli("check", cwd=test_dir)
         assert "System Compatibility" in output
         assert "Linux" in output or "OS" in output
         assert "Python" in output
 
-    def test_resolve_single_pypi(self):
-        output = run_cli("resolve", "numpy", "--ecosystem", "pypi", timeout=90)
+    def test_resolve_single_pypi(self, test_dir):
+        output = run_cli("resolve", "numpy", "--ecosystem", "pypi", timeout=90, cwd=test_dir)
         assert "Resolved" in output
         assert "numpy" in output
         assert "pypi" in output
 
-    def test_resolve_cross_ecosystem(self):
-        output = run_cli("resolve", "fastapi@pypi", "express@npm", "--ecosystem", "pypi", timeout=90)
+    def test_resolve_cross_ecosystem(self, test_dir):
+        output = run_cli("resolve", "fastapi@pypi", "express@npm", "--ecosystem", "pypi", timeout=90, cwd=test_dir)
         assert "Resolved" in output
         assert "fastapi" in output
         assert "express" in output
         assert "npm" in output
 
-    def test_resolve_with_constraint(self):
-        output = run_cli("resolve", "fastapi@pypi", "--ecosystem", "pypi", timeout=90)
+    def test_resolve_with_constraint(self, test_dir):
+        output = run_cli("resolve", "fastapi@pypi", "--ecosystem", "pypi", timeout=90, cwd=test_dir)
         assert "fastapi" in output
         assert "pypi" in output
-        # Should pick latest available version
         assert "0." in output
 
-    def test_lock_requirements_txt(self):
-        output = run_cli("lock", "--dry-run", "--directory", str(TEST_DIR), "--manifest", "requirements.txt", timeout=120)
-        assert "Resolved 8/8" in output or "Resolved" in output
+    def test_lock_requirements_txt(self, test_dir):
+        output = run_cli("lock", "--dry-run", "--directory", str(test_dir), "--manifest", "requirements.txt", timeout=120, cwd=test_dir)
+        assert "Resolved" in output
         assert "flask" in output
         assert "django" in output
         assert "direct" in output
 
-    def test_lock_pyproject_toml(self):
-        output = run_cli("lock", "--dry-run", "--directory", str(TEST_DIR), "--manifest", "pyproject.toml", timeout=120)
+    def test_lock_pyproject_toml(self, test_dir):
+        output = run_cli("lock", "--dry-run", "--directory", str(test_dir), "--manifest", "pyproject.toml", timeout=120, cwd=test_dir)
         assert "fastapi" in output
         assert "pydantic" in output
         assert "direct" in output
 
-    def test_graph_command(self):
-        output = run_cli("graph", "numpy", "--ecosystem", "pypi", timeout=60)
+    def test_graph_command(self, test_dir):
+        output = run_cli("graph", "numpy", "--ecosystem", "pypi", timeout=60, cwd=test_dir)
         assert "Dependency Tree" in output
         assert "numpy" in output
 
-    def test_install_dry_run(self):
-        output = run_cli("install", "--directory", str(TEST_DIR), "--dry-run", "-e", "pypi", timeout=30)
+    def test_install_dry_run(self, test_dir):
+        output = run_cli("install", "--directory", str(test_dir), "--dry-run", "-e", "pypi", timeout=30, cwd=test_dir)
         assert "Install Plan" in output
         assert "pip install" in output
         assert "dry run" in output
@@ -119,9 +195,9 @@ class TestNameNormalization:
         from backend.core.utils import normalize_package_name
         assert normalize_package_name("My-Package") in ("my-package", "my_package")
 
-    def test_manifest_detector_normalization(self):
+    def test_manifest_detector_normalization(self, test_dir):
         from backend.manifest_detector import ManifestDetector
-        detector = ManifestDetector(str(TEST_DIR))
+        detector = ManifestDetector(str(test_dir))
         packages = [{"name": "Flask", "_ecosystem": "pypi", "version": ">=2.0"}]
         norm = detector.normalize(packages)
         assert len(norm) == 1
@@ -131,9 +207,9 @@ class TestNameNormalization:
 class TestEcosystemAliasing:
     """Validate cargo->crates, go->gomodules alias mapping."""
 
-    def test_cargo_alias_in_detect(self):
+    def test_cargo_alias_in_detect(self, test_dir):
         from backend.manifest_detector import ManifestDetector
-        detector = ManifestDetector(str(TEST_DIR))
+        detector = ManifestDetector(str(test_dir))
         manifests = detector.detect()
         names = [m["ecosystem"] for m in manifests]
         assert "crates" in names
@@ -141,9 +217,9 @@ class TestEcosystemAliasing:
         assert "gomodules" in names
         assert "go" not in names
 
-    def test_cargo_alias_in_normalize(self):
+    def test_cargo_alias_in_normalize(self, test_dir):
         from backend.manifest_detector import ManifestDetector
-        detector = ManifestDetector(str(TEST_DIR))
+        detector = ManifestDetector(str(test_dir))
         packages = [{"name": "serde", "_ecosystem": "cargo"}]
         norm = detector.normalize(packages)
         assert norm[0]["ecosystem"] == "crates"
