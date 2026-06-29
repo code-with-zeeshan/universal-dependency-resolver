@@ -16,9 +16,15 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from backend.core.utils import hash_system_info
 from backend.core.scanner_models import (
-    OSType, ContainerType,
-    GPUInfo, CPUInfo, MemoryInfo, DiskInfo, NetworkInterface,
-    RuntimeInfo, PackageInfo,
+    OSType,
+    ContainerType,
+    GPUInfo,
+    CPUInfo,
+    MemoryInfo,
+    DiskInfo,
+    NetworkInterface,
+    RuntimeInfo,
+    PackageInfo,
 )
 
 # Third-party imports with fallback
@@ -419,8 +425,13 @@ class SystemScanner:
                 cpu_data.setdefault("brand", "Unknown")
                 cpu_data.setdefault("arch", platform.machine())
                 cpu_data.setdefault("bits", 64)
-                cpu_data.setdefault("count_logical", psutil.cpu_count(logical=True) if HAS_PSUTIL else 1)
-                cpu_data.setdefault("count_physical", psutil.cpu_count(logical=False) if HAS_PSUTIL else 1)
+                cpu_data.setdefault(
+                    "count_logical", psutil.cpu_count(logical=True) if HAS_PSUTIL else 1
+                )
+                cpu_data.setdefault(
+                    "count_physical",
+                    psutil.cpu_count(logical=False) if HAS_PSUTIL else 1,
+                )
 
         # Additional info from psutil
         if HAS_PSUTIL:
@@ -827,9 +838,9 @@ class SystemScanner:
                         patch = re.search(r"#define CUDNN_PATCHLEVEL (\d+)", content)
 
                         if major and minor and patch:
-                            cudnn_info[
-                                "version"
-                            ] = f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}"
+                            cudnn_info["version"] = (
+                                f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}"
+                            )
                             cudnn_info["header_path"] = header_path
                             return cudnn_info
                 except Exception:
@@ -878,9 +889,12 @@ class SystemScanner:
         devices = []
         try:
             import subprocess
+
             result = subprocess.run(
                 ["clinfo", "--raw"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 for line in result.stdout.split("\n"):
@@ -928,7 +942,7 @@ class SystemScanner:
                     ["system_profiler", "SPDisplaysDataType", "-json"]
                 ).decode()
 
-                data = json.loads(output)
+                json.loads(output)
                 # Parse GPU info from system_profiler
                 # Implementation depends on output structure
 
@@ -1241,9 +1255,9 @@ class SystemScanner:
                     if "Microsoft" in f.read() or "WSL" in f.read():
                         container_data["type"] = ContainerType.WSL.value
                         container_data["detected"] = True
-                        container_data["details"][
-                            "wsl_version"
-                        ] = self._get_wsl_version()
+                        container_data["details"]["wsl_version"] = (
+                            self._get_wsl_version()
+                        )
             except Exception:
                 pass
 
@@ -2207,7 +2221,9 @@ class SystemScanner:
                     output = subprocess.check_output(
                         ["apt", "list", "--upgradable"]
                     ).decode()
-                    count = len([line for line in output.split("\n") if "upgradable" in line])
+                    count = len(
+                        [line for line in output.split("\n") if "upgradable" in line]
+                    )
                     if count > 0:
                         updates["available"] = True
                         updates["count"] = count
@@ -2511,19 +2527,17 @@ async def example_usage():
 
     async with scanner:
         # Full scan
-        results = await scanner.scan_all()
+        await scanner.scan_all()
 
         # Export as JSON
-        json_output = scanner.export_scan_results(
-            format="json", include_sensitive=False
-        )
+        scanner.export_scan_results(format="json", include_sensitive=False)
 
         # Get summary
         summary = scanner.export_scan_results(format="summary")
         print(summary)
 
         # Specific scans
-        cpu_info = await scanner.scan_all(categories=["cpu", "memory", "gpu"])
+        await scanner.scan_all(categories=["cpu", "memory", "gpu"])
 
 
 if __name__ == "__main__":

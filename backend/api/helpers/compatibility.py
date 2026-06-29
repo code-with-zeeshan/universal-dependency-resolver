@@ -6,9 +6,13 @@ from packaging import version
 
 
 class SystemSpec(BaseModel):
-    os: Optional[str] = Field(None, description="Operating system (linux, windows, macos)")
+    os: Optional[str] = Field(
+        None, description="Operating system (linux, windows, macos)"
+    )
     os_version: Optional[str] = Field(None, description="OS version")
-    architecture: Optional[str] = Field(None, description="CPU architecture (x86_64, arm64)")
+    architecture: Optional[str] = Field(
+        None, description="CPU architecture (x86_64, arm64)"
+    )
     python_version: Optional[str] = Field(None, description="Python version")
     cuda_version: Optional[str] = Field(None, description="CUDA version if available")
     gpu_available: Optional[bool] = Field(False, description="GPU availability")
@@ -35,6 +39,7 @@ class SystemSpec(BaseModel):
                 elif key in ["gpu", "gpu_available"]:
                     spec.gpu_available = value.lower() in ["true", "yes", "1"]
         return spec
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +105,7 @@ def _check_version_compatibility_detailed(
 def _check_python_compatibility(system_python: str, requires_python: str) -> bool:
     try:
         from packaging.specifiers import SpecifierSet
+
         spec = SpecifierSet(requires_python)
         system_version = version.parse(system_python)
         return system_version in spec
@@ -135,6 +141,7 @@ def _check_cuda_compatibility(system_cuda: str, required_cuda: List[str]) -> boo
                     return True
             elif any(op in req_cuda for op in [">=", "<=", ">", "<", "=="]):
                 from packaging.specifiers import SpecifierSet
+
                 spec = SpecifierSet(req_cuda.replace("cuda", "").strip())
                 if system_version in spec:
                     return True

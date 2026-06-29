@@ -14,6 +14,7 @@ import logging
 try:
     from aiocache import Cache
     from aiocache.serializers import JsonSerializer
+
     AIOCACHE_AVAILABLE = True
 except ImportError:
     AIOCACHE_AVAILABLE = False
@@ -149,7 +150,9 @@ class CacheManager:
                 self._cache = Cache(Cache.MEMORY)
                 logger.info("Using in-memory cache (no Redis URL configured)")
         except Exception as e:
-            logger.warning(f"Failed to connect to Redis: {e}. Using DictCache fallback.")
+            logger.warning(
+                f"Failed to connect to Redis: {e}. Using DictCache fallback."
+            )
             self._cache = DictCache()
 
     async def disconnect(self):
@@ -231,7 +234,11 @@ class CacheManager:
                     cursor, keys = await self._cache.client.scan(
                         cursor, match=pattern, count=100
                     )
-                    if keys and hasattr(self._cache, "client") and self._cache.client is not None:
+                    if (
+                        keys
+                        and hasattr(self._cache, "client")
+                        and self._cache.client is not None
+                    ):
                         await self._cache.client.delete(*keys)
                         count += len(keys)
                     if cursor == 0:

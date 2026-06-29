@@ -41,6 +41,7 @@ class ConflictResolver:
     def __init__(self):
         """Initialize the conflict resolver with Z3 solver and dependency graph."""
         import z3
+
         self.dependency_graph = nx.DiGraph()
         self.solver = z3.Solver()
         self.version_vars = {}  # Maps package_version strings to Z3 variables
@@ -115,12 +116,18 @@ class ConflictResolver:
             if solution["status"] == "timeout":
                 logger.warning(
                     "Solver timeout, attempting alternatives",
-                    extra={"event": "dependency_resolution_timeout", **resolution_context},
+                    extra={
+                        "event": "dependency_resolution_timeout",
+                        **resolution_context,
+                    },
                 )
             else:
                 logger.warning(
                     "Dependency resolution unsatisfiable, attempting alternatives",
-                    extra={"event": "dependency_resolution_unsat", **resolution_context},
+                    extra={
+                        "event": "dependency_resolution_unsat",
+                        **resolution_context,
+                    },
                 )
             return self._resolve_with_alternatives(normalized_packages, system_info)
 
@@ -362,8 +369,6 @@ class ConflictResolver:
         normalization_failures: List[Dict[str, Any]] = []
 
         for index, package in enumerate(packages):
-            package_context = {**context, "package_index": index}
-
             if not isinstance(package, dict):
                 normalization_failures.append(
                     {
@@ -744,12 +749,16 @@ class ConflictResolver:
 
             # Add cross-ecosystem dependency edges
             for xdep in package.get("cross_ecosystem_deps", []):
-                target_eco = xdep.get("target_ecosystem", package.get("ecosystem", "unknown"))
+                target_eco = xdep.get(
+                    "target_ecosystem", package.get("ecosystem", "unknown")
+                )
                 dep_name = xdep.get("dependency", "")
                 if dep_name:
                     dep_id = f"{dep_name}@{target_eco}"
                     self.dependency_graph.add_edge(
-                        pkg_id, dep_id, constraint=xdep.get("version_spec", "*"),
+                        pkg_id,
+                        dep_id,
+                        constraint=xdep.get("version_spec", "*"),
                         cross_ecosystem=True,
                     )
 
@@ -773,6 +782,7 @@ class ConflictResolver:
     def _create_constraints(self, packages: List[Dict], system_info: Dict) -> Dict:
         """Create constraint system for SAT solver"""
         import z3
+
         constraints = {
             "package_versions": {},
             "system_requirements": {},
@@ -794,6 +804,7 @@ class ConflictResolver:
             if constraint != "*":
                 try:
                     from packaging.specifiers import SpecifierSet
+
                     SpecifierSet(constraint)
                 except Exception:
                     constraint = "*"
@@ -824,7 +835,10 @@ class ConflictResolver:
                 logger.warning(
                     f"Solver variable limit ({SOLVER_MAX_VARS}) reached at {total_vars} vars, "
                     f"limiting further package versions",
-                    extra={"event": "solver_max_vars_reached", "total_vars": total_vars},
+                    extra={
+                        "event": "solver_max_vars_reached",
+                        "total_vars": total_vars,
+                    },
                 )
                 break
 
@@ -849,6 +863,7 @@ class ConflictResolver:
     ):
         """Add constraints based on system requirements"""
         import z3
+
         for req_type, req_value in requirements.items():
             if req_type == "cuda" and "gpu" in system_info:
                 if system_info["gpu"]["cuda"]:
@@ -883,12 +898,13 @@ class ConflictResolver:
     def _add_dependency_constraints(self, constraints: Dict):
         """Add constraints for package dependencies"""
         import z3
+
         for node in self.dependency_graph.nodes():
             node_data = self.dependency_graph.nodes[node]
             pkg_name = node_data.get("name")
             if pkg_name is None:
                 continue
-            ecosystem = node_data.get("ecosystem", "unknown")
+            node_data.get("ecosystem", "unknown")
 
             for successor in self.dependency_graph.successors(node):
                 edge_data = self.dependency_graph.get_edge_data(node, successor)
@@ -900,6 +916,7 @@ class ConflictResolver:
                 # Skip deps with unparseable constraints (e.g. path-based, git urls)
                 try:
                     from packaging.specifiers import SpecifierSet
+
                     SpecifierSet(constraint_str)
                 except Exception:
                     continue
@@ -911,10 +928,13 @@ class ConflictResolver:
                 # For each version of the dependent package
                 if pkg_name in constraints["package_versions"]:
                     for pkg_var in constraints["package_versions"][pkg_name]:
-                        pkg_version = str(pkg_var).split("_")[-1]
+                        str(pkg_var).split("_")[-1]
                         pkg_var_ref = self.version_vars.get(str(pkg_var))
 
-                        if pkg_var_ref is not None and dep_name in constraints["package_versions"]:
+                        if (
+                            pkg_var_ref is not None
+                            and dep_name in constraints["package_versions"]
+                        ):
                             # Create constraint: if this package version is selected,
                             # then dependency must satisfy version constraint
                             valid_dep_vars = []
@@ -938,6 +958,7 @@ class ConflictResolver:
     def _add_conflict_constraints(self, packages: List[Dict], constraints: Dict):
         """Add known conflict constraints"""
         import z3
+
         # Example: CUDA 11.x packages conflict with CUDA 12.x packages
         cuda_11_packages = []
         cuda_12_packages = []
@@ -972,6 +993,7 @@ class ConflictResolver:
     def _solve_constraints(self, constraints: Dict, prefer_compatibility: bool) -> Dict:
         """Solve the constraint system"""
         import z3
+
         result = self.solver.check()
 
         if result == z3.sat:
@@ -993,7 +1015,11 @@ class ConflictResolver:
             return solution
         elif result == z3.unknown:
             logger.warning("Z3 solver returned unknown (likely timeout or incomplete)")
-            return {"status": "timeout", "conflicts": [], "message": "Solver timed out or could not determine satisfiability"}
+            return {
+                "status": "timeout",
+                "conflicts": [],
+                "message": "Solver timed out or could not determine satisfiability",
+            }
         else:
             return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
 
@@ -1041,16 +1067,19 @@ class ConflictResolver:
         for version_info in raw_versions:
             if isinstance(version_info, dict):
                 version_str = version_info.get("version", "")
-                v_sys = version_info.get("system_requirements", {})
+                version_info.get("system_requirements", {})
                 if not self._check_version_compatibility(version_info, system_info):
                     continue
             else:
                 version_str = str(version_info)
-                v_sys = {}
 
             # Apply package-level system requirements
             if min_python:
-                sys_python = system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+                sys_python = (
+                    system_info.get("runtime_versions", {})
+                    .get("python", {})
+                    .get("version", "")
+                )
                 if sys_python and compare_versions(sys_python, min_python) < 0:
                     continue
             if min_cuda:
@@ -1194,6 +1223,7 @@ class ConflictResolver:
     def _analyze_conflicts(self) -> List[Dict]:
         """Analyze why constraints are unsatisfiable using unsat core"""
         import z3
+
         conflicts = []
 
         # Enable unsat core generation

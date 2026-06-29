@@ -105,7 +105,7 @@ class BaseDataSourceClient:
                     if resp.status == 404:
                         return None
                     if resp.status >= 500 and attempt < self.max_retries - 1:
-                        backoff = RETRY_BACKOFF_FACTOR ** attempt
+                        backoff = RETRY_BACKOFF_FACTOR**attempt
                         await asyncio.sleep(backoff)
                         continue
                     resp.raise_for_status()
@@ -117,7 +117,7 @@ class BaseDataSourceClient:
                         f"{self.ecosystem} request failed after {self.max_retries} retries: {e}"
                     )
                     break
-                await asyncio.sleep(RETRY_BACKOFF_FACTOR ** attempt)
+                await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
         raise IOError(f"{self.ecosystem} request failed: {last_error}") from last_error
 
     async def _circuit_breaker_call(
@@ -189,6 +189,7 @@ class BaseDataSourceClient:
         self, cache_key: str, url: str, ttl: Optional[int] = None
     ) -> Optional[Dict]:
         import os as _os
+
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached

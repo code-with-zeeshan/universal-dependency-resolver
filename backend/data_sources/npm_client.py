@@ -45,7 +45,9 @@ class NPMClient(BaseDataSourceClient):
         timeout: int = None,
     ):
         npm_config = get_ecosystem_config("npm")
-        registry_url = (registry_url or npm_config.get("url", "https://registry.npmjs.org")).rstrip("/")
+        registry_url = (
+            registry_url or npm_config.get("url", "https://registry.npmjs.org")
+        ).rstrip("/")
         self.registry_url = registry_url
         super().__init__(
             ecosystem="npm",
@@ -1054,17 +1056,15 @@ class NPMClient(BaseDataSourceClient):
 
 async def example_usage():
     async with NPMClient() as client:
-        results = await client.search_packages(
-            "react", limit=10, quality=0.8, popularity=0.5
-        )
+        await client.search_packages("react", limit=10, quality=0.8, popularity=0.5)
 
-        info = await client.get_package_info("express", include_readme=True)
+        await client.get_package_info("express", include_readme=True)
 
-        version = await client.resolve_version("lodash", "^4.17.0")
+        await client.resolve_version("lodash", "^4.17.0")
 
-        tree = await client.get_dependency_tree("axios", max_depth=2)
+        await client.get_dependency_tree("axios", max_depth=2)
 
-        compat = await client.check_compatibility(
+        await client.check_compatibility(
             "node-sass",
             "7.0.0",
             {

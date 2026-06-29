@@ -107,7 +107,7 @@ class CratesClient(BaseDataSourceClient):
 
             latest_stable = None
             for v in versions_data:
-                if not v.get("yanked", False) and not "-" in v["num"]:
+                if not v.get("yanked", False) and "-" not in v["num"]:
                     latest_stable = v["num"]
                     break
 
@@ -120,11 +120,13 @@ class CratesClient(BaseDataSourceClient):
                 ver = v["num"]
                 if ver not in seen:
                     seen.add(ver)
-                    versions.append({
-                        "version": ver,
-                        "release_date": v.get("created_at"),
-                        "yanked": v.get("yanked", False),
-                    })
+                    versions.append(
+                        {
+                            "version": ver,
+                            "release_date": v.get("created_at"),
+                            "yanked": v.get("yanked", False),
+                        }
+                    )
 
             return {
                 "name": crate["name"],
@@ -220,11 +222,15 @@ class CratesClient(BaseDataSourceClient):
                 rust_version = None
                 if not filters or len(versions) < 50:
                     try:
-                        features = await self._get_version_features(package_name, version_str)
+                        features = await self._get_version_features(
+                            package_name, version_str
+                        )
                     except Exception:
                         features = {}
                     try:
-                        rust_version = await self._get_version_msrv(package_name, version_str)
+                        rust_version = await self._get_version_msrv(
+                            package_name, version_str
+                        )
                     except Exception:
                         rust_version = None
 
@@ -240,9 +246,7 @@ class CratesClient(BaseDataSourceClient):
                         "license": version_data.get("license"),
                         "rust_version": rust_version,
                         "system_requirements": {
-                            "rust_versions": [
-                                rust_version or "1.60+"
-                            ],
+                            "rust_versions": [rust_version or "1.60+"],
                             "os": ["any"],
                         },
                     }
@@ -373,7 +377,7 @@ class CratesClient(BaseDataSourceClient):
     ) -> Dict:
         package_name = normalize_package_name(package_name)
         try:
-            version_info = await self._get_version_metadata(package_name, version)
+            await self._get_version_metadata(package_name, version)
             dependencies = await self.get_dependencies(package_name, version)
 
             compatibility = {
@@ -392,9 +396,9 @@ class CratesClient(BaseDataSourceClient):
                         f"Requires Rust {msrv} or newer, but system has {system_rust}"
                     )
                 else:
-                    compatibility["details"][
-                        "rust_version"
-                    ] = f"Compatible (requires Rust {msrv}+)"
+                    compatibility["details"]["rust_version"] = (
+                        f"Compatible (requires Rust {msrv}+)"
+                    )
             else:
                 compatibility["details"]["rust_version"] = "Compatible with Rust 1.60+"
 
@@ -478,7 +482,7 @@ class CratesClient(BaseDataSourceClient):
     async def _get_version_metadata(self, package_name: str, version: str) -> Dict:
         package_name = normalize_package_name(package_name)
         try:
-            url = f"https://crates.io/api/v1/crates/{quote(package_name)}/{quote(version)}/download"
+            f"https://crates.io/api/v1/crates/{quote(package_name)}/{quote(version)}/download"
             return {}
         except Exception:
             return {}
@@ -719,11 +723,11 @@ async def example_usage():
     client = CratesClient()
 
     try:
-        results = await client.search_packages("serde", limit=5, sort="downloads")
+        await client.search_packages("serde", limit=5, sort="downloads")
 
-        info = await client.get_package_info("tokio")
+        await client.get_package_info("tokio")
 
-        versions = await client.get_package_versions(
+        await client.get_package_versions(
             "reqwest",
             filters={
                 "exclude_yanked": True,
@@ -732,13 +736,13 @@ async def example_usage():
             },
         )
 
-        deps = await client.get_dependencies(
+        await client.get_dependencies(
             "actix-web", version="4.0.0", include_dev=True, include_build=True
         )
 
-        tree = await client.get_dependency_tree("rocket", max_depth=2)
+        await client.get_dependency_tree("rocket", max_depth=2)
 
-        compat = await client.check_compatibility(
+        await client.check_compatibility(
             "diesel",
             "2.0.0",
             {

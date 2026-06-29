@@ -343,7 +343,7 @@ def normalize_package_fields(mapper, connection, target):
 
 
 # Database connection with connection pooling and health checks
-from backend.settings import DATABASE_URL
+from backend.settings import DATABASE_URL  # noqa: E402
 
 _engine = None
 _SessionLocal = None
@@ -378,15 +378,17 @@ def _enable_sqlite_fk(dbapi_connection, connection_record):
 def get_session_local():
     global _SessionLocal
     if _SessionLocal is None:
-        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+        _SessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=get_engine()
+        )
     return _SessionLocal
 
 
 # Backward-compatible aliases — delegate to lazy getters
 def __getattr__(name):
-    if name == 'engine':
+    if name == "engine":
         return get_engine()
-    if name == 'SessionLocal':
+    if name == "SessionLocal":
         return get_session_local()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -403,6 +405,7 @@ def check_db_health() -> Dict[str, Any]:
         s = get_session_local()
         db = s()
         from sqlalchemy import text
+
         db.execute(text("SELECT 1"))
         db.close()
 

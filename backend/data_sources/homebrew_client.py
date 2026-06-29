@@ -45,7 +45,9 @@ class HomebrewClient(BaseDataSourceClient):
     ):
         homebrew_config = get_ecosystem_config("homebrew")
 
-        api_url = (api_url or homebrew_config.get("api_url", "https://formulae.brew.sh/api")).rstrip("/")
+        api_url = (
+            api_url or homebrew_config.get("api_url", "https://formulae.brew.sh/api")
+        ).rstrip("/")
         super().__init__(
             ecosystem="homebrew",
             base_url=api_url,
@@ -480,7 +482,7 @@ class HomebrewClient(BaseDataSourceClient):
 
 async def example_usage():
     async with HomebrewClient() as client:
-        results = await client.search_packages("python", limit=5)
+        await client.search_packages("python", limit=5)
 
         formula_info = await client.get_package_info_async(
             "python@3.11", PackageType.FORMULA

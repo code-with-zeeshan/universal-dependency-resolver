@@ -1,6 +1,6 @@
 # backend/api/routes/packages.py
-from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Request
-from typing import List, Optional, Dict
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from typing import List, Optional
 from pydantic import BaseModel
 import asyncio
 import logging
@@ -34,11 +34,6 @@ from backend.api.helpers.packages import (
     _generate_compatibility_summary,
     _extract_version_compatibility,
     _get_package_metrics,
-    _validate_system_info,
-    _analyze_compatibility_reports,
-    _detect_package_ecosystem,
-    _filter_comparison_aspects,
-    _generate_comparison_summary,
 )
 from backend.api.helpers.compatibility import (
     _check_version_compatibility_detailed,
@@ -140,7 +135,11 @@ async def get_export_formats(
     """Get available export formats"""
     try:
         formats = [
-            {"format": fmt, "ecosystem": meta["ecosystem"], "description": meta["description"]}
+            {
+                "format": fmt,
+                "ecosystem": meta["ecosystem"],
+                "description": meta["description"],
+            }
             for fmt, meta in EXPORT_FORMAT_METADATA.items()
         ]
         return {"status": "success", "formats": formats}
@@ -174,12 +173,18 @@ async def search_packages(
 
         ecosystem_list = ecosystems.split(",") if ecosystems else None
 
-        results = await aggregator.search_packages(q, ecosystems=ecosystem_list, limit=limit)
+        results = await aggregator.search_packages(
+            q, ecosystems=ecosystem_list, limit=limit
+        )
 
         # Apply post-processing (filtering, sorting)
         for ecosystem, ecosystem_results in list(results.items()):
             # Filter by Python version if specified
-            if python_version and ecosystem in ["pypi", "conda"] and isinstance(ecosystem_results, list):
+            if (
+                python_version
+                and ecosystem in ["pypi", "conda"]
+                and isinstance(ecosystem_results, list)
+            ):
                 ecosystem_results = _filter_by_python_version(
                     ecosystem_results, python_version
                 )

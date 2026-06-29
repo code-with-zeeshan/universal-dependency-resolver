@@ -11,6 +11,7 @@ from backend import settings
 
 try:
     from opentelemetry import trace
+
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False

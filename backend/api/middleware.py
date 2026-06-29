@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Prometheus metrics
 try:
     from prometheus_client import Histogram as _Histogram
+
     _request_duration = _Histogram(
         "http_request_duration_seconds",
         "HTTP request duration in seconds",
@@ -237,9 +238,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Add HSTS for HTTPS connections
         if request.url.scheme == "https":
-            response.headers[
-                "Strict-Transport-Security"
-            ] = "max-age=31536000; includeSubDomains"
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
 
         return response
 
@@ -485,6 +486,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
         # Allow bypassing CSRF when disabled via feature flag
         from backend.settings import FEATURES
+
         if not FEATURES.get("ENABLE_CSRF", True):
             return await call_next(request)
 

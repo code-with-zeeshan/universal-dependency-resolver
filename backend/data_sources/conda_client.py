@@ -103,6 +103,7 @@ class CondaClient(BaseDataSourceClient):
 
     async def _process_package_data_enhanced(self, data: Dict) -> Dict:
         latest_version = data.get("latest_version")
+        files = data.get("files", [])
         if not latest_version and files:
             # Derive latest from files list
             all_vers = sorted(
@@ -114,7 +115,6 @@ class CondaClient(BaseDataSourceClient):
         channel_name = data.get("channel_name", "conda-forge")
 
         versions_info = []
-        files = data.get("files", [])
 
         version_map = {}
         for file_info in files:

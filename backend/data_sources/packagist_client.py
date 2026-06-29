@@ -484,13 +484,13 @@ class PackagistClient(BaseDataSourceClient):
 
 async def example_usage():
     async with PackagistClient() as client:
-        results = await client.search_packages("symfony", limit=5)
+        await client.search_packages("symfony", limit=5)
 
         info = await client.get_package_info_async(
             "symfony/console", include_versions=True
         )
 
-        version_info = await client.get_package_version("symfony/console", "v6.0.0")
+        await client.get_package_version("symfony/console", "v6.0.0")
 
         compat = await client.check_compatibility(
             "symfony/console",

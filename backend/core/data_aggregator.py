@@ -111,16 +111,30 @@ _register_client(Ecosystem.NPM, "backend.data_sources.npm_client", "NPMClient")
 _register_client(Ecosystem.CONDA, "backend.data_sources.conda_client", "CondaClient")
 _register_client(Ecosystem.MAVEN, "backend.data_sources.maven_client", "MavenClient")
 _register_client(Ecosystem.CRATES, "backend.data_sources.crates_client", "CratesClient")
-_register_client(Ecosystem.GOMODULES, "backend.data_sources.gomodules_client", "GoModulesClient")
+_register_client(
+    Ecosystem.GOMODULES, "backend.data_sources.gomodules_client", "GoModulesClient"
+)
 _register_client(Ecosystem.APT, "backend.data_sources.apt_client", "APTClient")
 _register_client(Ecosystem.APK, "backend.data_sources.apk_client", "APKClient")
-_register_client(Ecosystem.COCOAPODS, "backend.data_sources.cocoapods_client", "CocoaPodsClient")
-_register_client(Ecosystem.HOMEBREW, "backend.data_sources.homebrew_client", "HomebrewClient")
+_register_client(
+    Ecosystem.COCOAPODS, "backend.data_sources.cocoapods_client", "CocoaPodsClient"
+)
+_register_client(
+    Ecosystem.HOMEBREW, "backend.data_sources.homebrew_client", "HomebrewClient"
+)
 _register_client(Ecosystem.NUGET, "backend.data_sources.nuget_client", "NuGetClient")
-_register_client(Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "PackagistClient")
-_register_client(Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient")
-_register_client(Ecosystem.DOCS, "backend.data_sources.documentation_scraper", "DocumentationScraper")
-_register_client(Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB")
+_register_client(
+    Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "PackagistClient"
+)
+_register_client(
+    Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient"
+)
+_register_client(
+    Ecosystem.DOCS, "backend.data_sources.documentation_scraper", "DocumentationScraper"
+)
+_register_client(
+    Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB"
+)
 _register_client(Ecosystem.PUB, "backend.data_sources.pub_client", "PubClient")
 
 
@@ -507,10 +521,10 @@ class DataAggregator:
 
         # Merge system requirements
         if "system_requirements" in data:
-            aggregated["system_requirements"][
-                ecosystem.value
-            ] = self._normalize_system_requirements(
-                data["system_requirements"], ecosystem
+            aggregated["system_requirements"][ecosystem.value] = (
+                self._normalize_system_requirements(
+                    data["system_requirements"], ecosystem
+                )
             )
 
         # Extract compatibility information
@@ -774,12 +788,14 @@ class DataAggregator:
                 for dep in deps_data.get("all", []):
                     for other_eco in dep_ecosystems:
                         if other_eco != parent_eco:
-                            cross_eco.append({
-                                "source_ecosystem": parent_eco,
-                                "target_ecosystem": other_eco,
-                                "dependency": dep.name,
-                                "version_spec": dep.version_spec,
-                            })
+                            cross_eco.append(
+                                {
+                                    "source_ecosystem": parent_eco,
+                                    "target_ecosystem": other_eco,
+                                    "dependency": dep.name,
+                                    "version_spec": dep.version_spec,
+                                }
+                            )
                             break
         aggregated["cross_ecosystem_deps"] = cross_eco
 
@@ -1217,6 +1233,3 @@ class DataAggregator:
                         report["recommendations"].append(
                             f"Consider using nvm to manage Node.js versions for {pkg_name}"
                         )
-
-
-

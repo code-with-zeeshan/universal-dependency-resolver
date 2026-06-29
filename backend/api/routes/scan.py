@@ -51,7 +51,9 @@ def _download_github_repo(url: str, branch: str) -> Path:
     req = urllib.request.Request(api_url, headers={"User-Agent": "UDR/1.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         if resp.status != 200:
-            raise HTTPException(status_code=400, detail=f"GitHub API returned {resp.status}")
+            raise HTTPException(
+                status_code=400, detail=f"GitHub API returned {resp.status}"
+            )
         data = resp.read()
     tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
     z = zipfile.ZipFile(io.BytesIO(data))
@@ -62,7 +64,9 @@ def _download_github_repo(url: str, branch: str) -> Path:
     return tmp
 
 
-async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[str] = None) -> dict:
+async def _run_resolution_pipeline(
+    project_dir: Path, export_format: Optional[str] = None
+) -> dict:
     """Run manifest detection + resolution on a project directory."""
     detector = ManifestDetector(str(project_dir))
     aggregator = DataAggregator()
@@ -72,11 +76,21 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
 
     manifests = detector.detect()
     if not manifests:
-        return {"status": "no_manifests", "manifests": [], "packages": [], "resolution": None}
+        return {
+            "status": "no_manifests",
+            "manifests": [],
+            "packages": [],
+            "resolution": None,
+        }
 
     packages = detector.normalize(detector.parse_all(manifests))
     if not packages:
-        return {"status": "no_packages", "manifests": manifests, "packages": [], "resolution": None}
+        return {
+            "status": "no_packages",
+            "manifests": manifests,
+            "packages": [],
+            "resolution": None,
+        }
 
     seen = set()
     resolver_inputs = []
@@ -89,8 +103,10 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
         seen.add(key)
         try:
             data = await aggregator.get_package_info(
-                pkg["name"], ecosystem=pkg["ecosystem"],
-                include_dependencies=True, include_versions=True,
+                pkg["name"],
+                ecosystem=pkg["ecosystem"],
+                include_dependencies=True,
+                include_versions=True,
             )
             if data:
                 package_details[pkg["name"]] = data
@@ -132,14 +148,18 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
 
     return {
         "status": "success",
-        "manifests": [{"filename": m["filename"], "ecosystem": m["ecosystem"]} for m in manifests],
+        "manifests": [
+            {"filename": m["filename"], "ecosystem": m["ecosystem"]} for m in manifests
+        ],
         "packages": [
             {
                 "name": p["name"],
                 "ecosystem": p["ecosystem"],
                 "constraint": p["constraint"],
                 "resolved_version": resolved_pkgs.get(p["name"], {}).get("version"),
-                "cuda_variant": resolved_pkgs.get(p["name"], {}).get("cuda_variant", False),
+                "cuda_variant": resolved_pkgs.get(p["name"], {}).get(
+                    "cuda_variant", False
+                ),
                 "cuda_version": resolved_pkgs.get(p["name"], {}).get("cuda_version"),
             }
             for p in packages
@@ -149,8 +169,12 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
             "os": f"{system_info['platform']['system']} {system_info['platform']['release']}",
             "python": system_info["runtime_versions"]["python"]["version"],
             "cpu": system_info["cpu"]["brand"],
-            "gpu": system_info["gpu"]["devices"][0]["name"] if system_info["gpu"]["available"] else None,
-            "cuda": system_info["gpu"].get("cuda") if system_info["gpu"]["available"] else None,
+            "gpu": system_info["gpu"]["devices"][0]["name"]
+            if system_info["gpu"]["available"]
+            else None,
+            "cuda": system_info["gpu"].get("cuda")
+            if system_info["gpu"]["available"]
+            else None,
         },
         "export": export_content,
     }
@@ -159,12 +183,16 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: Optional[st
 @router.post("/scan/github")
 async def scan_github(
     req: GitHubScanRequest,
-    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    export: Optional[str] = Query(
+        None, description="Export format (e.g. requirements.txt, Dockerfile)"
+    ),
     current_user=Depends(get_current_user),
 ):
     """Clone a GitHub repo, detect manifests, resolve all dependencies."""
     loop = asyncio.get_event_loop()
-    project_dir = await loop.run_in_executor(None, _download_github_repo, req.repo_url, req.branch)
+    project_dir = await loop.run_in_executor(
+        None, _download_github_repo, req.repo_url, req.branch
+    )
     try:
         result = await _run_resolution_pipeline(project_dir, export_format=export)
         result["source"] = "github"
@@ -172,13 +200,16 @@ async def scan_github(
         return result
     finally:
         import shutil
+
         shutil.rmtree(project_dir.parent, ignore_errors=True)
 
 
 @router.post("/scan/upload")
 async def scan_upload(
     file: UploadFile = File(...),
-    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    export: Optional[str] = Query(
+        None, description="Export format (e.g. requirements.txt, Dockerfile)"
+    ),
     current_user=Depends(get_current_user),
 ):
     """Upload a project archive (zip), detect manifests, resolve all dependencies."""
@@ -191,7 +222,9 @@ async def scan_upload(
         for entry in z.infolist():
             dest = (tmp / entry.filename).resolve()
             if not str(dest).startswith(str(tmp.resolve())):
-                raise HTTPException(status_code=400, detail="Illegal path in zip archive")
+                raise HTTPException(
+                    status_code=400, detail="Illegal path in zip archive"
+                )
         z.extractall(path=str(tmp))
         # Try to find project root (handle single top-level dir)
         project_dir = tmp
@@ -204,19 +237,24 @@ async def scan_upload(
         return result
     finally:
         import shutil
+
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 @router.post("/scan/local")
 async def scan_local(
     req: LocalScanRequest,
-    export: Optional[str] = Query(None, description="Export format (e.g. requirements.txt, Dockerfile)"),
+    export: Optional[str] = Query(
+        None, description="Export format (e.g. requirements.txt, Dockerfile)"
+    ),
     current_user=Depends(get_current_user),
 ):
     """Scan a local directory path (only works when backend runs on same machine)."""
     project_dir = Path(req.directory_path).resolve()
     if not project_dir.is_dir():
-        raise HTTPException(status_code=400, detail=f"Directory not found: {req.directory_path}")
+        raise HTTPException(
+            status_code=400, detail=f"Directory not found: {req.directory_path}"
+        )
     result = await _run_resolution_pipeline(project_dir, export_format=export)
     result["source"] = "local"
     result["directory_path"] = str(project_dir)

@@ -36,7 +36,9 @@ class PubClient(BaseDataSourceClient):
             if not data:
                 return None
 
-            latest_version = data.get("latest", {}).get("version") or data.get("versions", [{}])[0].get("version")
+            latest_version = data.get("latest", {}).get("version") or data.get(
+                "versions", [{}]
+            )[0].get("version")
 
             versions = []
             deps_map = {}
@@ -48,11 +50,13 @@ class PubClient(BaseDataSourceClient):
                 pub_deps = pubspec.get("dependencies", {})
                 if isinstance(pub_deps, dict):
                     deps_map[version_str] = dict(pub_deps)
-                versions.append({
-                    "version": version_str,
-                    "published": v.get("published", ""),
-                    "pubspec": pubspec,
-                })
+                versions.append(
+                    {
+                        "version": version_str,
+                        "published": v.get("published", ""),
+                        "pubspec": pubspec,
+                    }
+                )
 
             # Build aggregated dependencies (latest version's deps)
             deps = {"dependencies": {}}
@@ -67,7 +71,9 @@ class PubClient(BaseDataSourceClient):
                         continue
                     dep_str = str(dep_ver) if not isinstance(dep_ver, str) else dep_ver
                     deps["dependencies"][dep_name] = dep_str
-                for dep_name, dep_ver in latest_pubspec.get("dev_dependencies", {}).items():
+                for dep_name, dep_ver in latest_pubspec.get(
+                    "dev_dependencies", {}
+                ).items():
                     dep_str = str(dep_ver) if not isinstance(dep_ver, str) else dep_ver
                     deps.setdefault("dev_dependencies", {})[dep_name] = dep_str
 
@@ -102,11 +108,13 @@ class PubClient(BaseDataSourceClient):
                 version_str = v.get("version", "")
                 if parse_version(version_str) is None:
                     continue
-                versions.append({
-                    "version": version_str,
-                    "published": v.get("published", ""),
-                    "pubspec": v.get("pubspec", {}),
-                })
+                versions.append(
+                    {
+                        "version": version_str,
+                        "published": v.get("published", ""),
+                        "pubspec": v.get("pubspec", {}),
+                    }
+                )
 
             return sorted(
                 versions,

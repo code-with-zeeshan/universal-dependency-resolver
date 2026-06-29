@@ -161,8 +161,9 @@ class APKClient(BaseDataSourceClient):
                         )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"].split("-")[0])
-            or parse_version("0.0.0"),
+            key=lambda x: (
+                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")
+            ),
             reverse=True,
         )
 

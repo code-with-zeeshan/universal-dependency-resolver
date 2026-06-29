@@ -65,7 +65,11 @@ async def _get_recursive_dependencies(
     except Exception as e:
         logger.warning(f"Failed to get dependencies for {package_name}: {e}")
         dependencies = {}
-    dep_tree = {"name": package_name, "version": version or "latest", "dependencies": {}}
+    dep_tree = {
+        "name": package_name,
+        "version": version or "latest",
+        "dependencies": {},
+    }
     for dep_type, deps in dependencies.items():
         if dep_type not in ["required", "run"]:
             continue
@@ -119,6 +123,7 @@ def _extract_version_compatibility(package_info: Dict, version_str: str) -> Dict
 
 async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
     from datetime import datetime
+
     logger.debug(f"Getting metrics for {package_name} in {ecosystem}")
     return {
         "downloads": 0,
@@ -132,7 +137,9 @@ def _validate_system_info(system_info: Dict) -> bool:
     return "os" in system_info and "python_version" in system_info
 
 
-async def _analyze_compatibility_reports(package_name: str, ecosystem: str, version: str):
+async def _analyze_compatibility_reports(
+    package_name: str, ecosystem: str, version: str
+):
     logger.info(f"Analyzing compatibility reports for {package_name}")
 
 
@@ -151,7 +158,12 @@ async def _detect_package_ecosystem(package_name: str, aggregator) -> str:
 def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
     aspect_map = {
         "dependencies": ["dependencies", "requirements"],
-        "requirements": ["python_requires", "platforms", "architectures", "cuda_versions"],
+        "requirements": [
+            "python_requires",
+            "platforms",
+            "architectures",
+            "cuda_versions",
+        ],
         "versions": ["versions", "latest_version", "version"],
     }
     selected = aspects.split(",") if aspects else list(aspect_map.keys())

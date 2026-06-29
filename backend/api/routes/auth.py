@@ -200,7 +200,7 @@ async def get_api_keys(
     with db_session() as db:
         keys = (
             db.query(APIKey)
-            .filter(APIKey.user_id == current_user.id, APIKey.is_active == True)
+            .filter(APIKey.user_id == current_user.id, APIKey.is_active)
             .all()
         )
 

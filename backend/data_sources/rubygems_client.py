@@ -41,7 +41,9 @@ class RubyGemsClient(BaseDataSourceClient):
     ):
         rubygems_config = get_ecosystem_config("rubygems")
 
-        api_url = (api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")).rstrip("/")
+        api_url = (
+            api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")
+        ).rstrip("/")
         super().__init__(
             ecosystem="rubygems",
             base_url=api_url,
@@ -54,9 +56,7 @@ class RubyGemsClient(BaseDataSourceClient):
         package_name = normalize_package_name(package_name)
         try:
             session = self._get_session()
-            response = await session.head(
-                f"{self.base_url}/gems/{package_name}.json"
-            )
+            response = await session.head(f"{self.base_url}/gems/{package_name}.json")
             return response.status == 200
         except Exception:
             return False
@@ -476,11 +476,11 @@ class RubyGemsClient(BaseDataSourceClient):
 
 async def example_usage():
     async with RubyGemsClient() as client:
-        results = await client.search_packages("rails", limit=5)
+        await client.search_packages("rails", limit=5)
 
         info = await client.get_package_info_async("rails", include_versions=True)
 
-        version_info = await client.get_package_version("rails", "7.0.0")
+        await client.get_package_version("rails", "7.0.0")
 
         compat = await client.check_compatibility(
             "rails",

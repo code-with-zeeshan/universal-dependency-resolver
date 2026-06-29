@@ -24,7 +24,9 @@ class MavenClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="maven",
-            base_url=maven_config.get("search_url", "https://search.maven.org/solrsearch/select"),
+            base_url=maven_config.get(
+                "search_url", "https://search.maven.org/solrsearch/select"
+            ),
         )
 
         self.artifact_url = "https://search.maven.org/artifact"
@@ -312,9 +314,9 @@ class MavenClient(BaseDataSourceClient):
                             f"Requires Java {required_java} or higher, but system has Java {system_java}"
                         )
                     else:
-                        compatibility["details"][
-                            "java_version"
-                        ] = f"Compatible (requires Java {required_java}+)"
+                        compatibility["details"]["java_version"] = (
+                            f"Compatible (requires Java {required_java}+)"
+                        )
                 else:
                     compatibility["details"]["java_version"] = "Compatible with Java 8+"
 
@@ -983,10 +985,10 @@ class MavenClient(BaseDataSourceClient):
             ) or profile.find(".//dependencyManagement")
             if dep_mgmt_elem is not None:
                 all_props = {**parent_properties, **profile_data["properties"]}
-                profile_data[
-                    "dependency_management"
-                ] = self._parse_dependency_management(
-                    dep_mgmt_elem, namespaces, all_props
+                profile_data["dependency_management"] = (
+                    self._parse_dependency_management(
+                        dep_mgmt_elem, namespaces, all_props
+                    )
                 )
 
             profiles[profile_id] = profile_data

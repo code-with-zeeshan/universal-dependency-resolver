@@ -63,16 +63,27 @@ async def verify_lock(
         if not ver:
             return {"name": name, "issue": "No resolved version", "severity": "warning"}
         try:
-            data = await aggregator.get_package_info(name, ecosystem=eco, include_versions=True)
+            data = await aggregator.get_package_info(
+                name, ecosystem=eco, include_versions=True
+            )
             if data:
                 versions = data.get("versions", {}).get(eco, [])
                 version_strings = [
-                    v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
+                    v.get("version", "") if isinstance(v, dict) else str(v)
+                    for v in versions
                 ]
                 if ver not in version_strings:
-                    return {"name": name, "issue": f"Version {ver} no longer available", "severity": "error"}
+                    return {
+                        "name": name,
+                        "issue": f"Version {ver} no longer available",
+                        "severity": "error",
+                    }
             else:
-                return {"name": name, "issue": "Package not found on registry", "severity": "error"}
+                return {
+                    "name": name,
+                    "issue": "Package not found on registry",
+                    "severity": "error",
+                }
         except Exception as exc:
             return {"name": name, "issue": str(exc), "severity": "error"}
         return None
@@ -85,7 +96,9 @@ async def verify_lock(
             ok_count += 1
 
     return {
-        "status": "ok" if not any(i["severity"] == "error" for i in issues) else "issues",
+        "status": "ok"
+        if not any(i["severity"] == "error" for i in issues)
+        else "issues",
         "total": len(packages),
         "ok": ok_count,
         "issues": issues,
@@ -110,7 +123,10 @@ async def dependency_graph(
     for pkg_name, eco in specs:
         try:
             data = await aggregator.get_package_info(
-                pkg_name, ecosystem=eco, include_dependencies=True, include_versions=True,
+                pkg_name,
+                ecosystem=eco,
+                include_dependencies=True,
+                include_versions=True,
             )
             if data:
                 package_details[pkg_name] = data
@@ -141,7 +157,14 @@ async def dependency_graph(
             if dep_info:
                 deps_list.append(_build_tree(dep_name, dep_info))
             else:
-                deps_list.append({"name": dep_name, "version": dep_ver, "ecosystem": eco, "children": []})
+                deps_list.append(
+                    {
+                        "name": dep_name,
+                        "version": dep_ver,
+                        "ecosystem": eco,
+                        "children": [],
+                    }
+                )
         return {"name": name, "version": ver, "ecosystem": eco, "children": deps_list}
 
     trees = [_build_tree(name, info) for name, info in rp.items()]
@@ -167,26 +190,32 @@ async def update_package(
     package_name = req.package
     packages_in_lock = lock_data.get("packages", {})
     if package_name not in packages_in_lock:
-        raise HTTPException(status_code=404, detail=f"Package '{package_name}' not found in lock data")
+        raise HTTPException(
+            status_code=404, detail=f"Package '{package_name}' not found in lock data"
+        )
 
     pkg_info = packages_in_lock[package_name]
     ecosystem = req.ecosystem or pkg_info.get("ecosystem", "pypi")
 
     system_info = await scanner.scan_all()
-    specs = [(package_name, ecosystem)]
 
     resolver_inputs = []
     package_details = {}
 
     try:
         data = await aggregator.get_package_info(
-            package_name, ecosystem=ecosystem, include_dependencies=True, include_versions=True,
+            package_name,
+            ecosystem=ecosystem,
+            include_dependencies=True,
+            include_versions=True,
         )
         if data:
             package_details[package_name] = data
             resolver_inputs.append(_aggregator_to_resolver_input(data, ecosystem))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch {package_name}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch {package_name}: {e}"
+        )
 
     if not resolver_inputs:
         raise HTTPException(status_code=404, detail=f"No data found for {package_name}")

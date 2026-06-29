@@ -55,7 +55,8 @@ class NuGetClient(BaseDataSourceClient):
         nuget_config = get_ecosystem_config("nuget")
 
         service_index_url = (
-            service_index_url or nuget_config.get("api_url", "https://api.nuget.org/v3/index.json")
+            service_index_url
+            or nuget_config.get("api_url", "https://api.nuget.org/v3/index.json")
         ).rstrip("/")
         super().__init__(
             ecosystem="nuget",
@@ -620,13 +621,13 @@ class NuGetClient(BaseDataSourceClient):
 
 async def example_usage():
     async with NuGetClient() as client:
-        results = await client.search_packages("Newtonsoft.Json", limit=5)
+        await client.search_packages("Newtonsoft.Json", limit=5)
 
         info = await client.get_package_info_async(
             "Newtonsoft.Json", include_versions=True
         )
 
-        version_info = await client.get_package_version("Newtonsoft.Json", "13.0.3")
+        await client.get_package_version("Newtonsoft.Json", "13.0.3")
 
         compat = await client.check_compatibility(
             "Newtonsoft.Json",

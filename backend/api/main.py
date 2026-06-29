@@ -32,7 +32,13 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
-from backend.api.routes import packages, system, scan, lock as lock_routes, auth as auth_routes
+from backend.api.routes import (
+    packages,
+    system,
+    scan,
+    lock as lock_routes,
+    auth as auth_routes,
+)
 from backend.api.middleware import setup_middleware
 from backend.logging_config import setup_logging
 from backend.tracing_config import setup_tracing
@@ -41,6 +47,7 @@ from backend.database.models import get_engine
 # Configure structured logging
 setup_logging()
 logger = structlog.get_logger(__name__)
+
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -175,6 +182,7 @@ async def validate_environment() -> None:
 
     if not standalone:
         from backend.settings import DATABASE_URL
+
         if not DATABASE_URL:
             raise RuntimeError("DATABASE_URL is not configured")
 

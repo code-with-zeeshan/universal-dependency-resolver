@@ -1,5 +1,5 @@
 # backend/api/routes/system.py
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field
 import json
@@ -70,7 +70,9 @@ async def get_system_info(
                     if gpu_info.get("available")
                     else None,
                     "cuda": gpu_info.get("cuda"),
-                    "python": info.get("runtime_versions", {}).get("python", {}).get("version", "unknown"),
+                    "python": info.get("runtime_versions", {})
+                    .get("python", {})
+                    .get("version", "unknown"),
                 },
             }
 
@@ -188,12 +190,12 @@ def _check_gpu_requirement(
 
             if version.parse(system_cuda) < version.parse(required_cuda):
                 result["status"] = "fail"
-                result[
-                    "message"
-                ] = f"CUDA {required_cuda} required, but {system_cuda} found"
-                result[
-                    "recommendation"
-                ] = f"Update CUDA to version {required_cuda} or later"
+                result["message"] = (
+                    f"CUDA {required_cuda} required, but {system_cuda} found"
+                )
+                result["recommendation"] = (
+                    f"Update CUDA to version {required_cuda} or later"
+                )
 
     # Check GPU memory
     if requirement.minimum and "memory_gb" in requirement.minimum:
@@ -206,13 +208,13 @@ def _check_gpu_requirement(
 
         if min_gpu_memory < required_memory:
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"GPU with {required_memory}GB memory required, but only {min_gpu_memory:.1f}GB available"
+            result["message"] = (
+                f"GPU with {required_memory}GB memory required, but only {min_gpu_memory:.1f}GB available"
+            )
 
     # Check compute capability
     if requirement.minimum and "compute_capability" in requirement.minimum:
-        required_cc = requirement.minimum["compute_capability"]
+        requirement.minimum["compute_capability"]
         # This would need to be extracted from GPU info
         result["details"]["compute_capability_check"] = "pending"
 
@@ -234,9 +236,9 @@ def _check_cpu_requirement(
 
         if available_cores < required_cores:
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires {required_cores} CPU cores, but only {available_cores} available"
+            result["message"] = (
+                f"Requires {required_cores} CPU cores, but only {available_cores} available"
+            )
 
     # Check CPU features
     if requirement.minimum and "features" in requirement.minimum:
@@ -246,9 +248,9 @@ def _check_cpu_requirement(
         missing_features = [f for f in required_features if f not in cpu_flags]
         if missing_features:
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"CPU missing required features: {', '.join(missing_features)}"
+            result["message"] = (
+                f"CPU missing required features: {', '.join(missing_features)}"
+            )
 
     # Check architecture
     if requirement.minimum and "architecture" in requirement.minimum:
@@ -257,9 +259,9 @@ def _check_cpu_requirement(
 
         if not _is_compatible_architecture(system_arch, required_arch):
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires {required_arch} architecture, but system is {system_arch}"
+            result["message"] = (
+                f"Requires {required_arch} architecture, but system is {system_arch}"
+            )
 
     return result
 
@@ -280,21 +282,21 @@ def _check_memory_requirement(
 
         if available_gb < required_gb:
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires {required_gb}GB RAM, but only {available_gb:.1f}GB available"
-            result[
-                "recommendation"
-            ] = "Consider closing other applications or upgrading system memory"
+            result["message"] = (
+                f"Requires {required_gb}GB RAM, but only {available_gb:.1f}GB available"
+            )
+            result["recommendation"] = (
+                "Consider closing other applications or upgrading system memory"
+            )
 
     if requirement.recommended and "gb" in requirement.recommended:
         recommended_gb = requirement.recommended["gb"]
 
         if available_gb < recommended_gb:
             result["status"] = "warning"
-            result[
-                "message"
-            ] = f"Recommended {recommended_gb}GB RAM, but only {available_gb:.1f}GB available"
+            result["message"] = (
+                f"Recommended {recommended_gb}GB RAM, but only {available_gb:.1f}GB available"
+            )
 
     # Check available memory
     available_free_gb = memory.available / (1024**3)
@@ -321,13 +323,13 @@ def _check_disk_requirement(
 
         if available_gb < required_gb:
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires {required_gb}GB disk space, but only {available_gb:.1f}GB available"
+            result["message"] = (
+                f"Requires {required_gb}GB disk space, but only {available_gb:.1f}GB available"
+            )
 
     # Check disk type (SSD vs HDD)
     if requirement.minimum and "type" in requirement.minimum:
-        required_type = requirement.minimum["type"]
+        requirement.minimum["type"]
         # This would need platform-specific implementation
         result["details"]["disk_type_check"] = "pending"
 
@@ -356,9 +358,9 @@ def _check_os_requirement(
 
         if not _is_compatible_os_version(system_os, system_version, required_version):
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires {system_os} {required_version}, but system is {system_version}"
+            result["message"] = (
+                f"Requires {system_os} {required_version}, but system is {system_version}"
+            )
 
     return result
 
@@ -381,9 +383,9 @@ def _check_python_requirement(
             required_version
         ):
             result["status"] = "fail"
-            result[
-                "message"
-            ] = f"Requires Python {required_version}, but system has {system_version}"
+            result["message"] = (
+                f"Requires Python {required_version}, but system has {system_version}"
+            )
 
     return result
 
@@ -404,12 +406,11 @@ def _check_compiler_requirement(
                 result["recommendation"] = f"Install {compiler} {version} or later"
             elif version and not _is_compatible_version(installed_version, version):
                 result["status"] = "fail"
-                result[
-                    "message"
-                ] = f"{compiler} {version} required, but {installed_version} found"
+                result["message"] = (
+                    f"{compiler} {version} required, but {installed_version} found"
+                )
 
     return result
-
 
 
 def _extract_python_version_requirement(content: str) -> Optional[str]:
@@ -611,7 +612,7 @@ async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
                             "compute_capability": parts[13],
                         }
                     )
-    except Exception as e:
+    except Exception:
         pass
 
     return gpu_details
@@ -1187,7 +1188,7 @@ async def _benchmark_cpu() -> Dict[str, Any]:
         size = 2000
         a = np.random.rand(size, size)
         b = np.random.rand(size, size)
-        c = np.dot(a, b)
+        np.dot(a, b)
         single_thread_time = time.time() - start
 
         results["matrix_multiply_single"] = {
@@ -1196,12 +1197,15 @@ async def _benchmark_cpu() -> Dict[str, Any]:
             "gflops": round((2 * size**3) / (single_thread_time * 1e9), 2),
         }
     except ImportError:
-        results["matrix_multiply_single"] = {"error": "numpy not installed", "skipped": True}
+        results["matrix_multiply_single"] = {
+            "error": "numpy not installed",
+            "skipped": True,
+        }
 
     # Integer operations benchmark
     start = time.time()
     count = 10000000
-    total = sum(i for i in range(count))
+    sum(i for i in range(count))
     int_time = time.time() - start
 
     results["integer_operations"] = {
@@ -1262,14 +1266,12 @@ async def _benchmark_disk() -> Dict[str, Any]:
             os.fsync(tmp.fileno())
             write_time = time.time() - start
 
-            results["write_speed_mbps"] = round(
-                (test_size / (1024**2)) / write_time, 2
-            )
+            results["write_speed_mbps"] = round((test_size / (1024**2)) / write_time, 2)
 
             # Read test
             tmp.seek(0)
             start = time.time()
-            data = tmp.read()
+            tmp.read()
             read_time = time.time() - start
 
             results["read_speed_mbps"] = round((test_size / (1024**2)) / read_time, 2)
@@ -1294,7 +1296,7 @@ async def _benchmark_gpu() -> Dict[str, Any]:
             # Warm up
             a = torch.randn(1000, 1000).to(device)
             b = torch.randn(1000, 1000).to(device)
-            c = torch.matmul(a, b)
+            torch.matmul(a, b)
             torch.cuda.synchronize()
 
             # Matrix multiplication benchmark
@@ -1306,7 +1308,7 @@ async def _benchmark_gpu() -> Dict[str, Any]:
                 torch.cuda.synchronize()
                 start = time.time()
 
-                c = torch.matmul(a, b)
+                torch.matmul(a, b)
 
                 torch.cuda.synchronize()
                 elapsed = time.time() - start
@@ -1333,7 +1335,7 @@ async def _benchmark_gpu() -> Dict[str, Any]:
 
             # Device to host
             start = time.time()
-            data_cpu = data_gpu.cpu()
+            data_gpu.cpu()
             torch.cuda.synchronize()
             d2h_time = time.time() - start
 
@@ -1378,7 +1380,7 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             futures = [executor.submit(cpu_task) for _ in range(num_threads)]
-            results_list = [f.result() for f in futures]
+            [f.result() for f in futures]
 
         elapsed = time.time() - start
 
@@ -1453,7 +1455,7 @@ async def _benchmark_python() -> Dict[str, Any]:
 
     # List comprehension benchmark
     start = time.time()
-    result = [i**2 for i in range(1000000)]
+    [i**2 for i in range(1000000)]
     list_comp_time = time.time() - start
     results["list_comprehension_ms"] = round(list_comp_time * 1000, 2)
 

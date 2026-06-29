@@ -283,11 +283,8 @@ class PyPIClient(BaseDataSourceClient):
                     # Check for Python version-specific dependencies
                     elif "python_version" in marker_str:
                         # Still required but with conditions
-                        if (
-                            python_requires
-                            and self._is_compatible_with_python_requires(
-                                marker_str, python_requires
-                            )
+                        if python_requires and self._is_compatible_with_python_requires(
+                            marker_str, python_requires
                         ):
                             category = "required"
                         else:
@@ -716,7 +713,7 @@ class PyPIClient(BaseDataSourceClient):
     ) -> List[Dict[str, Any]]:
         """Search by scraping PyPI search page"""
         try:
-            search_url = f"https://pypi.org/search/"
+            search_url = "https://pypi.org/search/"
             params = {
                 "q": query,
                 "o": "",  # Relevance ordering

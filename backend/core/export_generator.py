@@ -315,9 +315,9 @@ class ExportGenerator:
         else:
             gpu_info = system_info.get("gpu", {})
             if gpu_info.get("available") and gpu_info.get("cuda"):
-                context[
-                    "base_image"
-                ] = f"nvidia/cuda:{gpu_info['cuda']}-cudnn8-runtime-ubuntu22.04"
+                context["base_image"] = (
+                    f"nvidia/cuda:{gpu_info['cuda']}-cudnn8-runtime-ubuntu22.04"
+                )
             else:
                 has_python = any(p.ecosystem == PackageEcosystem.PYPI for p in packages)
                 has_node = any(p.ecosystem == PackageEcosystem.NPM for p in packages)

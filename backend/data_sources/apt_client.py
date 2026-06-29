@@ -25,7 +25,9 @@ class APTClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="apt",
-            base_url=apt_config.get("repositories", ["http://deb.debian.org/debian"])[0],
+            base_url=apt_config.get("repositories", ["http://deb.debian.org/debian"])[
+                0
+            ],
             cache_ttl=apt_config.get("cache_ttl", CACHE_TTL),
             rate_limit=apt_config.get("rate_limit", 600),
         )
@@ -157,8 +159,9 @@ class APTClient(BaseDataSourceClient):
                     )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"].split("-")[0])
-            or parse_version("0.0.0"),
+            key=lambda x: (
+                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")
+            ),
             reverse=True,
         )
 

@@ -34,9 +34,7 @@ class GoModulesClient(BaseDataSourceClient):
         package_name = self._normalize_go_module_path(package_name)
         try:
             session = self._get_session()
-            response = await session.head(
-                f"{self.base_url}/{package_name}/@v/list"
-            )
+            response = await session.head(f"{self.base_url}/{package_name}/@v/list")
             return response.status == 200
         except Exception:
             return False
@@ -45,9 +43,6 @@ class GoModulesClient(BaseDataSourceClient):
         self, query: str, limit: int = 20
     ) -> List[Dict[str, Any]]:
         query = normalize_package_name(query)
-
-        search_url = f"{self.pkg_dev_url}/search"
-        params = {"q": query, "limit": limit}
 
         try:
             logger.warning(
@@ -139,8 +134,9 @@ class GoModulesClient(BaseDataSourceClient):
             versions.append(ver_info)
 
         versions.sort(
-            key=lambda x: parse_version(x["version"].lstrip("v"))
-            or parse_version("0.0.0"),
+            key=lambda x: (
+                parse_version(x["version"].lstrip("v")) or parse_version("0.0.0")
+            ),
             reverse=True,
         )
 

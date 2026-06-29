@@ -2,7 +2,13 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader, OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import (
+    HTTPBearer,
+    HTTPAuthorizationCredentials,
+    APIKeyHeader,
+    OAuth2PasswordBearer,
+    OAuth2PasswordRequestForm,
+)
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
@@ -399,8 +405,6 @@ class AuthService:
 
             logger.info(f"API key revoked: {api_key.name}")
             return True
-
-
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)

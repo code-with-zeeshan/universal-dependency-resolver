@@ -54,12 +54,14 @@ class ManifestDetector:
             for fp in self.directory.rglob(fname):
                 if fp.is_file() and fname not in seen:
                     seen.add(fname)
-                    found.append({
-                        "path": str(fp),
-                        "filename": fname,
-                        "ecosystem": ecosystem,
-                        "parser": parser_key,
-                    })
+                    found.append(
+                        {
+                            "path": str(fp),
+                            "filename": fname,
+                            "ecosystem": ecosystem,
+                            "parser": parser_key,
+                        }
+                    )
         unique_ecosystems = set(m["ecosystem"] for m in found)
         if len(unique_ecosystems) > 1:
             logger.warning(
@@ -73,11 +75,15 @@ class ManifestDetector:
         if raw[:3] == b"\xef\xbb\xbf":
             raw = raw[3:]
         elif raw[:2] == b"\xff\xfe":
-            raw = raw.decode("utf-16-le", errors="replace").encode("utf-8", errors="replace")
+            raw = raw.decode("utf-16-le", errors="replace").encode(
+                "utf-8", errors="replace"
+            )
             raw = raw.decode("utf-8", errors="replace")
             return raw
         elif raw[:2] == b"\xfe\xff":
-            raw = raw.decode("utf-16-be", errors="replace").encode("utf-8", errors="replace")
+            raw = raw.decode("utf-16-be", errors="replace").encode(
+                "utf-8", errors="replace"
+            )
             raw = raw.decode("utf-8", errors="replace")
             return raw
         for enc in ("utf-8", "latin-1", "cp1252"):
@@ -121,16 +127,22 @@ class ManifestDetector:
             raw_name = pkg.get("name", "").strip()
             if not raw_name:
                 continue
-            name = normalize_package_name(raw_name) if normalize_package_name(raw_name) else raw_name
+            name = (
+                normalize_package_name(raw_name)
+                if normalize_package_name(raw_name)
+                else raw_name
+            )
             raw_eco = pkg.get("_ecosystem", "pypi")
             ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
             constraint = pkg.get("version", "*") or "*"
-            normalized.append({
-                "name": name,
-                "ecosystem": ecosystem,
-                "constraint": constraint,
-                "source": pkg.get("_manifest", "unknown"),
-            })
+            normalized.append(
+                {
+                    "name": name,
+                    "ecosystem": ecosystem,
+                    "constraint": constraint,
+                    "source": pkg.get("_manifest", "unknown"),
+                }
+            )
         return normalized
 
     # --- Private parsers ---
@@ -167,21 +179,29 @@ class ManifestDetector:
                 for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
                     if op in line:
                         n, v = line.split(op, 1)
-                        packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                        packages.append(
+                            {"name": n.strip(), "version": f"{op}{v.strip()}"}
+                        )
                         break
                 else:
                     packages.append({"name": line, "version": "*"})
             return packages
         for line in content.split("\n"):
             line = line.strip()
-            if not line or line.startswith("#") or line.startswith(("-r ", "-e ", "-i ", "--")):
+            if (
+                not line
+                or line.startswith("#")
+                or line.startswith(("-r ", "-e ", "-i ", "--"))
+            ):
                 continue
             try:
                 req = Requirement(line)
-                packages.append({
-                    "name": req.name,
-                    "version": str(req.specifier) if req.specifier else "*",
-                })
+                packages.append(
+                    {
+                        "name": req.name,
+                        "version": str(req.specifier) if req.specifier else "*",
+                    }
+                )
             except Exception:
                 packages.append({"name": line, "version": "*"})
         return packages
@@ -189,6 +209,7 @@ class ManifestDetector:
     def _parse_pipfile(self, content: str) -> List[Dict]:
         try:
             import tomllib
+
             data = tomllib.loads(content)
         except Exception:
             return []
@@ -208,6 +229,7 @@ class ManifestDetector:
     def _parse_pipfile_lock(self, content: str) -> List[Dict]:
         try:
             import json
+
             data = json.loads(content)
         except Exception:
             return []
@@ -215,15 +237,18 @@ class ManifestDetector:
         for section in ["default", "develop"]:
             deps = data.get(section, {})
             for name, info in deps.items():
-                packages.append({
-                    "name": name,
-                    "version": info.get("version", "*"),
-                })
+                packages.append(
+                    {
+                        "name": name,
+                        "version": info.get("version", "*"),
+                    }
+                )
         return packages
 
     def _parse_pyproject(self, content: str) -> List[Dict]:
         try:
             import tomllib
+
             data = tomllib.loads(content)
         except Exception:
             return []
@@ -247,11 +272,14 @@ class ManifestDetector:
             for dep in data.get("project", {}).get("dependencies", []):
                 try:
                     from packaging.requirements import Requirement
+
                     req = Requirement(dep)
-                    packages.append({
-                        "name": req.name,
-                        "version": str(req.specifier) if req.specifier else "*",
-                    })
+                    packages.append(
+                        {
+                            "name": req.name,
+                            "version": str(req.specifier) if req.specifier else "*",
+                        }
+                    )
                 except Exception:
                     packages.append({"name": dep, "version": "*"})
         return packages
@@ -277,10 +305,12 @@ class ManifestDetector:
         for name, info in data.get("packages", {}).items():
             if name == "":
                 continue
-            packages.append({
-                "name": name.lstrip("node_modules/"),
-                "version": info.get("version", "*"),
-            })
+            packages.append(
+                {
+                    "name": name.lstrip("node_modules/"),
+                    "version": info.get("version", "*"),
+                }
+            )
         return packages
 
     def _parse_yarn_lock(self, content: str) -> List[Dict]:
@@ -295,15 +325,18 @@ class ManifestDetector:
                     continue
                 parts = name_version.split("@")
                 if len(parts) >= 2 and parts[0]:
-                    packages.append({
-                        "name": parts[0],
-                        "version": parts[-1],
-                    })
+                    packages.append(
+                        {
+                            "name": parts[0],
+                            "version": parts[-1],
+                        }
+                    )
         return packages
 
     def _parse_cargo_toml(self, content: str) -> List[Dict]:
         try:
             import tomllib
+
             data = tomllib.loads(content)
         except Exception:
             return []
@@ -322,15 +355,18 @@ class ManifestDetector:
     def _parse_cargo_lock(self, content: str) -> List[Dict]:
         try:
             import tomllib
+
             data = tomllib.loads(content)
         except Exception:
             return []
         packages = []
         for pkg in data.get("package", []):
-            packages.append({
-                "name": pkg.get("name"),
-                "version": pkg.get("version", "*"),
-            })
+            packages.append(
+                {
+                    "name": pkg.get("name"),
+                    "version": pkg.get("version", "*"),
+                }
+            )
         return packages
 
     def _parse_go_mod(self, content: str) -> List[Dict]:
@@ -339,15 +375,18 @@ class ManifestDetector:
             line = line.strip()
             parts = line.split()
             if len(parts) >= 2 and "." in parts[0]:
-                packages.append({
-                    "name": parts[0],
-                    "version": parts[1] if len(parts) > 1 else "*",
-                })
+                packages.append(
+                    {
+                        "name": parts[0],
+                        "version": parts[1] if len(parts) > 1 else "*",
+                    }
+                )
         return packages
 
     def _parse_conda_env(self, content: str) -> List[Dict]:
         try:
             import yaml
+
             data = yaml.safe_load(content)
         except Exception:
             return []
@@ -357,7 +396,9 @@ class ManifestDetector:
                 for op in ["==", ">=", "<=", ">", "<", "="]:
                     if op in dep:
                         n, v = dep.split(op, 1)
-                        packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                        packages.append(
+                            {"name": n.strip(), "version": f"{op}{v.strip()}"}
+                        )
                         break
                 else:
                     packages.append({"name": dep, "version": "*"})
@@ -367,7 +408,9 @@ class ManifestDetector:
                         for op in ["==", ">=", "<=", ">", "<"]:
                             if op in pip_dep:
                                 n, v = pip_dep.split(op, 1)
-                                packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                                packages.append(
+                                    {"name": n.strip(), "version": f"{op}{v.strip()}"}
+                                )
                                 break
                         else:
                             packages.append({"name": pip_dep, "version": "*"})
@@ -389,6 +432,7 @@ class ManifestDetector:
     def _parse_pnpm_lock(self, content: str) -> List[Dict]:
         try:
             import yaml
+
             data = yaml.safe_load(content)
         except Exception:
             return []
@@ -396,16 +440,21 @@ class ManifestDetector:
         for name, info in data.get("packages", {}).items():
             if name == ".":
                 continue
-            short_name = name.lstrip("@npm/").split("/")[-1] if name.startswith("/") else name
-            packages.append({
-                "name": short_name,
-                "version": info.get("version", "*"),
-            })
+            short_name = (
+                name.lstrip("@npm/").split("/")[-1] if name.startswith("/") else name
+            )
+            packages.append(
+                {
+                    "name": short_name,
+                    "version": info.get("version", "*"),
+                }
+            )
         return packages
 
     def _parse_pubspec(self, content: str) -> List[Dict]:
         try:
             import yaml
+
             data = yaml.safe_load(content)
         except Exception:
             return []
