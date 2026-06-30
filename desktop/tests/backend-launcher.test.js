@@ -129,7 +129,6 @@ describe('spawnBackend', () => {
       process.execPath,
       [serverScript],
       port,
-      false,
       tmpDir
     )
     assert.ok(result.process)
@@ -144,7 +143,6 @@ describe('spawnBackend', () => {
       process.execPath,
       [startupScript],
       port,
-      false,
       tmpDir
     )
     assert.strictEqual(result.crashed(), false)
@@ -158,7 +156,6 @@ describe('spawnBackend', () => {
         process.execPath,
         [exitScript],
         port,
-        false,
         tmpDir
       ),
       /Backend exited unexpectedly/
@@ -171,7 +168,6 @@ describe('spawnBackend', () => {
         '/nonexistent/binary',
         [],
         8202,
-        true,
         __dirname
       ),
       /ENOENT/

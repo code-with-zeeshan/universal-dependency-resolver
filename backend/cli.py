@@ -39,14 +39,17 @@ console = Console()
 err_console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
-VERSION = (
-    (Path(__file__).resolve().parent.parent / "pyproject.toml")
-    .read_text()
-    .split('version = "')[1]
-    .split('"')[0]
-    if (Path(__file__).resolve().parent.parent / "pyproject.toml").is_file()
-    else "unknown"
-)
+try:
+    from importlib.metadata import version as _importlib_version
+
+    VERSION = _importlib_version("ud-resolver")
+except (ImportError, Exception):
+    _ver_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    VERSION = (
+        _ver_path.read_text().split('version = "')[1].split('"')[0]
+        if _ver_path.is_file()
+        else "unknown"
+    )
 
 
 def _parse_package_spec(spec: str, default_ecosystem: str = "pypi") -> Tuple[str, str]:
@@ -714,6 +717,31 @@ def cmd_resolve(args):
         if not system_info:
             system_info = resolver._get_default_system_info()
 
+        # Apply CUDA/device overrides (same logic as lock)
+        if args.cuda is not None:
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["cuda"] = args.cuda
+        if args.device is not None:
+            if args.device == "cpu":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = False
+                system_info["gpu"]["cuda"] = ""
+            elif args.device == "mps":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["cuda"] = ""
+                system_info["gpu"]["mps"] = True
+            elif args.device == "cuda":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = True
+                if args.cuda is None and not system_info["gpu"].get("cuda"):
+                    system_info["gpu"]["cuda"] = "12.1"
+
         resolver_inputs = []
         package_details = {}
 
@@ -772,11 +800,13 @@ def cmd_resolve(args):
             json.dump(resolved, sys.stdout, indent=2, default=str)
             print()
         else:
-            table = _build_resolved_table(resolved)
-            if table:
-                console.print(table)
-            else:
+            resolved_pkgs = resolved.get("resolved_packages", {})
+            if not resolved_pkgs:
                 console.print("[yellow]No packages resolved.[/yellow]")
+            else:
+                table = _build_resolved_table(resolved)
+                if table:
+                    console.print(table)
 
             # Show vulnerabilities inline
             vulns_found = []
@@ -785,27 +815,33 @@ def cmd_resolve(args):
                     if v.get("id"):
                         vulns_found.append((pkg_name, v))
             if vulns_found:
+                critical_high = [
+                    v
+                    for v in vulns_found
+                    if _extract_severity(v[1]) in ("CRITICAL", "HIGH")
+                ]
+                others = len(vulns_found) - len(critical_high)
                 console.print(
-                    f"\n[red]⚠ {len(vulns_found)} known vulnerabilities[/red]"
+                    f"\n[red]⚠ {len(vulns_found)} known vulnerabilities"
+                    f" ({len(critical_high)} CRITICAL/HIGH, {others} LOW/MEDIUM/UNKNOWN)[/red]"
                 )
-                for pname, v in vulns_found[:10]:
+                for pname, v in critical_high[:10]:
                     sev = _extract_severity(v)
-                    sev_tag = (
-                        f"[red]{sev}[/red]"
-                        if sev in ("CRITICAL", "HIGH")
-                        else f"[yellow]{sev}[/yellow]"
-                    )
                     console.print(
-                        f"  {pname}: {v.get('id', '?')} ({sev_tag}) — {v.get('summary', '')[:80]}"
+                        f"  {pname}: {v.get('id', '?')} ([red]{sev}[/red]) — {v.get('summary', '')[:80]}"
                     )
-                if len(vulns_found) > 10:
-                    console.print(f"  ... and {len(vulns_found) - 10} more")
+                if len(critical_high) > 10:
+                    console.print(
+                        f"  ... and {len(critical_high) - 10} more critical/high"
+                    )
 
             warnings = resolved.get("warnings", [])
             for w in warnings:
                 console.print(f"  [yellow]⚠[/yellow] {w}")
 
         await aggregator.close()
+        if not resolved.get("resolved_packages"):
+            return 1
         return 0
 
     try:
@@ -957,9 +993,15 @@ def cmd_lock(args):
             )
             return 1
 
-        # Apply --manifest filter
+        # Apply --manifest filter (match filename or relative path)
         if args.manifest:
-            manifests = [m for m in manifests if m["filename"] == args.manifest]
+            target = args.manifest.replace("\\", "/")
+            manifests = [
+                m
+                for m in manifests
+                if m["filename"] == target
+                or m["path"].replace("\\", "/").endswith("/" + target)
+            ]
             if not manifests:
                 console.print(
                     f"[red]Manifest '{args.manifest}' not found in {directory}[/red]"
@@ -970,14 +1012,15 @@ def cmd_lock(args):
         if args.interactive:
             manifests = _select_manifests_interactive(manifests)
 
-        manifest_table = Table(
-            title=f"Selected {len(manifests)} manifest(s)", box=box.SIMPLE
-        )
-        manifest_table.add_column("Ecosystem", style="cyan")
-        manifest_table.add_column("Filename")
-        for m in manifests:
-            manifest_table.add_row(m["ecosystem"], m["filename"])
-        console.print(manifest_table)
+        if not getattr(args, "json", False):
+            manifest_table = Table(
+                title=f"Selected {len(manifests)} manifest(s)", box=box.SIMPLE
+            )
+            manifest_table.add_column("Ecosystem", style="cyan")
+            manifest_table.add_column("Filename")
+            for m in manifests:
+                manifest_table.add_row(m["ecosystem"], m["filename"])
+            console.print(manifest_table)
 
         # 2. Parse manifests
         packages = detector.normalize(detector.parse_all(manifests))
@@ -985,16 +1028,17 @@ def cmd_lock(args):
             console.print("[red]No packages found in manifests[/red]")
             return 1
 
-        pkg_table = Table(title=f"Found {len(packages)} package(s)", box=box.SIMPLE)
-        pkg_table.add_column("Ecosystem", style="cyan")
-        pkg_table.add_column("Package")
-        pkg_table.add_column("Constraint")
-        pkg_table.add_column("Source")
-        for pkg in packages:
-            pkg_table.add_row(
-                pkg["ecosystem"], pkg["name"], pkg["constraint"], pkg["source"]
-            )
-        console.print(pkg_table)
+        if not getattr(args, "json", False):
+            pkg_table = Table(title=f"Found {len(packages)} package(s)", box=box.SIMPLE)
+            pkg_table.add_column("Ecosystem", style="cyan")
+            pkg_table.add_column("Package")
+            pkg_table.add_column("Constraint")
+            pkg_table.add_column("Source")
+            for pkg in packages:
+                pkg_table.add_row(
+                    pkg["ecosystem"], pkg["name"], pkg["constraint"], pkg["source"]
+                )
+            console.print(pkg_table)
 
         # 3. Fetch metadata
         seen = set()
@@ -1828,6 +1872,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Interactive mode for resolving conflicts manually",
     )
+    resolve_p.add_argument(
+        "--cuda",
+        help="Target CUDA version (e.g. 12.1) — overrides auto-detection for GPU packages",
+    )
+    resolve_p.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "mps"],
+        default=None,
+        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+    )
 
     info_p = sub.add_parser(
         "info", help="Show detailed system information and project dependencies"
@@ -1995,6 +2049,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan_p.add_argument("--export", help="Export to a specific format")
     scan_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1)")
+    scan_p.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "mps"],
+        default=None,
+        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+    )
     scan_p.add_argument(
         "--dry-run",
         action="store_true",

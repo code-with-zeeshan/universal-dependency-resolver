@@ -6,7 +6,7 @@ import asyncio
 import logging
 from packaging import version
 
-from backend.core.data_aggregator import DataAggregator
+from backend.core.data_aggregator import DataAggregator, Ecosystem
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
 from backend.database.compatibility_db import CompatibilityDB
@@ -296,12 +296,14 @@ async def get_package_versions(
     try:
         logger.info(f"Getting versions for: {ecosystem}/{package_name}")
 
-        if ecosystem not in aggregator.sources:
+        try:
+            eco_enum = Ecosystem(ecosystem)
+            source = aggregator._get_client(eco_enum)
+        except (ValueError, KeyError):
             raise HTTPException(
                 status_code=400, detail=f"Unknown ecosystem: {ecosystem}"
             )
 
-        source = aggregator.sources[ecosystem]
         versions = await source.get_versions(package_name)
 
         # Parse system spec if provided
@@ -385,12 +387,13 @@ async def get_package_dependencies(
             f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}"
         )
 
-        if ecosystem not in aggregator.sources:
+        try:
+            eco_enum = Ecosystem(ecosystem)
+            source = aggregator._get_client(eco_enum)
+        except (ValueError, KeyError):
             raise HTTPException(
                 status_code=400, detail=f"Unknown ecosystem: {ecosystem}"
             )
-
-        source = aggregator.sources[ecosystem]
 
         if recursive:
             logger.debug(f"Getting recursive dependencies with max_depth={max_depth}")

@@ -36,6 +36,7 @@ MANIFEST_PATTERNS: List[Tuple[str, str, str]] = [
     ("composer.json", "packagist", "composer_json"),
     ("pnpm-lock.yaml", "npm", "pnpm_lock"),
     ("pubspec.yaml", "pub", "pubspec"),
+    ("*-requirements.txt", "pypi", "requirements"),
 ]
 
 
@@ -48,12 +49,12 @@ class ManifestDetector:
     def detect(self) -> List[Dict]:
         """Scan directory recursively for known manifests. Returns list of manifest info dicts."""
         found = []
-        seen = set()
+        seen_paths = set()
         for fname, raw_ecosystem, parser_key in MANIFEST_PATTERNS:
             ecosystem = self.ECOSYSTEM_ALIASES.get(raw_ecosystem, raw_ecosystem)
             for fp in self.directory.rglob(fname):
-                if fp.is_file() and fname not in seen:
-                    seen.add(fname)
+                if fp.is_file() and str(fp) not in seen_paths:
+                    seen_paths.add(str(fp))
                     found.append(
                         {
                             "path": str(fp),

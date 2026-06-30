@@ -408,6 +408,19 @@ async function getBaseUrl() {
 }
 getBaseUrl()
 
+if (window.udrDesktop && window.udrDesktop.onBackendReady) {
+  window.udrDesktop.onBackendReady(async () => {
+    if (window.udrDesktop) {
+      try {
+        BASE = await window.udrDesktop.getBackendUrl() || BASE
+      } catch(e) {}
+    }
+    setStatus(true, 'Backend ready')
+    loadSystemInfo()
+    loadExportFormats()
+  })
+}
+
 function setStatus(ok, msg) {
   document.getElementById('statusDot').className = 'status-dot ' + (ok ? 'green' : 'red')
   document.getElementById('statusText').textContent = msg

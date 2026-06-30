@@ -22,7 +22,7 @@ function getEnv(port, extraEnv = {}) {
   return {
     ...extraEnv,
     UDR_PORT: String(port),
-    UDR_HOST: '127.0.0.1',
+    UDR_HOST: process.env.UDR_HOST || '127.0.0.1',
     UDR_DESKTOP: 'true',
     UDR_STANDALONE: 'true',
     ENABLE_AUTH: 'true',
@@ -65,17 +65,17 @@ function waitForServer(url, maxRetries = 30, onCrashed = null) {
   })
 }
 
-function spawnBackend(cmd, args, port, isBinary, cwd, envOverride) {
+function spawnBackend(cmd, args, port, cwd, envOverride) {
   return new Promise((resolve, reject) => {
     let crashed = false
-
+    const env = envOverride || getEnv(port)
     const allArgs = args.length > 0
-      ? [...args, '--host', '127.0.0.1', '--port', String(port)]
+      ? [...args, '--host', env.UDR_HOST || '127.0.0.1', '--port', String(port)]
       : [String(port)]
 
     const proc = spawn(cmd, allArgs, {
       cwd,
-      env: envOverride || getEnv(port),
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
