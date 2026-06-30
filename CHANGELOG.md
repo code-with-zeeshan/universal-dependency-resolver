@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-06-30
+
+### Fixed
+
+- **scan crash (P0)**: Added missing `--device`/`--cuda`/`--report` args to scan parser
+- **lock --json stdout pollution (P1)**: Rich tables suppressed when `--json` is used
+- **Nested manifest detection (P2)**: Path-based seen set instead of filename-based
+- **resolve --device (P2)**: Added `--device`/`--cuda` to resolve command
+- **Exit code on failure (P2)**: Exit code 1 returned when resolution fails
+- **--manifest relative paths (P2)**: Matches subdirectory manifests via `endswith`
+- **API ecosystem validation (P2)**: Fixed 400 error on versions/dependencies endpoints
+- **udr --version from wheel (P3)**: `importlib.metadata` fallback
+- **CVE noise reduction (P3)**: Only CRITICAL/HIGH shown inline
+- ***-requirements.txt glob (P3)**: Pattern added to manifest detection
+- **Type check**: Fixed `ErrorCategory | None` unwrap in conflict_resolver.py
+- **Desktop bugs (8)**: backendDir path, Python fallback, env passthrough, restart lock, window state atomicity, health check URL, configurable host, onBackendReady IPC
+
+### Added
+
+- `scripts/bump_version.py` for automated version bumps
+- Tag-version safety nets in publish and desktop CI workflows
+- TEST_REPORT.md documenting 48/48 tests passing (100%)
+
 ## [1.2.4] - 2026-06-29
 
 ### Added
