@@ -1,4 +1,4 @@
-name: Build Desktop Electron App
+name: Desktop Build
 
 on:
   release:

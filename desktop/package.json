@@ -95,7 +95,6 @@
     "dmg": {
       "title": "UDR ${version}",
       "icon": "buildResources/icon.icns",
-      "background": "buildResources/background.png",
       "contents": [
         {
           "x": 448,
