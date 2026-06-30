@@ -2,7 +2,7 @@
 import asyncio
 from typing import Dict, List, Optional, Any
 import logging
-from backend.core.utils import parse_version, run_async
+from backend.core.utils import parse_version, parse_version_key, run_async
 import re
 from backend.core.cache import cached
 from enum import Enum
@@ -75,9 +75,6 @@ class NuGetClient(BaseDataSourceClient):
     async def __aenter__(self):
         await self._initialize_service_endpoints()
         return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
 
     async def _initialize_service_endpoints(self):
         if self._service_endpoints:
@@ -230,7 +227,7 @@ class NuGetClient(BaseDataSourceClient):
                                     latest_data = entry_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 
@@ -393,7 +390,7 @@ class NuGetClient(BaseDataSourceClient):
                 )
 
         version_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 
@@ -593,7 +590,7 @@ class NuGetClient(BaseDataSourceClient):
             sys_version = self._extract_framework_version(system_framework)
 
             if pkg_version is not None and sys_version is not None:
-                return sys_version >= pkg_version  # type: ignore[operator]
+                return sys_version >= pkg_version
 
         return False
 

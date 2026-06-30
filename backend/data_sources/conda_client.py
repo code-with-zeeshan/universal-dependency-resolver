@@ -8,7 +8,12 @@ import re
 import yaml  # type: ignore[import-untyped]
 import tarfile
 import io
-from ..core.utils import normalize_package_name, parse_version, run_async
+from ..core.utils import (
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    run_async,
+)
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -48,9 +53,8 @@ class CondaClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def get_package_info_async(self, package_name: str) -> Dict:
+    async def get_package_info_async(self, package_name: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
-
         try:
             package_info = None
             for channel_name, channel_url in self.channels.items():
@@ -61,7 +65,7 @@ class CondaClient(BaseDataSourceClient):
                     break
 
             if not package_info:
-                return None  # type: ignore[return-value]
+                return None
 
             processed_info = await self._process_package_data_enhanced(package_info)
 
@@ -69,9 +73,9 @@ class CondaClient(BaseDataSourceClient):
 
         except Exception as e:
             logger.error(f"Error fetching Conda package {package_name}: {e}")
-            return None  # type: ignore[return-value]
+            return None
 
-    def get_package_info(self, package_name: str) -> Dict:
+    def get_package_info(self, package_name: str) -> Optional[Dict]:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
@@ -108,7 +112,7 @@ class CondaClient(BaseDataSourceClient):
             # Derive latest from files list
             all_vers = sorted(
                 set(f.get("version") for f in files if f.get("version")),
-                key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                key=parse_version_key,
                 reverse=True,
             )
             latest_version = all_vers[0] if all_vers else None
@@ -171,7 +175,7 @@ class CondaClient(BaseDataSourceClient):
             versions_info.append(version_data)
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 
@@ -405,7 +409,7 @@ class CondaClient(BaseDataSourceClient):
         if match:
             return match.group(1), "*"
 
-        return dep_string, "*"  # type: ignore[return-value]
+        return dep_string, "*"
 
     def _extract_system_requirements(self, data: Dict, files: List[Dict]) -> Dict:
         requirements: Dict[str, Any] = {}

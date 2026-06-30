@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 import logging
 from urllib.parse import quote
 from backend.core.cache import cached
-from backend.core.utils import normalize_package_name, parse_version, run_async
+from backend.core.utils import normalize_package_name, parse_version_key, run_async
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
@@ -165,7 +165,7 @@ class CocoaPodsClient(BaseDataSourceClient):
             )
 
         processed.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(str(x["version"])),
             reverse=True,
         )
 

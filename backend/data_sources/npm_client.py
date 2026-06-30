@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Any, Union
 import logging
 from datetime import datetime
 from urllib.parse import quote
-from ..core.utils import normalize_package_name, parse_version
+from ..core.utils import normalize_package_name, parse_version, parse_version_key
 import re
 from enum import Enum
 from dataclasses import dataclass
@@ -290,7 +290,7 @@ class NPMClient(BaseDataSourceClient):
 
         return max(
             matching_versions,
-            key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=parse_version_key,
         )
 
     async def get_dependencies(
@@ -744,7 +744,7 @@ class NPMClient(BaseDataSourceClient):
             )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 

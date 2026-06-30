@@ -1,7 +1,12 @@
 # pypi_client.py
 from typing import Dict, List, Optional, Any, Set
 from packaging.requirements import Requirement
-from ..core.utils import normalize_package_name, parse_version, run_async
+from ..core.utils import (
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    run_async,
+)
 from datetime import datetime
 import logging
 import re
@@ -83,7 +88,7 @@ class PyPIClient(BaseDataSourceClient):
                 # Sort using parse_version
                 latest_version = max(
                     stable_versions,
-                    key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                    key=parse_version_key,
                 )
 
         # Process versions with more detail
@@ -834,7 +839,7 @@ class PyPIClient(BaseDataSourceClient):
 
         # Sort by version number (newest first)
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 

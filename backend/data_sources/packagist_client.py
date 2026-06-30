@@ -2,7 +2,12 @@
 import asyncio
 from typing import Dict, List, Optional, Any
 import logging
-from backend.core.utils import normalize_package_name, parse_version, run_async
+from backend.core.utils import (
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    run_async,
+)
 import re
 from backend.core.cache import cached
 from enum import Enum
@@ -135,7 +140,7 @@ class PackagistClient(BaseDataSourceClient):
                         latest_data = version_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 

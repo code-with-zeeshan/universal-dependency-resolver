@@ -7,7 +7,7 @@ from io import BytesIO
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
-    parse_version,
+    parse_version_key,
     run_async,
 )
 from backend.settings import (
@@ -158,9 +158,7 @@ class APTClient(BaseDataSourceClient):
                     )
 
         versions.sort(
-            key=lambda x: (  # type: ignore[arg-type]
-                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")  # type: ignore[return-value]
-            ),
+            key=lambda x: parse_version_key(x["version"].split("-")[0]),
             reverse=True,
         )
 
@@ -299,11 +297,11 @@ class APTClient(BaseDataSourceClient):
                     or_deps.append({"name": dep_name, "version_spec": version_spec})
 
             if len(or_deps) == 1:
-                dependencies.append(or_deps[0])  # type: ignore[arg-type]
+                dependencies.append(or_deps[0])
             elif or_deps:
-                dependencies.append({"or_dependencies": or_deps})  # type: ignore[arg-type]
+                dependencies.append({"or_dependencies": or_deps})
 
-        return dependencies  # type: ignore[return-value]
+        return dependencies
 
     def _extract_system_requirements(self, package_data: Dict) -> Dict[str, Any]:
         requirements = {

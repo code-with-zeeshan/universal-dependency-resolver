@@ -49,15 +49,15 @@ try:
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
-    _trace = None  # type: ignore
-    _Resource = None  # type: ignore
-    _TracerProvider = None  # type: ignore
-    _sampling = None  # type: ignore
-    _BatchSpanProcessor = None  # type: ignore
-    _SimpleSpanProcessor = None  # type: ignore
-    _OTLPHttpExporter = None  # type: ignore
-    _FastAPIInstrumentor = None  # type: ignore
-    _HTTPXClientInstrumentor = None  # type: ignore
+    _trace = None  # type: ignore[no-redef,assignment]
+    _Resource = None  # type: ignore[no-redef,misc,assignment]
+    _TracerProvider = None  # type: ignore[no-redef,misc,assignment]
+    _sampling = None  # type: ignore[no-redef,assignment]
+    _BatchSpanProcessor = None  # type: ignore[no-redef,misc,assignment]
+    _SimpleSpanProcessor = None  # type: ignore[no-redef,misc,assignment]
+    _OTLPHttpExporter = None  # type: ignore[no-redef,misc,assignment]
+    _FastAPIInstrumentor = None  # type: ignore[no-redef,misc,assignment]
+    _HTTPXClientInstrumentor = None  # type: ignore[no-redef,misc,assignment]
 
 try:
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (

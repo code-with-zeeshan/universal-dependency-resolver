@@ -5,7 +5,12 @@ import re
 import tarfile
 from io import BytesIO
 from backend.core.cache import cached
-from backend.core.utils import normalize_package_name, parse_version, run_async
+from backend.core.utils import (
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    run_async,
+)
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
@@ -161,9 +166,7 @@ class APKClient(BaseDataSourceClient):
                         )
 
         versions.sort(
-            key=lambda x: (  # type: ignore[arg-type]
-                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")  # type: ignore[return-value]
-            ),
+            key=lambda x: parse_version_key(x["version"].split("-")[0]),
             reverse=True,
         )
 

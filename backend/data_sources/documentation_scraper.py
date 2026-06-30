@@ -7,7 +7,12 @@ from ..settings import CACHE_TTL, USER_AGENTS
 import logging
 from urllib.parse import quote
 from datetime import datetime
-from ..core.utils import normalize_package_name, parse_version, compare_versions
+from ..core.utils import (
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    compare_versions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +395,7 @@ class DocumentationScraper:
                 # Sort versions properly
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                    key=parse_version_key,
                 )
 
         return requirements
@@ -463,7 +468,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                    key=parse_version_key,
                     reverse=True,
                 )
 
@@ -565,7 +570,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                    key=parse_version_key,
                     reverse=True,
                 )
 
@@ -659,7 +664,7 @@ class DocumentationScraper:
 
             requirements["python_versions"] = sorted(
                 list(set(valid_versions)),
-                key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                key=parse_version_key,
             )
 
         # Clean up dependencies
@@ -739,7 +744,7 @@ class DocumentationScraper:
             if key in requirements:
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                    key=parse_version_key,
                     reverse=True,
                 )
 
@@ -892,7 +897,7 @@ class DocumentationScraper:
         sorted_matrix = {}
         sorted_versions = sorted(
             matrix.keys(),
-            key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=parse_version_key,
             reverse=True,
         )
         for v in sorted_versions:

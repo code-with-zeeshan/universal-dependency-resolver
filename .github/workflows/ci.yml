@@ -70,7 +70,7 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           PYTHONPATH: .
         run: |
-          python -m pytest tests/unit/ -v --tb=long -k "data_source" --timeout=120 || true
+          python -m pytest tests/unit/ -v --tb=long -k "data_source" --cov=backend.data_sources --cov-append --cov-report=term-missing || true
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

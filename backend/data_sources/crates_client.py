@@ -1,6 +1,5 @@
 # crates_client.py
 from typing import List, Optional, Dict, Any, Set
-from packaging import version
 from datetime import datetime
 from fastapi import HTTPException
 import re
@@ -8,7 +7,7 @@ import asyncio
 from urllib.parse import quote
 import logging
 from enum import Enum
-from ..core.utils import normalize_package_name, parse_version
+from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
     CACHE_TTL_SHORT,
@@ -254,7 +253,7 @@ class CratesClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                key=lambda x: parse_version_key(x["version"]),
                 reverse=True,
             )
 

@@ -6,7 +6,7 @@ import re
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
-    parse_version,
+    parse_version_key,
     run_async,
 )
 from backend.settings import (
@@ -134,9 +134,7 @@ class GoModulesClient(BaseDataSourceClient):
             versions.append(ver_info)
 
         versions.sort(
-            key=lambda x: (  # type: ignore[arg-type]
-                parse_version(x["version"].lstrip("v")) or parse_version("0.0.0")  # type: ignore[return-value]
-            ),
+            key=lambda x: parse_version_key(x["version"].lstrip("v")),
             reverse=True,
         )
 

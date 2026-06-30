@@ -1,5 +1,8 @@
-import pytest
+import sys
 from unittest.mock import patch, MagicMock
+
+import pytest
+
 from backend.core.system_scanner import (
     SystemScanner,
     OSType,
@@ -71,26 +74,35 @@ class TestSystemScanner:
         assert "architecture" in os_info
         assert "os_type" in os_info
 
-    @patch("backend.core.system_scanner.cpuinfo", create=True)
-    @patch("backend.core.system_scanner.HAS_CPUINFO", True)
+    @patch("backend.core.system_scanner.HAS_PSUTIL", True)
+    @patch("backend.core.system_scanner.psutil.cpu_count")
+    @patch("backend.core.system_scanner.psutil.cpu_freq")
     def test_detect_cpu_info_with_cpuinfo(
-        self, mock_cpuinfo_module, scanner
+        self, mock_cpu_freq, mock_cpu_count, scanner
     ):
-        mock_cpuinfo_module.get_cpu_info.return_value = {
+        mock_cpu_count.side_effect = [8, 8]
+        mock_freq = MagicMock()
+        mock_freq.max = 3.5
+        mock_freq.min = 0.8
+        mock_freq.current = 2.1
+        mock_cpu_freq.return_value = mock_freq
+
+        mock_cpuinfo = MagicMock()
+        mock_cpuinfo.get_cpu_info.return_value = {
             "brand_raw": "Intel Core i7",
             "arch": "x86_64",
             "bits": 64,
             "count": 8,
         }
-        cpu_info = scanner.detect_cpu_info()
+        with patch.dict("sys.modules", {"cpuinfo": mock_cpuinfo}):
+            cpu_info = scanner.detect_cpu_info()
         assert cpu_info["brand"] == "Intel Core i7"
         assert cpu_info["arch"] == "x86_64"
         assert cpu_info["bits"] == 64
 
-    @patch("backend.core.system_scanner.HAS_CPUINFO", False)
     @patch("backend.core.system_scanner.HAS_PSUTIL", True)
-    @patch("psutil.cpu_count")
-    @patch("psutil.cpu_freq")
+    @patch("backend.core.system_scanner.psutil.cpu_count")
+    @patch("backend.core.system_scanner.psutil.cpu_freq")
     def test_detect_cpu_info_with_psutil(
         self, mock_cpu_freq, mock_cpu_count, scanner
     ):
@@ -248,7 +260,7 @@ class TestSystemScanner:
     def test_fallback_values(self, scanner):
         with patch("backend.core.system_scanner.HAS_PSUTIL", False), \
              patch("backend.core.system_scanner.HAS_GPUTIL", False), \
-             patch("backend.core.system_scanner.HAS_CPUINFO", False), \
+             patch.dict("sys.modules", {"cpuinfo": None}), \
              patch("platform.system", return_value="UnknownOS"):
             cpu_info = scanner.detect_cpu_info()
             memory_info = scanner.detect_memory_info()

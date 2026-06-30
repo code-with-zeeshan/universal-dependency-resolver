@@ -3,6 +3,7 @@ import asyncio
 import logging
 import re
 from packaging import version
+from packaging.version import Version
 from typing import Dict, List, Optional, Any, Coroutine
 
 # Configure logging
@@ -29,6 +30,13 @@ def parse_version(version_str: str) -> Optional[version.Version]:
     except Exception as e:
         logger.warning(f"Failed to parse version {version_str}: {e}")
         return None
+
+
+def parse_version_key(version_str: str) -> Version:
+    """Parse a version string for use as a sort key.
+    Returns ``Version("0.0.0")`` for unparseable versions (never None)."""
+    parsed = parse_version(version_str)
+    return parsed if parsed is not None else Version("0.0.0")
 
 
 def is_compatible_version(version_str: str, spec: str) -> bool:

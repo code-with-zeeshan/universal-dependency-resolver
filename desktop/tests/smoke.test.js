@@ -160,7 +160,8 @@ describe('Desktop smoke tests', () => {
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 
-      const healthUrl = `http://127.0.0.1:${port}/api/v1/health`
+      const baseUrl = `http://127.0.0.1:${port}`
+      const healthUrl = `${baseUrl}/api/v1/health`
 
       try {
         await launcher.waitForServer(healthUrl, 25)
@@ -179,6 +180,128 @@ describe('Desktop smoke tests', () => {
           parsed.status || parsed.success || parsed.healthy !== undefined,
           'Health response should contain a status field'
         )
+      } finally {
+        proc.kill('SIGTERM')
+        await new Promise(resolve => {
+          const timeout = setTimeout(() => resolve(), 2000)
+          proc.on('exit', () => {
+            clearTimeout(timeout)
+            resolve()
+          })
+        })
+      }
+    })
+  })
+
+  describe('API dependency resolution endpoints', () => {
+    it('ecosystems endpoint returns supported ecosystems', { timeout: 30000 }, async () => {
+      const appImage = findAppImage()
+      if (!appImage) {
+        console.log('No AppImage found, skipping ecosystems test')
+        return
+      }
+
+      const port = await launcher.findFreePort()
+      let binPath
+      let binArgs
+
+      if (fs.existsSync(BACKEND_BIN)) {
+        binPath = BACKEND_BIN
+        binArgs = [String(port)]
+      } else {
+        const appImagePath = path.join(RELEASE_DIR, appImage)
+        try {
+          await extractAppImage(appImagePath)
+          binPath = BACKEND_BIN
+          binArgs = [String(port)]
+        } catch {
+          console.log('Could not extract AppImage, skipping ecosystems test')
+          return
+        }
+      }
+
+      const proc = spawn(binPath, binArgs, {
+        env: { ...process.env, ...launcher.getEnv(port) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      const baseUrl = `http://127.0.0.1:${port}`
+
+      try {
+        await launcher.waitForServer(`${baseUrl}/api/v1/health`, 25)
+
+        const body = await new Promise((resolve, reject) => {
+          http.get(`${baseUrl}/api/v1/ecosystems`, res => {
+            let data = ''
+            res.on('data', chunk => { data += chunk })
+            res.on('end', () => resolve(data))
+          }).on('error', reject)
+        })
+
+        const parsed = JSON.parse(body)
+        assert.ok(parsed, 'Ecosystems response should be valid JSON')
+        assert.ok(Array.isArray(parsed.ecosystems || parsed), 'Should return a list of ecosystems')
+        assert.ok((parsed.ecosystems || parsed).length >= 10, 'Should support at least 10 ecosystems')
+      } finally {
+        proc.kill('SIGTERM')
+        await new Promise(resolve => {
+          const timeout = setTimeout(() => resolve(), 2000)
+          proc.on('exit', () => {
+            clearTimeout(timeout)
+            resolve()
+          })
+        })
+      }
+    })
+
+    it('package info endpoint returns structured data', { timeout: 30000 }, async () => {
+      const appImage = findAppImage()
+      if (!appImage) {
+        console.log('No AppImage found, skipping package info test')
+        return
+      }
+
+      const port = await launcher.findFreePort()
+      let binPath
+      let binArgs
+
+      if (fs.existsSync(BACKEND_BIN)) {
+        binPath = BACKEND_BIN
+        binArgs = [String(port)]
+      } else {
+        const appImagePath = path.join(RELEASE_DIR, appImage)
+        try {
+          await extractAppImage(appImagePath)
+          binPath = BACKEND_BIN
+          binArgs = [String(port)]
+        } catch {
+          console.log('Could not extract AppImage, skipping package info test')
+          return
+        }
+      }
+
+      const proc = spawn(binPath, binArgs, {
+        env: { ...process.env, ...launcher.getEnv(port) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      const baseUrl = `http://127.0.0.1:${port}`
+
+      try {
+        await launcher.waitForServer(`${baseUrl}/api/v1/health`, 25)
+
+        const body = await new Promise((resolve, reject) => {
+          http.get(`${baseUrl}/api/v1/packages/pypi/requests`, res => {
+            let data = ''
+            res.on('data', chunk => { data += chunk })
+            res.on('end', () => resolve(data))
+          }).on('error', reject)
+        })
+
+        const parsed = JSON.parse(body)
+        assert.ok(parsed, 'Package info response should be valid JSON')
+        assert.ok(parsed.name || parsed.package_name, 'Should contain a package name')
+        assert.ok(parsed.version || parsed.latest_version, 'Should contain version info')
       } finally {
         proc.kill('SIGTERM')
         await new Promise(resolve => {

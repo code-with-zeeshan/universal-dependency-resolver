@@ -19,10 +19,8 @@ jobs:
         include:
           - os: ubuntu-22.04
             arch: x64
-          # linux-arm64 skipped: electron-builder fpm/app-builder binaries are x86-only,
-          # incompatible with native ARM64 runners
-          #- os: ubuntu-24.04-arm
-          #  arch: arm64
+          - os: ubuntu-22.04
+            arch: arm64
           - os: windows-latest
             arch: x64
           - os: windows-2025-arm
@@ -38,12 +36,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU for ARM64 cross-build
+        uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64' && runner.os == 'Linux'
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Cache npm dependencies
+        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
         uses: actions/cache@v4
         with:
           path: desktop/node_modules
@@ -52,10 +55,12 @@ jobs:
             desktop-npm-
 
       - name: Install desktop dependencies
+        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
         run: npm install
         working-directory: desktop
 
       - name: Set up Python
+        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -76,6 +81,7 @@ jobs:
           fi
 
       - name: Install UPX compressor
+        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
@@ -87,51 +93,94 @@ jobs:
           fi
           which upx && upx --version | head -1 || echo "UPX not available"
 
-      - name: Install backend dependencies and build standalone binary
+      - name: Build backend binary (native or ARM64 Docker)
         shell: bash
         run: |
-          pip install pyinstaller
-          pip install -e ".[system]"
-          Z3_LIB=$(python3 << 'PYEOF'
-          import z3, os, sys, glob
-          ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
-          ext = ext_map.get(sys.platform, '.so')
-          lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
-          if not os.path.isdir(lib_dir):
-              lib_dir = os.path.join(os.path.dirname(z3.__file__))
-          matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
-          print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
-          PYEOF
-          )
-          UPX_FLAG=""
-          which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
-          pyinstaller --onedir --noconsole --noconfirm \
-            --name udr-backend \
-            $UPX_FLAG \
-            --add-binary "$Z3_LIB:z3/lib/" \
-            --distpath backend/dist \
-            --workpath ${{ runner.temp }}/pyibuild \
-            backend/run.py
-
-      - name: Build Electron app
-        shell: bash
-        run: |
-          ARCH_FLAG=""
-          if [[ "${{ runner.arch }}" == "ARM64" || "${{ matrix.arch }}" == "arm64" ]]; then
-            ARCH_FLAG="--arm64"
-          fi
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            npx electron-builder --mac $ARCH_FLAG --publish=never
-          elif [[ "$RUNNER_OS" == "Windows" ]]; then
-            npx electron-builder --win $ARCH_FLAG --publish=never
+          if [[ "${{ matrix.arch }}" == "arm64" && "${{ runner.os }}" == "Linux" ]]; then
+            # Build ARM64 binary via QEMU + Docker
+            docker run --rm --platform linux/arm64 \
+              -v ${{ github.workspace }}:/workspace \
+              -w /workspace \
+              -e CI=true \
+              arm64v8/ubuntu:22.04 \
+              bash -c '
+                apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv nodejs npm upx 2>/dev/null
+                python3 -m venv /tmp/venv
+                source /tmp/venv/bin/activate
+                pip install pyinstaller
+                pip install -e ".[system]"
+                Z3_LIB=$(python3 << "PYEOF"
+              import z3, os, sys, glob
+              ext_map = {"win32": ".dll", "cygwin": ".dll", "darwin": ".dylib"}
+              ext = ext_map.get(sys.platform, ".so")
+              lib_dir = os.path.join(os.path.dirname(z3.__file__), "lib")
+              if not os.path.isdir(lib_dir):
+                  lib_dir = os.path.join(os.path.dirname(z3.__file__))
+              matches = glob.glob(os.path.join(lib_dir, f"*z3*{ext}")) or glob.glob(os.path.join(lib_dir, f"libz3*"))
+              print(matches[0] if matches else os.path.join(lib_dir, f"libz3{ext}"))
+              PYEOF
+              )
+                UPX_FLAG=""
+                which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
+                pyinstaller --onedir --noconsole --noconfirm \
+                  --name udr-backend \
+                  $UPX_FLAG \
+                  --add-binary "$Z3_LIB:z3/lib/" \
+                  --distpath backend/dist \
+                  --workpath /tmp/pyibuild \
+                  backend/run.py
+                cd desktop
+                npm install
+                npx electron-builder --linux --arm64 --publish=never
+              '
           else
-            npx electron-builder --linux $ARCH_FLAG --publish=never
+            pip install pyinstaller
+            pip install -e ".[system]"
+            Z3_LIB=$(python3 << 'PYEOF'
+            import z3, os, sys, glob
+            ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+            ext = ext_map.get(sys.platform, '.so')
+            lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
+            if not os.path.isdir(lib_dir):
+                lib_dir = os.path.join(os.path.dirname(z3.__file__))
+            matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+            print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+            PYEOF
+            )
+            UPX_FLAG=""
+            which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
+            pyinstaller --onedir --noconsole --noconfirm \
+              --name udr-backend \
+              $UPX_FLAG \
+              --add-binary "$Z3_LIB:z3/lib/" \
+              --distpath backend/dist \
+              --workpath ${{ runner.temp }}/pyibuild \
+              backend/run.py
+            pushd desktop
+            npm install
+            ARCH_FLAG=""
+            if [[ "${{ runner.arch }}" == "ARM64" || "${{ matrix.arch }}" == "arm64" ]]; then
+              ARCH_FLAG="--arm64"
+            fi
+            if [[ "$RUNNER_OS" == "macOS" ]]; then
+              npx electron-builder --mac $ARCH_FLAG --publish=never
+            elif [[ "$RUNNER_OS" == "Windows" ]]; then
+              npx electron-builder --win $ARCH_FLAG --publish=never
+            else
+              npx electron-builder --linux $ARCH_FLAG --publish=never
+            fi
+            popd
           fi
-        working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Fix ownership after Docker build
+        if: matrix.arch == 'arm64' && runner.os == 'Linux'
+        shell: bash
+        run: sudo chown -R $(whoami) desktop/node_modules desktop/release backend/dist 2>/dev/null || true
+
       - name: Smoke test built binary
+        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
         shell: bash
         run: |
           node --test tests/smoke.test.js

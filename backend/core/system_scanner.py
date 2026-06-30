@@ -32,7 +32,7 @@ try:
     import GPUtil
 
     HAS_GPUTIL = True
-except ImportError:
+except Exception:
     HAS_GPUTIL = False
 
 try:
@@ -51,28 +51,28 @@ try:
     )
 
     HAS_PYNVML = True
-except ImportError:
+except Exception:
     HAS_PYNVML = False
 
 try:
     import psutil
 
     HAS_PSUTIL = True
-except ImportError:
+except Exception:
     HAS_PSUTIL = False
 
 try:
     import pkg_resources
 
     HAS_PKG_RESOURCES = True
-except ImportError:
+except Exception:
     HAS_PKG_RESOURCES = False
 
 try:
     import distro
 
     HAS_DISTRO = True
-except ImportError:
+except Exception:
     HAS_DISTRO = False
 
 logger = logging.getLogger(__name__)
@@ -337,7 +337,7 @@ class SystemScanner:
     def _get_windows_edition(self) -> Optional[str]:
         """Get Windows edition"""
         try:
-            import winreg  # type: ignore
+            import winreg  # type: ignore[import-not-found]
 
             key = winreg.OpenKey(  # type: ignore[attr-defined]
                 winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]

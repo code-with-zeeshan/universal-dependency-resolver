@@ -1,8 +1,7 @@
 from typing import Dict, List, Optional, Any
-from packaging import version
 import logging
 from urllib.parse import quote
-from ..core.utils import normalize_package_name, parse_version
+from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
     get_ecosystem_config,
@@ -27,14 +26,14 @@ class PubClient(BaseDataSourceClient):
         )
         self.download_url = "https://pub.dev/api"
 
-    async def get_package_info(self, package_name: str) -> Dict[str, Any]:
+    async def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(
                 f"{self.download_url}/packages/{quote(package_name)}"
             )
             if not data:
-                return None  # type: ignore[return-value]
+                return None
 
             latest_version = data.get("latest", {}).get("version") or data.get(
                 "versions", [{}]
@@ -90,7 +89,7 @@ class PubClient(BaseDataSourceClient):
             }
         except Exception as e:
             logger.error(f"Pub.dev error for {package_name}: {e}")
-            return None  # type: ignore[return-value]
+            return None
 
     async def get_package_versions(
         self, package_name: str, filters: Optional[Dict] = None
@@ -118,7 +117,7 @@ class PubClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+                key=lambda x: parse_version_key(x["version"]),
                 reverse=True,
             )
         except Exception as e:
