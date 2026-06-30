@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2026-06-30
+## [1.3.1] - 2026-06-30
+
+### Added
+
+- **Desktop UI — Install/Restore tabs**: Generate native package manager commands from lock files, with Copy buttons. Direct deps (Install) vs all packages (Restore)
+- **Desktop UI — Lock file download**: "Generate Lock File" button in Scan results produces `udr-lock.json` download
+- **API endpoints**: `POST /api/v1/generate-lock`, `POST /api/v1/install-commands`, `POST /api/v1/restore-commands`
+- **Desktop usage guide**: New `docs/DESKTOP.md` covers all 15 sidebar tabs, keyboard shortcuts (`Ctrl+K` → Resolve), menu, troubleshooting
+
+### Changed
+
+- **Desktop workflow simplified**: Removed redundant linux arm64 QEMU matrix entry — x64 job cross-compiles both x86_64 and arm64 Linux artifacts via electron-builder
+- **Docs: ecosystem count corrected**: 13 → 14 across all docs (added `pub`/Dart/Flutter)
+- **CLI.md accuracy fixes**: Added `install`/`restore` command sections; added missing `--cuda`, `--device`, `--report`, `--manifest` flags; fixed `resolve -e` ecosystem choices; corrected rate-limiting claim in `--mode` docs
+
+### Fixed
+
+- **mypy**: `constraint_normalizer.py` type annotations — `-> str` → `Optional[str]` for functions returning `None`
+- **ruff**: Import ordering (`from typing import Optional` placed after `import re`)
 
 ### Added
 
