@@ -89,17 +89,16 @@ jobs:
                 source /tmp/venv/bin/activate
                 pip install pyinstaller
                 pip install -e ".[system]"
-                Z3_LIB=$(python3 << "PYEOF"
+                Z3_LIB=$(python3 -c "
               import z3, os, sys, glob
-              ext_map = {"win32": ".dll", "cygwin": ".dll", "darwin": ".dylib"}
-              ext = ext_map.get(sys.platform, ".so")
-              lib_dir = os.path.join(os.path.dirname(z3.__file__), "lib")
+              ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+              ext = ext_map.get(sys.platform, '.so')
+              lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
               if not os.path.isdir(lib_dir):
                   lib_dir = os.path.join(os.path.dirname(z3.__file__))
-              matches = glob.glob(os.path.join(lib_dir, f"*z3*{ext}")) or glob.glob(os.path.join(lib_dir, f"libz3*"))
-              print(matches[0] if matches else os.path.join(lib_dir, f"libz3{ext}"))
-              PYEOF
-              )
+              matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+              print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+              ")
                 UPX_FLAG=""
                 which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
                 pyinstaller --onedir --noconsole --noconfirm \
@@ -117,16 +116,16 @@ jobs:
             pip install pyinstaller
             pip install -e ".[system]"
             Z3_LIB=$(python3 << 'PYEOF'
-            import z3, os, sys, glob
-            ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
-            ext = ext_map.get(sys.platform, '.so')
-            lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
-            if not os.path.isdir(lib_dir):
-                lib_dir = os.path.join(os.path.dirname(z3.__file__))
-            matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
-            print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
-            PYEOF
-            )
+          import z3, os, sys, glob
+          ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+          ext = ext_map.get(sys.platform, '.so')
+          lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
+          if not os.path.isdir(lib_dir):
+              lib_dir = os.path.join(os.path.dirname(z3.__file__))
+          matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+          print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+          PYEOF
+          )
             UPX_FLAG=""
             which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
             pyinstaller --onedir --noconsole --noconfirm \
