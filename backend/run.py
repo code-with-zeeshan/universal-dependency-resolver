@@ -8,6 +8,7 @@ import jose  # noqa: F401
 import jose.jwt  # noqa: F401
 import passlib.handlers.bcrypt  # noqa: F401
 import bcrypt  # noqa: F401
+import email_validator  # noqa: F401
 
 import uvicorn
 from backend.api.main import app

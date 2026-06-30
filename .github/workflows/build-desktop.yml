@@ -192,8 +192,6 @@ jobs:
         include:
           - os: windows-latest
             arch: x64
-          - os: windows-2025-arm
-            arch: arm64
       fail-fast: false
     runs-on: ${{ matrix.os }}
 
@@ -319,8 +317,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
-            arch: x64
           - os: macos-14
             arch: arm64
       fail-fast: false

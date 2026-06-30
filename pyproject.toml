@@ -80,6 +80,7 @@ system = [
     "distro>=1.8,<2",
     "gputil>=1.4,<2",
     "nvidia-ml-py>=12.535,<13",
+    "email-validator>=2.1,<3",
 ]
 dev = [
     "pytest>=7.4,<8",
@@ -128,6 +129,7 @@ all = [
     "sentry-sdk[fastapi]>=1.39,<2",
     "python-socketio>=5.11,<6",
     "prometheus-client>=0.19,<1",
+    "email-validator>=2.1,<3",
 ]
 
 [project.urls]
