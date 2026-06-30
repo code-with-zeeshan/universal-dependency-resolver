@@ -1,6 +1,6 @@
 # documentation_scraper.py
 import aiohttp
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 import re
 from ..settings import CACHE_TTL, USER_AGENTS
@@ -246,7 +246,7 @@ class DocumentationScraper:
 
                     for result in results[:5]:  # Check first 5 results
                         url = result.get("href")
-                        if url:
+                        if url and isinstance(url, str):
                             # Look for documentation indicators
                             if any(
                                 indicator in url.lower()
@@ -285,7 +285,7 @@ class DocumentationScraper:
                 html = await response.text()
                 soup = BeautifulSoup(html, "html.parser")
 
-                requirements = {
+                requirements: Dict[str, Any] = {
                     "cuda_versions": [],
                     "python_versions": [],
                     "os_requirements": [],
@@ -321,7 +321,7 @@ class DocumentationScraper:
 
     def _scrape_tensorflow_requirements(self, soup: BeautifulSoup) -> Dict:
         """Scrape TensorFlow-specific requirements"""
-        requirements = {
+        requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "cudnn_versions": [],
             "python_versions": [],
@@ -390,14 +390,14 @@ class DocumentationScraper:
                 # Sort versions properly
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                 )
 
         return requirements
 
     def _scrape_pytorch_requirements(self, soup: BeautifulSoup) -> Dict:
         """Scrape PyTorch-specific requirements"""
-        requirements = {
+        requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "python_versions": [],
             "os_support": [],
@@ -463,7 +463,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                    key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
                     reverse=True,
                 )
 
@@ -474,7 +474,7 @@ class DocumentationScraper:
 
     def _scrape_tensorrt_requirements(self, soup: BeautifulSoup) -> Dict:
         """Scrape TensorRT-specific requirements"""
-        requirements = {
+        requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "cudnn_versions": [],
             "os_requirements": [],
@@ -492,8 +492,9 @@ class DocumentationScraper:
             # Get the content after the heading
             current = section
             for _ in range(20):  # Check next 20 elements
-                current = current.find_next_sibling()
                 if not current:
+                    break
+                if not hasattr(current, 'name'):
                     break
 
                 # Stop if we hit another major heading
@@ -564,7 +565,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                    key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
                     reverse=True,
                 )
 
@@ -575,7 +576,7 @@ class DocumentationScraper:
 
     def _scrape_generic_requirements(self, soup: BeautifulSoup) -> Dict:
         """Generic requirements scraper"""
-        requirements = {
+        requirements: Dict[str, Any] = {
             "system_requirements": [],
             "dependencies": [],
             "python_versions": [],
@@ -658,7 +659,7 @@ class DocumentationScraper:
 
             requirements["python_versions"] = sorted(
                 list(set(valid_versions)),
-                key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             )
 
         # Clean up dependencies
@@ -668,8 +669,7 @@ class DocumentationScraper:
 
     async def _extract_requirements_from_tables(self, soup: BeautifulSoup) -> Dict:
         """Extract requirements from HTML tables"""
-        requirements = {}
-
+        requirements: Dict[str, Any] = {}
         tables = soup.find_all("table")
 
         for table in tables:
@@ -738,8 +738,8 @@ class DocumentationScraper:
         for key in ["cuda_versions", "python_versions", "cudnn_versions"]:
             if key in requirements:
                 requirements[key] = sorted(
-                    list(set(requirements[key])),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                    list(set(valid_versions)),
+                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                     reverse=True,
                 )
 
@@ -760,8 +760,7 @@ class DocumentationScraper:
             if (datetime.now() - timestamp).total_seconds() < self.cache_ttl:
                 return cached_data
 
-        compatibility_matrix = {}
-
+        compatibility_matrix: Dict[str, Any] = {}
         try:
             # Get documentation URL
             doc_url = self.known_docs.get(package_name.lower())
@@ -815,8 +814,7 @@ class DocumentationScraper:
 
     def _parse_compatibility_table(self, table, package_name: str) -> Dict:
         """Parse a compatibility table into a matrix"""
-        matrix = {}
-
+        matrix: Dict[str, Any] = {}
         # Get headers
         headers = []
         header_row = table.find("tr")
@@ -894,7 +892,7 @@ class DocumentationScraper:
         sorted_matrix = {}
         sorted_versions = sorted(
             matrix.keys(),
-            key=lambda v: parse_version(v) or parse_version("0.0.0"),  # ADD THIS
+            key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
         for v in sorted_versions:
@@ -906,8 +904,7 @@ class DocumentationScraper:
         self, soup: BeautifulSoup, package_name: str
     ) -> Dict:
         """Extract compatibility information from text content"""
-        matrix = {}
-
+        matrix: Dict[str, Any] = {}
         # Look for version-specific sections
         version_sections = soup.find_all(
             ["div", "section"], text=re.compile(rf"{package_name}\s+(\d+\.?\d*)", re.I)
@@ -948,8 +945,7 @@ class DocumentationScraper:
         self, soup: BeautifulSoup
     ) -> Dict:
         """Extract TensorFlow-specific compatibility matrix"""
-        matrix = {}
-
+        matrix: Dict[str, Any] = {}
         # TensorFlow often has a specific compatibility table
         # Look for it by searching for "tested build configurations"
         config_section = soup.find(
@@ -971,8 +967,7 @@ class DocumentationScraper:
 
     async def _extract_pytorch_compatibility_matrix(self, soup: BeautifulSoup) -> Dict:
         """Extract PyTorch-specific compatibility matrix"""
-        matrix = {}
-
+        matrix: Dict[str, Any] = {}
         # PyTorch compatibility is often in the installation matrix
         # Look for CUDA version mappings
         install_section = soup.find(

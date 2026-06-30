@@ -161,9 +161,7 @@ class APKClient(BaseDataSourceClient):
                         )
 
         versions.sort(
-            key=lambda x: (
-                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")
-            ),
+            key=lambda x: parse_version(x["version"].split("-")[0]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -232,7 +230,7 @@ class APKClient(BaseDataSourceClient):
 
     def _parse_apkindex(self, content: str) -> Dict[str, Dict]:
         packages = {}
-        current_package = {}
+        current_package: Dict[str, Any] = {}
 
         for line in content.split("\n"):
             line = line.strip()
@@ -271,10 +269,10 @@ class APKClient(BaseDataSourceClient):
             "r": "replaces",
         }
 
-        converted = {}
+        converted: Dict[str, Any] = {}
         for apk_field, std_field in field_map.items():
             if apk_field in entry:
-                value = entry[apk_field]
+                value: Any = entry[apk_field]
 
                 if std_field in ["size", "installed_size", "build_time"]:
                     try:
@@ -287,7 +285,7 @@ class APKClient(BaseDataSourceClient):
         return converted
 
     def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies = {"depends": [], "provides": [], "replaces": []}
+        dependencies: Dict[str, List[Any]] = {"depends": [], "provides": [], "replaces": []}
 
         if "depends" in package_data:
             deps_str = package_data["depends"]
@@ -337,9 +335,9 @@ class APKClient(BaseDataSourceClient):
             match = re.match(r"v(\d+\.\d+)", branch)
             if match:
                 version = match.group(1)
-                if not min_version or parse_version(version) < parse_version(
-                    min_version
-                ):
+                parsed_min = parse_version(version)
+                parsed_max = parse_version(min_version) if min_version else None
+                if not min_version or (parsed_min and parsed_max and parsed_min < parsed_max):
                     min_version = version
 
         return min_version

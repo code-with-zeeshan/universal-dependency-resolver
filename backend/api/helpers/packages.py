@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 from backend.api.helpers.compatibility import (
@@ -65,7 +65,7 @@ async def _get_recursive_dependencies(
     except Exception as e:
         logger.warning(f"Failed to get dependencies for {package_name}: {e}")
         dependencies = {}
-    dep_tree = {
+    dep_tree: Dict[str, Any] = {
         "name": package_name,
         "version": version or "latest",
         "dependencies": {},

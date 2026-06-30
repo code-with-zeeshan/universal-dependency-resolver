@@ -67,7 +67,7 @@ class GoModulesClient(BaseDataSourceClient):
         if not latest_version:
             return None
 
-        module_info = await self._get_module_info(package_name, latest_version)
+        module_info = await self._get_module_info(package_name, latest_version)  # type: ignore[arg-type]
         if not module_info:
             return None
 
@@ -124,7 +124,7 @@ class GoModulesClient(BaseDataSourceClient):
         if not versions_data:
             return []
 
-        versions = []
+        versions: List[Any] = []
         for ver in versions_data:
             ver_info = {
                 "version": ver,
@@ -134,9 +134,7 @@ class GoModulesClient(BaseDataSourceClient):
             versions.append(ver_info)
 
         versions.sort(
-            key=lambda x: (
-                parse_version(x["version"].lstrip("v")) or parse_version("0.0.0")
-            ),
+            key=lambda x: parse_version(x["version"].lstrip("v")) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -152,7 +150,7 @@ class GoModulesClient(BaseDataSourceClient):
         elif not version.startswith("v"):
             version = f"v{version}"
 
-        module_info = await self._get_module_info(package_name, version)
+        module_info = await self._get_module_info(package_name, version)  # type: ignore[arg-type]
         if not module_info:
             return {}
 
@@ -193,7 +191,7 @@ class GoModulesClient(BaseDataSourceClient):
             }
         return None
 
-    async def _make_request(
+    async def _make_request(  # type: ignore[override]
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Optional[Any]:
         session = self._get_session()
@@ -216,7 +214,7 @@ class GoModulesClient(BaseDataSourceClient):
             return None
 
     async def _parse_go_mod(self, module_info: Dict[str, Any]) -> Dict[str, Any]:
-        dependencies = {"required": {}, "indirect": {}, "replace": {}}
+        dependencies: Dict[str, Any] = {"required": {}, "indirect": {}, "replace": {}}
 
         go_mod_content = module_info.get("go_mod", "")
         if not go_mod_content:

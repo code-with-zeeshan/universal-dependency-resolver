@@ -39,7 +39,7 @@ class MavenClient(BaseDataSourceClient):
             return False
         return "search" not in url
 
-    async def _make_request(self, url: str, params: Optional[Dict] = None) -> Any:
+    async def _make_request(self, url: str, params: Optional[Dict] = None) -> Any:  # type: ignore[override]
         session = self._get_session()
 
         cache_key = f"{url}:{str(params)}"
@@ -144,7 +144,7 @@ class MavenClient(BaseDataSourceClient):
         try:
             session = self._get_session()
             params = {"q": f"g:{group_id} AND a:{artifact_id}", "rows": 1, "wt": "json"}
-            async with session.get(self.base_url, params=params) as response:
+            async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
                     raise HTTPException(
                         status_code=404, detail="Maven package not found"
@@ -194,14 +194,13 @@ class MavenClient(BaseDataSourceClient):
                 "rows": 100,
                 "wt": "json",
             }
-            async with session.get(self.base_url, params=params) as response:
+            async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
                     raise HTTPException(
                         status_code=404, detail="Maven package versions not found"
                     )
                 data = await response.json()
-                versions = []
-
+                versions: List[Any] = []
                 for doc in data.get("response", {}).get("docs", []):
                     version_str = doc.get("v")
                     if not version_str:
@@ -280,7 +279,7 @@ class MavenClient(BaseDataSourceClient):
         try:
             pom_xml = await self._fetch_pom(group_id, artifact_id, version)
 
-            compatibility = {
+            compatibility: Dict[str, Any] = {
                 "compatible": True,
                 "details": {},
                 "warnings": [],
@@ -517,7 +516,7 @@ class MavenClient(BaseDataSourceClient):
             return None
 
     def _merge_poms(self, parent_pom: Dict, child_pom: Dict) -> Dict:
-        merged = {
+        merged: Dict[str, Any] = {
             "properties": {},
             "dependency_management": {},
             "dependencies": [],
@@ -633,7 +632,7 @@ class MavenClient(BaseDataSourceClient):
             root = ET.fromstring(pom_xml)
             namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
 
-            pom_data = {
+            pom_data: Dict[str, Any] = {
                 "properties": {},
                 "dependency_management": {},
                 "dependencies": [],
@@ -744,7 +743,7 @@ class MavenClient(BaseDataSourceClient):
             return {"dependencies": []}
 
     def _extract_properties(self, root, namespaces) -> Dict[str, str]:
-        properties = {}
+        properties: Dict[str, str] = {}
         props_elem = root.find(".//maven:properties", namespaces) or root.find(
             ".//properties"
         )
@@ -799,7 +798,7 @@ class MavenClient(BaseDataSourceClient):
         return None
 
     def _parse_repositories(self, root, namespaces, properties) -> List[Dict]:
-        repositories = []
+        repositories: List[Dict] = []
 
         repos_elem = root.find(".//maven:repositories", namespaces) or root.find(
             ".//repositories"
@@ -808,12 +807,12 @@ class MavenClient(BaseDataSourceClient):
             for repo in repos_elem.findall(
                 ".//maven:repository", namespaces
             ) or repos_elem.findall(".//repository"):
-                repo_info = {
+                repo_info: Dict[str, Any] = {
                     "id": self._substitute_properties(
-                        self._get_element_text(repo, "id", namespaces), properties
+                        self._get_element_text(repo, "id", namespaces) or "", properties
                     ),
                     "url": self._substitute_properties(
-                        self._get_element_text(repo, "url", namespaces), properties
+                        self._get_element_text(repo, "url", namespaces) or "", properties
                     ),
                     "layout": self._get_element_text(repo, "layout", namespaces)
                     or "default",
@@ -862,7 +861,7 @@ class MavenClient(BaseDataSourceClient):
         return repositories
 
     def _parse_plugin_repositories(self, root, namespaces, properties) -> List[Dict]:
-        repositories = []
+        repositories: List[Dict] = []
 
         repos_elem = root.find(".//maven:pluginRepositories", namespaces) or root.find(
             ".//pluginRepositories"
@@ -871,12 +870,12 @@ class MavenClient(BaseDataSourceClient):
             for repo in repos_elem.findall(
                 ".//maven:pluginRepository", namespaces
             ) or repos_elem.findall(".//pluginRepository"):
-                repo_info = {
+                repo_info: Dict[str, Any] = {
                     "id": self._substitute_properties(
-                        self._get_element_text(repo, "id", namespaces), properties
+                        self._get_element_text(repo, "id", namespaces) or "", properties
                     ),
                     "url": self._substitute_properties(
-                        self._get_element_text(repo, "url", namespaces), properties
+                        self._get_element_text(repo, "url", namespaces) or "", properties
                     ),
                     "layout": self._get_element_text(repo, "layout", namespaces)
                     or "default",
@@ -888,7 +887,7 @@ class MavenClient(BaseDataSourceClient):
     def _parse_dependency_management(
         self, dep_mgmt_elem, namespaces, properties
     ) -> Dict[str, Dict]:
-        dep_management = {}
+        dep_management: Dict[str, Dict] = {}
 
         deps_elem = dep_mgmt_elem.find(
             ".//maven:dependencies", namespaces
@@ -909,7 +908,7 @@ class MavenClient(BaseDataSourceClient):
     def _parse_plugin_management(
         self, plugin_mgmt_elem, namespaces, properties
     ) -> Dict[str, Dict]:
-        plugin_management = {}
+        plugin_management: Dict[str, Dict] = {}
 
         plugins_elem = plugin_mgmt_elem.find(
             ".//maven:plugins", namespaces
@@ -930,7 +929,7 @@ class MavenClient(BaseDataSourceClient):
     def _parse_profiles(
         self, profiles_elem, namespaces, parent_properties
     ) -> Dict[str, Dict]:
-        profiles = {}
+        profiles: Dict[str, Dict] = {}
 
         for profile in profiles_elem.findall(
             ".//maven:profile", namespaces
@@ -939,7 +938,7 @@ class MavenClient(BaseDataSourceClient):
             if not profile_id:
                 continue
 
-            profile_data = {
+            profile_data: Dict[str, Any] = {
                 "id": profile_id,
                 "properties": {},
                 "dependencies": [],
@@ -996,7 +995,7 @@ class MavenClient(BaseDataSourceClient):
         return profiles
 
     def _parse_activation(self, activation_elem, namespaces) -> Dict:
-        activation = {}
+        activation: Dict[str, Any] = {}
 
         jdk = self._get_element_text(activation_elem, "jdk", namespaces)
         if jdk:
@@ -1027,8 +1026,7 @@ class MavenClient(BaseDataSourceClient):
     def _parse_dependencies_section(
         self, deps_elem, namespaces, properties, dep_management
     ) -> List[Dict]:
-        dependencies = []
-
+        dependencies: List[Dict] = []
         for dep in deps_elem.findall(
             ".//maven:dependency", namespaces
         ) or deps_elem.findall(".//dependency"):
@@ -1169,7 +1167,7 @@ class MavenClient(BaseDataSourceClient):
             version = self._get_element_text(plugin_elem, "version", namespaces)
 
             group_id = self._substitute_properties(group_id, properties)
-            artifact_id = self._substitute_properties(artifact_id, properties)
+            artifact_id = self._substitute_properties(artifact_id, properties) if artifact_id else None  # type: ignore[arg-type]
             version = (
                 self._substitute_properties(version, properties) if version else None
             )
@@ -1180,7 +1178,7 @@ class MavenClient(BaseDataSourceClient):
                     managed_plugin = plugin_management[plugin_key]
                     version = managed_plugin.get("version", version)
 
-                plugin_info = {
+                plugin_info: Dict[str, Any] = {
                     "name": f"{group_id}:{artifact_id}",
                     "group_id": group_id,
                     "artifact_id": artifact_id,
@@ -1234,7 +1232,7 @@ class MavenClient(BaseDataSourceClient):
         return None
 
     def _parse_configuration(self, config_elem, properties) -> Dict:
-        config = {}
+        config: Dict[str, Any] = {}
 
         for child in config_elem:
             tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
@@ -1335,7 +1333,7 @@ class MavenClient(BaseDataSourceClient):
 
             if range_info["min_version"]:
                 min_v = parse_version(range_info["min_version"])
-                if min_v is None:
+                if min_v is None or v is None:
                     return False
                 if range_info["min_inclusive"]:
                     if v < min_v:
@@ -1346,7 +1344,7 @@ class MavenClient(BaseDataSourceClient):
 
             if range_info["max_version"]:
                 max_v = parse_version(range_info["max_version"])
-                if max_v is None:
+                if max_v is None or v is None:
                     return False
                 if range_info["max_inclusive"]:
                     if v > max_v:
@@ -1516,7 +1514,7 @@ class MavenClient(BaseDataSourceClient):
 
         dependencies = await self.get_dependencies(group_id, artifact_id, version)
 
-        tree = {
+        tree: Dict[str, Any] = {
             "name": f"{group_id}:{artifact_id}",
             "version": version or "latest",
             "dependencies": [],

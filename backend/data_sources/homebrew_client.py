@@ -37,11 +37,11 @@ class BrewDependency:
 class HomebrewClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: str = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
-        timeout: int = None,
+        api_url: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
+        timeout: Optional[int] = None,
     ):
         homebrew_config = get_ecosystem_config("homebrew")
 
@@ -386,9 +386,9 @@ class HomebrewClient(BaseDataSourceClient):
         if "macos" in depends_on:
             macos_req = depends_on["macos"]
             if isinstance(macos_req, dict):
-                requirements["macos_version"] = macos_req
+                requirements["macos_version"] = macos_req  # type: ignore[assignment]
             else:
-                requirements["macos_version"] = {"min": macos_req}
+                requirements["macos_version"] = {"min": macos_req}  # type: ignore[assignment]
 
         if "arch" in depends_on:
             requirements["arch"] = depends_on["arch"]
@@ -399,7 +399,7 @@ class HomebrewClient(BaseDataSourceClient):
         self,
         package_name: str,
         package_type: PackageType = PackageType.FORMULA,
-        system_info: Dict[str, Any] = None,
+        system_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         package_name = normalize_package_name(package_name)
 

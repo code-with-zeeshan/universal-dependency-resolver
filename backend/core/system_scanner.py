@@ -233,7 +233,7 @@ class SystemScanner:
 
     def detect_platform_info(self) -> Dict[str, Any]:
         """Detect comprehensive platform information"""
-        info = {
+        info: Dict[str, Any] = {
             "system": platform.system(),
             "node": platform.node(),
             "release": platform.release(),
@@ -337,20 +337,21 @@ class SystemScanner:
                     "version": version_match.group(1),
                     "type": "glibc" if "GNU" in ldd_output else "unknown",
                 }
+            return None
         except Exception:
             return None
 
     def _get_windows_edition(self) -> Optional[str]:
         """Get Windows edition"""
         try:
-            import winreg
+            import winreg  # type: ignore
 
-            key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
+            key = winreg.OpenKey(  # type: ignore[attr-defined]
+                winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
                 r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
             )
-            edition, _ = winreg.QueryValueEx(key, "EditionID")
-            winreg.CloseKey(key)
+            edition, _ = winreg.QueryValueEx(key, "EditionID")  # type: ignore[attr-defined]
+            winreg.CloseKey(key)  # type: ignore[attr-defined]
             return edition
         except Exception:
             return None
@@ -386,7 +387,7 @@ class SystemScanner:
 
     def detect_cpu_info(self) -> Dict[str, Any]:
         """Detect comprehensive CPU information"""
-        cpu_data = {}
+        cpu_data: Dict[str, Any] = {}
 
         # Basic info from platform
         cpu_data["processor"] = platform.processor()
@@ -424,13 +425,13 @@ class SystemScanner:
                 logger.error(f"cpuinfo error: {e}")
                 cpu_data.setdefault("brand", "Unknown")
                 cpu_data.setdefault("arch", platform.machine())
-                cpu_data.setdefault("bits", 64)
+                cpu_data.setdefault("bits", "64")
                 cpu_data.setdefault(
-                    "count_logical", psutil.cpu_count(logical=True) if HAS_PSUTIL else 1
+                    "count_logical", str(psutil.cpu_count(logical=True) if HAS_PSUTIL else 1)
                 )
                 cpu_data.setdefault(
                     "count_physical",
-                    psutil.cpu_count(logical=False) if HAS_PSUTIL else 1,
+                    str(psutil.cpu_count(logical=False) if HAS_PSUTIL else 1),
                 )
 
         # Additional info from psutil
@@ -473,9 +474,9 @@ class SystemScanner:
         cpu_data["temperature"] = self._get_cpu_temperature()
 
         # Virtualization capabilities
-        cpu_data["virtualization"] = self._detect_virtualization_support(
-            cpu_data.get("features", [])
-        )
+        features = cpu_data.get("features", [])
+        assert isinstance(features, list)
+        cpu_data["virtualization"] = self._detect_virtualization_support(features)
 
         return cpu_data
 
@@ -577,7 +578,7 @@ class SystemScanner:
 
     def detect_gpu_info(self) -> Dict[str, Any]:
         """Detect comprehensive GPU information"""
-        gpu_data = {
+        gpu_data: Dict[str, Any] = {
             "available": False,
             "devices": [],
             "cuda": self._detect_cuda_info(),
@@ -761,7 +762,7 @@ class SystemScanner:
 
     def _detect_cuda_info(self) -> Optional[Dict[str, Any]]:
         """Detect CUDA installation and version"""
-        cuda_info = {}
+        cuda_info: Dict[str, Any] = {}
 
         # Try pynvml first for CUDA driver version
         if HAS_PYNVML:
@@ -861,7 +862,7 @@ class SystemScanner:
 
     def _detect_opencl_info(self) -> Optional[Dict[str, Any]]:
         """Detect OpenCL support"""
-        opencl_info = {"available": False, "version": None, "devices": []}
+        opencl_info: Dict[str, Any] = {"available": False, "version": None, "devices": []}
 
         try:
             # Try clinfo
@@ -907,7 +908,7 @@ class SystemScanner:
 
     def _detect_vulkan_info(self) -> Optional[Dict[str, Any]]:
         """Detect Vulkan support"""
-        vulkan_info = {"available": False, "version": None}
+        vulkan_info: Dict[str, Any] = {"available": False, "version": None}
 
         try:
             # Try vulkaninfo
@@ -953,7 +954,7 @@ class SystemScanner:
 
     def detect_disk_info(self) -> Dict[str, Any]:
         """Detect disk information"""
-        disk_data = {"disks": [], "partitions": [], "io_counters": {}}
+        disk_data: Dict[str, Any] = {"disks": [], "partitions": [], "io_counters": {}}
 
         if HAS_PSUTIL:
             # Get disk partitions
@@ -1061,7 +1062,7 @@ class SystemScanner:
 
     def detect_network_info(self) -> Dict[str, Any]:
         """Detect network information"""
-        network_data = {"interfaces": [], "connections": [], "stats": {}}
+        network_data: Dict[str, Any] = {"interfaces": [], "connections": [], "stats": {}}
 
         if HAS_PSUTIL:
             # Network interfaces
@@ -1221,7 +1222,7 @@ class SystemScanner:
 
     def detect_container_info(self) -> Dict[str, Any]:
         """Detect container/virtualization environment"""
-        container_data = {
+        container_data: Dict[str, Any] = {
             "type": ContainerType.BARE_METAL.value,
             "detected": False,
             "details": {},
@@ -1490,6 +1491,7 @@ class SystemScanner:
                         "javac_path": shutil.which("javac"),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1510,6 +1512,7 @@ class SystemScanner:
                         "runtimes": self._parse_dotnet_runtimes(output),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1565,6 +1568,7 @@ class SystemScanner:
                         "full_version": ruby_version.strip(),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1584,6 +1588,7 @@ class SystemScanner:
                         "goroot": os.environ.get("GOROOT"),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1616,6 +1621,7 @@ class SystemScanner:
                         "cargo_home": os.environ.get("CARGO_HOME"),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1637,6 +1643,7 @@ class SystemScanner:
                         "target": self._get_gcc_target(),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1664,6 +1671,7 @@ class SystemScanner:
                         "llvm_version": self._get_llvm_version(),
                     },
                 )
+            return None
         except Exception:
             return None
 
@@ -1677,7 +1685,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def detect_installed_packages(self) -> Dict[str, List[PackageInfo]]:
+    def detect_installed_packages(self) -> Dict[str, List[Any]]:
         """Detect installed packages across different package managers"""
         packages = {}
 
@@ -1706,11 +1714,11 @@ class SystemScanner:
         packages["cargo"] = self._get_cargo_packages()
 
         # Convert to dict format
-        result = {}
+        result: Dict[str, list[Dict[str, Any]]] = {}
         for manager, pkg_list in packages.items():
             if pkg_list:
                 result[manager] = [
-                    asdict(pkg) if hasattr(pkg, "__dict__") else pkg for pkg in pkg_list
+                    asdict(pkg) if hasattr(pkg, "__dict__") else pkg for pkg in pkg_list  # type: ignore[misc]
                 ]
 
         return result
@@ -2083,7 +2091,7 @@ class SystemScanner:
 
     def _detect_firewall(self) -> Dict[str, Any]:
         """Detect firewall status"""
-        firewall_info = {"enabled": False, "type": None}
+        firewall_info: Dict[str, Any] = {"enabled": False, "type": None}
 
         if platform.system() == "Linux":
             # Check iptables
@@ -2191,7 +2199,7 @@ class SystemScanner:
 
         try:
             output = subprocess.check_output(["sestatus"]).decode()
-            status = {}
+            status: Dict[str, Any] = {}
 
             for line in output.split("\n"):
                 if "SELinux status:" in line:
@@ -2207,7 +2215,7 @@ class SystemScanner:
 
     def _check_system_updates(self) -> Dict[str, Any]:
         """Check for available system updates"""
-        updates = {"available": False, "count": 0}
+        updates: Dict[str, Any] = {"available": False, "count": 0}
 
         if platform.system() == "Linux":
             # Check apt
@@ -2233,7 +2241,7 @@ class SystemScanner:
         elif platform.system() == "Windows":
             # Windows Update check would require COM interface
             # Simplified check
-            updates["check_command"] = "Check Windows Update in Settings"
+            updates["update_command"] = "Check Windows Update in Settings"
 
         elif platform.system() == "Darwin":
             # Check softwareupdate
@@ -2299,7 +2307,7 @@ class SystemScanner:
 
     def detect_system_capabilities(self) -> Dict[str, Any]:
         """Detect system capabilities and features"""
-        capabilities = {
+        capabilities: Dict[str, Any] = {
             "virtualization": {},
             "hardware_acceleration": {},
             "development_tools": {},

@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 from .core.utils import normalize_package_name
 
 logger = logging.getLogger(__name__)
@@ -72,21 +72,13 @@ class ManifestDetector:
         return found
 
     def _read_with_encoding_fallback(self, path: Path) -> str:
-        raw = path.read_bytes()
+        raw: Any = path.read_bytes()
         if raw[:3] == b"\xef\xbb\xbf":
             raw = raw[3:]
         elif raw[:2] == b"\xff\xfe":
-            raw = raw.decode("utf-16-le", errors="replace").encode(
-                "utf-8", errors="replace"
-            )
-            raw = raw.decode("utf-8", errors="replace")
-            return raw
+            return raw.decode("utf-16-le", errors="replace").encode("utf-8", errors="replace").decode("utf-8", errors="replace")
         elif raw[:2] == b"\xfe\xff":
-            raw = raw.decode("utf-16-be", errors="replace").encode(
-                "utf-8", errors="replace"
-            )
-            raw = raw.decode("utf-8", errors="replace")
-            return raw
+            return raw.decode("utf-16-be", errors="replace").encode("utf-8", errors="replace").decode("utf-8", errors="replace")
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 return raw.decode(enc)
@@ -386,7 +378,7 @@ class ManifestDetector:
 
     def _parse_conda_env(self, content: str) -> List[Dict]:
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             data = yaml.safe_load(content)
         except Exception:

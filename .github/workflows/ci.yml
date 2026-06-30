@@ -37,13 +37,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,system,postgres]"
 
+      - name: Validate YAML
+        run: |
+          pip install yamllint
+          yamllint .github/workflows/
+
       - name: Lint
         run: |
           ruff check backend/
           ruff format --check --diff backend/
 
       - name: Type check
-        continue-on-error: true
         run: |
           mypy backend --ignore-missing-imports
 
@@ -54,7 +58,11 @@ jobs:
           PYTHONPATH: .
           ENABLE_CSRF: "false"
         run: |
-          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml
+          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+
+      - name: Verify CLI imports
+        run: |
+          python3 -c "from backend.cli import main; print('CLI package OK')"
 
       - name: Run data source tests
         env:

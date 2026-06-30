@@ -5,7 +5,7 @@ import os
 import tempfile
 import time
 import shutil
-from typing import Any, Optional, List, Dict, Callable
+from typing import Any, Optional, List, Dict, Callable, Union
 import asyncio
 from functools import wraps
 from urllib.parse import urlparse
@@ -35,7 +35,7 @@ class DictCache:
     """
 
     def __init__(self, persist_path: Optional[str] = None):
-        self._store: Dict[str, tuple[Any, float]] = {}
+        self._store: Dict[str, tuple[Any, Optional[float]]] = {}
         self._persist_path = persist_path or os.path.join(
             tempfile.gettempdir(), "udr_cache.json"
         )
@@ -119,8 +119,8 @@ class CacheManager:
 
     def __init__(self, redis_url: str = REDIS_URL):
         self.redis_url = redis_url
-        self._cache = None
-        self._cache_stats = {"hits": 0, "misses": 0, "errors": 0}
+        self._cache: Optional[Union[DictCache, Cache]] = None
+        self._cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
 
     async def connect(self):
         """Initialize cache backend"""
@@ -227,24 +227,23 @@ class CacheManager:
     async def clear_pattern(self, pattern: str) -> int:
         """Clear all keys matching pattern"""
         count = 0
+        cache = self._cache
+        if cache is None:
+            return 0
         try:
-            if hasattr(self._cache, "client") and self._cache.client is not None:
+            if hasattr(cache, "client") and cache.client is not None:
                 cursor = 0
                 while True:
-                    cursor, keys = await self._cache.client.scan(
+                    cursor, keys = await cache.client.scan(
                         cursor, match=pattern, count=100
                     )
-                    if (
-                        keys
-                        and hasattr(self._cache, "client")
-                        and self._cache.client is not None
-                    ):
-                        await self._cache.client.delete(*keys)
+                    if keys and hasattr(cache, "client") and cache.client is not None:
+                        await cache.client.delete(*keys)
                         count += len(keys)
                     if cursor == 0:
                         break
             else:
-                await self._cache.clear()
+                await cache.clear()
                 count = 1
             return count
         except Exception as e:
@@ -253,7 +252,7 @@ class CacheManager:
 
     async def get_many(self, keys: List[str]) -> Dict[str, Any]:
         """Get multiple values from cache"""
-        result = {}
+        result: Dict[str, Any] = {}
 
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return result
@@ -290,7 +289,7 @@ class CacheManager:
             logger.error(f"Cache set_many error: {e}")
             return False
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         total = self._cache_stats["hits"] + self._cache_stats["misses"]
         hit_rate = (self._cache_stats["hits"] / total * 100) if total > 0 else 0

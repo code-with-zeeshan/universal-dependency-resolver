@@ -10,6 +10,12 @@ git clone https://github.com/code-with-zeeshan/universal-dependency-resolver.git
 cd universal-dependency-resolver
 python -m venv venv
 source venv/bin/activate
+make setup
+```
+
+Or manually:
+
+```bash
 pip install -e ".[dev]"
 ```
 
@@ -19,14 +25,20 @@ No PostgreSQL, Redis, or Docker required. SQLite + in-memory cache work out of t
 # Run the server
 udr serve --reload
 
-# Run tests
-python -m pytest tests/unit/        # 399 unit tests
-python -m pytest tests/integration/ # 69 integration tests
-python -m pytest tests/             # all 468 tests
+# Or as a module
+python -m backend.cli.main serve --reload
 
-# Lint and format
-ruff check backend/
-ruff format backend/
+# Run tests
+make test          # 399 unit tests
+make test-all      # all 468 tests
+cd desktop && node --test tests/  # 28 desktop tests
+
+# Type check and lint
+make typecheck     # mypy (0 errors target)
+make lint          # ruff
+
+# Validate YAML workflows
+make yamllint
 ```
 
 ## Desktop development
@@ -58,7 +70,7 @@ npm run start    # Run in dev mode (uses system Python backend)
 
 - New ecosystem data sources in `backend/data_sources/`
 - Additional export formats in `backend/core/export_generator.py`
-- CLI improvements in `backend/cli.py`
+- CLI improvements in `backend/cli/` (one module per command in `commands/`)
 - Desktop UI improvements in `desktop/index.html`
 - Documentation
 

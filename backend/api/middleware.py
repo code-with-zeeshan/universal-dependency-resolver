@@ -4,7 +4,7 @@ import time
 import uuid
 import json
 import gzip
-from typing import Callable
+from typing import Any, Callable, Optional, Union
 from datetime import datetime, timezone
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -26,6 +26,7 @@ from backend.core.cache import cache_manager
 logger = logging.getLogger(__name__)
 
 # Prometheus metrics
+_request_duration: Optional[Any] = None
 try:
     from prometheus_client import Histogram as _Histogram
 
@@ -35,7 +36,7 @@ try:
         ["method", "endpoint", "status"],
     )
 except ImportError:
-    _request_duration = None
+    pass
 
 
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
@@ -248,7 +249,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     """Limit request body size"""
 
-    def __init__(self, app: ASGIApp, max_size: int = None):
+    def __init__(self, app: ASGIApp, max_size: Optional[int] = None):
         super().__init__(app)
         self.max_size = max_size or MAX_REQUEST_SIZE
 

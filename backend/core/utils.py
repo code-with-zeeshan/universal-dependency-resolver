@@ -61,7 +61,7 @@ def extract_requirements(content: str, file_type: str) -> List[Dict[str, Any]]:
                     requirements.append({"name": match.group(1), "version_spec": line})
     elif file_type == "environment.yml":
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             data = yaml.safe_load(content)
             for dep in data.get("dependencies", []):

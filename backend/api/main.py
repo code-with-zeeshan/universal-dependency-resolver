@@ -9,6 +9,7 @@ import structlog
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Any, Dict
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -94,7 +95,7 @@ app = FastAPI(
 
 # Add rate limiting middleware
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.add_middleware(SlowAPIMiddleware)
 setup_middleware(app)
 
@@ -281,7 +282,7 @@ async def health_check(request: Request) -> dict:
     Health check endpoint that verifies all critical dependencies.
     Returns detailed status of each component.
     """
-    health_status = {
+    health_status: Dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",

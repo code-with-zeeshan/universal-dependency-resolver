@@ -46,11 +46,11 @@ class NuGetVersionRequirement:
 class NuGetClient(BaseDataSourceClient):
     def __init__(
         self,
-        service_index_url: str = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
-        timeout: int = None,
+        service_index_url: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
+        timeout: Optional[int] = None,
     ):
         nuget_config = get_ecosystem_config("nuget")
 
@@ -147,7 +147,7 @@ class NuGetClient(BaseDataSourceClient):
             params["supportedFramework"] = target_framework
 
         try:
-            data = await self._get(self.search_url, params=params)
+            data = await self._get(self.search_url, params=params)  # type: ignore[arg-type]
         except Exception:
             return []
         if not data or "data" not in data:
@@ -230,7 +230,7 @@ class NuGetClient(BaseDataSourceClient):
                                     latest_data = entry_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -308,7 +308,7 @@ class NuGetClient(BaseDataSourceClient):
         if not info or not info.get("versions"):
             return []
 
-        versions = []
+        versions: List[Any] = []
         for v in info["versions"]:
             if not include_prereleases and v.get("is_prerelease", False):
                 continue
@@ -393,19 +393,17 @@ class NuGetClient(BaseDataSourceClient):
                 )
 
         version_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
         return version_info
 
     def _extract_dependencies(self, dependency_groups: List[Dict]) -> Dict[str, Dict]:
-        dependencies = {}
-
+        dependencies: Dict[str, Any] = {}
         for group in dependency_groups:
             target_framework = group.get("targetFramework", "any")
-            deps = {}
-
+            deps: Dict[str, Any] = {}
             for dep in group.get("dependencies", []):
                 name = dep.get("id")
                 version_range = dep.get("range", "")
@@ -423,7 +421,7 @@ class NuGetClient(BaseDataSourceClient):
         return dependencies
 
     def _extract_system_requirements(self, entry: Dict) -> Dict[str, Any]:
-        requirements = {
+        requirements: Dict[str, Any] = {
             "target_frameworks": [],
             "min_client_version": None,
             "development_dependency": False,
@@ -581,7 +579,7 @@ class NuGetClient(BaseDataSourceClient):
         if "netstandard" in package_framework:
             if (
                 "net4" in system_framework
-                and self._extract_framework_version(system_framework) >= 461
+                and (self._extract_framework_version(system_framework) or 0) >= 461
             ):
                 return True
             if any(
@@ -594,8 +592,8 @@ class NuGetClient(BaseDataSourceClient):
             pkg_version = self._extract_framework_version(package_framework)
             sys_version = self._extract_framework_version(system_framework)
 
-            if pkg_version and sys_version:
-                return sys_version >= pkg_version
+            if pkg_version is not None and sys_version is not None:
+                return sys_version >= pkg_version  # type: ignore[operator]
 
         return False
 

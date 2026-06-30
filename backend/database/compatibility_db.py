@@ -1,5 +1,5 @@
 # compatibility_db.py
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -213,7 +213,7 @@ class CompatibilityDB:
             db.add(report)
             db.commit()
 
-            return report.id
+            return int(report.id)
 
         except Exception as e:
             logger.error(f"Error adding compatibility report: {e}")
@@ -383,7 +383,7 @@ class CompatibilityDB:
 
         if failed_reports:
             # Extract common patterns
-            common_issues = {}
+            common_issues: Dict[str, int] = {}
             for report in failed_reports:
                 if "cuda" in report.notes.lower():
                     common_issues["cuda"] = common_issues.get("cuda", 0) + 1
@@ -430,7 +430,7 @@ class CompatibilityDB:
             successful_reports = sum(1 for r in reports if r.works)
 
             # Group by version
-            version_stats = {}
+            version_stats: Dict[str, Dict[str, Any]] = {}
             for report in reports:
                 if report.version not in version_stats:
                     version_stats[report.version] = {
@@ -596,7 +596,7 @@ class CompatibilityDB:
         failed_reports = [r for r in reports if not r.works and r.notes]
         if failed_reports:
             # Simple keyword extraction
-            issue_keywords = {}
+            issue_keywords: Dict[str, int] = {}
             for report in failed_reports:
                 words = report.notes.lower().split()
                 for word in [

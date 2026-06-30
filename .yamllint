@@ -1,0 +1,14 @@
+extends: default
+
+rules:
+  line-length:
+    max: 200
+    level: warning
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  indentation:
+    spaces: 2
+    indent-sequences: true
+  document-start: disable
+  truthy: disable  # 'on:' is a workflow keyword, not boolean

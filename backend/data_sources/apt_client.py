@@ -58,7 +58,7 @@ class APTClient(BaseDataSourceClient):
 
     async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
         query = normalize_package_name(query)
-        results = []
+        results: List[Dict] = []
 
         try:
             packages = await self._get_packages_list("stable", "main")
@@ -141,8 +141,7 @@ class APTClient(BaseDataSourceClient):
 
     async def get_versions(self, package_name: str) -> List[Dict]:
         package_name = normalize_package_name(package_name)
-        versions = []
-
+        versions: List[Any] = []
         for dist in self.distributions:
             for component in self.components:
                 packages = await self._get_packages_list(dist, component)
@@ -159,9 +158,7 @@ class APTClient(BaseDataSourceClient):
                     )
 
         versions.sort(
-            key=lambda x: (
-                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")
-            ),
+            key=lambda x: parse_version(x["version"].split("-")[0]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -222,8 +219,8 @@ class APTClient(BaseDataSourceClient):
             return {}
 
     def _parse_packages_file(self, content: str) -> Dict[str, Dict]:
-        packages = {}
-        current_package = {}
+        packages: Dict[str, Any] = {}
+        current_package: Dict[str, Any] = {}
         current_field = None
 
         for line in content.split("\n"):
@@ -253,7 +250,7 @@ class APTClient(BaseDataSourceClient):
         return packages
 
     def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies = {
+        dependencies: Dict[str, List[Dict]] = {
             "depends": [],
             "recommends": [],
             "suggests": [],
@@ -284,8 +281,7 @@ class APTClient(BaseDataSourceClient):
         return dependencies
 
     def _parse_dependency_string(self, deps_str: str) -> List[Dict]:
-        dependencies = []
-
+        dependencies: List[Dict] = []
         for dep_group in deps_str.split(","):
             dep_group = dep_group.strip()
 
@@ -301,11 +297,11 @@ class APTClient(BaseDataSourceClient):
                     or_deps.append({"name": dep_name, "version_spec": version_spec})
 
             if len(or_deps) == 1:
-                dependencies.append(or_deps[0])
+                dependencies.append(or_deps[0])  # type: ignore[arg-type]
             elif or_deps:
-                dependencies.append({"or_dependencies": or_deps})
+                dependencies.append({"or_dependencies": or_deps})  # type: ignore[arg-type]
 
-        return dependencies
+        return dependencies  # type: ignore[return-value]
 
     def _extract_system_requirements(self, package_data: Dict) -> Dict[str, Any]:
         requirements = {

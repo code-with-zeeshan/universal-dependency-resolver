@@ -1,11 +1,21 @@
 # Universal Dependency Resolver
 
-Resolve dependencies across **PyPI**, **npm**, **Cargo**, **Go**, **Conda**, **Maven**, and more — detect conflicts, check system compatibility, and export to any format.
+[![PyPI version](https://img.shields.io/pypi/v/ud-resolver?color=blue)](https://pypi.org/project/ud-resolver/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ud-resolver)](https://pypi.org/project/ud-resolver/)
+[![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver)](LICENSE)
+[![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
+[![Desktop build](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
+[![Type checked](https://img.shields.io/badge/mypy-0%20errors-brightgreen)](#)
+
+Resolve dependencies across **13 ecosystems** — detect conflicts, check system compatibility, and export to any format.
 
 ```
-udr resolve numpy@pypi torch@pypi
-  → numpy 1.26.2, torch 2.1.2+cu121 (CUDA 12.1)
+  udr resolve torch@pypi express@npm serde@crates
+  → Compatible versions across PyPI, npm, and Cargo
+  → CUDA-aware: torch 2.1.2+cu121 (GPU) selected automatically
 ```
+
+---
 
 ## The Problem
 
@@ -13,7 +23,9 @@ Your project pulls in packages from everywhere — Python scripts call Node serv
 
 Existing tools only work within one ecosystem. `pip-compile` handles Python. `npm ls` handles JavaScript. Cross-ecosystem conflicts go undetected until something breaks at runtime. System compatibility — GPU drivers, CUDA versions, OS patches — is never checked.
 
-This tool fixes that.
+**This tool fixes that.**
+
+---
 
 ## Quick Start
 
@@ -33,7 +45,26 @@ udr check
 udr serve --port 8000
 ```
 
-## Two Components
+---
+
+## Features
+
+| Capability | Detail |
+|---|---|
+| **13 ecosystems** | PyPI, npm, Cargo, Go, Conda, Maven, NuGet, RubyGems, Packagist, Homebrew, Debian APT, Alpine APK, CocoaPods |
+| **SAT-solver resolution** | Z3-based conflict resolver handles complex cross-ecosystem version constraints |
+| **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
+| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
+| **12 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat |
+| **10 CLI commands** | serve, check, resolve, info, lock, scan, graph, verify, list-ecosystems, update |
+| **24 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
+| **Zero config** | SQLite by default, in-memory cache, no Docker required |
+| **Lock file** | Reproducible `udr-lock.json` with full system snapshot |
+
+---
+
+## Components
 
 | Component | What it is | How to get |
 |---|---|---|
@@ -42,21 +73,12 @@ udr serve --port 8000
 
 See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
 
-## Features
-
-- **13 ecosystems** — PyPI, npm, Cargo, Go, Conda, Maven, NuGet, RubyGems, Packagist, Homebrew, APT, APK, CocoaPods
-- **SAT-solver resolution** — Z3-based conflict resolver handles complex version constraints
-- **System scanning** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java
-- **GPU-aware resolution** — Automatically resolves CUDA variants (e.g., `torch` → `torch 2.1.2+cu121`)
-- **12 export formats** — requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat
-- **10 CLI commands** — `serve`, `check`, `resolve`, `info`, `lock`, `scan`, `graph`, `verify`, `list-ecosystems`, `update`
-- **24 API endpoints** — Full REST API for programmatic use
-- **Desktop GUI** — 14 tabbed views, formatted tables, loading states, auto-update
+---
 
 ## CLI Examples
 
 ```bash
-# Resolve packages from multiple ecosystems
+# Resolve packages from any ecosystem
 udr resolve numpy pandas scikit-learn
 udr resolve react vue -e npm
 udr resolve serde tokio -e crates
@@ -67,28 +89,28 @@ udr lock --manifest requirements.txt --manifest package.json --dry-run
 
 # Validate a lock file
 udr verify
-udr verify --lock-file udr-lock.json
 
 # Show dependency graph
 udr graph flask django
 
-# List supported ecosystems
-udr list-ecosystems
-
-# Re-resolve a single package and update lock
-udr update flask
-
 # Scan a GitHub repo without cloning
 udr scan --github https://github.com/user/repo
 
-# Override CUDA version for GPU packages on CPU-only machines
+# CUDA override on CPU-only machines
 udr lock --cuda 12.1
-udr scan --github https://github.com/user/repo --cuda 11.8
 
 # System information
 udr check
 udr info
+
+# List supported ecosystems
+udr list-ecosystems
+
+# Re-resolve a single package
+udr update flask
 ```
+
+---
 
 ## Python Library
 
@@ -105,17 +127,19 @@ async def main():
     aggregator = DataAggregator()
     info = await aggregator.get_package_info(
         "torch", ecosystem="pypi",
-        include_dependencies=True, include_versions=True
+        include_dependencies=True, include_versions=True,
     )
 
     resolver = ConflictResolver()
-    result = resolver.resolve([
-        {"name": "flask", "version": ">=2.0"},
-        {"name": "django", "version": ">=4.0"},
-    ], system_info=system_info)
+    result = resolver.resolve(
+        [{"name": "flask", "version": ">=2.0"}],
+        system_info=system_info,
+    )
 
 asyncio.run(main())
 ```
+
+---
 
 ## API Server
 
@@ -123,40 +147,60 @@ asyncio.run(main())
 udr serve --host 0.0.0.0 --port 8000
 ```
 
-The API is documented at `http://localhost:8000/api/v1/docs` (Swagger UI). See [docs/API.md](docs/API.md) for a full reference.
+OpenAPI docs at `http://localhost:8000/api/v1/docs` (Swagger UI). Full reference in [docs/API.md](docs/API.md).
 
-## Desktop App
-
-Download from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) — no Python or Node.js required. See [docs/COMPONENTS.md](docs/COMPONENTS.md) for details.
+---
 
 ## Testing
 
 ```bash
-python -m pytest tests/unit/        # 399 unit tests
-python -m pytest tests/integration/ # 69 integration tests (SQLite, no Docker needed)
+# Unit tests (fast, no deps)
+python -m pytest tests/unit/        # 399 tests
+
+# Integration tests (SQLite, no Docker needed)
+python -m pytest tests/integration/ # 69 tests
+
+# Desktop smoke tests
+cd desktop && node --test tests/    # 28 tests
 ```
+
+---
 
 ## How It Works
 
 ```
-Your request → Fetch metadata from registry APIs
-                   ↓
-            Scan target system (OS, GPU, Python, CUDA)
-                   ↓
-            Resolve conflicts with Z3 SAT solver
-                   ↓
-            Export to 12 formats
+Your request ──► Fetch metadata from registry APIs
+                      │
+                      ▼
+              Scan target system (OS, GPU, CUDA, runtimes)
+                      │
+                      ▼
+              Resolve conflicts with Z3 SAT solver
+                      │
+                      ▼
+              Export to 12 formats or write lock file
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture.
 
-## Links
+---
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — codebase architecture
-- [docs/COMPONENTS.md](docs/COMPONENTS.md) — component guide
-- [docs/CLI.md](docs/CLI.md) — CLI command reference
-- [docs/API.md](docs/API.md) — API reference
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — development setup
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues
-- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
-- [LICENSE](LICENSE) — MIT
+## Documentation
+
+| Guide | Description |
+|---|---|
+| [CLI Reference](docs/CLI.md) | All 10 commands with flags, examples, exit codes |
+| [API Reference](docs/API.md) | 24 REST endpoints, request/response schemas |
+| [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
+| [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
+| [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library comparison |
+| [Deployment](docs/DEPLOYMENT.md) | Production deployment guide |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [Contributing](CONTRIBUTING.md) | How to contribute |
+| [Security](SECURITY.md) | Security policy |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -204,7 +204,7 @@ class ConflictResolver:
             )
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            processed_results = []
+            processed_results: List[Any] = []
             for index, result in enumerate(results):
                 if isinstance(result, Exception):
                     correlation_id = str(uuid.uuid4())
@@ -396,7 +396,7 @@ class ConflictResolver:
                 )
                 continue
 
-            normalized_dependencies = {}
+            normalized_dependencies: Dict[str, Dict[str, str]] = {}
             for ecosystem, deps in dependencies.items():
                 if not isinstance(deps, dict):
                     normalization_failures.append(
@@ -508,7 +508,7 @@ class ConflictResolver:
         except ResolverError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise self._handle_unexpected_resolution_error(
+            raise self._handle_unexpected_resolution_error(  # type: ignore[misc]
                 exc, context, elevate=True
             ) from exc
 
@@ -783,7 +783,7 @@ class ConflictResolver:
         """Create constraint system for SAT solver"""
         import z3
 
-        constraints = {
+        constraints: Dict[str, Any] = {
             "package_versions": {},
             "system_requirements": {},
             "conflicts": [],
@@ -998,7 +998,7 @@ class ConflictResolver:
 
         if result == z3.sat:
             model = self.solver.model()
-            solution = {"status": "satisfiable", "packages": {}, "warnings": []}
+            solution: Dict[str, Any] = {"status": "satisfiable", "packages": {}, "warnings": []}
 
             # Extract selected versions
             for pkg_name, version_vars in constraints["package_versions"].items():
@@ -1027,7 +1027,7 @@ class ConflictResolver:
         self, packages: List[Dict], system_info: Dict
     ) -> Dict:
         """Try to resolve conflicts by finding alternative packages or versions"""
-        alternatives = {
+        alternatives: Dict[str, Any] = {
             "status": "partial",
             "packages": {},
             "alternatives": [],
@@ -1179,7 +1179,7 @@ class ConflictResolver:
 
     def _get_package_dependencies(self, package_name: str, version_str: str) -> Dict:
         """Get dependencies for a specific package version"""
-        dependencies = {}
+        dependencies: Dict[str, Any] = {}
 
         # Find the node in the graph
         pkg_node = None

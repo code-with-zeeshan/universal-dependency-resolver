@@ -53,7 +53,10 @@ ruff format backend/
 backend/
 ├── api/               # FastAPI routes, middleware, auth, schemas
 │   └── routes/        # packages.py, system.py, auth.py, scan.py, lock.py
-├── cli.py             # CLI entry point (9 commands)
+├── cli/               # CLI package (14 modules, 1 per command)
+│   ├── main.py        # Parser setup + dispatch
+│   ├── shared.py      # Shared helpers (parse, resolve, output)
+│   └── commands/      # One file per command (serve, check, lock, resolve, …)
 ├── core/              # Business logic
 │   ├── conflict_resolver.py   # Z3 SAT solver
 │   ├── data_aggregator.py     # Aggregates data from all sources

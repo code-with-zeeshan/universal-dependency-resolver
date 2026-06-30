@@ -37,11 +37,11 @@ class ComposerVersionRequirement:
 class PackagistClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: str = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
-        timeout: int = None,
+        api_url: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
+        timeout: Optional[int] = None,
     ):
         packagist_config = get_ecosystem_config("packagist")
 
@@ -135,7 +135,7 @@ class PackagistClient(BaseDataSourceClient):
                         latest_data = version_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -214,7 +214,7 @@ class PackagistClient(BaseDataSourceClient):
         if not info or not info.get("versions"):
             return []
 
-        versions = []
+        versions: List[Any] = []
         for v in info["versions"]:
             if not include_dev and self._is_dev_version(v.get("version", "")):
                 continue
@@ -282,8 +282,7 @@ class PackagistClient(BaseDataSourceClient):
         }
 
     def _extract_dependencies(self, version_data: Dict) -> Dict[str, Dict]:
-        dependencies = {}
-
+        dependencies: Dict[str, Any] = {}
         dep_types = [
             "require",
             "require-dev",
@@ -300,7 +299,7 @@ class PackagistClient(BaseDataSourceClient):
         return dependencies
 
     def _extract_system_requirements(self, version_data: Dict) -> Dict[str, Any]:
-        requirements = {"php": None, "extensions": [], "platform": {}, "composer": None}
+        requirements: Dict[str, Any] = {"php": None, "extensions": [], "platform": {}, "composer": None}
 
         require = version_data.get("require", {})
         if "php" in require:
@@ -309,7 +308,7 @@ class PackagistClient(BaseDataSourceClient):
         for req_name, req_version in require.items():
             if req_name.startswith("ext-"):
                 ext_name = req_name[4:]
-                requirements["extensions"].append(
+                requirements["extensions"].append(  # type: ignore[union-attr]
                     {"name": ext_name, "version": req_version}
                 )
 
@@ -389,8 +388,10 @@ class PackagistClient(BaseDataSourceClient):
         for pattern, handler in patterns.items():
             match = re.match(pattern, spec.strip())
             if match:
-                for key, value in handler(match).items():
-                    setattr(req, key, value)
+                result_dict = handler(match)
+                if isinstance(result_dict, dict):
+                    for key, value in result_dict.items():
+                        setattr(req, key, value)
                 break
 
         self._version_cache[spec] = req
@@ -465,17 +466,29 @@ class PackagistClient(BaseDataSourceClient):
 
         if req.operator == "^":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            max_v = parse_version(f"{req.major + 1}.0.0")
+            max_v = parse_version(f"{req.major + 1}.0.0") if req.major is not None else None
+            if min_v is None or max_v is None:
+                return True
             return min_v <= system_v < max_v
         elif req.operator == "~":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            max_v = parse_version(f"{req.major}.{req.minor + 1}.0")
+            max_v = parse_version(f"{req.major}.{req.minor + 1}.0") if req.major is not None and req.minor is not None else None
+            if min_v is None or max_v is None:
+                return True
             return min_v <= system_v < max_v
         elif req.operator == ">=":
+            if req.major is None or req.minor is None or req.patch is None:
+                return True
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
+            if min_v is None:
+                return True
             return system_v >= min_v
         else:
+            if req.major is None or req.minor is None or req.patch is None:
+                return True
             exact_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
+            if exact_v is None:
+                return True
             return system_v == exact_v
 
     def _check_composer_compatibility(self, system_version: str, required: str) -> bool:

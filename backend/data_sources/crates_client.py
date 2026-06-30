@@ -29,9 +29,9 @@ class CratesClient(BaseDataSourceClient):
     def __init__(
         self,
         user_agent: Optional[str] = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
     ):
         crates_config = get_ecosystem_config("crates")
 
@@ -114,7 +114,7 @@ class CratesClient(BaseDataSourceClient):
             msrv = self._extract_msrv(crate)
 
             # Build lightweight version list from the versions payload already returned
-            versions = []
+            versions: List[Any] = []
             seen = set()
             for v in versions_data:
                 ver = v["num"]
@@ -181,7 +181,7 @@ class CratesClient(BaseDataSourceClient):
                     status_code=404, detail="Crates package versions not found"
                 )
 
-            versions = []
+            versions: List[Any] = []
             for version_data in data["versions"]:
                 version_str = version_data["num"]
 
@@ -218,7 +218,7 @@ class CratesClient(BaseDataSourceClient):
                             continue
 
                 # Only fetch features/msrv for the first 50 versions when no filters
-                features = {}
+                features: Dict[str, Any] = {}
                 rust_version = None
                 if not filters or len(versions) < 50:
                     try:
@@ -254,7 +254,7 @@ class CratesClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),
+                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
 
@@ -285,7 +285,7 @@ class CratesClient(BaseDataSourceClient):
             if not data:
                 return {"normal": [], "dev": [], "build": []}
 
-            dependencies = {"normal": [], "dev": [], "build": []}
+            dependencies: Dict[str, List[Dict]] = {"normal": [], "dev": [], "build": []}
 
             for dep in data.get("dependencies", []):
                 dep_kind = dep.get("kind", "normal")
@@ -352,7 +352,7 @@ class CratesClient(BaseDataSourceClient):
             package_name, version, include_dev=False, include_build=False
         )
 
-        tree = {
+        tree: Dict[str, Any] = {
             "name": package_name,
             "version": version,
             "dependencies": {"normal": [], "build": []},
@@ -368,7 +368,7 @@ class CratesClient(BaseDataSourceClient):
                     dep_tree = await self.get_dependency_tree(
                         dep["name"], dep_version, max_depth - 1, visited
                     )
-                    tree["dependencies"][dep_kind].append(dep_tree)
+                    tree["dependencies"][dep_kind].append(dep_tree)  # type: ignore[union-attr]
 
         return tree
 
@@ -380,7 +380,7 @@ class CratesClient(BaseDataSourceClient):
             await self._get_version_metadata(package_name, version)
             dependencies = await self.get_dependencies(package_name, version)
 
-            compatibility = {
+            compatibility: Dict[str, Any] = {
                 "compatible": True,
                 "details": {},
                 "warnings": [],
@@ -510,9 +510,9 @@ class CratesClient(BaseDataSourceClient):
         except Exception:
             return None
 
-    async def _get_version_features(self, package_name: str, version: str) -> List[str]:
+    async def _get_version_features(self, package_name: str, version: str) -> Dict[str, Any]:
         package_name = normalize_package_name(package_name)
-        return ["default"]
+        return {"default": True}
 
     async def _resolve_version_requirement(
         self, package_name: str, requirement: str

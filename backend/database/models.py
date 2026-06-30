@@ -28,7 +28,7 @@ _sys_path_appended = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _sys_path_appended not in sys.path:
     sys.path.insert(0, _sys_path_appended)
 
-Base = declarative_base()
+Base: type = declarative_base()
 
 
 class Package(Base):

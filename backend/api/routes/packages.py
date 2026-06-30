@@ -174,7 +174,7 @@ async def search_packages(
         ecosystem_list = ecosystems.split(",") if ecosystems else None
 
         results = await aggregator.search_packages(
-            q, ecosystems=ecosystem_list, limit=limit
+            q, ecosystems=ecosystem_list, limit=limit  # type: ignore[arg-type]
         )
 
         # Apply post-processing (filtering, sorting)

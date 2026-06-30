@@ -1,11 +1,11 @@
 # conda_client.py
 import aiohttp
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import json
 import logging
 from datetime import datetime
 import re
-import yaml
+import yaml  # type: ignore[import-untyped]
 import tarfile
 import io
 from ..core.utils import normalize_package_name, parse_version, run_async
@@ -61,7 +61,7 @@ class CondaClient(BaseDataSourceClient):
                     break
 
             if not package_info:
-                return None
+                return None  # type: ignore[return-value]
 
             processed_info = await self._process_package_data_enhanced(package_info)
 
@@ -69,7 +69,7 @@ class CondaClient(BaseDataSourceClient):
 
         except Exception as e:
             logger.error(f"Error fetching Conda package {package_name}: {e}")
-            return None
+            return None  # type: ignore[return-value]
 
     def get_package_info(self, package_name: str) -> Dict:
         package_name = normalize_package_name(package_name)
@@ -108,7 +108,7 @@ class CondaClient(BaseDataSourceClient):
             # Derive latest from files list
             all_vers = sorted(
                 set(f.get("version") for f in files if f.get("version")),
-                key=lambda x: parse_version(x) or parse_version("0.0.0"),
+                key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
             latest_version = all_vers[0] if all_vers else None
@@ -127,7 +127,7 @@ class CondaClient(BaseDataSourceClient):
             if version_str not in version_map:
                 attrs = file_info.get("attrs", {})
                 depends = attrs.get("depends", [])
-                deps = {}
+                deps: Dict[str, Any] = {}
                 for dep_str in depends:
                     dep_name, constraint = self._parse_conda_dependency(dep_str)
                     if dep_name:
@@ -171,7 +171,7 @@ class CondaClient(BaseDataSourceClient):
             versions_info.append(version_data)
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -197,7 +197,7 @@ class CondaClient(BaseDataSourceClient):
         }
 
     def _extract_deps_from_files(self, files: List) -> Dict:
-        deps = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        deps: Dict[str, Any] = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
         for file_info in files:
             attrs = file_info.get("attrs", {})
             depends = attrs.get("depends", [])
@@ -264,7 +264,7 @@ class CondaClient(BaseDataSourceClient):
     async def _extract_dependencies_from_package_metadata(
         self, package_name: str, version: str, channel: str
     ) -> Dict:
-        dependencies = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        dependencies: Dict[str, Any] = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
 
         try:
             info = await self._fetch_from_anaconda_api(package_name, channel)
@@ -362,7 +362,7 @@ class CondaClient(BaseDataSourceClient):
 
         return metadata
 
-    def _parse_conda_dependency(self, dep_string: str) -> Tuple[str, str]:
+    def _parse_conda_dependency(self, dep_string: str) -> Tuple[Optional[str], str]:
         if not dep_string or not isinstance(dep_string, str):
             return None, ""
 
@@ -393,11 +393,11 @@ class CondaClient(BaseDataSourceClient):
         if match:
             return match.group(1), "*"
 
-        return dep_string, "*"
+        return dep_string, "*"  # type: ignore[return-value]
 
     def _extract_system_requirements(self, data: Dict, files: List[Dict]) -> Dict:
-        requirements = {}
-
+        requirements: Dict[str, Any] = {}
+        package_name = data.get("name", "").lower()
         package_name = data.get("name", "").lower()
         description = (
             data.get("description", "") + " " + data.get("summary", "")
@@ -506,7 +506,7 @@ class CondaClient(BaseDataSourceClient):
             params = {"q": query, "type": "conda", "limit": limit}
 
             session = self._get_session()
-            async with session.get(search_url, params=params) as response:
+            async with session.get(search_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
                     return []
 
@@ -562,7 +562,7 @@ class CondaClient(BaseDataSourceClient):
         channel = info.get("channel", "conda-forge")
 
         dependencies = await self._extract_dependencies_from_repodata(
-            package_name, version, channel
+            package_name, version, channel  # type: ignore[arg-type]
         )
 
         self._cache[cache_key] = (dependencies, datetime.now())

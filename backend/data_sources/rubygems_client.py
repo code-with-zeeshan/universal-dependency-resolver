@@ -33,11 +33,11 @@ class RubyVersionRequirement:
 class RubyGemsClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: str = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
-        timeout: int = None,
+        api_url: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
+        timeout: Optional[int] = None,
     ):
         rubygems_config = get_ecosystem_config("rubygems")
 
@@ -139,7 +139,7 @@ class RubyGemsClient(BaseDataSourceClient):
             "versions": versions_info,
             "reverse_dependencies": reverse_deps,
             "dependencies": await self._get_dependencies(
-                package_name, data.get("version")
+                package_name, str(data.get("version")) if data.get("version") else ""
             ),
             "system_requirements": self._extract_system_requirements(data),
             "created_at": data.get("created_at"),
@@ -219,7 +219,7 @@ class RubyGemsClient(BaseDataSourceClient):
             )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -248,8 +248,12 @@ class RubyGemsClient(BaseDataSourceClient):
     async def _get_all_versions(self, package_name: str) -> List[Dict]:
         package_name = normalize_package_name(package_name)
         url = f"{self.base_url}/gems/{package_name}/versions.json"
-        data = await self._get(url)
-        return data or []
+        data: Any = await self._get(url)
+        if data is None:
+            return []
+        if isinstance(data, list):
+            return data
+        return [data]
 
     async def _get_reverse_dependencies(self, package_name: str) -> List[str]:
         package_name = normalize_package_name(package_name)
@@ -282,7 +286,7 @@ class RubyGemsClient(BaseDataSourceClient):
         return {}
 
     async def _parse_dependencies(self, dependencies: Dict) -> Dict:
-        parsed = {"runtime": {}, "development": {}}
+        parsed: Dict[str, Dict] = {"runtime": {}, "development": {}}
 
         if "dependencies" in dependencies:
             deps = dependencies["dependencies"]
@@ -319,7 +323,7 @@ class RubyGemsClient(BaseDataSourceClient):
             )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -347,7 +351,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
         req = RubyVersionRequirement(raw=spec)
 
-        patterns = {
+        patterns: Dict[str, Any] = {
             r"^~>\s*(\d+)\.(\d+)\.(\d+)": lambda m: {
                 "operator": "~>",
                 "major": int(m[1]),
@@ -434,21 +438,30 @@ class RubyGemsClient(BaseDataSourceClient):
         if not system_v or not req.major:
             return True
 
-        if req.operator == "~>":
-            if req.patch is not None:
-                min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-                max_v = parse_version(f"{req.major}.{req.minor + 1}.0")
-            else:
-                min_v = parse_version(f"{req.major}.{req.minor}.0")
-                max_v = parse_version(f"{req.major + 1}.0.0")
+        minor = req.minor if req.minor is not None else 0
+        patch = req.patch if req.patch is not None else 0
+        major = req.major
 
-            return min_v <= system_v < max_v
+        if req.operator == "~>":
+            min_v = parse_version(f"{major}.{minor}.{patch}")
+            if req.patch is not None:
+                max_v = parse_version(f"{major}.{minor + 1}.0")
+            else:
+                max_v = parse_version(f"{major + 1}.0.0")
+
+            if min_v is not None and max_v is not None:
+                return min_v <= system_v < max_v
+            return True
         elif req.operator == ">=":
-            min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            return system_v >= min_v
+            min_v = parse_version(f"{major}.{minor}.{patch}")
+            if min_v is not None:
+                return system_v >= min_v
+            return True
         else:
-            exact_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            return system_v == exact_v
+            exact_v = parse_version(f"{major}.{minor}.{patch}")
+            if exact_v is not None:
+                return system_v == exact_v
+            return True
 
     def _check_rubygems_compatibility(self, system_version: str, required: str) -> bool:
         return self._check_ruby_compatibility(system_version, required)

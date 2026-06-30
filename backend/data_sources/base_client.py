@@ -47,7 +47,7 @@ class BaseDataSourceClient:
         self._circuit_failure_count = 0
         self._circuit_failure_threshold = CIRCUIT_BREAKER_FAILURE_THRESHOLD
         self._circuit_open_time = CIRCUIT_BREAKER_OPEN_TIME
-        self._circuit_last_open_time = None
+        self._circuit_last_open_time: Optional[datetime] = None
         self._circuit_half_open_successes = 0
         self._circuit_half_open_max_successes = 2
 
@@ -105,7 +105,7 @@ class BaseDataSourceClient:
         for attempt in range(self.max_retries):
             try:
                 async with session.request(
-                    method, url, headers=headers, timeout=self.timeout, **kwargs
+                    method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout), **kwargs
                 ) as resp:
                     if resp.status == 404:
                         return None

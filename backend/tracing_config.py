@@ -8,7 +8,7 @@ via standard OTEL environment variables.
 
 import os
 import logging
-from typing import Optional
+from typing import Optional, Dict
 
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() == "true"
 OTEL_EXPORTER_OTLP_PROTOCOL = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
@@ -26,28 +26,28 @@ ENV = os.getenv("ENV", "development")
 logger = logging.getLogger(__name__)
 
 try:
-    from opentelemetry import trace
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider, sampling
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+    from opentelemetry import trace as _trace
+    from opentelemetry.sdk.resources import Resource as _Resource
+    from opentelemetry.sdk.trace import TracerProvider as _TracerProvider, sampling as _sampling
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor as _BatchSpanProcessor, SimpleSpanProcessor as _SimpleSpanProcessor
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-        OTLPSpanExporter as OTLPHttpExporter,
+        OTLPSpanExporter as _OTLPHttpExporter,
     )
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor as _FastAPIInstrumentor
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor as _HTTPXClientInstrumentor
 
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
-    trace = None
-    Resource = None
-    TracerProvider = None
-    sampling = None
-    BatchSpanProcessor = None
-    SimpleSpanProcessor = None
-    OTLPHttpExporter = None
-    FastAPIInstrumentor = None
-    HTTPXClientInstrumentor = None
+    _trace = None  # type: ignore
+    _Resource = None  # type: ignore
+    _TracerProvider = None  # type: ignore
+    _sampling = None  # type: ignore
+    _BatchSpanProcessor = None  # type: ignore
+    _SimpleSpanProcessor = None  # type: ignore
+    _OTLPHttpExporter = None  # type: ignore
+    _FastAPIInstrumentor = None  # type: ignore
+    _HTTPXClientInstrumentor = None  # type: ignore
 
 try:
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -57,9 +57,9 @@ except ImportError:
     OTLPGrpcExporter = None
 
 
-def _parse_resource_attributes(raw: str) -> dict:
+def _parse_resource_attributes(raw: str) -> Dict[str, str]:
     """Parse OTEL_RESOURCE_ATTRIBUTES (key1=val1,key2=val2) into a dict."""
-    attrs = {}
+    attrs: Dict[str, str] = {}
     if not raw:
         return attrs
     for pair in raw.split(","):
@@ -69,7 +69,7 @@ def _parse_resource_attributes(raw: str) -> dict:
     return attrs
 
 
-def _create_sampler() -> Optional["sampling.Sampler"]:
+def _create_sampler():
     """Create a sampler based on OTEL_SAMPLER_TYPE and OTEL_SAMPLER_ARG."""
     if not _OTEL_AVAILABLE:
         return None
@@ -77,18 +77,18 @@ def _create_sampler() -> Optional["sampling.Sampler"]:
     sampler_arg = float(OTEL_SAMPLER_ARG)
 
     samplers = {
-        "always_on": sampling.ALWAYS_ON,
-        "always_off": sampling.ALWAYS_OFF,
-        "traceidratio": sampling.TraceIdRatioBased(sampler_arg),
-        "parentbased_traceidratio": sampling.ParentBased(
-            sampling.TraceIdRatioBased(sampler_arg)
+        "always_on": _sampling.ALWAYS_ON,
+        "always_off": _sampling.ALWAYS_OFF,
+        "traceidratio": _sampling.TraceIdRatioBased(sampler_arg),
+        "parentbased_traceidratio": _sampling.ParentBased(
+            _sampling.TraceIdRatioBased(sampler_arg)
         ),
-        "parentbased_always_on": sampling.ParentBased(sampling.ALWAYS_ON),
-        "parentbased_always_off": sampling.ParentBased(sampling.ALWAYS_OFF),
+        "parentbased_always_on": _sampling.ParentBased(_sampling.ALWAYS_ON),
+        "parentbased_always_off": _sampling.ParentBased(_sampling.ALWAYS_OFF),
     }
 
     return samplers.get(
-        sampler_type, sampling.ParentBased(sampling.TraceIdRatioBased(0.1))
+        sampler_type, _sampling.ParentBased(_sampling.TraceIdRatioBased(0.1))
     )
 
 
@@ -123,7 +123,7 @@ def _create_otlp_exporter():
             logger.warning(f"Failed to create gRPC exporter, falling back to HTTP: {e}")
 
     try:
-        return OTLPHttpExporter(
+        return _OTLPHttpExporter(
             **common_args,
             compression=OTEL_EXPORTER_OTLP_COMPRESSION,
         )
@@ -148,18 +148,18 @@ def setup_tracing(app=None):
     }
     resource_attrs.update(_parse_resource_attributes(OTEL_RESOURCE_ATTRIBUTES))
 
-    resource = Resource.create(resource_attrs)
+    resource = _Resource.create(resource_attrs)
     sampler = _create_sampler()
-    provider = TracerProvider(resource=resource, sampler=sampler)
+    provider = _TracerProvider(resource=resource, sampler=sampler)
 
     exporter = _create_otlp_exporter()
     if exporter:
         if ENV == "development":
-            provider.add_span_processor(SimpleSpanProcessor(exporter))
+            provider.add_span_processor(_SimpleSpanProcessor(exporter))
             logger.info("Using SimpleSpanProcessor (development mode)")
         else:
             provider.add_span_processor(
-                BatchSpanProcessor(
+                _BatchSpanProcessor(
                     exporter,
                     max_queue_size=2048,
                     max_export_batch_size=512,
@@ -168,17 +168,17 @@ def setup_tracing(app=None):
             )
             logger.info("Using BatchSpanProcessor (production mode)")
 
-    trace.set_tracer_provider(provider)
+    _trace.set_tracer_provider(provider)
 
     if app:
         try:
-            FastAPIInstrumentor.instrument_app(app)
+            _FastAPIInstrumentor.instrument_app(app)
             logger.info("FastAPI instrumented for tracing")
         except Exception as e:
             logger.warning(f"Failed to instrument FastAPI: {e}")
 
     try:
-        HTTPXClientInstrumentor().instrument()
+        _HTTPXClientInstrumentor().instrument()
         logger.info("HTTPX instrumented for tracing")
     except Exception as e:
         logger.warning(f"Failed to instrument HTTPX: {e}")

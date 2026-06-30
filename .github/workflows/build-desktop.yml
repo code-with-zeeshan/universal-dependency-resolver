@@ -131,6 +131,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Smoke test built binary
+        shell: bash
+        run: |
+          node --test tests/smoke.test.js
+        working-directory: desktop
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

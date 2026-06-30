@@ -275,7 +275,7 @@ class ExportGenerator:
 
         categorized = None
         if options.get("group_by_category"):
-            cats = {
+            cats: Dict[str, List[str]] = {
                 "Core Dependencies": [],
                 "Development Tools": [],
                 "Testing": [],

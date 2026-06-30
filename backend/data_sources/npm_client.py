@@ -38,11 +38,11 @@ class VersionRequirement:
 class NPMClient(BaseDataSourceClient):
     def __init__(
         self,
-        registry_url: str = None,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
-        timeout: int = None,
+        registry_url: Optional[str] = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
+        timeout: Optional[int] = None,
     ):
         npm_config = get_ecosystem_config("npm")
         registry_url = (
@@ -57,7 +57,7 @@ class NPMClient(BaseDataSourceClient):
 
         self.search_url = "https://registry.npmjs.org/-/v1/search"
         self.downloads_url = "https://api.npmjs.org/downloads"
-        self.mirror_urls = []
+        self.mirror_urls: List[str] = []
         self._semver_cache: Dict[str, VersionRequirement] = {}
 
     async def _make_request(
@@ -175,11 +175,11 @@ class NPMClient(BaseDataSourceClient):
             "homepage": data.get("homepage"),
             "bugs": data.get("bugs"),
             "license": data.get("license"),
-            "author": self._format_person(data.get("author")),
+            "author": self._format_person(data.get("author")),  # type: ignore[arg-type]
             "maintainers": [
                 self._format_person(m) for m in data.get("maintainers", [])
             ],
-            "repository": self._extract_repository_info(data.get("repository")),
+            "repository": self._extract_repository_info(data.get("repository")),  # type: ignore[arg-type]
             "readme": data.get("readme") if include_readme else None,
             "readmeFilename": data.get("readmeFilename"),
             "dist_tags": data.get("dist-tags", {}),
@@ -258,7 +258,7 @@ class NPMClient(BaseDataSourceClient):
         if not info:
             return []
 
-        versions = []
+        versions: List[Any] = []
         for version_info in info.get("versions", []):
             if not include_prereleases and self._is_prerelease(version_info["version"]):
                 continue
@@ -289,7 +289,7 @@ class NPMClient(BaseDataSourceClient):
             return None
 
         return max(
-            matching_versions, key=lambda v: parse_version(v) or parse_version("0.0.0")
+            matching_versions, key=lambda v: parse_version(v) or parse_version("0.0.0")  # type: ignore[arg-type,return-value]
         )
 
     async def get_dependencies(
@@ -323,7 +323,7 @@ class NPMClient(BaseDataSourceClient):
         result = {"direct": deps, "transitive": {}}
 
         if include_transitive:
-            visited = set()
+            visited: Set[str] = set()
             result["transitive"] = await self._resolve_transitive_dependencies(
                 deps.get("dependencies", {}), visited, max_depth
             )
@@ -466,7 +466,7 @@ class NPMClient(BaseDataSourceClient):
             version = info["version"]
             tree["version"] = version
 
-        visited = set()
+        visited: Set[str] = set()
         tree["dependencies"] = await self._build_dependency_tree(
             package_name, version, visited, max_depth
         )
@@ -495,7 +495,7 @@ class NPMClient(BaseDataSourceClient):
         if not pkg_data:
             return {}
 
-        tree = {}
+        tree: Dict[str, Any] = {}
         deps = pkg_data.get("dependencies", {}).get("dependencies", {})
 
         for dep_name, version_spec in deps.items():
@@ -634,7 +634,7 @@ class NPMClient(BaseDataSourceClient):
 
         if types_exists:
             types_info["has_types"] = True
-            types_info["types_package"] = types_package_name
+            types_info["types_package"] = types_package_name  # type: ignore[assignment]
 
         return types_info
 
@@ -715,8 +715,7 @@ class NPMClient(BaseDataSourceClient):
     def _process_versions(
         self, versions_data: Dict[str, Any], time_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        versions = []
-
+        versions: List[Any] = []
         for version, data in versions_data.items():
             if parse_version(version) is None:
                 logger.warning(f"Skipping invalid npm version: {version}")
@@ -744,7 +743,7 @@ class NPMClient(BaseDataSourceClient):
             )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -762,7 +761,7 @@ class NPMClient(BaseDataSourceClient):
     def _extract_detailed_requirements(
         self, version_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        requirements = {
+        requirements: Dict[str, Any] = {
             "node": None,
             "npm": None,
             "os": [],
@@ -774,12 +773,12 @@ class NPMClient(BaseDataSourceClient):
 
         engines = version_data.get("engines", {})
         if "node" in engines:
-            requirements["node"] = {
+            requirements["node"] = {  # type: ignore[assignment]
                 "spec": engines["node"],
                 "minimum": self._extract_min_version(engines["node"]),
             }
         if "npm" in engines:
-            requirements["npm"] = {
+            requirements["npm"] = {  # type: ignore[assignment]
                 "spec": engines["npm"],
                 "minimum": self._extract_min_version(engines["npm"]),
             }
@@ -801,7 +800,7 @@ class NPMClient(BaseDataSourceClient):
         for dep in deps:
             if any(indicator in dep.lower() for indicator in native_indicators):
                 requirements["build_tools_required"] = True
-                requirements["native_modules"].append(dep)
+                requirements["native_modules"].append(dep)  # type: ignore[union-attr]
 
         if requirements["build_tools_required"]:
             requirements["python_required"] = True
@@ -856,8 +855,10 @@ class NPMClient(BaseDataSourceClient):
         for pattern, handler in patterns.items():
             match = re.match(pattern, spec.strip())
             if match:
-                for key, value in handler(match).items():
-                    setattr(req, key, value)
+                result_dict = handler(match)
+                if isinstance(result_dict, dict):
+                    for key, value in result_dict.items():
+                        setattr(req, key, value)
                 break
 
         self._semver_cache[spec] = req
@@ -882,9 +883,9 @@ class NPMClient(BaseDataSourceClient):
                 if req_v is None:
                     return False
 
-                if requirement.major > 0:
+                if requirement.major is not None and requirement.major > 0:
                     return v >= req_v and v.major == requirement.major
-                elif requirement.minor > 0:
+                elif requirement.minor is not None and requirement.minor > 0:
                     return v >= req_v and v.major == 0 and v.minor == requirement.minor
                 else:
                     return v == req_v
@@ -894,8 +895,8 @@ class NPMClient(BaseDataSourceClient):
                     f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 )
                 req_v = parse_version(req_v_str)
-                next_minor_str = f"{requirement.major}.{requirement.minor + 1}.0"
-                next_minor = parse_version(next_minor_str)
+                next_minor_str = f"{requirement.major}.{requirement.minor + 1}.0" if requirement.minor is not None else None
+                next_minor = parse_version(next_minor_str) if next_minor_str else None
 
                 if req_v is None or next_minor is None:
                     return False

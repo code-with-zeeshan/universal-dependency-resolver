@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class PubClient(BaseDataSourceClient):
     def __init__(
         self,
-        cache_ttl: int = None,
-        max_retries: int = None,
-        rate_limit_delay: float = None,
+        cache_ttl: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        rate_limit_delay: Optional[float] = None,
     ):
         pub_config = get_ecosystem_config("pub")
         super().__init__(
@@ -34,13 +34,13 @@ class PubClient(BaseDataSourceClient):
                 f"{self.download_url}/packages/{quote(package_name)}"
             )
             if not data:
-                return None
+                return None  # type: ignore[return-value]
 
             latest_version = data.get("latest", {}).get("version") or data.get(
                 "versions", [{}]
             )[0].get("version")
 
-            versions = []
+            versions: List[Any] = []
             deps_map = {}
             for v in data.get("versions", []):
                 version_str = v.get("version", "")
@@ -59,7 +59,7 @@ class PubClient(BaseDataSourceClient):
                 )
 
             # Build aggregated dependencies (latest version's deps)
-            deps = {"dependencies": {}}
+            deps: Dict[str, Any] = {"dependencies": {}}
             latest_pubspec = None
             if data.get("latest", {}).get("pubspec"):
                 latest_pubspec = data["latest"]["pubspec"]
@@ -90,7 +90,7 @@ class PubClient(BaseDataSourceClient):
             }
         except Exception as e:
             logger.error(f"Pub.dev error for {package_name}: {e}")
-            return None
+            return None  # type: ignore[return-value]
 
     async def get_package_versions(
         self, package_name: str, filters: Optional[Dict] = None
@@ -103,7 +103,7 @@ class PubClient(BaseDataSourceClient):
             if not data:
                 return []
 
-            versions = []
+            versions: List[Any] = []
             for v in data.get("versions", []):
                 version_str = v.get("version", "")
                 if parse_version(version_str) is None:
@@ -118,7 +118,7 @@ class PubClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),
+                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
         except Exception as e:

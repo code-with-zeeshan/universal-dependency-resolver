@@ -5,22 +5,41 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ud-resolver"
 version = "1.2.5"
-description = "A universal dependency resolver supporting multiple package ecosystems"
+description = "Cross-ecosystem dependency resolver — PyPI, npm, Cargo, Conda, Maven, Go, and more"
 readme = "README_PYPI.md"
 requires-python = ">=3.11,<4.0"
 license = {text = "MIT"}
 authors = [
-    {name = "Universal Dependency Resolver Team", email = "team@udr.example.com"},
+    {name = "Mohammad Zeeshan", email = "zeeshansayfyebusiness@gmail.com"},
 ]
-keywords = ["dependency", "resolver", "package-manager", "compatibility"]
+keywords = [
+    "dependency-resolver",
+    "package-manager",
+    "cross-ecosystem",
+    "python",
+    "npm",
+    "cargo",
+    "conda",
+    "maven",
+    "cuda",
+    "compatibility",
+    "lockfile",
+    "sat-solver",
+    "dev-tools",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Software Distribution",
 ]
 
 dependencies = [
@@ -114,7 +133,9 @@ all = [
 [project.urls]
 Homepage = "https://github.com/code-with-zeeshan/universal-dependency-resolver"
 Repository = "https://github.com/code-with-zeeshan/universal-dependency-resolver"
-Documentation = "https://github.com/code-with-zeeshan/universal-dependency-resolver"
+Documentation = "https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/docs/CLI.md"
+Changelog = "https://github.com/code-with-zeeshan/universal-dependency-resolver/releases"
+"Bug Tracker" = "https://github.com/code-with-zeeshan/universal-dependency-resolver/issues"
 
 [project.scripts]
 udr = "backend.cli:main"

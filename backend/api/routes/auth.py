@@ -1,8 +1,7 @@
 # backend/api/routes/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from typing import List
+from typing import Any, List, Optional
 from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
 
 from backend.api.auth import (
@@ -56,7 +55,7 @@ class PasswordChangeRequest(BaseModel):
 @limiter.limit("5/hour")
 async def register(request: Request, user_data: UserCreate) -> UserResponse:
     """Register a new user"""
-    user = await AuthService.register_user(user_data)
+    user: Any = await AuthService.register_user(user_data)
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -106,13 +105,14 @@ async def get_profile(
     request: Request, current_user: User = Depends(get_current_user)
 ) -> UserResponse:
     """Get current user profile"""
+    u: Any = current_user
     return UserResponse(
-        id=current_user.id,
-        username=current_user.username,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        is_active=current_user.is_active,
-        scopes=current_user.scopes or [],
+        id=u.id,
+        username=u.username,
+        email=u.email,
+        full_name=u.full_name,
+        is_active=u.is_active,
+        scopes=u.scopes or [],
     )
 
 
@@ -226,7 +226,7 @@ async def create_api_key(
     current_user: User = Depends(get_current_user),
 ) -> APIKeyResponse:
     """Create a new API key"""
-    api_key = await AuthService.create_api_key(current_user, key_data)
+    api_key: Any = await AuthService.create_api_key(current_user, key_data)
 
     # Return the full key only on creation
     return APIKeyResponse(

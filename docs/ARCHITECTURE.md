@@ -2,6 +2,12 @@
 
 ```
                          ┌──────────────────────┐
+                         │   CLI (udr ...)        │
+                         │ backend/cli/ package  │
+                         └────┬──────────┬───────┘
+                              │ inline   │ subprocess
+                              ▼          ▼
+                         ┌──────────────────────┐
                          │    Desktop App        │
                          │  (Electron + GUI)     │
                          └────────┬─────────────┘
@@ -23,7 +29,7 @@
 │  conflict_resolver.py   data_aggregator.py     │
 │  export_generator.py    system_scanner.py      │
 │  cache.py               utils.py               │
-│  cli.py                 manifest_detector.py   │
+│  manifest_detector.py                          │
 └────────┬───────────────────────────┬───────────┘
          │                           │
          ▼                           ▼
@@ -38,6 +44,31 @@
 ```
 
 ## Layer breakdown
+
+### CLI layer (`backend/cli/`)
+
+Modular CLI package with 14 files packaged into a namespace:
+
+```
+backend/cli/
+├── __init__.py        # Re-exports all symbols for backward compat
+├── main.py            # _build_parser(), main(), dispatch dict
+├── shared.py          # 20+ shared helpers (parse, resolve, output, …)
+└── commands/
+    ├── serve.py       # cmd_serve — start API server
+    ├── check.py       # cmd_check — system compatibility
+    ├── resolve.py     # cmd_resolve — resolve package deps
+    ├── info.py        # cmd_info — system overview
+    ├── lock.py        # cmd_lock — manifest → lock file
+    ├── graph.py       # cmd_graph — dependency tree
+    ├── verify.py      # cmd_verify — validate lock file
+    ├── scan.py        # cmd_scan — GitHub/local scan
+    ├── update.py      # cmd_update — re-resolve single package
+    ├── install.py     # cmd_install, cmd_restore — restore from lock
+    └── list_ecosystems.py  # cmd_list_ecosystems
+```
+
+The old monolithic `backend/cli.py` (2105 lines) was replaced by this package. A 3-line backward-compat shim remains at `backend/cli.py` for existing imports.
 
 ### API layer (`backend/api/`)
 

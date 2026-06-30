@@ -83,7 +83,7 @@ class PyPIClient(BaseDataSourceClient):
                 # Sort using parse_version
                 latest_version = max(
                     stable_versions,
-                    key=lambda v: parse_version(v) or parse_version("0.0.0"),
+                    key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                 )
 
         # Process versions with more detail
@@ -222,7 +222,7 @@ class PyPIClient(BaseDataSourceClient):
         self, requires_dist: List[str], python_requires: Optional[str]
     ) -> Dict[str, Any]:
         """Extract and categorize dependencies with enhanced parsing"""
-        deps = {
+        deps: Dict[str, Any] = {
             "required": {},
             "optional": {},
             "dev": {},
@@ -345,7 +345,7 @@ class PyPIClient(BaseDataSourceClient):
         self, info: Dict[str, Any], urls: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Extract system requirements with enhanced detection"""
-        requirements = {}
+        requirements: Dict[str, Any] = {}
 
         classifiers = info.get("classifiers") or []
         description = (
@@ -382,7 +382,7 @@ class PyPIClient(BaseDataSourceClient):
             description, classifiers
         )
         if system_libs:
-            requirements["system_libraries"] = system_libs
+                requirements["system_libraries"] = system_libs
 
         # Check for compiler requirements
         compiler_info = self._extract_compiler_requirements(description, classifiers)
@@ -539,7 +539,7 @@ class PyPIClient(BaseDataSourceClient):
         self, description: str, classifiers: List[str]
     ) -> Optional[Dict[str, Any]]:
         """Extract compiler requirements"""
-        compilers = {}
+        compilers: Dict[str, Any] = {}
 
         # Check for C/C++ extensions
         if any("Programming Language :: C" in c for c in classifiers):
@@ -834,7 +834,7 @@ class PyPIClient(BaseDataSourceClient):
 
         # Sort by version number (newest first)
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 

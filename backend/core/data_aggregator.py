@@ -248,7 +248,7 @@ class DataAggregator:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Aggregate results
-        aggregated_info = {
+        aggregated_info: Dict[str, Any] = {
             "name": package_name,
             "version": version,
             "ecosystems": {},
@@ -284,11 +284,12 @@ class DataAggregator:
                 continue
 
             if result:
-                aggregated_info["ecosystems"][eco.value] = result
+                eco_result: Dict[Any, Any] = result  # type: ignore[assignment]
+                aggregated_info["ecosystems"][eco.value] = eco_result
                 aggregated_info["metadata"]["data_sources"].append(
                     {"ecosystem": eco.value, "status": "success"}
                 )
-                await self._merge_ecosystem_data(aggregated_info, eco, result)
+                await self._merge_ecosystem_data(aggregated_info, eco, eco_result)
 
         # Add custom database information
         custom_data = await self._fetch_custom_compatibility(package_name)
@@ -335,7 +336,7 @@ class DataAggregator:
         if package_name in self._ecosystem_cache:
             return self._ecosystem_cache[package_name]
 
-        ecosystems = []
+        ecosystems: List[Ecosystem] = []
 
         # Check each source concurrently
         tasks = []
@@ -410,10 +411,10 @@ class DataAggregator:
             client = self._get_client(ecosystem)
 
             # Build method arguments based on client capabilities
-            kwargs = {}
+            kwargs: Dict[str, Any] = {}
             if version and hasattr(client, "get_package_version"):
                 method_name = "get_package_version"
-                args = (package_name, version)
+                args: tuple = (package_name, version)
             else:
                 method_name = "get_package_info"
                 args = (package_name,)
@@ -720,7 +721,7 @@ class DataAggregator:
         deps_by_eco = aggregated["dependencies"]
         if len(deps_by_eco) > 1:
             # Find common dependencies with different version requirements
-            dep_versions = defaultdict(lambda: defaultdict(list))
+            dep_versions: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: defaultdict(list))
 
             for eco, deps in deps_by_eco.items():
                 if "all" in deps:
@@ -751,7 +752,7 @@ class DataAggregator:
         sys_reqs_by_eco = aggregated["system_requirements"]
         if len(sys_reqs_by_eco) > 1:
             # Compare runtime requirements
-            runtime_reqs = defaultdict(lambda: defaultdict(list))
+            runtime_reqs: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: defaultdict(list))
 
             for eco, reqs in sys_reqs_by_eco.items():
                 for req in reqs:
@@ -893,7 +894,7 @@ class DataAggregator:
     ) -> Dict[str, Any]:
         """Aggregate documentation from multiple sources"""
         package_name = normalize_package_name(package_name)
-        docs = {
+        docs: Dict[str, Any] = {
             "official_docs": [],
             "tutorials": [],
             "examples": [],
@@ -991,7 +992,7 @@ class DataAggregator:
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    OSV_API_URL, json=query, timeout=10
+                    OSV_API_URL, json=query, timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -1045,39 +1046,40 @@ class DataAggregator:
     ) -> Dict[str, List[Dict]]:
         """Search for packages across multiple ecosystems"""
         query = normalize_package_name(query)
+        eco_list: List[Ecosystem]
         if ecosystems:
-            valid_ecosystems = []
+            eco_list = []
             for e in ecosystems:
                 if isinstance(e, str):
                     try:
-                        valid_ecosystems.append(Ecosystem(sanitize_ecosystem_name(e)))
+                        eco_list.append(Ecosystem(sanitize_ecosystem_name(e)))
                     except ValueError:
                         logger.warning(f"Invalid ecosystem: {e}")
                         continue
                 else:
-                    valid_ecosystems.append(e)
-            ecosystems = valid_ecosystems
+                    eco_list.append(e)
         else:
-            ecosystems = [
+            eco_list = [
                 e for e in Ecosystem if e not in [Ecosystem.DOCS, Ecosystem.CUSTOM_DB]
             ]
 
-        results = {}
+        results: Dict[str, List[Dict]] = {}
         tasks = []
 
-        for eco in ecosystems:
+        for eco in eco_list:
             client = self._get_client(eco)
             if hasattr(client, "search_packages") or hasattr(client, "search"):
                 tasks.append(self._search_in_ecosystem(eco, client, query, limit))
 
         search_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for eco, result in zip(ecosystems, search_results):
+        for eco, result in zip(eco_list, search_results):
             if isinstance(result, Exception):
                 logger.error(f"Search error in {eco.value}: {result}")
                 results[eco.value] = []
             else:
-                results[eco.value] = result or []
+                search_result: List[Dict] = result or []  # type: ignore[assignment]
+                results[eco.value] = search_result
 
         return results
 
@@ -1103,7 +1105,7 @@ class DataAggregator:
         self, packages: List[Dict[str, str]], system_info: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Check compatibility of multiple packages with system"""
-        compatibility_report = {
+        compatibility_report: Dict[str, Any] = {
             "overall_compatible": True,
             "package_compatibility": {},
             "conflicts": [],
@@ -1131,7 +1133,7 @@ class DataAggregator:
             pkg_info = await self.get_package_info(name, ecosystem, version)
 
             # Check individual compatibility
-            pkg_compat = {"compatible": True, "issues": [], "requirements": []}
+            pkg_compat: Dict[str, Any] = {"compatible": True, "issues": [], "requirements": []}
 
             # Check system requirements
             for eco, reqs in pkg_info.get("system_requirements", {}).items():
