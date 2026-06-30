@@ -1032,7 +1032,7 @@ class TestMavenClient:
             return_value="<project></project>",
         ) as mock_fetch:
             with patch.object(
-                client, "_parse_pom_comprehensive", return_value=mock_pom_data
+                client._pom_parser, "_parse_pom_comprehensive", return_value=mock_pom_data
             ):
                 result1 = await client.get_transitive_dependencies(
                     "com.google.guava", "guava", "32.1.3-jre", repositories=repos

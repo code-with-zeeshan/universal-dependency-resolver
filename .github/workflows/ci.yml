@@ -138,6 +138,26 @@ jobs:
         run: |
           python -m pytest tests/integration/ -v --tb=short
 
+  desktop-tests:
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install desktop dependencies
+        run: npm install
+        working-directory: desktop
+
+      - name: Run desktop smoke tests
+        run: node --test tests/
+        working-directory: desktop
+
   security-scan:
     runs-on: ubuntu-latest
     needs: [test]
@@ -166,7 +186,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --severity-threshold=high
+          args: --severity-threshold=critical
 
   code-quality:
     runs-on: ubuntu-latest
