@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 
 def parse_semver(ver: str):
@@ -7,9 +8,6 @@ def parse_semver(ver: str):
     minor = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
     patch = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
     return major, minor, patch
-
-
-from typing import Optional
 
 
 def normalize_constraint(constraint: str, ecosystem: str) -> Optional[str]:
