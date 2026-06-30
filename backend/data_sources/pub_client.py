@@ -118,7 +118,7 @@ class PubClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
         except Exception as e:

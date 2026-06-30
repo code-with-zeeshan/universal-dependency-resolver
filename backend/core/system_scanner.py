@@ -427,7 +427,8 @@ class SystemScanner:
                 cpu_data.setdefault("arch", platform.machine())
                 cpu_data.setdefault("bits", "64")
                 cpu_data.setdefault(
-                    "count_logical", str(psutil.cpu_count(logical=True) if HAS_PSUTIL else 1)
+                    "count_logical",
+                    str(psutil.cpu_count(logical=True) if HAS_PSUTIL else 1),
                 )
                 cpu_data.setdefault(
                     "count_physical",
@@ -862,7 +863,11 @@ class SystemScanner:
 
     def _detect_opencl_info(self) -> Optional[Dict[str, Any]]:
         """Detect OpenCL support"""
-        opencl_info: Dict[str, Any] = {"available": False, "version": None, "devices": []}
+        opencl_info: Dict[str, Any] = {
+            "available": False,
+            "version": None,
+            "devices": [],
+        }
 
         try:
             # Try clinfo
@@ -1062,7 +1067,11 @@ class SystemScanner:
 
     def detect_network_info(self) -> Dict[str, Any]:
         """Detect network information"""
-        network_data: Dict[str, Any] = {"interfaces": [], "connections": [], "stats": {}}
+        network_data: Dict[str, Any] = {
+            "interfaces": [],
+            "connections": [],
+            "stats": {},
+        }
 
         if HAS_PSUTIL:
             # Network interfaces
@@ -1717,9 +1726,10 @@ class SystemScanner:
         result: Dict[str, list[Dict[str, Any]]] = {}
         for manager, pkg_list in packages.items():
             if pkg_list:
-                result[manager] = [
-                    asdict(pkg) if hasattr(pkg, "__dict__") else pkg for pkg in pkg_list  # type: ignore[misc]
-                ]
+                converted: List[Any] = []
+                for pkg in pkg_list:
+                    converted.append(asdict(pkg) if hasattr(pkg, "__dict__") else pkg)
+                result[manager] = converted
 
         return result
 

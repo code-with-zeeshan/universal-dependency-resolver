@@ -998,7 +998,11 @@ class ConflictResolver:
 
         if result == z3.sat:
             model = self.solver.model()
-            solution: Dict[str, Any] = {"status": "satisfiable", "packages": {}, "warnings": []}
+            solution: Dict[str, Any] = {
+                "status": "satisfiable",
+                "packages": {},
+                "warnings": [],
+            }
 
             # Extract selected versions
             for pkg_name, version_vars in constraints["package_versions"].items():

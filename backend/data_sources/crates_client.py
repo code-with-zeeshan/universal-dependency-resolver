@@ -254,7 +254,7 @@ class CratesClient(BaseDataSourceClient):
 
             return sorted(
                 versions,
-                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                key=lambda x: version.parse(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
 
@@ -510,7 +510,9 @@ class CratesClient(BaseDataSourceClient):
         except Exception:
             return None
 
-    async def _get_version_features(self, package_name: str, version: str) -> Dict[str, Any]:
+    async def _get_version_features(
+        self, package_name: str, version: str
+    ) -> Dict[str, Any]:
         package_name = normalize_package_name(package_name)
         return {"default": True}
 

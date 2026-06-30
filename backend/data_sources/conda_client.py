@@ -108,7 +108,7 @@ class CondaClient(BaseDataSourceClient):
             # Derive latest from files list
             all_vers = sorted(
                 set(f.get("version") for f in files if f.get("version")),
-                key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                 reverse=True,
             )
             latest_version = all_vers[0] if all_vers else None
@@ -171,7 +171,7 @@ class CondaClient(BaseDataSourceClient):
             versions_info.append(version_data)
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -197,7 +197,13 @@ class CondaClient(BaseDataSourceClient):
         }
 
     def _extract_deps_from_files(self, files: List) -> Dict:
-        deps: Dict[str, Any] = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        deps: Dict[str, Any] = {
+            "required": {},
+            "build": {},
+            "run": {},
+            "host": {},
+            "test": {},
+        }
         for file_info in files:
             attrs = file_info.get("attrs", {})
             depends = attrs.get("depends", [])
@@ -264,7 +270,13 @@ class CondaClient(BaseDataSourceClient):
     async def _extract_dependencies_from_package_metadata(
         self, package_name: str, version: str, channel: str
     ) -> Dict:
-        dependencies: Dict[str, Any] = {"required": {}, "build": {}, "run": {}, "host": {}, "test": {}}
+        dependencies: Dict[str, Any] = {
+            "required": {},
+            "build": {},
+            "run": {},
+            "host": {},
+            "test": {},
+        }
 
         try:
             info = await self._fetch_from_anaconda_api(package_name, channel)
@@ -562,7 +574,9 @@ class CondaClient(BaseDataSourceClient):
         channel = info.get("channel", "conda-forge")
 
         dependencies = await self._extract_dependencies_from_repodata(
-            package_name, version, channel  # type: ignore[arg-type]
+            package_name,
+            version,  # type: ignore[arg-type]
+            channel,
         )
 
         self._cache[cache_key] = (dependencies, datetime.now())

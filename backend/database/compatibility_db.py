@@ -1,5 +1,5 @@
 # compatibility_db.py
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 import hashlib
 import json
 from datetime import datetime, timedelta

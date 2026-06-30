@@ -425,7 +425,9 @@ async def _fetch_package_data_async(
     return resolver_inputs, package_details
 
 
-def _build_resolved_table(resolved: Dict, title: Optional[str] = None) -> Optional[Table]:
+def _build_resolved_table(
+    resolved: Dict, title: Optional[str] = None
+) -> Optional[Table]:
     rp = resolved.get("resolved_packages", {})
     if not rp:
         return None
@@ -499,7 +501,7 @@ def _validate_manifest_update_line(
             return f"{indent}{pkg_name}=={resolved_ver}{trailing}"
     if stripped.startswith(pkg_name + " "):
         indent = line[: len(line) - len(line.lstrip())]
-        rest = stripped[len(pkg_name):]
+        rest = stripped[len(pkg_name) :]
         after_comment = rest.split("#")[0].strip()
         if after_comment and not any(c in after_comment for c in "=<>~!"):
             return f"{indent}{pkg_name}=={resolved_ver}"

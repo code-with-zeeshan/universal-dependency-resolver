@@ -161,7 +161,9 @@ class APKClient(BaseDataSourceClient):
                         )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"].split("-")[0]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
+            key=lambda x: (  # type: ignore[arg-type]
+                parse_version(x["version"].split("-")[0]) or parse_version("0.0.0")  # type: ignore[return-value]
+            ),
             reverse=True,
         )
 
@@ -285,7 +287,11 @@ class APKClient(BaseDataSourceClient):
         return converted
 
     def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies: Dict[str, List[Any]] = {"depends": [], "provides": [], "replaces": []}
+        dependencies: Dict[str, List[Any]] = {
+            "depends": [],
+            "provides": [],
+            "replaces": [],
+        }
 
         if "depends" in package_data:
             deps_str = package_data["depends"]
@@ -337,7 +343,9 @@ class APKClient(BaseDataSourceClient):
                 version = match.group(1)
                 parsed_min = parse_version(version)
                 parsed_max = parse_version(min_version) if min_version else None
-                if not min_version or (parsed_min and parsed_max and parsed_min < parsed_max):
+                if not min_version or (
+                    parsed_min and parsed_max and parsed_min < parsed_max
+                ):
                     min_version = version
 
         return min_version

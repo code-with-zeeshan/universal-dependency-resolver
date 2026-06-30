@@ -165,14 +165,17 @@ class CocoaPodsClient(BaseDataSourceClient):
             )
 
         processed.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
         return processed
 
     def _parse_dependencies(self, spec_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies: Dict[str, List[Dict]] = {"dependencies": [], "development_dependencies": []}
+        dependencies: Dict[str, List[Dict]] = {
+            "dependencies": [],
+            "development_dependencies": [],
+        }
 
         if "dependencies" in spec_data:
             for dep_name, dep_spec in spec_data["dependencies"].items():

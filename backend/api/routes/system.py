@@ -135,7 +135,12 @@ def _check_requirement_comprehensive(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
     """Comprehensively check if system meets a specific requirement"""
-    result: Dict[str, Any] = {"type": requirement.type, "status": "pass", "message": "", "details": {}}
+    result: Dict[str, Any] = {
+        "type": requirement.type,
+        "status": "pass",
+        "message": "",
+        "details": {},
+    }
 
     if requirement.type == "gpu":
         result.update(_check_gpu_requirement(system_info, requirement))

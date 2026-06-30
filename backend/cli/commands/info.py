@@ -1,6 +1,5 @@
 import asyncio
 import sys
-from pathlib import Path
 
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn

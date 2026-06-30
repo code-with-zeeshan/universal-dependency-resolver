@@ -105,7 +105,11 @@ class BaseDataSourceClient:
         for attempt in range(self.max_retries):
             try:
                 async with session.request(
-                    method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout), **kwargs
+                    method,
+                    url,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    **kwargs,
                 ) as resp:
                     if resp.status == 404:
                         return None

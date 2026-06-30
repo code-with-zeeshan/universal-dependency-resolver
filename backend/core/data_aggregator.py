@@ -721,7 +721,9 @@ class DataAggregator:
         deps_by_eco = aggregated["dependencies"]
         if len(deps_by_eco) > 1:
             # Find common dependencies with different version requirements
-            dep_versions: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: defaultdict(list))
+            dep_versions: Dict[str, Dict[str, List[Any]]] = defaultdict(
+                lambda: defaultdict(list)
+            )
 
             for eco, deps in deps_by_eco.items():
                 if "all" in deps:
@@ -752,7 +754,9 @@ class DataAggregator:
         sys_reqs_by_eco = aggregated["system_requirements"]
         if len(sys_reqs_by_eco) > 1:
             # Compare runtime requirements
-            runtime_reqs: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: defaultdict(list))
+            runtime_reqs: Dict[str, Dict[str, List[Any]]] = defaultdict(
+                lambda: defaultdict(list)
+            )
 
             for eco, reqs in sys_reqs_by_eco.items():
                 for req in reqs:
@@ -1133,7 +1137,11 @@ class DataAggregator:
             pkg_info = await self.get_package_info(name, ecosystem, version)
 
             # Check individual compatibility
-            pkg_compat: Dict[str, Any] = {"compatible": True, "issues": [], "requirements": []}
+            pkg_compat: Dict[str, Any] = {
+                "compatible": True,
+                "issues": [],
+                "requirements": [],
+            }
 
             # Check system requirements
             for eco, reqs in pkg_info.get("system_requirements", {}).items():

@@ -76,9 +76,17 @@ class ManifestDetector:
         if raw[:3] == b"\xef\xbb\xbf":
             raw = raw[3:]
         elif raw[:2] == b"\xff\xfe":
-            return raw.decode("utf-16-le", errors="replace").encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+            return (
+                raw.decode("utf-16-le", errors="replace")
+                .encode("utf-8", errors="replace")
+                .decode("utf-8", errors="replace")
+            )
         elif raw[:2] == b"\xfe\xff":
-            return raw.decode("utf-16-be", errors="replace").encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+            return (
+                raw.decode("utf-16-be", errors="replace")
+                .encode("utf-8", errors="replace")
+                .decode("utf-8", errors="replace")
+            )
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 return raw.decode(enc)

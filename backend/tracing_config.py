@@ -8,7 +8,7 @@ via standard OTEL environment variables.
 
 import os
 import logging
-from typing import Optional, Dict
+from typing import Dict
 
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() == "true"
 OTEL_EXPORTER_OTLP_PROTOCOL = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
@@ -28,13 +28,23 @@ logger = logging.getLogger(__name__)
 try:
     from opentelemetry import trace as _trace
     from opentelemetry.sdk.resources import Resource as _Resource
-    from opentelemetry.sdk.trace import TracerProvider as _TracerProvider, sampling as _sampling
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor as _BatchSpanProcessor, SimpleSpanProcessor as _SimpleSpanProcessor
+    from opentelemetry.sdk.trace import (
+        TracerProvider as _TracerProvider,
+        sampling as _sampling,
+    )
+    from opentelemetry.sdk.trace.export import (
+        BatchSpanProcessor as _BatchSpanProcessor,
+        SimpleSpanProcessor as _SimpleSpanProcessor,
+    )
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
         OTLPSpanExporter as _OTLPHttpExporter,
     )
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor as _FastAPIInstrumentor
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor as _HTTPXClientInstrumentor
+    from opentelemetry.instrumentation.fastapi import (
+        FastAPIInstrumentor as _FastAPIInstrumentor,
+    )
+    from opentelemetry.instrumentation.httpx import (
+        HTTPXClientInstrumentor as _HTTPXClientInstrumentor,
+    )
 
     _OTEL_AVAILABLE = True
 except ImportError:

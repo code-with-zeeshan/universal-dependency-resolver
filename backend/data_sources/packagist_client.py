@@ -135,7 +135,7 @@ class PackagistClient(BaseDataSourceClient):
                         latest_data = version_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -299,7 +299,12 @@ class PackagistClient(BaseDataSourceClient):
         return dependencies
 
     def _extract_system_requirements(self, version_data: Dict) -> Dict[str, Any]:
-        requirements: Dict[str, Any] = {"php": None, "extensions": [], "platform": {}, "composer": None}
+        requirements: Dict[str, Any] = {
+            "php": None,
+            "extensions": [],
+            "platform": {},
+            "composer": None,
+        }
 
         require = version_data.get("require", {})
         if "php" in require:
@@ -466,13 +471,19 @@ class PackagistClient(BaseDataSourceClient):
 
         if req.operator == "^":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            max_v = parse_version(f"{req.major + 1}.0.0") if req.major is not None else None
+            max_v = (
+                parse_version(f"{req.major + 1}.0.0") if req.major is not None else None
+            )
             if min_v is None or max_v is None:
                 return True
             return min_v <= system_v < max_v
         elif req.operator == "~":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            max_v = parse_version(f"{req.major}.{req.minor + 1}.0") if req.major is not None and req.minor is not None else None
+            max_v = (
+                parse_version(f"{req.major}.{req.minor + 1}.0")
+                if req.major is not None and req.minor is not None
+                else None
+            )
             if min_v is None or max_v is None:
                 return True
             return min_v <= system_v < max_v

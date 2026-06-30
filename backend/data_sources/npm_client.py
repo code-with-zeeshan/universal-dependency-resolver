@@ -289,7 +289,8 @@ class NPMClient(BaseDataSourceClient):
             return None
 
         return max(
-            matching_versions, key=lambda v: parse_version(v) or parse_version("0.0.0")  # type: ignore[arg-type,return-value]
+            matching_versions,
+            key=lambda v: parse_version(v) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
         )
 
     async def get_dependencies(
@@ -743,7 +744,7 @@ class NPMClient(BaseDataSourceClient):
             )
 
         versions.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -895,7 +896,11 @@ class NPMClient(BaseDataSourceClient):
                     f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 )
                 req_v = parse_version(req_v_str)
-                next_minor_str = f"{requirement.major}.{requirement.minor + 1}.0" if requirement.minor is not None else None
+                next_minor_str = (
+                    f"{requirement.major}.{requirement.minor + 1}.0"
+                    if requirement.minor is not None
+                    else None
+                )
                 next_minor = parse_version(next_minor_str) if next_minor_str else None
 
                 if req_v is None or next_minor is None:

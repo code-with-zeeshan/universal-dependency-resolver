@@ -19,7 +19,14 @@ class SystemSpec(BaseModel):
 
     @classmethod
     def from_string(cls, spec_string: str) -> "SystemSpec":
-        spec = cls(os=None, os_version=None, architecture=None, python_version=None, cuda_version=None, gpu_available=None)
+        spec = cls(
+            os=None,
+            os_version=None,
+            architecture=None,
+            python_version=None,
+            cuda_version=None,
+            gpu_available=None,
+        )
         parts = spec_string.split(",")
         for part in parts:
             if "=" in part:

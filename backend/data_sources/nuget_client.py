@@ -230,7 +230,7 @@ class NuGetClient(BaseDataSourceClient):
                                     latest_data = entry_data
 
         versions_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 
@@ -393,7 +393,7 @@ class NuGetClient(BaseDataSourceClient):
                 )
 
         version_info.sort(
-            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+            key=lambda x: parse_version(x["version"]) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             reverse=True,
         )
 

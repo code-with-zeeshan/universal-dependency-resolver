@@ -463,7 +463,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                     reverse=True,
                 )
 
@@ -494,7 +494,7 @@ class DocumentationScraper:
             for _ in range(20):  # Check next 20 elements
                 if not current:
                     break
-                if not hasattr(current, 'name'):
+                if not hasattr(current, "name"):
                     break
 
                 # Stop if we hit another major heading
@@ -565,7 +565,7 @@ class DocumentationScraper:
 
                 requirements[key] = sorted(
                     list(set(valid_versions)),
-                    key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                    key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
                     reverse=True,
                 )
 
@@ -659,7 +659,7 @@ class DocumentationScraper:
 
             requirements["python_versions"] = sorted(
                 list(set(valid_versions)),
-                key=lambda x: parse_version(x) or parse_version("0.0.0")  ,  # type: ignore[arg-type,return-value]
+                key=lambda x: parse_version(x) or parse_version("0.0.0"),  # type: ignore[arg-type,return-value]
             )
 
         # Clean up dependencies

@@ -2,7 +2,7 @@ import sys
 
 from rich.panel import Panel
 
-from ..shared import console, err_console
+from ..shared import console
 
 
 def cmd_serve(args):

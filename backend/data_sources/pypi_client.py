@@ -382,7 +382,7 @@ class PyPIClient(BaseDataSourceClient):
             description, classifiers
         )
         if system_libs:
-                requirements["system_libraries"] = system_libs
+            requirements["system_libraries"] = system_libs
 
         # Check for compiler requirements
         compiler_info = self._extract_compiler_requirements(description, classifiers)

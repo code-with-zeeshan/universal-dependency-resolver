@@ -195,7 +195,10 @@ async def scan_github(
     """Clone a GitHub repo, detect manifests, resolve all dependencies."""
     loop = asyncio.get_event_loop()
     project_dir = await loop.run_in_executor(
-        None, _download_github_repo, req.repo_url, req.branch  # type: ignore[arg-type]
+        None,
+        _download_github_repo,  # type: ignore[arg-type]
+        req.repo_url,
+        req.branch,
     )
     try:
         result = await _run_resolution_pipeline(project_dir, export_format=export)

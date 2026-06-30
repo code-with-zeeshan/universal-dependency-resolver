@@ -4,7 +4,13 @@ import sys
 from rich.panel import Panel
 from rich.tree import Tree
 
-from ..shared import console, err_console, _parse_package_spec, _fetch_package_data_async, _resolve_transitive
+from ..shared import (
+    console,
+    err_console,
+    _parse_package_spec,
+    _fetch_package_data_async,
+    _resolve_transitive,
+)
 
 
 def cmd_graph(args):

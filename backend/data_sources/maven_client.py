@@ -812,7 +812,8 @@ class MavenClient(BaseDataSourceClient):
                         self._get_element_text(repo, "id", namespaces) or "", properties
                     ),
                     "url": self._substitute_properties(
-                        self._get_element_text(repo, "url", namespaces) or "", properties
+                        self._get_element_text(repo, "url", namespaces) or "",
+                        properties,
                     ),
                     "layout": self._get_element_text(repo, "layout", namespaces)
                     or "default",
@@ -875,7 +876,8 @@ class MavenClient(BaseDataSourceClient):
                         self._get_element_text(repo, "id", namespaces) or "", properties
                     ),
                     "url": self._substitute_properties(
-                        self._get_element_text(repo, "url", namespaces) or "", properties
+                        self._get_element_text(repo, "url", namespaces) or "",
+                        properties,
                     ),
                     "layout": self._get_element_text(repo, "layout", namespaces)
                     or "default",
@@ -1167,7 +1169,11 @@ class MavenClient(BaseDataSourceClient):
             version = self._get_element_text(plugin_elem, "version", namespaces)
 
             group_id = self._substitute_properties(group_id, properties)
-            artifact_id = self._substitute_properties(artifact_id, properties) if artifact_id else None  # type: ignore[arg-type]
+            artifact_id = (
+                self._substitute_properties(artifact_id, properties)
+                if artifact_id
+                else None
+            )  # type: ignore[arg-type]
             version = (
                 self._substitute_properties(version, properties) if version else None
             )

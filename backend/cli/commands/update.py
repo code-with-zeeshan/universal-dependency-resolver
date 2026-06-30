@@ -6,7 +6,13 @@ from pathlib import Path
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ..shared import console, err_console, _read_lock_file, _fetch_package_data_async, _run_resolution
+from ..shared import (
+    console,
+    err_console,
+    _read_lock_file,
+    _fetch_package_data_async,
+    _run_resolution,
+)
 
 
 def cmd_update(args):

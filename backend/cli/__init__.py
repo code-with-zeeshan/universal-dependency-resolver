@@ -22,3 +22,28 @@ from .shared import (
     _select_manifests_interactive,
     _generate_install_command,
 )
+
+__all__ = [
+    "main",
+    "_build_parser",
+    "console",
+    "err_console",
+    "VERSION",
+    "logger",
+    "_parse_package_spec",
+    "_extract_cuda_variants",
+    "_normalize_cuda",
+    "_extract_severity",
+    "_select_best_cuda_variant",
+    "_aggregator_to_resolver_input",
+    "_resolve_transitive",
+    "_extract_system_requirements",
+    "_apply_cuda_variants",
+    "_fetch_package_data",
+    "_build_resolved_table",
+    "_output_json",
+    "_read_lock_file",
+    "_validate_manifest_update_line",
+    "_select_manifests_interactive",
+    "_generate_install_command",
+]
