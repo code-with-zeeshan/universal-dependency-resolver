@@ -37,6 +37,12 @@ MANIFEST_PATTERNS: List[Tuple[str, str, str]] = [
     ("pnpm-lock.yaml", "npm", "pnpm_lock"),
     ("pubspec.yaml", "pub", "pubspec"),
     ("*-requirements.txt", "pypi", "requirements"),
+    ("requirements/*.txt", "pypi", "requirements"),
+    ("requirements/*.in", "pypi", "requirements"),
+    ("coordinator/*.txt", "pypi", "requirements"),
+    ("coordinator/*.in", "pypi", "requirements"),
+    ("dependencies/*.txt", "pypi", "requirements"),
+    ("dependencies/*.in", "pypi", "requirements"),
 ]
 
 

@@ -115,6 +115,9 @@ function startHealthCheck() {
     if (restarting) return
     try {
       await launcher.httpGet(`http://${BACKEND_HOST}:${backendPort}${HEALTH_CHECK_URL}`)
+      if (mainWindow) {
+        mainWindow.webContents.executeJavaScript("document.title = 'UDR'")
+      }
     } catch {
       console.warn('[backend] Health check failed, attempting restart...')
       if (mainWindow) {
@@ -223,7 +226,7 @@ async function createWindow() {
     height: savedState ? savedState.height : 860,
     minWidth: 900,
     minHeight: 600,
-    title: 'Universal Dependency Resolver',
+    title: 'UDR - Starting...',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -285,12 +288,9 @@ async function createWindow() {
   mainWindow.on('maximize', debouncedSave)
   mainWindow.on('unmaximize', debouncedSave)
 
-  // Minimize to tray instead of closing (Windows/Linux)
-  mainWindow.on('close', (event) => {
-    if (!app.isQuitting && !isMac) {
-      event.preventDefault()
-      mainWindow.hide()
-    }
+  // On close, actually quit (so NSIS installer can overwrite files)
+  mainWindow.on('close', () => {
+    app.isQuitting = true
   })
 
   mainWindow.on('closed', () => {
@@ -329,8 +329,65 @@ function createTray() {
   }
 }
 
+function createMenu() {
+  const isMac = process.platform === 'darwin'
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Reload Frontend',
+          accelerator: 'CmdOrCtrl+R',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) focusedWindow.webContents.reload()
+          },
+        },
+        {
+          label: 'Restart Backend',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: async () => {
+            await restartBackend()
+          },
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close', label: 'Quit' } : { role: 'quit', label: 'Quit' },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About UDR',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About UDR',
+              message: 'Universal Dependency Resolver',
+              detail: `Version ${app.getVersion()}\nElectron ${process.versions.electron}\nNode.js ${process.versions.node}\n\nCross-ecosystem dependency resolver for PyPI, npm, Cargo, Conda, Maven, and more.`,
+            })
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) focusedWindow.webContents.toggleDevTools()
+          },
+        },
+      ],
+    },
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 app.whenReady().then(() => {
-  if (gotLock) createWindow()
+  if (gotLock) {
+    createMenu()
+    createWindow()
+  }
 })
 
 function killBackend() {

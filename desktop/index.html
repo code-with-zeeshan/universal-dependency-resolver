@@ -415,7 +415,10 @@ if (window.udrDesktop && window.udrDesktop.onBackendReady) {
         BASE = await window.udrDesktop.getBackendUrl() || BASE
       } catch(e) {}
     }
+    document.title = 'UDR'
     setStatus(true, 'Backend ready')
+    document.getElementById('dashStatus').textContent = 'Healthy'
+    await populateAllEcosystemSelects()
     loadSystemInfo()
     loadExportFormats()
   })
