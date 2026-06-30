@@ -71,7 +71,7 @@ jobs:
         if: matrix.arch != 'arm64'
         shell: bash
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl binutils 2>/dev/null || true
+          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl binutils xz-utils fakeroot 2>/dev/null || true
           which upx && upx --version | head -1 || echo "UPX not available"
 
       - name: Build backend binary + Electron app
@@ -84,7 +84,7 @@ jobs:
               -e CI=true \
               arm64v8/ubuntu:22.04 \
               bash -c '
-                apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv nodejs npm upx binutils 2>/dev/null
+                apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv nodejs npm upx binutils xz-utils fakeroot 2>/dev/null
                 python3 -m venv /tmp/venv
                 source /tmp/venv/bin/activate
                 pip install pyinstaller
