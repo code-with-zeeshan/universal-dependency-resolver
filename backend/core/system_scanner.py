@@ -55,13 +55,6 @@ except ImportError:
     HAS_PYNVML = False
 
 try:
-    import cpuinfo
-
-    HAS_CPUINFO = True
-except ImportError:
-    HAS_CPUINFO = False
-
-try:
     import psutil
 
     HAS_PSUTIL = True
@@ -394,46 +387,46 @@ class SystemScanner:
         cpu_data["architecture"] = platform.machine()
 
         # Detailed info from cpuinfo
-        if HAS_CPUINFO:
-            try:
-                info = cpuinfo.get_cpu_info()
-                cpu_info = CPUInfo(
-                    brand=info.get("brand_raw", "Unknown"),
-                    arch=info.get("arch", platform.machine()),
-                    bits=info.get("bits", 64),
-                    count_physical=info.get(
-                        "count", psutil.cpu_count(logical=False) if HAS_PSUTIL else 1
-                    ),
-                    count_logical=psutil.cpu_count(logical=True)
-                    if HAS_PSUTIL
-                    else info.get("count", 1),
-                    features=info.get("flags", []),
-                )
+        try:
+            from cpuinfo import get_cpu_info as _get_cpu_info
 
-                # Cache info
-                if "l1_instruction_cache_size" in info:
-                    cpu_info.cache_sizes["l1i"] = info["l1_instruction_cache_size"]
-                if "l1_data_cache_size" in info:
-                    cpu_info.cache_sizes["l1d"] = info["l1_data_cache_size"]
-                if "l2_cache_size" in info:
-                    cpu_info.cache_sizes["l2"] = info["l2_cache_size"]
-                if "l3_cache_size" in info:
-                    cpu_info.cache_sizes["l3"] = info["l3_cache_size"]
+            info = _get_cpu_info()
+            cpu_info = CPUInfo(
+                brand=info.get("brand_raw", "Unknown"),
+                arch=info.get("arch", platform.machine()),
+                bits=info.get("bits", 64),
+                count_physical=info.get(
+                    "count", psutil.cpu_count(logical=False) if HAS_PSUTIL else 1
+                ),
+                count_logical=psutil.cpu_count(logical=True)
+                if HAS_PSUTIL
+                else info.get("count", 1),
+                features=info.get("flags", []),
+            )
 
-                cpu_data.update(asdict(cpu_info))
-            except Exception as e:
-                logger.error(f"cpuinfo error: {e}")
-                cpu_data.setdefault("brand", "Unknown")
-                cpu_data.setdefault("arch", platform.machine())
-                cpu_data.setdefault("bits", "64")
-                cpu_data.setdefault(
-                    "count_logical",
-                    str(psutil.cpu_count(logical=True) if HAS_PSUTIL else 1),
-                )
-                cpu_data.setdefault(
-                    "count_physical",
-                    str(psutil.cpu_count(logical=False) if HAS_PSUTIL else 1),
-                )
+            if "l1_instruction_cache_size" in info:
+                cpu_info.cache_sizes["l1i"] = info["l1_instruction_cache_size"]
+            if "l1_data_cache_size" in info:
+                cpu_info.cache_sizes["l1d"] = info["l1_data_cache_size"]
+            if "l2_cache_size" in info:
+                cpu_info.cache_sizes["l2"] = info["l2_cache_size"]
+            if "l3_cache_size" in info:
+                cpu_info.cache_sizes["l3"] = info["l3_cache_size"]
+
+            cpu_data.update(asdict(cpu_info))
+        except Exception as e:
+            logger.error(f"cpuinfo error: {e}")
+            cpu_data.setdefault("brand", "Unknown")
+            cpu_data.setdefault("arch", platform.machine())
+            cpu_data.setdefault("bits", "64")
+            cpu_data.setdefault(
+                "count_logical",
+                str(psutil.cpu_count(logical=True) if HAS_PSUTIL else 1),
+            )
+            cpu_data.setdefault(
+                "count_physical",
+                str(psutil.cpu_count(logical=False) if HAS_PSUTIL else 1),
+            )
 
         # Additional info from psutil
         if HAS_PSUTIL:
@@ -1378,15 +1371,16 @@ class SystemScanner:
                 pass
 
         # Check CPU features
-        if HAS_CPUINFO:
-            try:
-                info = cpuinfo.get_cpu_info()
-                flags = info.get("flags", [])
-                if "hypervisor" in flags:
-                    vm_info["detected_by"] = "cpu_flags"
-                    return vm_info
-            except Exception:
-                pass
+        try:
+            from cpuinfo import get_cpu_info as _get_cpu_info
+
+            info = _get_cpu_info()
+            flags = info.get("flags", [])
+            if "hypervisor" in flags:
+                vm_info["detected_by"] = "cpu_flags"
+                return vm_info
+        except Exception:
+            pass
 
         return None if not vm_info else vm_info
 
