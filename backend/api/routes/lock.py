@@ -366,9 +366,15 @@ async def install_commands(
     for eco, pkgs in sorted(ecosystem_groups.items()):
         cmd = _generate_install_command(eco, pkgs)
         if cmd:
-            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
+            commands.append(
+                {"ecosystem": eco, "command": cmd, "package_count": len(pkgs)}
+            )
 
-    return {"status": "success", "commands": commands, "total_packages": sum(g["package_count"] for g in commands)}
+    return {
+        "status": "success",
+        "commands": commands,
+        "total_packages": sum(g["package_count"] for g in commands),
+    }
 
 
 @router.post("/restore-commands")
@@ -392,6 +398,12 @@ async def restore_commands(
     for eco, pkgs in sorted(ecosystem_groups.items()):
         cmd = _generate_install_command(eco, pkgs)
         if cmd:
-            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
+            commands.append(
+                {"ecosystem": eco, "command": cmd, "package_count": len(pkgs)}
+            )
 
-    return {"status": "success", "commands": commands, "total_packages": sum(g["package_count"] for g in commands)}
+    return {
+        "status": "success",
+        "commands": commands,
+        "total_packages": sum(g["package_count"] for g in commands),
+    }

@@ -296,6 +296,7 @@ def main():
 
     logging.getLogger().setLevel(logging.CRITICAL)
     import warnings
+
     warnings.filterwarnings("ignore")
 
     if getattr(args, "mode", None):

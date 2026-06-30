@@ -62,7 +62,11 @@ def cmd_info(args):
                     "GPU", f"{gpu.get('name', '?')} ({gpu.get('memory_total', '?')} MB)"
                 )
                 raw_cuda = gpu_info.get("cuda", {})
-                cuda = raw_cuda.get("version", "not found") if isinstance(raw_cuda, dict) else str(raw_cuda)
+                cuda = (
+                    raw_cuda.get("version", "not found")
+                    if isinstance(raw_cuda, dict)
+                    else str(raw_cuda)
+                )
                 if cuda and cuda != "not found":
                     table.add_row("CUDA", cuda)
 
