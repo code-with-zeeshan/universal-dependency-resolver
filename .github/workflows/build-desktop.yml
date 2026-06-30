@@ -12,33 +12,20 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  linux:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
     strategy:
       matrix:
-        include:
-          - os: ubuntu-22.04
-            arch: x64
-          - os: ubuntu-22.04
-            arch: arm64
-          - os: windows-latest
-            arch: x64
-          - os: windows-2025-arm
-            arch: arm64
-          - os: macos-13
-            arch: x64
-          - os: macos-14
-            arch: arm64
+        arch: [x64, arm64]
       fail-fast: false
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU for ARM64 cross-build
+        if: matrix.arch == 'arm64'
         uses: docker/setup-qemu-action@v3
-        if: matrix.arch == 'arm64' && runner.os == 'Linux'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -46,21 +33,21 @@ jobs:
           node-version: 20
 
       - name: Cache npm dependencies
-        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
+        if: matrix.arch != 'arm64'
         uses: actions/cache@v4
         with:
           path: desktop/node_modules
-          key: desktop-npm-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          key: desktop-npm-linux-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
           restore-keys: |
-            desktop-npm-
+            desktop-npm-linux-
 
       - name: Install desktop dependencies
-        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
+        if: matrix.arch != 'arm64'
         run: npm install
         working-directory: desktop
 
       - name: Set up Python
-        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
+        if: matrix.arch != 'arm64'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -81,23 +68,16 @@ jobs:
           fi
 
       - name: Install UPX compressor
-        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
+        if: matrix.arch != 'arm64'
         shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl 2>/dev/null || true
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install upx 2>/dev/null || true
-          elif [[ "$RUNNER_OS" == "Windows" ]]; then
-            scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || true
-          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl 2>/dev/null || true
           which upx && upx --version | head -1 || echo "UPX not available"
 
-      - name: Build backend binary (native or ARM64 Docker)
+      - name: Build backend binary + Electron app
         shell: bash
         run: |
-          if [[ "${{ matrix.arch }}" == "arm64" && "${{ runner.os }}" == "Linux" ]]; then
-            # Build ARM64 binary via QEMU + Docker
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             docker run --rm --platform linux/arm64 \
               -v ${{ github.workspace }}:/workspace \
               -w /workspace \
@@ -158,29 +138,19 @@ jobs:
               backend/run.py
             pushd desktop
             npm install
-            ARCH_FLAG=""
-            if [[ "${{ runner.arch }}" == "ARM64" || "${{ matrix.arch }}" == "arm64" ]]; then
-              ARCH_FLAG="--arm64"
-            fi
-            if [[ "$RUNNER_OS" == "macOS" ]]; then
-              npx electron-builder --mac $ARCH_FLAG --publish=never
-            elif [[ "$RUNNER_OS" == "Windows" ]]; then
-              npx electron-builder --win $ARCH_FLAG --publish=never
-            else
-              npx electron-builder --linux $ARCH_FLAG --publish=never
-            fi
+            npx electron-builder --linux --publish=never
             popd
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fix ownership after Docker build
-        if: matrix.arch == 'arm64' && runner.os == 'Linux'
+        if: matrix.arch == 'arm64'
         shell: bash
         run: sudo chown -R $(whoami) desktop/node_modules desktop/release backend/dist 2>/dev/null || true
 
       - name: Smoke test built binary
-        if: ${{ !(matrix.arch == 'arm64' && runner.os == 'Linux') }}
+        if: matrix.arch != 'arm64'
         shell: bash
         run: |
           node --test tests/smoke.test.js
@@ -189,34 +159,283 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: udr-desktop-${{ matrix.os }}-${{ matrix.arch }}
+          name: udr-desktop-linux-${{ matrix.arch }}
           path: |
             desktop/release/*.AppImage
             desktop/release/*.deb
-            desktop/release/*.dmg
-            desktop/release/*.exe
           retention-days: 30
 
       - name: Upload to release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-            shopt -s nullglob
-            for f in desktop/release/*; do
-              base=$(basename "$f")
-              case "$base" in
-                *.dmg|*.exe|*.AppImage|*.deb)
-                  echo "Uploading $base to release $TAG..."
-                  gh release upload "$TAG" "$f" --clobber
-                  ;;
-                *)
-                  echo "Skipping $base"
-                  ;;
-              esac
-            done
+          TAG="${{ github.ref_name }}"
+          shopt -s nullglob
+          for f in desktop/release/*; do
+            base=$(basename "$f")
+            case "$base" in
+              *.AppImage|*.deb)
+                echo "Uploading $base to release $TAG..."
+                gh release upload "$TAG" "$f" --clobber
+                ;;
+              *)
+                echo "Skipping $base"
+                ;;
+            esac
+          done
+
+  windows:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: windows-2025-arm
+            arch: arm64
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: desktop/node_modules
+          key: desktop-npm-windows-${{ matrix.arch }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          restore-keys: |
+            desktop-npm-windows-${{ matrix.arch }}-
+
+      - name: Install desktop dependencies
+        run: npm install
+        working-directory: desktop
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Sync desktop version from pyproject.toml
+        run: python scripts/sync-version.py
+
+      - name: Override version from git tag (safety net)
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_VER="${{ github.event.release.tag_name }}"
+            TAG_VER="${TAG_VER#v}"
+            echo "Injecting tag version: $TAG_VER"
+            python3 -c "import json,sys; pkg=json.load(open('desktop/package.json')); old=pkg['version']; pkg['version']=sys.argv[1]; json.dump(pkg, open('desktop/package.json','w'), indent=2); print(f'desktop/package.json: {old} -> {sys.argv[1]} (from tag)')" "$TAG_VER"
           else
-            echo "Skipping release upload (event: ${{ github.event_name }})"
+            echo "No release tag — using pyproject.toml version"
           fi
+
+      - name: Install UPX compressor
+        shell: bash
+        run: |
+          scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || true
+          which upx && upx --version | head -1 || echo "UPX not available"
+
+      - name: Build backend binary + Electron app
+        shell: bash
+        run: |
+          pip install pyinstaller
+          pip install -e ".[system]"
+          Z3_LIB=$(python3 << 'PYEOF'
+          import z3, os, sys, glob
+          ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+          ext = ext_map.get(sys.platform, '.so')
+          lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
+          if not os.path.isdir(lib_dir):
+              lib_dir = os.path.join(os.path.dirname(z3.__file__))
+          matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+          print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+          PYEOF
+          )
+          UPX_FLAG=""
+          which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
+          pyinstaller --onedir --noconsole --noconfirm \
+            --name udr-backend \
+            $UPX_FLAG \
+            --add-binary "$Z3_LIB:z3/lib/" \
+            --distpath backend/dist \
+            --workpath ${{ runner.temp }}/pyibuild \
+            backend/run.py
+          pushd desktop
+          npm install
+          ARCH_FLAG=""
+          if [[ "${{ runner.arch }}" == "ARM64" || "${{ matrix.arch }}" == "arm64" ]]; then
+            ARCH_FLAG="--arm64"
+          fi
+          npx electron-builder --win $ARCH_FLAG --publish=never
+          popd
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke test built binary
+        shell: bash
+        run: |
+          node --test tests/smoke.test.js
+        working-directory: desktop
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: udr-desktop-windows-${{ matrix.arch }}
+          path: |
+            desktop/release/*.exe
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          shopt -s nullglob
+          for f in desktop/release/*; do
+            base=$(basename "$f")
+            case "$base" in
+              *.exe)
+                echo "Uploading $base to release $TAG..."
+                gh release upload "$TAG" "$f" --clobber
+                ;;
+              *)
+                echo "Skipping $base"
+                ;;
+            esac
+          done
+
+  macos:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: x64
+          - os: macos-14
+            arch: arm64
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: desktop/node_modules
+          key: desktop-npm-macos-${{ matrix.arch }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
+          restore-keys: |
+            desktop-npm-macos-${{ matrix.arch }}-
+
+      - name: Install desktop dependencies
+        run: npm install
+        working-directory: desktop
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Sync desktop version from pyproject.toml
+        run: python scripts/sync-version.py
+
+      - name: Override version from git tag (safety net)
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_VER="${{ github.event.release.tag_name }}"
+            TAG_VER="${TAG_VER#v}"
+            echo "Injecting tag version: $TAG_VER"
+            python3 -c "import json,sys; pkg=json.load(open('desktop/package.json')); old=pkg['version']; pkg['version']=sys.argv[1]; json.dump(pkg, open('desktop/package.json','w'), indent=2); print(f'desktop/package.json: {old} -> {sys.argv[1]} (from tag)')" "$TAG_VER"
+          else
+            echo "No release tag — using pyproject.toml version"
+          fi
+
+      - name: Install UPX compressor
+        shell: bash
+        run: |
+          brew install upx 2>/dev/null || true
+          which upx && upx --version | head -1 || echo "UPX not available"
+
+      - name: Build backend binary + Electron app
+        shell: bash
+        run: |
+          pip install pyinstaller
+          pip install -e ".[system]"
+          Z3_LIB=$(python3 << 'PYEOF'
+          import z3, os, sys, glob
+          ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
+          ext = ext_map.get(sys.platform, '.so')
+          lib_dir = os.path.join(os.path.dirname(z3.__file__), 'lib')
+          if not os.path.isdir(lib_dir):
+              lib_dir = os.path.join(os.path.dirname(z3.__file__))
+          matches = glob.glob(os.path.join(lib_dir, f'*z3*{ext}')) or glob.glob(os.path.join(lib_dir, f'libz3*'))
+          print(matches[0] if matches else os.path.join(lib_dir, f'libz3{ext}'))
+          PYEOF
+          )
+          UPX_FLAG=""
+          which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
+          pyinstaller --onedir --noconsole --noconfirm \
+            --name udr-backend \
+            $UPX_FLAG \
+            --add-binary "$Z3_LIB:z3/lib/" \
+            --distpath backend/dist \
+            --workpath ${{ runner.temp }}/pyibuild \
+            backend/run.py
+          pushd desktop
+          npm install
+          npx electron-builder --mac --publish=never
+          popd
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke test built binary
+        shell: bash
+        run: |
+          node --test tests/smoke.test.js
+        working-directory: desktop
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: udr-desktop-macos-${{ matrix.arch }}
+          path: |
+            desktop/release/*.dmg
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          shopt -s nullglob
+          for f in desktop/release/*; do
+            base=$(basename "$f")
+            case "$base" in
+              *.dmg)
+                echo "Uploading $base to release $TAG..."
+                gh release upload "$TAG" "$f" --clobber
+                ;;
+              *)
+                echo "Skipping $base"
+                ;;
+            esac
+          done
