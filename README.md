@@ -4,7 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/ud-resolver)](https://pypi.org/project/ud-resolver/)
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver)](LICENSE)
 [![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
-[![Desktop Build](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
+[![Desktop](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
 [![Type checked](https://img.shields.io/badge/mypy-0%20errors-brightgreen)](#)
 
 Resolve dependencies across **14 ecosystems** — detect conflicts, check system compatibility, and export to any format.
