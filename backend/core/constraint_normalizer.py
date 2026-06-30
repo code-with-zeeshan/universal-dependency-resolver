@@ -9,7 +9,10 @@ def parse_semver(ver: str):
     return major, minor, patch
 
 
-def normalize_constraint(constraint: str, ecosystem: str) -> str:
+from typing import Optional
+
+
+def normalize_constraint(constraint: str, ecosystem: str) -> Optional[str]:
     given = constraint
     if not constraint:
         return "*"
@@ -30,7 +33,7 @@ def normalize_constraint(constraint: str, ecosystem: str) -> str:
     return given.strip()
 
 
-def _normalize_pip(constraint: str) -> str:
+def _normalize_pip(constraint: str) -> Optional[str]:
     m = re.match(r"\s*(~=)\s*(\d+(?:\.\d+)*(?:\.\d+)?)\s*$", constraint)
     if m:
         ver = m.group(2)
@@ -69,7 +72,7 @@ def _normalize_pip(constraint: str) -> str:
     return None
 
 
-def _normalize_npm(constraint: str, ecosystem: str) -> str:
+def _normalize_npm(constraint: str, ecosystem: str) -> Optional[str]:
     if ecosystem not in ("npm", "crates", "rubygems", "pub", "packagist"):
         return None
 
