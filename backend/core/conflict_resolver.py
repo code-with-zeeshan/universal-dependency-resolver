@@ -1058,6 +1058,9 @@ class ConflictResolver:
         """Find versions compatible with system requirements"""
         compatible = []
 
+        # Apply version_constraint from manifest (e.g. >=3.11,<3.13)
+        version_constraint = package.get("version_constraint", "*")
+
         # Check package-level system requirements
         sys_reqs = package.get("system_requirements", {})
         python_req = sys_reqs.get("python", {})
@@ -1077,8 +1080,13 @@ class ConflictResolver:
             else:
                 version_str = str(version_info)
 
+            # Apply version_constraint from manifest (e.g. python >=3.11,<3.13)
+            if version_constraint != "*" and not is_compatible_version(
+                version_str, version_constraint
+            ):
+                continue
+
             # Apply package-level system requirements
-            if min_python:
                 sys_python = (
                     system_info.get("runtime_versions", {})
                     .get("python", {})
