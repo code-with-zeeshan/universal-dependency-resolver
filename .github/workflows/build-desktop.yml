@@ -70,14 +70,7 @@ jobs:
             TAG_VER="${{ github.event.release.tag_name }}"
             TAG_VER="${TAG_VER#v}"
             echo "Injecting tag version: $TAG_VER"
-            python3 -c "
-import json
-pkg = json.load(open('desktop/package.json'))
-old = pkg['version']
-pkg['version'] = '$TAG_VER'
-json.dump(pkg, open('desktop/package.json', 'w'), indent=2)
-print(f'desktop/package.json: {old} -> $TAG_VER (from tag)')
-"
+            python3 -c "import json,sys; pkg=json.load(open('desktop/package.json')); old=pkg['version']; pkg['version']=sys.argv[1]; json.dump(pkg, open('desktop/package.json','w'), indent=2); print(f'desktop/package.json: {old} -> {sys.argv[1]} (from tag)')" "$TAG_VER"
           else
             echo "No release tag — using pyproject.toml version"
           fi
