@@ -136,7 +136,7 @@ class ConflictResolver:
                 "Resolver error encountered",
                 extra={
                     "event": "dependency_resolution_error",
-                    "code": exc.category.value,
+                    "code": exc.category.value if exc.category else "unknown",
                     "log_msg": exc.message,
                     "details": exc.details,
                     **resolution_context,
