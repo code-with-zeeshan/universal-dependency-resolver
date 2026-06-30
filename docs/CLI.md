@@ -17,6 +17,7 @@ All commands support `--help` for inline usage.
 | Flag | Description |
 |---|---|
 | `--version` | Print version and exit (reads from `pyproject.toml`) |
+| `--offline` | Offline mode: use cached data only, no network requests |
 | `-h, --help` | Show help for any command |
 
 ---
@@ -397,6 +398,41 @@ udr list-ecosystems --json              # JSON array output
 
 ---
 
+## `completion`
+
+Generate shell completion scripts for bash, zsh, or fish.
+
+**Usage:**
+
+```bash
+udr completion                    # auto-detect shell (requires shellingham)
+udr completion bash               # bash completions
+udr completion zsh                # zsh completions
+udr completion fish               # fish completions
+```
+
+**Installing completions:**
+
+```bash
+# bash — source in ~/.bashrc
+udr completion bash > /etc/bash_completion.d/udr
+
+# zsh — save to a directory in $fpath
+udr completion zsh > /usr/local/share/zsh/site-functions/_udr
+
+# fish
+udr completion fish > ~/.config/fish/completions/udr.fish
+```
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Script generated successfully |
+| `1` | Unsupported shell (when passed explicitly) |
+
+---
+
 ## `update`
 
 Re-resolve a single package and update its entry in the lock file. Useful when you want to upgrade a specific dependency without re-scanning everything.
@@ -503,7 +539,7 @@ Running `udr lock` on a GPU machine records GPU info. Running the lock file on a
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | Error (resolution failed, file not found, invalid input) |
+| `1` | Error (resolution failed, file not found, invalid input, unsupported shell) |
 | `130` | Cancelled by user (Ctrl+C) |
 
 ---

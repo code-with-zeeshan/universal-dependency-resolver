@@ -314,8 +314,21 @@ async def health_check(request: Request) -> dict:
             health_status["checks"]["redis"] = {"status": "unhealthy", "error": str(e)}
             # Redis is optional, so don't mark overall status as unhealthy
 
-    # Check external APIs (sample check)
-    health_status["checks"]["external_apis"] = {"status": "healthy"}
+    # Check external APIs — verify at least one upstream registry is reachable
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as hc:
+            r = await hc.get("https://pypi.org/pypi/pip/json")
+            health_status["checks"]["external_apis"] = {
+                "status": "healthy" if r.is_success else "degraded",
+                "pypi": r.status_code,
+            }
+    except Exception as e:
+        health_status["checks"]["external_apis"] = {
+            "status": "degraded",
+            "error": str(e),
+        }
 
     return health_status
 

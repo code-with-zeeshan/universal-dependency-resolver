@@ -56,7 +56,7 @@ udr serve --port 8000
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **12 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat |
-| **10 CLI commands** | serve, check, resolve, info, lock, scan, graph, verify, list-ecosystems, update |
+| **13 CLI commands** | serve, check, resolve, info, lock, scan, graph, verify, list-ecosystems, update, install, restore, completion |
 | **24 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -108,6 +108,9 @@ udr list-ecosystems
 
 # Re-resolve a single package
 udr update flask
+
+# Generate shell completion scripts
+udr completion bash
 ```
 
 ---
@@ -154,14 +157,20 @@ OpenAPI docs at `http://localhost:8000/api/v1/docs` (Swagger UI). Full reference
 ## Testing
 
 ```bash
-# Unit tests (fast, no deps)
-python -m pytest tests/unit/        # 399 tests
+# All tests
+python -m pytest tests/                        # 760+ tests
+
+# Unit only (fast, no deps)
+python -m pytest tests/unit/
+
+# CLI end-to-end (black-box subprocess tests)
+python -m pytest tests/cli/
 
 # Integration tests (SQLite, no Docker needed)
-python -m pytest tests/integration/ # 69 tests
+python -m pytest tests/integration/
 
 # Desktop smoke tests
-cd desktop && node --test tests/    # 28 tests
+cd desktop && node --test tests/
 ```
 
 ---
@@ -189,7 +198,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture.
 
 | Guide | Description |
 |---|---|
-| [CLI Reference](docs/CLI.md) | All 10 commands with flags, examples, exit codes |
+| [CLI Reference](docs/CLI.md) | All 13 commands with flags, examples, exit codes |
 | [API Reference](docs/API.md) | 24 REST endpoints, request/response schemas |
 | [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |

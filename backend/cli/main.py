@@ -18,6 +18,7 @@ from .commands.verify import cmd_verify
 from .commands.list_ecosystems import cmd_list_ecosystems
 from .commands.update import cmd_update
 from .commands.install import cmd_install
+from .commands.completion import cmd_completion
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -239,6 +240,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes", "-y", action="store_true", help="Skip confirmation prompt"
     )
 
+    completion_p = sub.add_parser(
+        "completion",
+        help="Generate shell completion script for bash, zsh, or fish",
+    )
+    completion_p.add_argument(
+        "shell",
+        nargs="?",
+        choices=["bash", "zsh", "fish"],
+        help="Shell to generate completions for (auto-detected if omitted)",
+    )
+
     scan_p = sub.add_parser(
         "scan", help="Scan a GitHub repo or local path without manual clone/cd"
     )
@@ -304,6 +316,7 @@ def main():
         "update": cmd_update,
         "install": cmd_install,
         "restore": cmd_install,
+        "completion": cmd_completion,
     }
     dispatch[args.command](args)
 

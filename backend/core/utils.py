@@ -14,13 +14,22 @@ logger = logging.getLogger(__name__)
 
 
 def run_async(coro: Coroutine) -> Any:
-    """Run a coroutine synchronously in a temporary event loop."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """Run a coroutine synchronously.
+    Uses asyncio.run() when no event loop is running;
+    falls back to creating a new loop if called from a running loop.
+    """
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        asyncio.get_running_loop()
+        # We're inside a running loop — create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    except RuntimeError:
+        # No running loop — use asyncio.run (cleanest)
+        return asyncio.run(coro)
 
 
 def parse_version(version_str: str) -> Optional[version.Version]:

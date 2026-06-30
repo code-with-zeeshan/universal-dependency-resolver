@@ -64,6 +64,13 @@ jobs:
         run: |
           python3 -c "from backend.cli import main; print('CLI package OK')"
 
+      - name: CLI end-to-end smoke tests
+        env:
+          TESTING: "true"
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/cli/ -v --tb=short
+
       - name: Run data source tests
         env:
           TESTING: "true"
@@ -140,7 +147,6 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
         with:
           scan-type: fs
           scan-ref: .
@@ -156,7 +162,7 @@ jobs:
 
       - name: Snyk scan Python dependencies
         uses: snyk/actions/python@master
-        continue-on-error: true
+        continue-on-error: ${{ github.ref != 'refs/heads/main' }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -175,10 +181,8 @@ jobs:
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
-        continue-on-error: true
         with:
           languages: python
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
-        continue-on-error: true

@@ -215,7 +215,9 @@ async def get_current_active_user(
 
 
 def require_scopes(*required_scopes: str):
-    """Dependency to require specific scopes"""
+    """Dependency factory to require specific OAuth scopes.
+    Used in route definitions: ``require_scopes("packages:read")``.
+    """
 
     async def scope_checker(current_user: User = Depends(get_current_user)):
         if not FEATURES.get("ENABLE_AUTH", False):

@@ -31,14 +31,20 @@ python -m pytest tests/
 # Unit only
 python -m pytest tests/unit/
 
-# Integration only (uses SQLite by default)
+# CLI end-to-end (black-box subprocess tests)
+python -m pytest tests/cli/
+
+# Data source tests only
+python -m pytest tests/unit/ -k "data_source"
+
+# Integration tests (uses SQLite by default)
 python -m pytest tests/integration/
 
 # With coverage
 python -m pytest --cov=backend tests/
 ```
 
-Total: **468 tests** (399 unit + 69 integration). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **760+ tests** (215 unit non-data-source + 543 data-source + CLI e2e + integration). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 
@@ -63,8 +69,9 @@ backend/
 │   ├── export_generator.py    # 12 export formats (Jinja2)
 │   ├── system_scanner.py      # OS/CPU/GPU/runtime detection
 │   ├── cache.py               # DictCache + optional Redis
-│   ├── manifest_detector.py   # Auto-detect manifest files
+│   ├── constraint_normalizer.py # Version constraint normalization
 │   └── utils.py
+├── manifest_detector.py  # Auto-detect manifest files
 ├── data_sources/      # 13 ecosystem API clients
 ├── database/          # SQLAlchemy models
 ├── settings/          # Configuration (~200 lines)
