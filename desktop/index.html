@@ -5,110 +5,165 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>UDR — Universal Dependency Resolver</title>
 <style>
+:root {
+  --bg-body: #0b0b14;
+  --bg-sidebar: #12121e;
+  --bg-card: #181825;
+  --bg-elevated: #1e1e32;
+  --bg-input: #12121e;
+  --border: #2a2a44;
+  --border-focus: #6366f1;
+  --text: #e2e2e8;
+  --text-muted: #8888a0;
+  --text-dim: #5a5a72;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: #818cf8;
+  --accent-bg: rgba(99,102,241,0.12);
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.12);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.12);
+  --yellow: #eab308;
+  --yellow-bg: rgba(234,179,8,0.12);
+  --blue: #3b82f6;
+  --blue-bg: rgba(59,130,246,0.12);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+  --font: -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;
+  --font-mono: 'SF Mono','Fira Code','Cascadia Code',monospace;
+  --nav-collapsed: 56px;
+  --nav-expanded: 200px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;height:100vh;display:flex;flex-direction:column}
-header{background:#16213e;padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #0f3460;-webkit-app-region:drag}
-header h1{font-size:18px;font-weight:600;color:#e94560}
-header span{color:#889;font-size:13px}
-header .right{margin-left:auto;display:flex;align-items:center;gap:10px;-webkit-app-region:no-drag}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
-.status-dot.green{background:#4caf50;box-shadow:0 0 6px #4caf50}
-.status-dot.red{background:#e94560;box-shadow:0 0 6px #e94560}
-.status-dot.yellow{background:#ff9800;box-shadow:0 0 6px #ff9800}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg-body);color:var(--text);display:flex;flex-direction:column;font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+header{background:var(--bg-sidebar);padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);-webkit-app-region:drag;height:48px;flex-shrink:0}
+header .logo{display:flex;align-items:center;gap:10px}
+header .logo h1{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:-0.3px}
+header .logo span{font-size:12px;color:var(--text-dim)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:12px;-webkit-app-region:no-drag}
+header .right .status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-muted)}
+.status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.status-dot.green{background:var(--green);box-shadow:0 0 8px var(--green)}
+.status-dot.red{background:var(--red);box-shadow:0 0 8px var(--red)}
+.status-dot.yellow{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
 .layout{display:flex;flex:1;overflow:hidden}
-nav{width:200px;background:#16213e;border-right:1px solid #0f3460;padding:12px 8px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;overflow-y:auto}
-.nav-section{font-size:10px;color:#556;text-transform:uppercase;padding:8px 12px 2px;letter-spacing:1px;margin-top:4px}
-.nav-btn{display:flex;align-items:center;gap:10px;padding:8px 12px;border:none;background:transparent;color:#9aa;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;width:100%;text-align:left}
-.nav-btn:hover{background:#1a1a3e;color:#e0e0e0}
-.nav-btn.active{background:#e94560;color:#fff}
-.nav-btn .icon{font-size:14px;width:18px;text-align:center}
-main{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+nav{width:var(--nav-collapsed);background:var(--bg-sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;gap:1px;flex-shrink:0;overflow-y:auto;overflow-x:hidden;transition:width .2s ease;padding:6px 4px}
+nav:hover{width:var(--nav-expanded)}
+.nav-section{font-size:9.5px;color:var(--text-dim);text-transform:uppercase;padding:10px 10px 3px;letter-spacing:1px;white-space:nowrap;overflow:hidden;opacity:0;transition:opacity .15s .1s}
+nav:hover .nav-section{opacity:1}
+.nav-btn{display:flex;align-items:center;gap:10px;padding:8px 10px;border:none;background:transparent;color:var(--text-muted);border-radius:var(--radius-sm);cursor:pointer;font-size:12.5px;transition:all .15s;width:100%;text-align:left;white-space:nowrap;flex-shrink:0;font-family:var(--font)}
+.nav-btn:hover{background:var(--accent-bg);color:var(--text)}
+.nav-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,0.3)}
+.nav-btn .icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.nav-btn .label{overflow:hidden;opacity:0;transition:opacity .15s .1s}
+nav:hover .nav-btn .label{opacity:1}
+main{flex:1;padding:20px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
 .tab{display:none;flex-direction:column;gap:16px}
 .tab.active{display:flex}
-.card{background:#16213e;border-radius:8px;padding:16px 20px;border:1px solid #0f3460}
-.card h2{font-size:15px;margin-bottom:10px;color:#e94560;font-weight:600}
-.row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
-.row input,.row select{flex:1;min-width:160px;padding:8px 12px;border:1px solid #0f3460;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:13px}
-.row input:focus,.row select:focus{outline:none;border-color:#e94560}
-.row button{padding:8px 20px;background:#e94560;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;transition:background .15s}
-.row button:hover{background:#d63851}
-.row button:disabled{opacity:.5;cursor:default}
-.row button.secondary{background:#2a2a4e}
-.row button.secondary:hover{background:#3a3a6e}
-pre{background:#0d1b2e;padding:14px;border-radius:6px;overflow:auto;font-size:12px;max-height:360px;white-space:pre-wrap;word-break:break-all;border:1px solid #0f3460;margin-top:8px}
-.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.info-item{background:#0d1b2e;padding:10px 14px;border-radius:6px;border:1px solid #0f3460}
-.info-item .label{font-size:11px;color:#889;text-transform:uppercase;margin-bottom:2px}
-.info-item .value{font-size:14px;font-weight:500}
-.info-item .value.good{color:#4caf50}
-.info-item .value.warn{color:#ff9800}
-.info-item .value.bad{color:#e94560}
-.result-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
-.result-table th{background:#0d1b2e;padding:8px 12px;text-align:left;color:#889;font-weight:500;border-bottom:1px solid #0f3460;font-size:11px;text-transform:uppercase}
-.result-table td{padding:8px 12px;border-bottom:1px solid #0f3460}
-.result-table tr:hover{background:#1a1a3e}
-.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
-.badge.green{background:#1b3a2b;color:#4caf50}
-.badge.red{background:#3a1b1b;color:#e94560}
-.badge.yellow{background:#3a2e1b;color:#ff9800}
-.badge.blue{background:#1b2a3a;color:#5b9bd5}
-.sub-nav{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
-.sub-nav button{font-size:12px;padding:6px 14px;background:#2a2a4e;color:#9aa;border:none;border-radius:4px;cursor:pointer}
-.sub-nav button.active{background:#e94560;color:#fff}
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid #0f3460;border-top-color:#e94560;border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
-@keyframes spin{to{transform:rotate(360deg)}
-.loading-state{padding:20px;text-align:center;color:#889;font-size:13px}
-.tree-node{padding:4px 0;font-size:13px}
-.tree-children{padding-left:24px;border-left:1px solid #0f3460;margin:4px 0 8px 20px}
-.tree-node .ver{color:#5b9bd5;font-size:11px;margin-left:6px}
-.tree-node .eco{color:#667;font-size:11px;margin-left:4px}
-.alert{padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:8px}
-.alert.success{background:#1b3a2b;color:#4caf50;border:1px solid #2a5a3b}
-.alert.warning{background:#3a2e1b;color:#ff9800;border:1px solid #5a4a2b}
-.alert.error{background:#3a1b1b;color:#e94560;border:1px solid #5a2b2b}
-footer{padding:8px 20px;border-top:1px solid #0f3460;font-size:11px;color:#556;text-align:center}
-.version{color:#445;margin-left:auto}
-#statusText{font-size:12px;color:#889}
-.sub-row{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center}
-.sub-row input,.sub-row select{flex:1;min-width:140px;padding:6px 10px;border:1px solid #0f3460;border-radius:4px;background:#1a1a2e;color:#e0e0e0;font-size:12px}
-.sub-row button{padding:6px 14px;background:#2a2a4e;color:#e0e0e0;border:none;border-radius:4px;font-size:12px;cursor:pointer}
-.sub-row button:hover{background:#3a3a6e}
+.tab-header{margin-bottom:2px}
+.tab-header h2{font-size:17px;font-weight:600;color:var(--text);letter-spacing:-0.2px}
+.tab-header p{font-size:12.5px;color:var(--text-muted);margin-top:2px}
+.card{background:var(--bg-card);border-radius:var(--radius);padding:18px 22px;border:1px solid var(--border);transition:box-shadow .15s}
+.card:hover{box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:600;color:var(--accent-light);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.row:last-child{margin-bottom:0}
+input,select,textarea{font-family:var(--font);font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text);transition:border-color .15s,box-shadow .15s;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-bg)}
+input::placeholder,textarea::placeholder{color:var(--text-dim)}
+select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+textarea{resize:vertical;font-family:var(--font-mono);font-size:12px;line-height:1.4}
+button{font-family:var(--font);font-size:12.5px;padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button:hover{background:var(--accent-hover);box-shadow:0 2px 8px rgba(99,102,241,0.3)}
+button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+button.secondary{background:var(--bg-elevated);color:var(--text)}
+button.secondary:hover{background:var(--border);color:var(--text);box-shadow:none}
+button.ghost{background:transparent;color:var(--text-muted);padding:6px 10px}
+button.ghost:hover{background:var(--accent-bg);color:var(--accent-light);box-shadow:none}
+pre{background:var(--bg-body);padding:14px;border-radius:var(--radius-sm);overflow:auto;font-size:12px;line-height:1.4;max-height:320px;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border);font-family:var(--font-mono);margin-top:8px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.info-item{background:var(--bg-body);padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+.info-item .label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}
+.info-item .value{font-size:13.5px;font-weight:500}
+.info-item .value.good{color:var(--green)}
+.info-item .value.warn{color:var(--yellow)}
+.info-item .value.bad{color:var(--red)}
+.result-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+.result-table th{background:var(--bg-body);padding:7px 10px;text-align:left;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);font-size:10.5px;text-transform:uppercase;letter-spacing:0.3px}
+.result-table td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+.result-table tr:hover td{background:var(--accent-bg)}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;gap:3px}
+.badge.green{background:var(--green-bg);color:var(--green)}
+.badge.red{background:var(--red-bg);color:var(--red)}
+.badge.yellow{background:var(--yellow-bg);color:var(--yellow)}
+.badge.blue{background:var(--blue-bg);color:var(--blue)}
+.badge.accent{background:var(--accent-bg);color:var(--accent-light)}
+.sub-nav{display:flex;gap:3px;margin-bottom:10px;flex-wrap:wrap}
+.sub-nav button{font-size:11.5px;padding:5px 12px;background:var(--bg-body);color:var(--text-muted);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:all .15s}
+.sub-nav button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sub-nav button:hover:not(.active){border-color:var(--text-dim);color:var(--text)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-state{padding:16px;text-align:center;color:var(--text-muted);font-size:12.5px}
+.skeleton{background:linear-gradient(90deg,var(--bg-elevated) 25%,var(--border) 50%,var(--bg-elevated) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius-sm);height:14px;margin:4px 0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.tree-node{padding:3px 0;font-size:13px}
+.tree-children{padding-left:20px;border-left:1px solid var(--border);margin:3px 0 6px 16px}
+.tree-node .ver{color:var(--accent-light);font-size:11.5px;margin-left:6px}
+.tree-node .eco{color:var(--text-dim);font-size:11px;margin-left:4px}
+.alert{padding:10px 14px;border-radius:var(--radius-sm);font-size:12.5px;margin-bottom:6px;line-height:1.4}
+.alert.success{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.2)}
+.alert.warning{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(234,179,8,0.2)}
+.alert.error{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,0.2)}
+.alert.info{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(59,130,246,0.2)}
+code{font-family:var(--font-mono);font-size:12px;background:var(--bg-elevated);padding:1px 5px;border-radius:3px;color:var(--accent-light)}
+kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);padding:1px 5px;border-radius:3px;border:1px solid var(--border);color:var(--text-muted)}
+.shortcut-hint{font-size:10.5px;color:var(--text-dim);margin-left:auto}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
 </style>
 </head>
 <body>
 <header>
-<h1>UDR</h1><span>Universal Dependency Resolver</span>
+<div class="logo"><h1>UDR</h1><span>Universal Dependency Resolver</span></div>
 <div class="right">
-<span id="statusText">connecting...</span>
-<span id="statusDot" class="status-dot yellow"></span>
+<div class="status"><span id="statusDot" class="status-dot yellow"></span><span id="statusText">connecting...</span></div>
 </div>
 </header>
 <div class="layout">
 <nav id="tabNav">
-<button class="nav-btn active" data-tab="dashboard"><span class="icon">★</span> Dashboard</button>
+<div class="nav-section">Overview</div>
+<button class="nav-btn active" data-tab="dashboard"><span class="icon">★</span><span class="label">Dashboard</span></button>
 <div class="nav-section">Packages</div>
-<button class="nav-btn" data-tab="resolve"><span class="icon">⚙</span> Resolve</button>
-<button class="nav-btn" data-tab="search"><span class="icon">🔍</span> Search</button>
-<button class="nav-btn" data-tab="details"><span class="icon">ℹ</span> Details</button>
-<button class="nav-btn" data-tab="versions"><span class="icon">↕</span> Versions</button>
-<button class="nav-btn" data-tab="deps"><span class="icon">→</span> Dependencies</button>
-<button class="nav-btn" data-tab="compat"><span class="icon">✓</span> Compatibility</button>
+<button class="nav-btn" data-tab="resolve"><span class="icon">⚙</span><span class="label">Resolve</span></button>
+<button class="nav-btn" data-tab="search"><span class="icon">🔍</span><span class="label">Search</span></button>
+<button class="nav-btn" data-tab="details"><span class="icon">ℹ</span><span class="label">Details</span></button>
+<button class="nav-btn" data-tab="versions"><span class="icon">↕</span><span class="label">Versions</span></button>
+<button class="nav-btn" data-tab="deps"><span class="icon">→</span><span class="label">Dependencies</span></button>
+<button class="nav-btn" data-tab="compat"><span class="icon">✓</span><span class="label">Compatibility</span></button>
 <div class="nav-section">System</div>
-<button class="nav-btn" data-tab="system"><span class="icon">💻</span> System</button>
+<button class="nav-btn" data-tab="system"><span class="icon">💻</span><span class="label">System</span></button>
 <div class="nav-section">Project</div>
-<button class="nav-btn" data-tab="scan"><span class="icon">📁</span> Scan</button>
-<button class="nav-btn" data-tab="graph"><span class="icon">🌳</span> Graph</button>
-<button class="nav-btn" data-tab="verify"><span class="icon">✓</span> Verify Lock</button>
-<button class="nav-btn" data-tab="update-pkg"><span class="icon">↑</span> Update</button>
-<div class="nav-section">Output</div>
-<button class="nav-btn" data-tab="export"><span class="icon">⬇</span> Export</button>
+<button class="nav-btn" data-tab="scan"><span class="icon">📁</span><span class="label">Scan</span></button>
+<button class="nav-btn" data-tab="graph"><span class="icon">🌳</span><span class="label">Graph</span></button>
+<button class="nav-btn" data-tab="verify"><span class="icon">✓</span><span class="label">Verify Lock</span></button>
+<button class="nav-btn" data-tab="install"><span class="icon">📦</span><span class="label">Install</span></button>
+<button class="nav-btn" data-tab="restore"><span class="icon">↩</span><span class="label">Restore</span></button>
+<button class="nav-btn" data-tab="update-pkg"><span class="icon">↑</span><span class="label">Update</span></button>
 </nav>
 <main>
 
 <!-- Dashboard -->
 <div class="tab active" id="tab-dashboard">
+<div class="tab-header"><h2>Dashboard</h2><p>Overview of system status and quick actions</p></div>
 <div class="card">
-<h2>API Status</h2>
+<div class="card-title">★ API Status</div>
 <div class="info-grid">
 <div class="info-item"><div class="label">Status</div><div class="value" id="dashStatus">Checking...</div></div>
 <div class="info-item"><div class="label">Version</div><div class="value" id="dashVersion">-</div></div>
@@ -117,131 +172,147 @@ footer{padding:8px 20px;border-top:1px solid #0f3460;font-size:11px;color:#556;t
 </div>
 </div>
 <div class="card">
-<h2>Quick Actions</h2>
+<div class="card-title">⚡ Quick Actions</div>
 <div class="row">
 <button onclick="switchTab('resolve')">Resolve Packages</button>
 <button class="secondary" onclick="switchTab('scan')">Scan Project</button>
 <button class="secondary" onclick="switchTab('system')">View System</button>
 <button class="secondary" onclick="switchTab('graph')">Dependency Graph</button>
+<button class="secondary" onclick="switchTab('verify')">Verify Lock</button>
 </div>
 </div>
 </div>
 
-<!-- Resolve -->
+<!-- Resolve + Export combined -->
 <div class="tab" id="tab-resolve">
+<div class="tab-header"><h2>Resolve Packages</h2><p>Resolve dependency versions across any ecosystem</p></div>
 <div class="card">
-<h2>Resolve Packages</h2>
+<div class="card-title">⚙ Package Input</div>
 <div class="row">
-<input id="pkgInput" placeholder="Package names, space-separated (e.g. requests numpy torch)" value="requests">
+<input id="pkgInput" placeholder="Package names, space-separated (e.g. requests numpy torch)" value="requests" style="flex:1">
 <select id="ecoSelect"></select>
 <button id="resolveBtn">Resolve</button>
+<button id="exportLastBtn" class="secondary" disabled>Export</button>
 </div>
-<div style="font-size:11px;color:#667">Use <code>name@ecosystem</code> to override ecosystem per package (e.g. torch@conda)</div>
+<div class="row" style="margin-top:4px">
+<select id="exportFormatSelect" style="flex:0;min-width:180px"><option value="">No export format selected</option></select>
+<label style="font-size:11.5px;color:var(--text-dim)">Use <code>name@ecosystem</code> to override per package (e.g. <code>torch@conda</code>)</label>
+</div>
 </div>
 <div class="card" id="resolveResultCard" style="display:none">
-<h2>Resolution Result</h2>
+<div class="card-title">📦 Resolution Result</div>
 <div id="resolveResult"></div>
-<div id="resolveRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('resolveRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="resolveRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('resolveRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="resolveRaw" style="display:none"></pre>
+</div>
+<div class="card" id="exportResultCard" style="display:none">
+<div class="card-title">📤 Export Output</div>
+<div id="exportResultPre" style="background:var(--bg-body);padding:14px;border-radius:var(--radius-sm);font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border);font-family:var(--font-mono)"></div>
 </div>
 </div>
 
 <!-- Search -->
 <div class="tab" id="tab-search">
+<div class="tab-header"><h2>Search Packages</h2><p>Search packages across all supported ecosystems</p></div>
 <div class="card">
-<h2>Search Packages</h2>
+<div class="card-title">🔍 Search</div>
 <div class="row">
-<input id="searchInput" placeholder="Search packages..." value="requests">
+<input id="searchInput" placeholder="Search packages..." value="requests" style="flex:1">
 <select id="searchEco"><option value="">All ecosystems</option></select>
 <button id="searchBtn">Search</button>
 </div>
 </div>
 <div class="card" id="searchResultCard" style="display:none">
-<h2>Search Results</h2>
+<div class="card-title">📋 Search Results</div>
 <div id="searchResult"></div>
-<div id="searchRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('searchRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="searchRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('searchRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="searchRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Details -->
 <div class="tab" id="tab-details">
+<div class="tab-header"><h2>Package Details</h2><p>View detailed package metadata</p></div>
 <div class="card">
-<h2>Package Details</h2>
+<div class="card-title">ℹ Package Lookup</div>
 <div class="row">
-<input id="detPkgInput" placeholder="Package name (e.g. flask)">
+<input id="detPkgInput" placeholder="Package name (e.g. flask)" style="flex:1">
 <select id="detEcoSelect"></select>
 <button id="detBtn">Get Details</button>
 </div>
 </div>
 <div class="card" id="detResultCard" style="display:none">
-<h2>Details</h2>
+<div class="card-title">📄 Details</div>
 <div id="detResult"></div>
-<div id="detRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('detRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="detRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('detRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="detRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Versions -->
 <div class="tab" id="tab-versions">
+<div class="tab-header"><h2>Package Versions</h2><p>Browse available versions for any package</p></div>
 <div class="card">
-<h2>Package Versions</h2>
+<div class="card-title">↕ Version Browser</div>
 <div class="row">
-<input id="verPkgInput" placeholder="Package name (e.g. flask)">
+<input id="verPkgInput" placeholder="Package name (e.g. flask)" style="flex:1">
 <select id="verEcoSelect"></select>
 <button id="verBtn">List Versions</button>
 </div>
 </div>
 <div class="card" id="verResultCard" style="display:none">
-<h2>Versions</h2>
+<div class="card-title">📋 Available Versions</div>
 <div id="verResult"></div>
-<div id="verRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('verRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="verRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('verRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="verRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Dependencies -->
 <div class="tab" id="tab-deps">
+<div class="tab-header"><h2>Package Dependencies</h2><p>View dependencies of any package</p></div>
 <div class="card">
-<h2>Package Dependencies</h2>
+<div class="card-title">→ Dependency Lookup</div>
 <div class="row">
-<input id="depPkgInput" placeholder="Package name (e.g. flask)">
+<input id="depPkgInput" placeholder="Package name (e.g. flask)" style="flex:1">
 <select id="depEcoSelect"></select>
 <button id="depBtn">View Dependencies</button>
 </div>
 </div>
 <div class="card" id="depResultCard" style="display:none">
-<h2>Dependencies</h2>
+<div class="card-title">📋 Dependencies</div>
 <div id="depResult"></div>
-<div id="depRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('depRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="depRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('depRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="depRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Compatibility -->
 <div class="tab" id="tab-compat">
+<div class="tab-header"><h2>Package Compatibility</h2><p>Check system compatibility for any package</p></div>
 <div class="card">
-<h2>Package Compatibility</h2>
+<div class="card-title">✓ Compatibility Check</div>
 <div class="row">
-<input id="comPkgInput" placeholder="Package name (e.g. torch)">
+<input id="comPkgInput" placeholder="Package name (e.g. torch)" style="flex:1">
 <select id="comEcoSelect"></select>
 <button id="comBtn">Check Compatibility</button>
 </div>
 </div>
 <div class="card" id="comResultCard" style="display:none">
-<h2>Compatibility</h2>
+<div class="card-title">📊 Compatibility Matrix</div>
 <div id="comResult"></div>
-<div id="comRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('comRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="comRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('comRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="comRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- System -->
 <div class="tab" id="tab-system">
+<div class="tab-header"><h2>System Information</h2><p>Runtime environment and hardware details</p></div>
 <div class="card">
-<h2>System Information</h2>
+<div class="card-title">💻 System Info</div>
 <div class="row">
-<button id="refreshSysBtn" class="secondary" style="margin-bottom:0">Refresh System Info</button>
+<button id="refreshSysBtn" class="secondary">Refresh</button>
 <button id="checkCompatBtn" class="secondary">Check Compatibility</button>
 </div>
 <div id="sysCompatResult" style="display:none"></div>
@@ -250,15 +321,16 @@ footer{padding:8px 20px;border-top:1px solid #0f3460;font-size:11px;color:#556;t
 </div>
 </div>
 <div class="card">
-<h2>Runtime Versions</h2>
+<div class="card-title">🕒 Runtime Versions</div>
 <pre id="runtimePre">Loading...</pre>
 </div>
 </div>
 
 <!-- Scan -->
 <div class="tab" id="tab-scan">
+<div class="tab-header"><h2>Scan Project</h2><p>Detect manifests and resolve dependencies for any project</p></div>
 <div class="card">
-<h2>Scan Project</h2>
+<div class="card-title">📁 Scan Source</div>
 <div class="sub-nav" id="scanModeNav">
 <button class="active" data-mode="local">Local Path</button>
 <button data-mode="github">GitHub URL</button>
@@ -266,134 +338,151 @@ footer{padding:8px 20px;border-top:1px solid #0f3460;font-size:11px;color:#556;t
 </div>
 <div id="scanLocal">
 <div class="row">
-<input id="scanPath" placeholder="Click Browse to select a directory..." readonly>
-<button id="browseBtn">Browse</button>
-<button id="scanBtn" class="secondary">Scan & Resolve</button>
+<input id="scanPath" placeholder="Click Browse to select a directory..." readonly style="flex:1">
+<button id="browseBtn" class="secondary">Browse</button>
+<button id="scanBtn">Scan &amp; Resolve</button>
 </div>
 </div>
 <div id="scanGithub" style="display:none">
 <div class="row">
-<input id="scanGithubUrl" placeholder="GitHub repo URL (e.g. https://github.com/user/repo)">
+<input id="scanGithubUrl" placeholder="https://github.com/user/repo" style="flex:1">
 <select id="scanGithubBranch"><option value="main">main</option><option value="master">master</option></select>
-<button id="scanGithubBtn" class="secondary">Scan & Resolve</button>
+<button id="scanGithubBtn" class="secondary">Scan &amp; Resolve</button>
 </div>
 </div>
 <div id="scanUpload" style="display:none">
 <div class="row">
-<input id="scanUploadFile" type="file" accept=".zip">
-<button id="scanUploadBtn" class="secondary">Scan & Resolve</button>
+<input id="scanUploadFile" type="file" accept=".zip" style="flex:1">
+<button id="scanUploadBtn" class="secondary">Scan &amp; Resolve</button>
 </div>
 </div>
-<div class="row" style="margin-top:8px">
-<select id="scanExportFmt"><option value="">No export</option></select>
-<label style="font-size:12px;color:#667">Export format (optional)</label>
+<div class="row" style="margin-top:6px">
+<select id="scanExportFmt" style="flex:0;min-width:180px"><option value="">No export</option></select>
+<label style="font-size:11.5px;color:var(--text-dim)">Export format (optional)</label>
 </div>
 </div>
 <div class="card" id="scanResultCard" style="display:none">
-<h2>Scan Results</h2>
+<div class="card-title">📄 Scan Results</div>
 <div id="scanResult"></div>
-<div id="scanResultExport" style="display:none;margin-top:8px">
+<div class="row" id="scanLockRow" style="margin-top:8px">
+<button id="scanLockBtn" class="secondary">🔒 Generate Lock File</button>
+<span id="scanLockMsg" style="font-size:11.5px;color:var(--text-dim)"></span>
+</div>
+<div id="scanResultExport" style="display:none;margin-top:6px">
 <div class="alert success" id="scanExportContent"></div>
 </div>
-<div id="scanRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('scanRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="scanRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('scanRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="scanRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Graph -->
 <div class="tab" id="tab-graph">
+<div class="tab-header"><h2>Dependency Graph</h2><p>Visualize dependency trees</p></div>
 <div class="card">
-<h2>Dependency Tree</h2>
+<div class="card-title">🌳 Dependency Tree</div>
 <div class="row">
-<input id="graphPkgInput" placeholder="Package names, space-separated (e.g. requests numpy)">
+<input id="graphPkgInput" placeholder="Package names, space-separated (e.g. requests numpy)" style="flex:1">
 <select id="graphEcoSelect"></select>
 <button id="graphBtn">Show Tree</button>
 </div>
 </div>
 <div class="card" id="graphResultCard" style="display:none">
-<h2>Dependency Tree</h2>
+<div class="card-title">🌳 Dependency Tree</div>
 <div id="graphResult"></div>
-<div id="graphRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('graphRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="graphRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('graphRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="graphRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Verify Lock -->
 <div class="tab" id="tab-verify">
+<div class="tab-header"><h2>Verify Lock File</h2><p>Validate that all versions in a lock file still exist</p></div>
 <div class="card">
-<h2>Verify Lock File</h2>
-<p style="font-size:13px;color:#889;margin-bottom:10px">Paste lock file JSON or upload a <code>udr-lock.json</code> file to verify all versions still exist.</p>
-<div class="row">
-<textarea id="verifyInput" rows="6" style="width:100%;padding:8px;border:1px solid #0f3460;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:12px;font-family:monospace" placeholder='Paste lock file JSON here, or click "Load from file"...'></textarea>
-</div>
-<div class="row">
+<div class="card-title">✓ Lock File Verification</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Paste lock file JSON or upload a <code>udr-lock.json</code> file to verify all versions still exist in their respective registries.</p>
+<textarea id="verifyInput" rows="5" style="width:100%" placeholder='Paste lock file JSON here, or click "Load from file"...'></textarea>
+<div class="row" style="margin-top:8px">
 <button id="verifyLoadBtn" class="secondary">Load from File</button>
 <button id="verifyBtn">Verify</button>
 </div>
 </div>
 <div class="card" id="verifyResultCard" style="display:none">
-<h2>Verification Results</h2>
+<div class="card-title">📊 Verification Results</div>
 <div id="verifyResult"></div>
-<div id="verifyRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('verifyRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="verifyRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('verifyRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="verifyRaw" style="display:none"></pre>
 </div>
 </div>
 
 <!-- Update -->
 <div class="tab" id="tab-update-pkg">
+<div class="tab-header"><h2>Update Package</h2><p>Re-resolve a single package in a lock file</p></div>
 <div class="card">
-<h2>Update Package in Lock</h2>
-<p style="font-size:13px;color:#889;margin-bottom:10px">Paste lock file JSON and specify a package to re-resolve.</p>
-<div class="row">
-<textarea id="updateLockInput" rows="4" style="width:100%;padding:8px;border:1px solid #0f3460;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:12px;font-family:monospace" placeholder='Paste udr-lock.json contents...'></textarea>
-</div>
-<div class="row">
-<input id="updatePkgInput" placeholder="Package name to re-resolve (e.g. numpy)">
+<div class="card-title">↑ Update Package in Lock</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Paste lock file JSON and specify a package to re-resolve against current registry data.</p>
+<textarea id="updateLockInput" rows="4" style="width:100%" placeholder='Paste udr-lock.json contents...'></textarea>
+<div class="row" style="margin-top:8px">
+<input id="updatePkgInput" placeholder="Package name to re-resolve (e.g. numpy)" style="flex:1">
 <button id="updateBtn">Update</button>
 </div>
 </div>
 <div class="card" id="updateResultCard" style="display:none">
-<h2>Update Result</h2>
+<div class="card-title">📋 Update Result</div>
 <div id="updateResult"></div>
-<div id="updateRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('updateRaw')" style="color:#5b9bd5">Show raw JSON</a></div>
+<div id="updateRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('updateRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="updateRaw" style="display:none"></pre>
 </div>
 </div>
 
-<!-- Export -->
-<div class="tab" id="tab-export">
+<!-- Install -->
+<div class="tab" id="tab-install">
+<div class="tab-header"><h2>Install Packages</h2><p>Generate native install commands for packages from a lock file</p></div>
 <div class="card">
-<h2>Export Formats</h2>
-<pre id="exportFormatsPre">Loading export formats...</pre>
+<div class="card-title">📦 Install from Lock File</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Paste lock file JSON to generate install commands grouped by ecosystem. These commands install all <strong>direct</strong> dependencies using the native package manager.</p>
+<textarea id="installInput" rows="5" style="width:100%" placeholder='Paste udr-lock.json contents here...'></textarea>
+<div class="row" style="margin-top:8px">
+<button id="installLoadBtn" class="secondary">Load from File</button>
+<button id="installGenBtn">Generate Commands</button>
 </div>
+</div>
+<div class="card" id="installResultCard" style="display:none">
+<div class="card-title">📋 Install Commands</div>
+<div id="installResult"></div>
+<div id="installRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('installRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
+<pre id="installRaw" style="display:none"></pre>
+</div>
+</div>
+
+<!-- Restore -->
+<div class="tab" id="tab-restore">
+<div class="tab-header"><h2>Restore from Lock File</h2><p>Generate install commands for ALL packages (direct + transitive) from a lock file</p></div>
 <div class="card">
-<h2>Export Resolved Packages</h2>
-<p style="font-size:13px;color:#889;margin-bottom:10px">
-Export resolved packages from a previous resolve, scan, or paste your own package data.
-</p>
-<div class="row">
-<select id="exportFormatSelect"></select>
-<button id="exportBtn" class="secondary">Export</button>
+<div class="card-title">↩ Restore Full Dependency Tree</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Paste lock file JSON to generate commands that restore <strong>every</strong> package to its locked version — including transitive dependencies.</p>
+<textarea id="restoreInput" rows="5" style="width:100%" placeholder='Paste udr-lock.json contents here...'></textarea>
+<div class="row" style="margin-top:8px">
+<button id="restoreLoadBtn" class="secondary">Load from File</button>
+<button id="restoreGenBtn">Generate Commands</button>
 </div>
-<details style="margin-top:8px">
-<summary style="cursor:pointer;font-size:12px;color:#667">Use custom package data</summary>
-<textarea id="exportCustomData" rows="4" style="width:100%;margin-top:6px;padding:8px;border:1px solid #0f3460;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:12px;font-family:monospace" placeholder='e.g. {"numpy": {"version": "1.26.0", "ecosystem": "pypi"}}'></textarea>
-</details>
 </div>
-<div class="card" id="exportResultCard" style="display:none">
-<h2>Export Output</h2>
-<div id="exportResultPre" style="background:#0d1b2e;padding:14px;border-radius:6px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #0f3460"></div>
+<div class="card" id="restoreResultCard" style="display:none">
+<div class="card-title">📋 Restore Commands</div>
+<div id="restoreResult"></div>
+<div id="restoreRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('restoreRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
+<pre id="restoreRaw" style="display:none"></pre>
 </div>
 </div>
 
 </main>
 </div>
-<footer>UDR Desktop — <span id="footerStatus">connecting to backend...</span></footer>
 
 <script>
 // ===================== State =====================
 let BASE = 'http://127.0.0.1:8199'
 let lastResolved = JSON.parse(sessionStorage.getItem('udr_lastResolved') || 'null')
+let lastScanData = null
 let exportFormats = []
 let sysInfoCache = null
 let sysInfoCacheTime = 0
@@ -411,9 +500,7 @@ getBaseUrl()
 if (window.udrDesktop && window.udrDesktop.onBackendReady) {
   window.udrDesktop.onBackendReady(async () => {
     if (window.udrDesktop) {
-      try {
-        BASE = await window.udrDesktop.getBackendUrl() || BASE
-      } catch(e) {}
+      try { BASE = await window.udrDesktop.getBackendUrl() || BASE } catch(e) {}
     }
     document.title = 'UDR'
     setStatus(true, 'Backend ready')
@@ -427,7 +514,6 @@ if (window.udrDesktop && window.udrDesktop.onBackendReady) {
 function setStatus(ok, msg) {
   document.getElementById('statusDot').className = 'status-dot ' + (ok ? 'green' : 'red')
   document.getElementById('statusText').textContent = msg
-  document.getElementById('footerStatus').textContent = msg
 }
 
 async function api(method, path, body) {
@@ -444,14 +530,14 @@ async function api(method, path, body) {
 
 async function apiWithError(path, body) {
   const btn = event.target
-  const wasText = btn.textContent
+  const wasText = btn.innerHTML
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Working...'
   try {
     const r = await api('POST', path, body)
-    btn.disabled = false; btn.textContent = wasText
+    btn.disabled = false; btn.innerHTML = wasText
     return r
   } catch(e) {
-    btn.disabled = false; btn.textContent = wasText
+    btn.disabled = false; btn.innerHTML = wasText
     throw e
   }
 }
@@ -484,6 +570,15 @@ document.getElementById('tabNav').addEventListener('click', e => {
   if (btn) switchTab(btn.dataset.tab)
 })
 
+// Keyboard shortcut: Ctrl+K to open Resolve
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    switchTab('resolve')
+    document.getElementById('pkgInput').focus()
+  }
+})
+
 // ===================== Formatting Helpers =====================
 
 function formatResolveTable(resolved) {
@@ -501,7 +596,7 @@ function formatResolveTable(resolved) {
   if (status === 'satisfiable') h = '<div class="alert success">✅ All dependencies resolved successfully</div>' + h
   else if (status === 'unsatisfiable') h = '<div class="alert warning">⚠ Some dependencies could not be satisfied</div>' + h
   if (resolved.warnings && resolved.warnings.length) {
-    h += '<div style="margin-top:8px;font-size:12px;color:#ff9800">' + resolved.warnings.map(w => '⚠ ' + w).join('<br>') + '</div>'
+    h += '<div style="margin-top:8px;font-size:12px;color:var(--yellow)">' + resolved.warnings.map(w => '⚠ ' + w).join('<br>') + '</div>'
   }
   return h
 }
@@ -514,10 +609,10 @@ function formatSearchResults(data) {
   for (const eco of keys) {
     const items = results[eco]
     if (!items || !items.length) continue
-    h += `<h3 style="font-size:13px;margin:10px 0 4px;color:#e94560">${eco}</h3>`
+    h += `<h3 style="font-size:13px;margin:10px 0 4px;color:var(--accent-light)">${eco}</h3>`
     h += '<table class="result-table"><tr><th>Name</th><th>Version</th><th>Description</th></tr>'
     for (const item of items) {
-      h += `<tr><td><strong>${item.name||item}</strong></td><td>${item.version||'-'}</td><td style="color:#889">${(item.description||'').substring(0,80)}</td></tr>`
+      h += `<tr><td><strong>${item.name||item}</strong></td><td>${item.version||'-'}</td><td style="color:var(--text-muted)">${(item.description||'').substring(0,80)}</td></tr>`
     }
     h += '</table>'
   }
@@ -530,7 +625,7 @@ function formatVersions(data) {
   const versions = info.versions ? (info.versions[eco] || []) : []
   if (!versions.length) return '<div class="alert warning">No versions found</div>'
   let h = `<div class="alert success">${versions.length} versions available</div>`
-  h += '<table class="result-table"><tr><th>Version</th><th>Published</th><th>Python</th></tr>'
+  h += '<table class="result-table"><tr><th>Version</th><th>Published</th><th>Python Requires</th></tr>'
   for (const v of versions) {
     const ver = typeof v === 'string' ? v : v.version
     const date = v.release_date ? new Date(v.release_date).toLocaleDateString() : '-'
@@ -575,13 +670,13 @@ function formatScanResult(result) {
   if (status === 'no_packages') return '<div class="alert warning">No packages found in manifests</div>'
   let h = '<div class="alert success">Project scanned successfully</div>'
   if (result.manifests && result.manifests.length) {
-    h += '<h3 style="font-size:13px;margin:8px 0;color:#e94560">Detected Manifests</h3>'
+    h += '<h3 style="font-size:13px;margin:8px 0;color:var(--accent-light)">Detected Manifests</h3>'
     h += '<table class="result-table"><tr><th>File</th><th>Ecosystem</th></tr>'
     for (const m of result.manifests) h += `<tr><td>${m.filename}</td><td><span class="badge blue">${m.ecosystem}</span></td></tr>`
     h += '</table>'
   }
   if (result.packages && result.packages.length) {
-    h += '<h3 style="font-size:13px;margin:8px 0;color:#e94560">Resolved Packages</h3>'
+    h += '<h3 style="font-size:13px;margin:8px 0;color:var(--accent-light)">Resolved Packages</h3>'
     h += '<table class="result-table"><tr><th>Package</th><th>Ecosystem</th><th>Constraint</th><th>Resolved</th><th>Notes</th></tr>'
     for (const p of result.packages) {
       const ver = p.resolved_version ? `<span class="badge green">${p.resolved_version}</span>` : '<span class="badge red">unresolved</span>'
@@ -591,7 +686,7 @@ function formatScanResult(result) {
     h += '</table>'
   }
   if (result.system) {
-    h += '<h3 style="font-size:13px;margin:8px 0;color:#e94560">System</h3>'
+    h += '<h3 style="font-size:13px;margin:8px 0;color:var(--accent-light)">System</h3>'
     h += '<div class="info-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">'
     for (const [k,v] of Object.entries(result.system)) {
       h += `<div class="info-item"><div class="label">${k}</div><div class="value">${v||'-'}</div></div>`
@@ -656,9 +751,7 @@ async function loadEcosystems() {
     } else if (typeof ecoData === 'object' && ecoData !== null) {
       ECOSYSTEMS = Object.keys(ecoData).map(k => [k, ecoData[k].name || k])
     }
-  } catch(e) {
-    /* fallback below */
-  }
+  } catch(e) {}
   if (!ECOSYSTEMS.length) {
     ECOSYSTEMS = [
       ['pypi','PyPI (Python)'],['conda','Conda'],['npm','NPM (Node.js)'],
@@ -684,11 +777,19 @@ async function populateAllEcosystemSelects() {
   populateSelect('searchEco', allWithEmpty)
 }
 
-function populateExportSelect() {
-  const sel = document.getElementById('scanExportFmt')
-  sel.innerHTML = '<option value="">No export</option>' + exportFormats.map(f =>
-    `<option value="${f.format}">${f.format} — ${f.description}</option>`
-  ).join('')
+async function loadExportFormats() {
+  try {
+    const res = await api('GET', '/api/v1/packages/export-formats')
+    exportFormats = res.formats || []
+    const sel = document.getElementById('exportFormatSelect')
+    sel.innerHTML = '<option value="">Select format...</option>' + exportFormats.map(f =>
+      `<option value="${f.format}">${f.format} — ${f.description}</option>`
+    ).join('')
+    const sel2 = document.getElementById('scanExportFmt')
+    sel2.innerHTML = '<option value="">No export</option>' + exportFormats.map(f =>
+      `<option value="${f.format}">${f.format} — ${f.description}</option>`
+    ).join('')
+  } catch(e) {}
 }
 
 // ===================== Bootstrap =====================
@@ -708,22 +809,6 @@ async function init() {
   } catch(e) {
     setStatus(false, 'disconnected')
     document.getElementById('dashStatus').textContent = 'Disconnected'
-  }
-}
-
-async function loadExportFormats() {
-  const el = document.getElementById('exportFormatsPre')
-  try {
-    const res = await api('GET', '/api/v1/packages/export-formats')
-    exportFormats = res.formats || []
-    const sel = document.getElementById('exportFormatSelect')
-    sel.innerHTML = exportFormats.map(f =>
-      `<option value="${f.format}">${f.format} — ${f.description}</option>`
-    ).join('')
-    populateExportSelect()
-    el.textContent = exportFormats.length + ' formats available'
-  } catch(e) {
-    el.textContent = 'Failed to load: ' + e.message
   }
 }
 
@@ -789,10 +874,35 @@ document.getElementById('resolveBtn').addEventListener('click', async () => {
     sessionStorage.setItem('udr_lastResolved', JSON.stringify(result))
     div.innerHTML = formatResolveTable(result)
     document.getElementById('resolveRaw').textContent = JSON.stringify(result, null, 2)
+    document.getElementById('exportLastBtn').disabled = false
   } catch(e) {
     showError(e.message, div)
   }
   btn.disabled = false; btn.textContent = 'Resolve'
+})
+
+// --- Export (merged into Resolve tab) ---
+document.getElementById('exportLastBtn').addEventListener('click', async () => {
+  const fmt = document.getElementById('exportFormatSelect').value
+  if (!fmt) { showWarning('Select an export format first', document.getElementById('exportResultPre')); document.getElementById('exportResultCard').style.display = 'block'; return }
+  const resolvedData = lastResolved ? (lastResolved.data || lastResolved) : null
+  if (!resolvedData) {
+    document.getElementById('exportResultCard').style.display = 'block'
+    document.getElementById('exportResultPre').textContent = 'No resolution results yet. Go to Resolve tab first.'
+    return
+  }
+  const btn = document.getElementById('exportLastBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Exporting...'
+  const card = document.getElementById('exportResultCard')
+  const el = document.getElementById('exportResultPre')
+  card.style.display = 'block'; el.textContent = 'Exporting...'
+  try {
+    const result = await api('POST', '/api/v1/packages/export', {format: fmt, resolved_packages: resolvedData})
+    el.textContent = result.content || JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError(e.message, el)
+  }
+  btn.disabled = false; btn.innerHTML = 'Export'
 })
 
 // --- Search ---
@@ -836,7 +946,7 @@ document.getElementById('detBtn').addEventListener('click', async () => {
         <div class="info-item"><div class="label">Ecosystem</div><div class="value"><span class="badge blue">${d.ecosystem||eco}</span></div></div>
         <div class="info-item"><div class="label">Latest Version</div><div class="value"><span class="badge green">${d.latest_version||d.version||'-'}</span></div></div>
       </div>`
-    if (d.description) div.innerHTML += `<p style="font-size:13px;color:#889;margin-top:8px">${d.description}</p>`
+    if (d.description) div.innerHTML += `<p style="font-size:13px;color:var(--text-muted);margin-top:8px">${d.description}</p>`
     document.getElementById('detRaw').textContent = JSON.stringify(result, null, 2)
   } catch(e) {
     showError(e.message, div)
@@ -925,13 +1035,12 @@ document.getElementById('checkCompatBtn').addEventListener('click', async () => 
     } else {
       div.innerHTML = '<div class="alert success">System compatibility check complete</div>'
     }
-    document.getElementById('sysCompatRaw').textContent = JSON.stringify(result, null, 2)
   } catch(e) {
     div.innerHTML = `<div class="alert error">${e.message}</div>`
   }
 })
 
-// --- Scan mode switching ---
+// --- Scan ---
 document.getElementById('scanModeNav').addEventListener('click', e => {
   const btn = e.target.closest('button')
   if (!btn) return
@@ -952,15 +1061,17 @@ document.getElementById('browseBtn').addEventListener('click', async () => {
   }
 })
 
-async function doScan(path, body, source, srcVal) {
+async function doScan(path, body, source) {
   const exportFmt = document.getElementById('scanExportFmt').value
   const card = document.getElementById('scanResultCard')
   const div = document.getElementById('scanResult')
+  document.getElementById('scanLockRow').style.display = 'none'
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Detecting manifests and resolving...</div>'
   try {
     let url = `/api/v1/scan/${source}`
     if (exportFmt) url += `?export=${encodeURIComponent(exportFmt)}`
     const result = await api('POST', url, body)
+    lastScanData = result
     div.innerHTML = formatScanResult(result)
     document.getElementById('scanRaw').textContent = JSON.stringify(result, null, 2)
     if (result.export) {
@@ -968,6 +1079,8 @@ async function doScan(path, body, source, srcVal) {
       document.getElementById('scanExportContent').textContent = result.export
     }
     if (result.packages && result.packages.length) {
+      document.getElementById('scanLockRow').style.display = 'flex'
+      document.getElementById('scanLockMsg').textContent = `${result.packages.length} packages resolved`
       lastResolved = {resolved_packages: {}}
       for (const p of result.packages) {
         lastResolved.resolved_packages[p.name] = {version: p.resolved_version, ecosystem: p.ecosystem, cuda_variant: p.cuda_variant, cuda_version: p.cuda_version}
@@ -984,9 +1097,7 @@ document.getElementById('scanBtn').addEventListener('click', () => {
   if(!dir) return
   const btn = document.getElementById('scanBtn')
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scanning...'
-  doScan(null, {directory_path: dir}, 'local').then(() => {
-    btn.disabled = false; btn.textContent = 'Scan & Resolve'
-  })
+  doScan(null, {directory_path: dir}, 'local').then(() => { btn.disabled = false; btn.textContent = 'Scan & Resolve' })
 })
 
 document.getElementById('scanGithubBtn').addEventListener('click', () => {
@@ -995,9 +1106,7 @@ document.getElementById('scanGithubBtn').addEventListener('click', () => {
   const branch = document.getElementById('scanGithubBranch').value
   const btn = document.getElementById('scanGithubBtn')
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scanning...'
-  doScan(null, {repo_url: url, branch}, 'github').then(() => {
-    btn.disabled = false; btn.textContent = 'Scan & Resolve'
-  })
+  doScan(null, {repo_url: url, branch}, 'github').then(() => { btn.disabled = false; btn.textContent = 'Scan & Resolve' })
 })
 
 document.getElementById('scanUploadBtn').addEventListener('click', () => {
@@ -1019,6 +1128,7 @@ document.getElementById('scanUploadBtn').addEventListener('click', () => {
       return r.json()
     })
     .then(result => {
+      lastScanData = result
       div.innerHTML = formatScanResult(result)
       document.getElementById('scanRaw').textContent = JSON.stringify(result, null, 2)
       if (result.export) {
@@ -1026,6 +1136,8 @@ document.getElementById('scanUploadBtn').addEventListener('click', () => {
         document.getElementById('scanExportContent').textContent = result.export
       }
       if (result.packages && result.packages.length) {
+        document.getElementById('scanLockRow').style.display = 'flex'
+        document.getElementById('scanLockMsg').textContent = `${result.packages.length} packages resolved`
         lastResolved = {resolved_packages: {}}
         for (const p of result.packages) {
           lastResolved.resolved_packages[p.name] = {version: p.resolved_version, ecosystem: p.ecosystem, cuda_variant: p.cuda_variant, cuda_version: p.cuda_version}
@@ -1113,35 +1225,121 @@ document.getElementById('updateBtn').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = 'Update'
 })
 
-// --- Export ---
-document.getElementById('exportBtn').addEventListener('click', async () => {
-  const fmt = document.getElementById('exportFormatSelect').value
-  let resolvedData = lastResolved ? (lastResolved.data || lastResolved) : null
-  const customText = document.getElementById('exportCustomData').value.trim()
-  if (customText) {
-    try { resolvedData = JSON.parse(customText) } catch(e) { showError('Custom data JSON is invalid', document.getElementById('exportResultPre')); return }
-  }
-  if (!resolvedData) {
-    document.getElementById('exportResultCard').style.display = 'block'
-    document.getElementById('exportResultPre').textContent = 'No resolution results yet. Go to Resolve tab or paste custom data above.'
-    return
-  }
-  const btn = document.getElementById('exportBtn')
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Exporting...'
-  const card = document.getElementById('exportResultCard')
-  const el = document.getElementById('exportResultPre')
-  card.style.display = 'block'; el.textContent = 'Exporting...'
+// --- Generate Lock from Scan ---
+document.getElementById('scanLockBtn').addEventListener('click', async () => {
+  if (!lastScanData) return
+  const btn = document.getElementById('scanLockBtn')
+  const msg = document.getElementById('scanLockMsg')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'
   try {
-    const result = await api('POST', '/api/v1/packages/export', {
-      format: fmt,
-      resolved_packages: resolvedData,
+    const result = await api('POST', '/api/v1/generate-lock', {
+      packages: lastScanData.packages || [],
+      manifests: lastScanData.manifests || [],
+      system: lastScanData.system || {},
+      resolution: lastScanData.resolution || {},
     })
-    el.textContent = result.content || JSON.stringify(result, null, 2)
+    const lockData = result.lock_data
+    const text = JSON.stringify(lockData, null, 2)
+    const blob = new Blob([text], {type:'application/json'})
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'udr-lock.json'
+    a.click()
+    URL.revokeObjectURL(a.href)
+    msg.textContent = 'udr-lock.json downloaded'
   } catch(e) {
-    showError(e.message, el)
+    showError(e.message, msg)
   }
-  btn.disabled = false; btn.textContent = 'Export'
+  btn.disabled = false; btn.textContent = '🔒 Generate Lock File'
 })
+
+// --- Install ---
+document.getElementById('installLoadBtn').addEventListener('click', () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async e => {
+    const text = await e.target.files[0].text()
+    document.getElementById('installInput').value = text
+  }
+  input.click()
+})
+
+document.getElementById('installGenBtn').addEventListener('click', async () => {
+  const text = document.getElementById('installInput').value.trim()
+  if(!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('installResult')); return }
+  const btn = document.getElementById('installGenBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'
+  const card = document.getElementById('installResultCard')
+  const div = document.getElementById('installResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Generating install commands...</div>'
+  try {
+    const result = await api('POST', '/api/v1/install-commands', {lock_data: lockData})
+    div.innerHTML = formatInstallCommands(result)
+    document.getElementById('installRaw').textContent = JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'Generate Commands'
+})
+
+// --- Restore ---
+document.getElementById('restoreLoadBtn').addEventListener('click', () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async e => {
+    const text = await e.target.files[0].text()
+    document.getElementById('restoreInput').value = text
+  }
+  input.click()
+})
+
+document.getElementById('restoreGenBtn').addEventListener('click', async () => {
+  const text = document.getElementById('restoreInput').value.trim()
+  if(!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('restoreResult')); return }
+  const btn = document.getElementById('restoreGenBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'
+  const card = document.getElementById('restoreResultCard')
+  const div = document.getElementById('restoreResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Generating restore commands...</div>'
+  try {
+    const result = await api('POST', '/api/v1/restore-commands', {lock_data: lockData})
+    div.innerHTML = formatInstallCommands(result)  // same format
+    document.getElementById('restoreRaw').textContent = JSON.stringify(result, null, 2)
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'Generate Commands'
+})
+
+function formatInstallCommands(result) {
+  const cmds = result.commands || []
+  if (!cmds.length) return '<div class="alert warning">No install commands generated</div>'
+  let h = `<div class="alert success">Generated commands for <strong>${result.total_packages}</strong> packages across <strong>${cmds.length}</strong> ecosystems</div>`
+  for (const c of cmds) {
+    h += `<div class="card" style="margin-top:8px;padding:12px 16px;background:var(--bg-elevated)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="badge accent">${c.ecosystem}</span>
+        <span style="font-size:11px;color:var(--text-dim)">${c.package_count} packages</span>
+        <button class="ghost" onclick="copyToClipboard(this, '${c.command.replace(/`/g,'\\`').replace(/'/g,"\\'").replace(/\n/g,'\\n')}')" style="margin-left:auto">Copy</button>
+      </div>
+      <pre style="font-size:12px;padding:8px 12px;margin:0;max-height:none;background:var(--bg-body);border-radius:var(--radius-sm);white-space:pre-wrap">${c.command}</pre>
+    </div>`
+  }
+  return h
+}
+
+function copyToClipboard(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!'
+    setTimeout(() => { btn.textContent = 'Copy' }, 2000)
+  })
+}
 
 // Enter key handlers
 document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('searchBtn').click() })

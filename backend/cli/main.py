@@ -294,8 +294,9 @@ def main():
     parser = _build_parser()
     args = parser.parse_args()
 
-    logging.getLogger("backend.core.utils").setLevel(logging.ERROR)
-    logging.getLogger("backend.data_sources.base_client").setLevel(logging.ERROR)
+    logging.getLogger().setLevel(logging.CRITICAL)
+    import warnings
+    warnings.filterwarnings("ignore")
 
     if getattr(args, "mode", None):
         os.environ["UDR_MODE"] = args.mode

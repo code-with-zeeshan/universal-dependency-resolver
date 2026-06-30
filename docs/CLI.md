@@ -43,7 +43,7 @@ udr serve --mode saas                  # enable full auth stack (JWT, rate limit
 | `--host` | `127.0.0.1` | Bind address |
 | `--port` | `8000` | Bind port |
 | `--reload` | `False` | Enable hot-reload for development |
-| `--mode` | `local` | `local` (no auth, no rate limits) or `saas` (JWT auth, rate limiting) |
+| `--mode` | `local` | `local` (no auth) or `saas` (JWT auth, rate limiting) |
 
 **Environment variables:**
 
@@ -156,9 +156,11 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 | Flag | Default | Description |
 |---|---|---|
 | `packages` | (required) | One or more package names. Use `pkg@eco` syntax for non-default ecosystems |
-| `-e, --ecosystem` | `pypi` | Default ecosystem: `pypi`, `npm`, `cargo`, `go`, `conda`, `maven`, `crates`, `nuget`, `rubygems` |
+| `-e, --ecosystem` | `pypi` | Default ecosystem: `pypi`, `conda`, `npm`, `crates`, `maven`, `gomodules`, `apt`, `apk`, `cocoapods`, `homebrew`, `nuget`, `packagist`, `rubygems`, `pub` |
 | `-f, --format` | `text` | Output format: `text` (rich table) or `json` |
 | `-i, --interactive` | `False` | If SAT solver reports unsatisfiable, enter manual resolution mode |
+| `--cuda` | (auto) | Target CUDA version string (e.g. `12.1`, `11.8`). Overrides auto-detection |
+| `--device` | (auto) | Target compute device: `cpu`, `cuda` (NVIDIA GPU), or `mps` (Apple Silicon) |
 
 **Package spec syntax:**
 
@@ -210,6 +212,8 @@ udr lock -d ./myproject --cuda 11.8 --export requirements.txt
 | `--dry-run` | `False` | Run resolution and show results but don't write any files |
 | `-i, --interactive` | `False` | Select manifests manually + resolve conflicts interactively |
 | `--cuda` | (auto) | Target CUDA version string (e.g. `12.1`, `11.8`). Overrides auto-detection |
+| `--device` | (auto) | Target compute device: `cpu`, `cuda`, or `mps` |
+| `-r, --report` | `False` | Write readable report file (`udr-lock-report.txt`) alongside lock file |
 | `--json` | `False` | Output lock data as JSON to stdout instead of writing file |
 
 **Exit codes:**
@@ -284,9 +288,11 @@ udr scan --github https://github.com/user/repo -y --export Dockerfile
 | `--github` | (none) | GitHub repository URL (e.g. `https://github.com/user/repo`) |
 | `--branch` | `main` | Git branch to scan (only with `--github`) |
 | `--directory` | (none) | Local project directory path |
+| `-m, --manifest` | (all) | Only process a specific manifest file (e.g. `requirements.txt`) |
 | `-y, --yes` | `False` | Update manifests without prompting |
 | `--export` | (none) | Export resolved deps to a format (e.g. `Dockerfile`) |
 | `--cuda` | (auto) | Target CUDA version string, overrides auto-detection |
+| `--device` | (auto) | Target compute device: `cpu`, `cuda`, or `mps` |
 | `--dry-run` | `False` | Preview without writing files |
 | `-i, --interactive` | `False` | Interactive manifest selection + conflict resolution |
 
@@ -366,7 +372,7 @@ udr verify path/to/custom-lock.json     # specific lock file
 
 ## `list-ecosystems`
 
-List all 13 supported package ecosystems with display names.
+List all 14 supported package ecosystems with display names.
 
 **Usage:**
 
@@ -460,6 +466,70 @@ udr update flask -i                     # interactive conflict resolution
 | `0` | Package updated or already at latest version |
 | `1` | Package not found in lock file, fetch failed, or resolution failed |
 | `130` | Cancelled by user (Ctrl+C) |
+
+---
+
+## `install`
+
+Install all **direct** dependencies from the lock file using their native package managers. Supports 11 ecosystems with automatic command generation.
+
+**Usage:**
+
+```bash
+udr install                              # install all direct deps from udr-lock.json
+udr install --lock-file path/to/lock.json  # custom lock file path
+udr install -e npm                       # only install npm packages
+udr install --dry-run                    # show install plan without executing
+udr install -y                           # skip confirmation prompt
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--lock-file` | `udr-lock.json` | Path to lock file |
+| `-e, --ecosystem` | (all) | Only install packages from this ecosystem |
+| `--dry-run` | `False` | Show install plan without running commands |
+| `-y, --yes` | `False` | Skip confirmation prompt |
+
+**Supported installers (direct deps only):**
+
+| Ecosystem | Command |
+|---|---|
+| `pypi` | `pip install pkg==ver` |
+| `npm` | `npm install pkg@ver` |
+| `crates` | `cargo add pkg@ver` |
+| `gomodules` | `go get pkg@ver` |
+| `conda` | `conda install pkg==ver` |
+| `rubygems` | `gem install pkg==ver` |
+| `packagist` | `composer require pkg==ver` |
+| `pub` | `dart pub add pkg:ver` |
+| `nuget` | `dotnet add package pkg --version ver` |
+| `cocoapods` | `pod install` (uses Podfile) |
+| `maven` | `mvn dependency:copy-dependencies` |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | All packages installed (or dry-run completed) |
+| `1` | No packages found, no installer known, or install failed |
+
+---
+
+## `restore`
+
+Alias for `install`. Restores ALL packages (direct + transitive) from the lock file. Operates identically to `udr install` but intended for full project restoration after clone/setup.
+
+**Usage:**
+
+```bash
+udr restore                              # same as `udr install`
+udr restore --lock-file path/to/lock.json
+udr restore --dry-run
+```
+
+**Flags, exit codes, and behavior** — identical to `udr install`.
 
 ---
 

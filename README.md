@@ -7,7 +7,7 @@
 [![Desktop build](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
 [![Type checked](https://img.shields.io/badge/mypy-0%20errors-brightgreen)](#)
 
-Resolve dependencies across **13 ecosystems** — detect conflicts, check system compatibility, and export to any format.
+Resolve dependencies across **14 ecosystems** — detect conflicts, check system compatibility, and export to any format.
 
 ```
   udr resolve torch@pypi express@npm serde@crates
@@ -51,7 +51,7 @@ udr serve --port 8000
 
 | Capability | Detail |
 |---|---|
-| **13 ecosystems** | PyPI, npm, Cargo, Go, Conda, Maven, NuGet, RubyGems, Packagist, Homebrew, Debian APT, Alpine APK, CocoaPods |
+| **14 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter) |
 | **SAT-solver resolution** | Z3-based conflict resolver handles complex cross-ecosystem version constraints |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |

@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **760+ tests** (215 unit non-data-source + 543 data-source + CLI e2e + integration). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **758 tests** (215 unit non-data-source + 543 data-source + CLI e2e + integration). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 

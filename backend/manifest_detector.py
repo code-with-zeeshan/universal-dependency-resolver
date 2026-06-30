@@ -117,7 +117,8 @@ class ManifestDetector:
         for m in manifests:
             packages = self.parse(m)
             for pkg in packages:
-                pkg["_manifest"] = m["filename"]
+                rel = Path(m["path"]).relative_to(self.directory)
+                pkg["_manifest"] = str(rel)
                 pkg["_ecosystem"] = m["ecosystem"]
             all_packages.extend(packages)
         return all_packages

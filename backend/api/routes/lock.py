@@ -18,6 +18,7 @@ from backend.cli import (
     _apply_cuda_variants,
     _parse_package_spec,
 )
+from backend.cli.shared import _generate_install_command
 
 SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
 
@@ -38,6 +39,21 @@ class UpdateRequest(BaseModel):
     lock_data: Dict[str, Any]
     package: str
     ecosystem: Optional[str] = None
+
+
+class GenerateLockRequest(BaseModel):
+    packages: List[Dict[str, Any]]
+    manifests: List[Dict[str, Any]] = []
+    system: Optional[Dict[str, Any]] = None
+    resolution: Optional[Dict[str, Any]] = None
+
+
+class InstallCommandsRequest(BaseModel):
+    lock_data: Dict[str, Any]
+
+
+class RestoreRequest(BaseModel):
+    lock_data: Dict[str, Any]
 
 
 @router.post("/verify")
@@ -253,3 +269,129 @@ async def update_package(
         "updated": new_version != old_version,
         "lock_data": lock_data,
     }
+
+
+@router.post("/generate-lock")
+async def generate_lock(
+    req: GenerateLockRequest,
+    current_user=Depends(get_current_user),
+):
+    """Generate a udr-lock.json from scan result data.
+    Mirrors `udr lock --json` output format."""
+    packages_in = req.packages
+    system = req.system or {}
+    resolution = req.resolution or {}
+
+    resolved_pkgs = resolution.get("resolved_packages", {})
+    plat = system.get("platform", {})
+    gpu_info = system.get("gpu", {})
+    gpu_name = None
+    if gpu_info.get("available"):
+        devices = gpu_info.get("devices", [])
+        if devices:
+            gpu_name = devices[0].get("name")
+
+    pkg_map = {}
+    for p in packages_in:
+        name = p["name"]
+        rp = resolved_pkgs.get(name, {})
+        pkg_map[name] = {
+            "name": name,
+            "ecosystem": p.get("ecosystem", "?"),
+            "resolved_version": p.get("resolved_version") or rp.get("version"),
+            "direct": True,
+            "cuda_variant": p.get("cuda_variant") or rp.get("cuda_variant", False),
+            "cuda_version": p.get("cuda_version") or rp.get("cuda_version"),
+            "original_constraint": p.get("constraint", "*"),
+            "source": p.get("source", "manifest"),
+            "vulnerabilities": [],
+        }
+
+    for name, rp in resolved_pkgs.items():
+        if name not in pkg_map:
+            vulns: List[Dict] = []
+            pkg_map[name] = {
+                "name": name,
+                "ecosystem": rp.get("ecosystem", "?"),
+                "resolved_version": rp.get("version"),
+                "direct": False,
+                "cuda_variant": rp.get("cuda_variant", False),
+                "cuda_version": rp.get("cuda_version"),
+                "original_constraint": "*",
+                "source": "transitive",
+                "vulnerabilities": vulns,
+            }
+
+    lock_data = {
+        "version": "2.0",
+        "generated_at": __import__("datetime").datetime.now().isoformat(),
+        "resolver": "sat",
+        "system": {
+            "os": f"{plat.get('system', '?')} {plat.get('release', '?')}",
+            "python": system.get("runtime_versions", {})
+            .get("python", {})
+            .get("version", "?"),
+            "cpu": system.get("cpu", {}).get("brand", "Unknown"),
+            "gpu": gpu_name,
+            "cuda": gpu_info.get("cuda") if gpu_info.get("available") else None,
+        },
+        "manifests": [m.get("filename", m.get("path", "?")) for m in req.manifests],
+        "packages": pkg_map,
+        "warnings": resolution.get("warnings", []),
+    }
+
+    return {"status": "success", "lock_data": lock_data}
+
+
+@router.post("/install-commands")
+async def install_commands(
+    req: InstallCommandsRequest,
+    current_user=Depends(get_current_user),
+):
+    """Generate native install commands grouped by ecosystem from lock data.
+    Mirrors `udr install <package>` using locked versions."""
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    ecosystem_groups: Dict[str, List[tuple]] = {}
+
+    for name, info in packages.items():
+        if not info.get("direct", True):
+            continue
+        eco = info.get("ecosystem", "pypi")
+        ver = info.get("resolved_version")
+        if ver:
+            ecosystem_groups.setdefault(eco, []).append((name, ver))
+
+    commands = []
+    for eco, pkgs in sorted(ecosystem_groups.items()):
+        cmd = _generate_install_command(eco, pkgs)
+        if cmd:
+            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
+
+    return {"status": "success", "commands": commands, "total_packages": sum(g["package_count"] for g in commands)}
+
+
+@router.post("/restore-commands")
+async def restore_commands(
+    req: RestoreRequest,
+    current_user=Depends(get_current_user),
+):
+    """Generate install commands for ALL packages in lock data (direct + transitive).
+    Mirrors `udr restore <lockfile>`."""
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    ecosystem_groups: Dict[str, List[tuple]] = {}
+
+    for name, info in packages.items():
+        eco = info.get("ecosystem", "pypi")
+        ver = info.get("resolved_version")
+        if ver:
+            ecosystem_groups.setdefault(eco, []).append((name, ver))
+
+    commands = []
+    for eco, pkgs in sorted(ecosystem_groups.items()):
+        cmd = _generate_install_command(eco, pkgs)
+        if cmd:
+            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
+
+    return {"status": "success", "commands": commands, "total_packages": sum(g["package_count"] for g in commands)}

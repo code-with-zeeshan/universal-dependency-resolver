@@ -268,6 +268,7 @@ def cmd_lock(args):
 
         lock_path = directory / "udr-lock.json"
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
+        console.print(f"[green]Lock file saved:[/green] {lock_path}")
 
         rp_count = len(
             [p for p in lock_data["packages"].values() if p["resolved_version"]]
@@ -325,7 +326,7 @@ def cmd_lock(args):
 
         console.print(summary_table)
 
-        if args.report:
+        if getattr(args, "report", False):
             try:
                 report_lines = [
                     f"UDR Lock Report — {lock_path.name}",
@@ -345,7 +346,7 @@ def cmd_lock(args):
             except Exception:
                 pass
 
-        if args.export:
+        if getattr(args, "export", None):
             export_format = args.export
             with Progress(
                 SpinnerColumn(),
@@ -375,24 +376,29 @@ def cmd_lock(args):
                 except Exception as e:
                     console.print(f"[red]Export failed:[/red] {e}")
 
-        if args.dry_run:
+        if getattr(args, "dry_run", False):
             console.print("[yellow]── dry run — no files modified ──[/yellow]")
             return 0
 
-        if not args.yes and sys.stdin.isatty():
+        if not getattr(args, "yes", False) and sys.stdin.isatty():
             proceed = Confirm.ask(
                 "\nUpdate manifests in-place with pinned versions?", default=False
             )
             if not proceed:
                 return 0
-        elif not args.yes:
+        elif not getattr(args, "yes", False):
             pass
 
+        updated_count = 0
+        updated_manifests = {}
         for pkg in packages:
             manifest_path = directory / pkg["source"]
             if not manifest_path.is_file():
                 continue
-            resolved_ver = lock_data["packages"][pkg["name"]]["resolved_version"]
+            pkg_info = lock_data["packages"].get(pkg["name"])
+            if not pkg_info:
+                continue
+            resolved_ver = pkg_info.get("resolved_version")
             if not resolved_ver:
                 continue
             content = manifest_path.read_text(encoding="utf-8", errors="replace")
@@ -411,9 +417,22 @@ def cmd_lock(args):
                         new_lines.append(line)
                 if replaced:
                     manifest_path.write_text("\n".join(new_lines) + "\n")
-                    console.print(
-                        f"  [green]Updated[/green] {pkg['source']}: {pkg['name']} → {resolved_ver}"
+                    updated_count += 1
+                    updated_manifests.setdefault(str(manifest_path), []).append(
+                        f"{pkg['name']} → {resolved_ver}"
                     )
+
+        if updated_count:
+            update_table = Table(
+                title=f"[green]Updated {updated_count} packages across {len(updated_manifests)} manifest(s)[/green]",
+                box=box.SIMPLE,
+            )
+            update_table.add_column("Manifest", style="cyan")
+            update_table.add_column("Updates")
+            for mpath, updates in sorted(updated_manifests.items()):
+                rel = Path(mpath).relative_to(directory)
+                update_table.add_row(str(rel), "\n".join(updates))
+            console.print(update_table)
 
         await aggregator.close()
         return 0
