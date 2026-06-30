@@ -155,7 +155,7 @@ jobs:
         working-directory: desktop
 
       - name: Run desktop smoke tests
-        run: node --test tests/
+        run: npm test
         working-directory: desktop
 
   security-scan:
