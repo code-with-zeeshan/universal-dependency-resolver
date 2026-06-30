@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-30
+
+### Added
+
+- **CLI split into 14-module package**: Monolithic `cli.py` → `backend/cli/commands/` with subcommands (check, completion, config, export, info, install, list-ecosystems, lock, reconcile, resolve, scan, serve, uninstall)
+- **Shell completion**: `udr completion bash|zsh|fish` generates context-aware completions for all 13 subcommands
+- **CLI end-to-end tests**: 20 black-box subprocess tests in `tests/cli/`
+- **Desktop CI smoke tests**: Node.js backend-launcher tests run on every push via `desktop-tests` CI job
+- **Desktop smoke tests expanded**: Version consistency, file structure, API health endpoint, dependency resolution endpoint checks
+
+### Changed
+
+- **data_sources coverage: 53% → 76%**: 263 new tests across all 7 data sources (maven, npm, conda, crates, rubygems, manifest_detector, documentation_scraper)
+- **Maven split into package**: 1551-line `maven_client.py` → `maven/` package (client.py, pom_parser.py, version_utils.py) with backward-compat shim
+- **Health endpoint hardened**: `external_apis` check now pings `pypi.org/pypi/pip/json` instead of stub
+- **Snyk gating**: Threshold changed to `--severity-threshold=critical` (only critical blocks main branch)
+- **mypy errors**: Reduced from 84 to 0 across all 75 source files
+
+### Fixed
+
+- **`run_async()` crash**: Handles both `asyncio.run()` (no running loop) and `new_event_loop()` (called from existing loop)
+- **cpuinfo lazy-import**: Avoids crash on unsupported CPU arch in PyInstaller bundle
+- **ruff format/mypy type:ignore**: All formatting and type annotation issues resolved
+
+### Security
+
+- Trivy + CodeQL gating (no `continue-on-error`)
+- Snyk gating on main only (requires `SNYK_TOKEN`)
+
 ## [1.2.5] - 2026-06-30
 
 ### Fixed
