@@ -91,7 +91,7 @@ dev = [
     "pytest-cov>=4.1,<6",
     "ruff>=0.6,<1",
     "mypy>=1.7,<2",
-    "pre-commit>=3.6,<4",
+    "pre-commit>=3.6,<5",
 ]
 postgres = [
     "psycopg2-binary>=2.9.9,<3",
