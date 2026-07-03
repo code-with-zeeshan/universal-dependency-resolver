@@ -116,7 +116,7 @@ jobs:
           python -m pytest tests/cli/ -v --tb=short
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         continue-on-error: true
         with:
           file: ./coverage.xml
