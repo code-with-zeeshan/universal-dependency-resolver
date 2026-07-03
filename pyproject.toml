@@ -79,7 +79,7 @@ dependencies = [
 
 [project.optional-dependencies]
 system = [
-    "psutil>=5.9.6,<6",
+    "psutil>=5.9.6,<8",
     "py-cpuinfo>=9.0,<10",
     "distro>=1.8,<2",
     "gputil>=1.4,<2",
@@ -112,7 +112,7 @@ monitoring = [
     "prometheus-client>=0.19,<1",
 ]
 all = [
-    "psutil>=5.9.6,<6",
+    "psutil>=5.9.6,<8",
     "py-cpuinfo>=9.0,<10",
     "gputil>=1.4,<2",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
