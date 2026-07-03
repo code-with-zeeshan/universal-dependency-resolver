@@ -108,7 +108,7 @@ jobs:
         working-directory: desktop
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: udr-desktop-linux
           path: |
@@ -236,7 +236,7 @@ jobs:
         working-directory: desktop
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: udr-desktop-windows-${{ matrix.arch }}
           path: |
@@ -359,7 +359,7 @@ jobs:
         working-directory: desktop
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: udr-desktop-macos-${{ matrix.arch }}
           path: |
