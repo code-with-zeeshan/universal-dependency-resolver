@@ -6,7 +6,7 @@ import os
 import pytest
 import yaml
 
-from backend.manifest_detector import ManifestDetector, MANIFEST_PATTERNS
+from backend.manifest_detector import ManifestDetector
 
 
 # ---------------------------------------------------------------------------

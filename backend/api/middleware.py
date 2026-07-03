@@ -1,3 +1,4 @@
+"""Module docstring."""
 # backend/api/middleware.py
 import os
 import time
@@ -48,6 +49,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         correlation_id = (
             request.headers.get("X-Correlation-ID")
             or request.headers.get("X-Request-ID")
@@ -67,9 +69,10 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Log requests and responses"""
+    """Log requests and responses."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if not ENABLE_REQUEST_LOGGING:
             return await call_next(request)
 
@@ -83,6 +86,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
                 # Recreate request with body
                 async def receive():
+                    """Receive."""
                     return {"type": "http.request", "body": request_body}
 
                 request._receive = receive
@@ -123,9 +127,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 
 class PerformanceMiddleware(BaseHTTPMiddleware):
-    """Monitor and log slow requests"""
+    """Monitor and log slow requests."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if not ENABLE_PERFORMANCE_LOGGING:
             return await call_next(request)
 
@@ -165,13 +170,15 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
 
 
 class CompressionMiddleware(BaseHTTPMiddleware):
-    """Compress responses when appropriate"""
+    """Compress responses when appropriate."""
 
     def __init__(self, app: ASGIApp, minimum_size: int = 1024):
+        """Initialize."""
         super().__init__(app)
         self.minimum_size = minimum_size
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if not FEATURES.get("ENABLE_RESPONSE_COMPRESSION", True):
             return await call_next(request)
 
@@ -218,9 +225,10 @@ class CompressionMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to responses"""
+    """Add security headers to responses."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         response = await call_next(request)
 
         # Add security headers
@@ -247,14 +255,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Limit request body size"""
+    """Limit request body size."""
 
     def __init__(self, app: ASGIApp, max_size: Optional[int] = None):
+        """Initialize."""
         super().__init__(app)
         self.max_size = max_size or MAX_REQUEST_SIZE
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Check Content-Length header
+        """Dispatch."""
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > self.max_size:
             return JSONResponse(
@@ -300,10 +310,11 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 class CacheMiddleware(BaseHTTPMiddleware):
-    """Cache responses for GET requests"""
+    """Cache responses for GET requests."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Only cache GET requests
+        """Dispatch."""
         if request.method != "GET" or not FEATURES.get("ENABLE_CACHE", True):
             return await call_next(request)
 
@@ -365,9 +376,10 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
-    """Collect metrics for monitoring"""
+    """Collect metrics for monitoring."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if not FEATURES.get("ENABLE_METRICS", True):
             return await call_next(request)
 
@@ -403,10 +415,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 class MaintenanceModeMiddleware(BaseHTTPMiddleware):
-    """Handle maintenance mode"""
+    """Handle maintenance mode."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Check if maintenance mode is enabled
+        """Dispatch."""
         maintenance_mode = await cache_manager.get("system:maintenance_mode")
 
         if maintenance_mode:
@@ -446,6 +459,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
             return await call_next(request)
 
@@ -482,6 +496,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     CSRF_COOKIE_NAME = "csrf_token"
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Dispatch."""
         if request.method in self.SAFE_METHODS:
             return await call_next(request)
 
@@ -531,7 +546,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
 # Utility middleware functions
 async def get_client_ip(request: Request) -> str:
-    """Get client IP address from request"""
+    """Get client IP address from request."""
     # Check X-Forwarded-For header first (for proxies)
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
@@ -551,13 +566,13 @@ async def get_client_ip(request: Request) -> str:
 
 
 async def get_user_agent(request: Request) -> str:
-    """Get user agent from request"""
+    """Get user agent from request."""
     return request.headers.get("User-Agent", "unknown")
 
 
 # Middleware configuration function
 def setup_middleware(app):
-    """Configure all middleware for the application"""
+    """Configure all middleware for the application."""
     # Order matters! Middleware is executed in reverse order for responses
 
     # Maintenance mode should be first (last to execute)

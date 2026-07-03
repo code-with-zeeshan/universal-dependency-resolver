@@ -356,3 +356,187 @@ class TestRubyGemsClient:
                 )
         assert result["compatible"] is True
         assert len(result["warnings"]) == 0
+
+    # === Test: get_package_version returns None when version not found in list (line 189)
+    @pytest.mark.asyncio
+    async def test_get_package_version_returns_none_when_version_mismatch(self, client, sample_versions_data):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_versions_data):
+            result = await client.get_package_version("rails", "0.0.0")
+        assert result is None
+
+    # === Test: get_versions excludes yanked versions (line 209)
+    @pytest.mark.asyncio
+    async def test_get_versions_excludes_yanked(self, client):
+        versions_with_yanked = [
+            {"number": "7.1.2", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-11-10", "sha": None, "metadata": {}, "downloads_count": 100000},
+            {"number": "7.1.0", "prerelease": False, "yanked": True, "platform": "ruby", "created_at": "2023-10-01", "sha": None, "metadata": {}, "downloads_count": 50000},
+            {"number": "7.0.0", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-09-01", "sha": None, "metadata": {}, "downloads_count": 25000},
+        ]
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_with_yanked):
+            versions = await client.get_versions("rails", include_yanked=False)
+        assert len(versions) == 2
+        assert all(v["yanked"] is False for v in versions)
+
+    # === Test: get_dependencies without version uses get_package_info_async (line 242)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_without_version(self, client):
+        with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value={"dependencies": {"runtime": {"rack": ">=2.2"}}}):
+            deps = await client.get_dependencies("rails")
+        assert deps == {"runtime": {"rack": ">=2.2"}}
+
+    # === Test: _get_dependencies internal method finds matching version (lines 282-287)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_internal_found(self, client):
+        versions_data = [{"number": "7.1.2", "dependencies": {"dependencies": [{"name": "rack", "requirements": ">=2.2", "type": "runtime"}]}}]
+        with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=versions_data):
+            result = await client._get_dependencies("rails", "7.1.2")
+        assert "runtime" in result
+        assert result["runtime"]["rack"] == ">=2.2"
+
+    # === Test: _get_dependencies internal method returns {} when version not found (line 289)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_internal_not_found(self, client):
+        with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=[{"number": "7.1.2"}]):
+            result = await client._get_dependencies("rails", "0.0.0")
+        assert result == {}
+
+    # === Test: _process_versions skips entries with missing number (lines 312-314)
+    def test_process_versions_skips_missing_number(self, client):
+        versions_data = [
+            {"created_at": "2023-11-10", "platform": "ruby"},
+            {"number": "7.1.2", "created_at": "2023-11-10", "platform": "ruby"},
+        ]
+        result = client._process_versions(versions_data)
+        assert len(result) == 1
+        assert result[0]["version"] == "7.1.2"
+
+    # === Test: _process_versions skips unparseable versions (lines 312-314)
+    def test_process_versions_skips_invalid_version(self, client):
+        versions_data = [
+            {"number": "not-a-valid-version", "created_at": "2023-11-10", "platform": "ruby"},
+            {"number": "7.1.2", "created_at": "2023-11-10", "platform": "ruby"},
+        ]
+        result = client._process_versions(versions_data)
+        assert len(result) == 1
+        assert result[0]["version"] == "7.1.2"
+
+    # === Test: _extract_system_requirements reads ruby/rubygems from metadata (lines 345, 347)
+    def test_extract_system_requirements_with_metadata(self, client):
+        data = {
+            "platform": "ruby",
+            "licenses": ["MIT"],
+            "metadata": {
+                "required_ruby_version": ">=3.0.0",
+                "required_rubygems_version": ">=3.2.0",
+            },
+        }
+        result = client._extract_system_requirements(data)
+        assert result["ruby"] == ">=3.0.0"
+        assert result["rubygems"] == ">=3.2.0"
+
+    # === Test: _parse_ruby_version_requirement uses cache (line 353)
+    def test_parse_ruby_version_requirement_cache(self, client):
+        result1 = client._parse_ruby_version_requirement("~> 3.0.0")
+        result2 = client._parse_ruby_version_requirement("~> 3.0.0")
+        assert result1 is result2
+
+    # === Test: check_compatibility when package version not found (line 394)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_package_not_found(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client.check_compatibility("rails", "7.1.2", {})
+        assert result["compatible"] is False
+        assert "Package version not found" in result["errors"]
+
+    # === Test: check_compatibility with incompatible ruby_version (line 408)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_ruby_incompatible_error(self, client):
+        versions_data = [
+            {
+                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "required_ruby_version": ">=3.0.0",
+                "required_rubygems_version": None, "platform": "ruby",
+            }
+        ]
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
+            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+                result = await client.check_compatibility(
+                    "rails", "7.1.2", {"ruby_version": "2.7.0"}
+                )
+        assert result["compatible"] is False
+        assert any("Requires Ruby" in e for e in result["errors"])
+
+    # === Test: check_compatibility with incompatible rubygems_version (line 417)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_rubygems_incompatible_warning(self, client):
+        versions_data = [
+            {
+                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "required_ruby_version": None,
+                "required_rubygems_version": ">=3.2.0", "platform": "ruby",
+            }
+        ]
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
+            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+                result = await client.check_compatibility(
+                    "rails", "7.1.2", {"rubygems_version": "3.0.0"}
+                )
+        assert result["compatible"] is True
+        assert any("Recommends RubyGems" in w for w in result["warnings"])
+
+    # === Test: check_compatibility with incompatible platform (lines 423-426)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_platform_incompatible_error(self, client):
+        versions_data = [
+            {
+                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "required_ruby_version": None,
+                "required_rubygems_version": None,
+                "platform": "x86_64-linux",
+            }
+        ]
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
+            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+                result = await client.check_compatibility(
+                    "rails", "7.1.2", {"platform": "arm64-darwin"}
+                )
+        assert result["compatible"] is False
+        assert any("Not compatible with platform" in e for e in result["errors"])
+
+    # === Test: _check_ruby_compatibility with unparseable system version (line 442)
+    def test_check_ruby_compatibility_invalid_system_version(self, client):
+        result = client._check_ruby_compatibility("not-a-version", ">=3.0.0")
+        assert result is True
+
+    # === Test: _check_ruby_compatibility with tilde-greater operator (lines 449-456)
+    def test_check_ruby_compatibility_tilde_gt(self, client):
+        assert client._check_ruby_compatibility("3.0.5", "~> 3.0.0") is True
+        assert client._check_ruby_compatibility("3.1.0", "~> 3.0.0") is False
+
+    # === Test: _check_ruby_compatibility with >= operator (lines 458-461)
+    def test_check_ruby_compatibility_gte(self, client):
+        assert client._check_ruby_compatibility("3.1.0", ">= 3.0.0") is True
+        assert client._check_ruby_compatibility("2.9.0", ">= 3.0.0") is False
+
+    # === Test: _check_ruby_compatibility with exact version (lines 463-466)
+    def test_check_ruby_compatibility_exact(self, client):
+        assert client._check_ruby_compatibility("3.0.0", "3.0.0") is True
+        assert client._check_ruby_compatibility("3.0.1", "3.0.0") is False
+
+    # === Test: _check_platform_compatibility returns True for "ruby" (line 476)
+    def test_check_platform_compatibility_ruby(self, client):
+        assert client._check_platform_compatibility("x86_64-linux", "ruby") is True
+
+    # === Test: _check_platform_compatibility with mapped platform matching (lines 487-488)
+    def test_check_platform_compatibility_mapped_match(self, client):
+        assert client._check_platform_compatibility("x86_64-linux", "x86_64-linux") is True
+        assert client._check_platform_compatibility("arm64-darwin", "arm64-darwin") is True
+
+    # === Test: _check_platform_compatibility with mapped platform not matching (lines 487-488)
+    def test_check_platform_compatibility_mapped_no_match(self, client):
+        assert client._check_platform_compatibility("arm64-darwin", "x86_64-linux") is False
+
+    # === Test: _check_platform_compatibility fallback for unmapped platform (line 490)
+    def test_check_platform_compatibility_fallback(self, client):
+        assert client._check_platform_compatibility("linux", "linux") is True
+        assert client._check_platform_compatibility("windows", "linux") is False

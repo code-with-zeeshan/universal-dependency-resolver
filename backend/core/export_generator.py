@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PackageEcosystem(Enum):
-    """Supported package ecosystems"""
+    """Supported package ecosystems."""
 
     PYPI = "pypi"
     NPM = "npm"
@@ -33,7 +33,7 @@ class PackageEcosystem(Enum):
 
 @dataclass
 class PackageInfo:
-    """Structured package information"""
+    """Structured package information."""
 
     name: str
     version: str
@@ -42,7 +42,7 @@ class PackageInfo:
 
     @classmethod
     def from_dict(cls, name: str, info: Dict[str, Any]) -> "PackageInfo":
-        """Create PackageInfo from dictionary"""
+        """Create PackageInfo from dictionary."""
         ecosystem_str = info.get("ecosystem", "unknown")
         try:
             ecosystem = PackageEcosystem(ecosystem_str)
@@ -58,9 +58,10 @@ class PackageInfo:
 
 
 class ExportGenerator:
-    """Main export generator using Jinja2 templates"""
+    """Main export generator using Jinja2 templates."""
 
     def __init__(self):
+        """Initialize."""
         self.env = Environment(
             loader=PackageLoader("backend.core", "templates"),
             trim_blocks=True,
@@ -89,6 +90,7 @@ class ExportGenerator:
         self.formats: Dict[str, Any] = {}
 
     def _add_template_filters(self):
+        """Add template filters."""
         @staticmethod
         def to_package_str(pkg: dict, pin_versions: bool = True) -> str:
             """Format a package dict into a dependency string."""
@@ -113,7 +115,7 @@ class ExportGenerator:
         self.env.filters["tojson"] = tojson_no_sort
 
     def register_format(self, name: str, format_handler: Any) -> None:
-        """Register a new export format"""
+        """Register a new export format."""
         self.formats[name] = format_handler
 
     def generate(
@@ -123,7 +125,7 @@ class ExportGenerator:
         system_info: Optional[Dict[str, Any]] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Generate output in specified format"""
+        """Generate output in specified format."""
         if not resolved_packages:
             raise ValueError("No packages provided")
 
@@ -150,7 +152,7 @@ class ExportGenerator:
         system_info: Optional[Dict[str, Any]] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, str]:
-        """Generate multiple export formats"""
+        """Generate multiple export formats."""
         results = {}
         for fmt in formats:
             try:
@@ -163,7 +165,7 @@ class ExportGenerator:
         return results
 
     def save_to_file(self, content: str, filepath: Path, format: str) -> None:
-        """Save generated content to file"""
+        """Save generated content to file."""
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         if format in ["install.sh"]:
@@ -173,7 +175,7 @@ class ExportGenerator:
             filepath.write_text(content)
 
     def _parse_packages(self, resolved_packages: Dict[str, Any]) -> List[PackageInfo]:
-        """Parse resolved packages into structured format"""
+        """Parse resolved packages into structured format."""
         packages = []
         package_dict = resolved_packages.get("resolved_packages", resolved_packages)
         for name, info in package_dict.items():
@@ -371,6 +373,7 @@ class ExportGenerator:
         use_caret = options.get("use_caret", True)
 
         def fmt_version(v):
+            """Fmt version."""
             if pin:
                 return v
             return f"^{v}" if use_caret else f"~{v}"
@@ -492,5 +495,5 @@ class ExportGenerator:
 
 
 def create_export_generator() -> ExportGenerator:
-    """Create and return an ExportGenerator instance"""
+    """Create and return an ExportGenerator instance."""
     return ExportGenerator()

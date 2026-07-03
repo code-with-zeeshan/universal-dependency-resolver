@@ -103,11 +103,17 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 | 31 | POST | `/api/v1/verify` | Yes | none |
 | 32 | POST | `/api/v1/graph` | Yes | none |
 | 33 | POST | `/api/v1/update` | Yes | none |
+| 34 | POST | `/api/v1/generate-lock` | Yes | none |
+| 35 | POST | `/api/v1/install-commands` | Yes | none |
+| 36 | POST | `/api/v1/restore-commands` | Yes | none |
+| 37 | POST | `/api/v1/why` | Yes | none |
+| 38 | POST | `/api/v1/outdated` | Yes | none |
+| 39 | POST | `/api/v1/diff` | Yes | none |
 | **Infrastructure** | | | | |
-| 34 | GET | `/metrics` | No | none |
-| 35 | GET | `/api/v1/docs` | No | none |
-| 36 | GET | `/api/v1/redoc` | No | none |
-| 37 | GET | `/api/v1/openapi.json` | No | none |
+| 40 | GET | `/metrics` | No | none |
+| 41 | GET | `/api/v1/docs` | No | none |
+| 42 | GET | `/api/v1/redoc` | No | none |
+| 43 | GET | `/api/v1/openapi.json` | No | none |
 
 ---
 
@@ -1109,6 +1115,7 @@ Get list of all 13 supported package ecosystems with capabilities.
 | `homebrew` | System | brew |
 | `apt` | System | apt/apt-get |
 | `apk` | System | apk |
+| `pub` | Dart/Flutter | dart pub |
 
 ---
 
@@ -1415,6 +1422,282 @@ Re-resolve a single package and return updated lock data. Mirrors `udr update <p
 | `404` | Package not found in lock data, or no data fetched |
 | `500` | Resolution failed |
 
+### `POST /api/v1/generate-lock`
+
+Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json` output format.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "packages": [
+    {
+      "name": "numpy",
+      "ecosystem": "pypi",
+      "resolved_version": "1.26.0",
+      "constraint": ">=1.20",
+      "source": "requirements.txt"
+    }
+  ],
+  "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
+  "system": {
+    "platform": {"system": "Linux", "release": "6.2.0"},
+    "cpu": {"brand": "Intel(R) Xeon(R)"},
+    "gpu": {"available": true, "devices": [{"name": "NVIDIA A100"}], "cuda": "12.1"},
+    "runtime_versions": {"python": {"version": "3.11.5"}}
+  },
+  "resolution": {
+    "resolved_packages": {},
+    "warnings": []
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `packages` | array | (required) | Packages found in manifests (name, ecosystem, version, constraint, source) |
+| `manifests` | array | `[]` | Manifest files detected |
+| `system` | object | `null` | System scan data (platform, cpu, gpu, runtime_versions) |
+| `resolution` | object | `null` | Resolution results (resolved_packages, warnings) |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "lock_data": {
+    "version": "2.0",
+    "generated_at": "2026-06-28T12:00:00",
+    "resolver": "sat",
+    "system": {"os": "Linux 6.2.0", "python": "3.11.5", "cpu": "Intel(R) Xeon(R)", "gpu": "NVIDIA A100", "cuda": "12.1"},
+    "manifests": ["requirements.txt"],
+    "packages": {
+      "numpy": {
+        "name": "numpy",
+        "ecosystem": "pypi",
+        "resolved_version": "1.26.0",
+        "direct": true,
+        "cuda_variant": false,
+        "cuda_version": null,
+        "original_constraint": ">=1.20",
+        "source": "requirements.txt",
+        "vulnerabilities": []
+      }
+    },
+    "warnings": []
+  }
+}
+```
+
+---
+
+### `POST /api/v1/install-commands`
+
+Generate native package manager install commands for direct dependencies from lock data. Mirrors `udr install`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {
+    "packages": {
+      "numpy": {
+        "ecosystem": "pypi",
+        "resolved_version": "1.26.0",
+        "direct": true
+      }
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "commands": [
+    {"ecosystem": "pypi", "command": "pip install numpy==1.26.0", "package_count": 1}
+  ],
+  "total_packages": 1
+}
+```
+
+**Status codes:**
+| Code | Condition |
+|---|---|
+| `200` | Commands generated (may be empty if no direct deps) |
+
+---
+
+### `POST /api/v1/restore-commands`
+
+Generate native package manager install commands for **all** packages (direct + transitive) from lock data. Mirrors `udr restore`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:** Same as `/install-commands`.
+
+**Response:** Same structure as `/install-commands`, but includes transitive dependencies.
+
+---
+
+### `POST /api/v1/why`
+
+Explain why a package version was selected — dependency chain, direct/transitive status, constraint. Mirrors `udr why`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {
+    "packages": {
+      "flask": {
+        "ecosystem": "pypi",
+        "resolved_version": "2.3.3",
+        "direct": true,
+        "original_constraint": ">=2.0"
+      },
+      "click": {
+        "ecosystem": "pypi",
+        "resolved_version": "8.1.7",
+        "direct": false,
+        "original_constraint": "*"
+      }
+    }
+  },
+  "package": "click"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "package": "click",
+  "version": "8.1.7",
+  "ecosystem": "pypi",
+  "direct": false,
+  "original_constraint": "*",
+  "source": "transitive",
+  "dependency_chain": [
+    {"package": "flask", "version": "2.3.3", "required_as": ">=8.0"}
+  ]
+}
+```
+
+For direct dependencies, `dependency_chain` is an empty array.
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Info returned |
+| `404` | Package not found in lock data |
+
+---
+
+### `POST /api/v1/outdated`
+
+Check all packages in lock data against registries for newer versions. Mirrors `udr outdated --json`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {
+    "packages": {
+      "numpy": {
+        "ecosystem": "pypi",
+        "resolved_version": "1.25.0",
+        "direct": true
+      }
+    }
+  },
+  "ecosystem": "pypi"
+}
+```
+
+`ecosystem` is optional — if provided, only checks packages from that ecosystem.
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "outdated_count": 1,
+  "packages": [
+    {
+      "name": "numpy",
+      "ecosystem": "pypi",
+      "current": "1.25.0",
+      "latest": "1.26.0",
+      "type": "direct"
+    }
+  ]
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Check complete |
+
+---
+
+### `POST /api/v1/diff`
+
+Compare two lock data objects and report package differences. Mirrors `udr diff --json`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_a": {
+    "packages": {
+      "numpy": {"ecosystem": "pypi", "resolved_version": "1.25.0"}
+    }
+  },
+  "lock_b": {
+    "packages": {
+      "numpy": {"ecosystem": "pypi", "resolved_version": "1.26.0"}
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "added": [],
+  "removed": [],
+  "changed": [
+    {"name": "numpy", "ecosystem": "pypi", "from": "1.25.0", "to": "1.26.0"}
+  ],
+  "unchanged_count": 0
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Diff computed |
+
 ---
 
 ## Infrastructure
@@ -1434,6 +1717,38 @@ ReDoc documentation (auto-generated by FastAPI).
 ### `GET /api/v1/openapi.json`
 
 OpenAPI 3.0 JSON schema (auto-generated by FastAPI).
+
+---
+
+## CLI ↔ API Mapping
+
+Every API endpoint maps to a CLI command when `udr serve` is running:
+
+| API Endpoint | Method | CLI Equivalent | Notes |
+|---|---|---|---|
+| `GET /api/v1/health` | GET | `udr check` | System health |
+| `GET /api/v1/system/info` | GET | `udr check` | System info |
+| `POST /api/v1/packages/resolve` | POST | `udr resolve` | Same request/response shape |
+| `POST /api/v1/packages/export` | POST | `udr lock --export` | Export resolved deps |
+| `GET /api/v1/packages/export-formats` | GET | — | API-only: list available export formats |
+| `GET /api/v1/packages/search` | GET | `udr search` | Same query parameters, response shape |
+| `GET /api/v1/packages/{eco}/{name}/details` | GET | `udr details` | Same |
+| `GET /api/v1/packages/ecosystems` | GET | `udr list-ecosystems` | Same response shape |
+| `POST /api/v1/generate-lock` | POST | `udr lock --json` | API takes pre-parsed packages |
+| `POST /api/v1/graph` | POST | `udr graph` | Same |
+| `POST /api/v1/verify` | POST | `udr verify` | Same |
+| `POST /api/v1/update` | POST | `udr update` | Same |
+| `POST /api/v1/install-commands` | POST | `udr install` | API returns commands, doesn't run them |
+| `POST /api/v1/restore-commands` | POST | `udr install --restore` | Same |
+| `POST /api/v1/scan/github` | POST | `udr scan --github` | Same |
+| `POST /api/v1/scan/local` | POST | `udr scan --directory` | Same |
+| `POST /api/v1/why` | POST | `udr why` | Same |
+| `POST /api/v1/outdated` | POST | `udr outdated` | Same |
+| `POST /api/v1/diff` | POST | `udr diff` | Same |
+
+**API-only endpoints** (no CLI equivalent): `/api/v1/packages/{eco}/{name}/versions`, `/api/v1/packages/{eco}/{name}/dependencies`, `/api/v1/packages/{eco}/{name}/compatibility`, `/api/v1/packages/export-formats`, `/api/v1/system/check-compatibility`, auth endpoints.
+
+**CLI-only features** (no API equivalent): `udr serve` (starts the API), `udr completion` (shell completions), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`).
 
 ---
 

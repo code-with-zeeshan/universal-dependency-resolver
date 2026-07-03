@@ -1,3 +1,4 @@
+"""Module docstring."""
 # data_sources/gomodules_client.py
 from typing import Dict, List, Optional, Any
 import json

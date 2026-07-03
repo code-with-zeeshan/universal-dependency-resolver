@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld('udrDesktop', {
   getBackendUrl: () => ipcRenderer.invoke('get-backend-url'),
   isDesktop: true,
   onBackendReady: (cb) => ipcRenderer.on('backend-ready', () => cb()),
+  send: (channel, data) => ipcRenderer.send(channel, data),
 })

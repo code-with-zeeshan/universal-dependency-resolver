@@ -10,7 +10,6 @@ from .shared import VERSION
 from .commands.serve import cmd_serve
 from .commands.check import cmd_check
 from .commands.resolve import cmd_resolve
-from .commands.info import cmd_info
 from .commands.lock import cmd_lock
 from .commands.scan import cmd_scan
 from .commands.graph import cmd_graph
@@ -19,9 +18,15 @@ from .commands.list_ecosystems import cmd_list_ecosystems
 from .commands.update import cmd_update
 from .commands.install import cmd_install
 from .commands.completion import cmd_completion
+from .commands.why import cmd_why
+from .commands.outdated import cmd_outdated
+from .commands.diff import cmd_diff
+from .commands.search import cmd_search
+from .commands.details import cmd_details
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build parser."""
     parser = argparse.ArgumentParser(
         prog="udr",
         description="Universal Dependency Resolver — resolve dependencies across ecosystems",
@@ -48,6 +53,28 @@ def _build_parser() -> argparse.ArgumentParser:
         default="local",
         help="Run mode: local (no auth, default) or saas (full auth stack)",
     )
+    serve_p.add_argument(
+        "--log-level",
+        default="info",
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Uvicorn log level (default: info)",
+    )
+    serve_p.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of worker processes (default: 1, auto if not set)",
+    )
+    serve_p.add_argument(
+        "--ssl-keyfile",
+        default=None,
+        help="SSL key file path for HTTPS",
+    )
+    serve_p.add_argument(
+        "--ssl-certfile",
+        default=None,
+        help="SSL certificate file path for HTTPS",
+    )
 
     check_p = sub.add_parser("check", help="Check system compatibility")
     check_p.add_argument(
@@ -57,6 +84,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--deps", action="store_true", help="Show project core dependencies"
     )
     check_p.add_argument("--json", action="store_true", help="Output as JSON")
+    check_p.add_argument(
+        "--cuda",
+        help="Target CUDA version (e.g. 12.1) — simulate system check for a specific CUDA config",
+    )
+    check_p.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "mps"],
+        default=None,
+        help="Simulate system check for a specific compute device",
+    )
 
     resolve_p = sub.add_parser(
         "resolve", help="Resolve dependencies for one or more packages"
@@ -92,11 +129,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
-
-    info_p = sub.add_parser(
-        "info", help="Show detailed system information and project dependencies"
-    )
-    info_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     lock_p = sub.add_parser(
         "lock", help="Auto-detect manifests, resolve all dependencies, write lock file"
@@ -158,6 +190,17 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=_eco_choices,
         help="Default ecosystem",
     )
+    graph_p.add_argument("--json", action="store_true", help="Output as JSON")
+    graph_p.add_argument(
+        "--cuda",
+        help="Target CUDA version (e.g. 12.1) — overrides auto-detection for GPU packages",
+    )
+    graph_p.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "mps"],
+        default=None,
+        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+    )
 
     verify_p = sub.add_parser(
         "verify", help="Validate lock file — check all versions still exist"
@@ -165,9 +208,10 @@ def _build_parser() -> argparse.ArgumentParser:
     verify_p.add_argument(
         "lock_file",
         nargs="?",
-        default="udr-lock.json",
-        help="Path to lock file (default: udr-lock.json)",
+        default="udr.lock",
+        help="Path to lock file (default: udr.lock)",
     )
+    verify_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     list_eco_p = sub.add_parser("list-ecosystems", help="List all supported ecosystems")
     list_eco_p.add_argument("--json", action="store_true", help="Output as JSON")
@@ -185,9 +229,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Interactive mode for resolving conflicts manually",
     )
+    update_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be updated without modifying the lock file",
+    )
+    update_p.add_argument(
+        "--cuda",
+        help="Target CUDA version (e.g. 12.1) — overrides auto-detection for GPU packages",
+    )
+    update_p.add_argument(
+        "--device",
+        choices=["cpu", "cuda", "mps"],
+        default=None,
+        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+    )
 
     install_p = sub.add_parser(
-        "install", help="Install packages from udr-lock.json lock file"
+        "install", help="Install packages from udr.lock lock file"
     )
     install_p.add_argument(
         "--directory", "-d", default=".", help="Project directory with lock file"
@@ -195,7 +254,7 @@ def _build_parser() -> argparse.ArgumentParser:
     install_p.add_argument(
         "--lock-file",
         "-l",
-        help="Path to lock file (default: <directory>/udr-lock.json)",
+        help="Path to lock file (default: <directory>/udr.lock)",
     )
     install_p.add_argument(
         "--ecosystem",
@@ -212,32 +271,10 @@ def _build_parser() -> argparse.ArgumentParser:
     install_p.add_argument(
         "--yes", "-y", action="store_true", help="Skip confirmation prompt"
     )
-
-    restore_p = sub.add_parser(
-        "restore", help="Alias for install — restore packages from lock file"
-    )
-    restore_p.add_argument(
-        "--directory", "-d", default=".", help="Project directory with lock file"
-    )
-    restore_p.add_argument(
-        "--lock-file",
-        "-l",
-        help="Path to lock file (default: <directory>/udr-lock.json)",
-    )
-    restore_p.add_argument(
-        "--ecosystem",
-        "-e",
-        choices=_eco_choices,
-        help="Only install packages from this ecosystem",
-    )
-    restore_p.add_argument(
-        "--dry-run",
-        "-n",
+    install_p.add_argument(
+        "--restore",
         action="store_true",
-        help="Show install commands without executing",
-    )
-    restore_p.add_argument(
-        "--yes", "-y", action="store_true", help="Skip confirmation prompt"
+        help="Restore mode — alias for install (kept for compatibility)",
     )
 
     completion_p = sub.add_parser(
@@ -268,6 +305,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-y", "--yes", action="store_true", help="Update manifests without prompting"
     )
     scan_p.add_argument("--export", help="Export to a specific format")
+    scan_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
     scan_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1)")
     scan_p.add_argument(
         "--device",
@@ -287,10 +325,74 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Interactive mode for selecting manifests and resolving conflicts",
     )
 
+    why_p = sub.add_parser(
+        "why",
+        help="Explain why a package version was selected — show dependency chain",
+    )
+    why_p.add_argument("package", help="Package name to explain")
+    why_p.add_argument(
+        "--directory", "-d", default=".", help="Project directory with lock file"
+    )
+    why_p.add_argument(
+        "--json", action="store_true", help="Output as JSON"
+    )
+
+    outdated_p = sub.add_parser(
+        "outdated",
+        help="List packages with newer versions available in registries",
+    )
+    outdated_p.add_argument(
+        "--directory", "-d", default=".", help="Project directory with lock file"
+    )
+    outdated_p.add_argument(
+        "--json", action="store_true", help="Output as JSON"
+    )
+    outdated_p.add_argument(
+        "--ecosystem",
+        "-e",
+        choices=_eco_choices,
+        help="Only check packages from this ecosystem",
+    )
+
+    diff_p = sub.add_parser(
+        "diff",
+        help="Compare two lock files and show version differences",
+    )
+    diff_p.add_argument("lock_file_a", help="First lock file path")
+    diff_p.add_argument("lock_file_b", help="Second lock file path")
+    diff_p.add_argument(
+        "--json", action="store_true", help="Output as JSON"
+    )
+
+    search_p = sub.add_parser(
+        "search",
+        help="Search for packages across ecosystems",
+    )
+    search_p.add_argument("query", help="Search query")
+    search_p.add_argument(
+        "--ecosystems",
+        help="Comma-separated ecosystems to search (default: all)",
+    )
+    search_p.add_argument(
+        "--limit", type=int, default=20, help="Max results per ecosystem (default: 20)"
+    )
+    search_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    details_p = sub.add_parser(
+        "details",
+        help="Show detailed package info — versions, dependencies, metadata",
+    )
+    details_p.add_argument("package", help="Package name")
+    details_p.add_argument(
+        "--ecosystem", "-e", default="pypi", choices=_eco_choices, help="Ecosystem"
+    )
+    details_p.add_argument("--json", action="store_true", help="Output as JSON")
+
     return parser
 
 
 def main():
+    """Main."""
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -309,7 +411,6 @@ def main():
         "serve": cmd_serve,
         "check": cmd_check,
         "resolve": cmd_resolve,
-        "info": cmd_info,
         "lock": cmd_lock,
         "scan": cmd_scan,
         "graph": cmd_graph,
@@ -317,8 +418,12 @@ def main():
         "list-ecosystems": cmd_list_ecosystems,
         "update": cmd_update,
         "install": cmd_install,
-        "restore": cmd_install,
         "completion": cmd_completion,
+        "why": cmd_why,
+        "outdated": cmd_outdated,
+        "diff": cmd_diff,
+        "search": cmd_search,
+        "details": cmd_details,
     }
     dispatch[args.command](args)
 

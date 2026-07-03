@@ -1,6 +1,5 @@
 # backend/api/__init__.py
-"""
-Universal Dependency Resolver API Package
+"""Universal Dependency Resolver API Package.
 
 This package contains all API-related components including routes,
 middleware, authentication, and exception handling.

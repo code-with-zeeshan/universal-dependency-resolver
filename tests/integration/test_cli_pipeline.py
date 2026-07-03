@@ -166,21 +166,24 @@ class TestPackageSpecParsing:
 
     def test_parse_spec(self):
         from backend.cli import _parse_package_spec
-        name, eco = _parse_package_spec("numpy@conda")
+        name, eco, constraint = _parse_package_spec("numpy@conda")
         assert name == "numpy"
         assert eco == "conda"
+        assert constraint is None
 
     def test_default_ecosystem(self):
         from backend.cli import _parse_package_spec
-        name, eco = _parse_package_spec("numpy")
+        name, eco, constraint = _parse_package_spec("numpy")
         assert name == "numpy"
         assert eco == "pypi"
+        assert constraint is None
 
     def test_scoped_npm_package(self):
         from backend.cli import _parse_package_spec
-        name, eco = _parse_package_spec("@angular/core@npm")
+        name, eco, constraint = _parse_package_spec("@angular/core@npm")
         assert name == "@angular/core"
         assert eco == "npm"
+        assert constraint is None
 
 
 class TestNameNormalization:

@@ -25,7 +25,7 @@ function getEnv(port, extraEnv = {}) {
     UDR_HOST: process.env.UDR_HOST || '127.0.0.1',
     UDR_DESKTOP: 'true',
     UDR_STANDALONE: 'true',
-    ENABLE_AUTH: 'true',
+    ENABLE_AUTH: 'false',
     PYTHONUNBUFFERED: '1',
     SECRET_KEY: process.env.SECRET_KEY || generateSecretKey(),
   }

@@ -100,7 +100,7 @@ class PackageVersion(Base):
 
     @validates("version")
     def validate_version(self, key, version):
-        """Validate version format"""
+        """Validate version format."""
         # Import here to avoid circular imports
         from core.utils import parse_version
 
@@ -328,7 +328,7 @@ class APIKey(Base):
 @event.listens_for(Package, "before_insert")
 @event.listens_for(Package, "before_update")
 def normalize_package_fields(mapper, connection, target):
-    """Normalize package fields before saving"""
+    """Normalize package fields before saving."""
     try:
         from core.utils import normalize_package_name, sanitize_ecosystem_name
 
@@ -343,7 +343,11 @@ def normalize_package_fields(mapper, connection, target):
 
 
 # Database connection with connection pooling and health checks
+from pathlib import Path
+
 from backend.settings import DATABASE_URL  # noqa: E402
+
+ALEMBIC_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "alembic.ini")
 
 _engine = None
 _SessionLocal = None
@@ -379,7 +383,8 @@ def get_session_local():
     global _SessionLocal
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=get_engine()
+            autocommit=False, autoflush=False,
+            expire_on_commit=False, bind=get_engine()
         )
     return _SessionLocal
 
@@ -393,13 +398,29 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def run_migrations(db_url: str | None = None) -> None:
+    """Run Alembic migrations programmatically.
+
+    Accepts an optional db_url override for testing with
+    engine patching.  Defaults to DATABASE_URL from settings.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    target_url = db_url or DATABASE_URL
+
+    alembic_cfg = Config(ALEMBIC_CONFIG_PATH)
+    alembic_cfg.set_main_option("sqlalchemy.url", target_url)
+    command.upgrade(alembic_cfg, "head")
+
+
 def init_db():
-    """Initialize database tables"""
-    Base.metadata.create_all(bind=get_engine())
+    """Initialize database tables via Alembic migrations."""
+    run_migrations()
 
 
 def check_db_health() -> Dict[str, Any]:
-    """Check database connection health and pool status"""
+    """Check database connection health and pool status."""
     try:
         e = get_engine()
         s = get_session_local()
@@ -427,7 +448,7 @@ def check_db_health() -> Dict[str, Any]:
 
 
 def get_db():
-    """Get database session"""
+    """Get database session."""
     s = get_session_local()
     db = s()
     try:
@@ -438,7 +459,7 @@ def get_db():
 
 @contextmanager
 def db_session():
-    """Provide a transactional scope for database operations"""
+    """Provide a transactional scope for database operations."""
     s = get_session_local()
     session = s()
     try:

@@ -7,17 +7,19 @@ when Redis is unavailable.
 
 import logging
 import os
-import pytest
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database.models import (
     Base,
+)
+from backend.database.models import (
     engine as prod_engine,
 )
 
@@ -101,7 +103,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """Create all tables before tests, drop after."""
-    Base.metadata.create_all(bind=engine)
+    from backend.database.models import run_migrations
+
+    run_migrations()
     yield
     Base.metadata.drop_all(bind=engine)
 
@@ -190,8 +194,9 @@ def test_client() -> Generator[TestClient, None, None]:
     app.dependency_overrides.clear()
 
     # Ensure auth returns a mock user when disabled
-    if os.environ.get("ENABLE_AUTH", "false").lower() != "true":
+    if os.environ.get("ENABLE_AUTH", "true").lower() != "true":
         from unittest.mock import MagicMock
+
         from backend.api.auth import get_current_user
 
         mock_user = MagicMock()

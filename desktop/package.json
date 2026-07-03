@@ -1,6 +1,6 @@
 {
   "name": "udr-desktop",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Universal Dependency Resolver \u2014 Desktop App",
   "homepage": "https://github.com/code-with-zeeshan/universal-dependency-resolver",
   "repository": {
@@ -15,7 +15,11 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/backend-launcher.test.js",
+    "test": "node --test tests/backend-launcher.test.js tests/app.test.js tests/render.test.js",
+"test:build": "node --test tests/smoke.test.js",
+    "presync": "node ../scripts/sync-version.py",
+    "prebuild": "node ../scripts/sync-version.py",
+    "prestart": "node ../scripts/sync-version.py",
     "build": "electron-builder",
     "dist:linux": "electron-builder --linux",
     "dist:win": "electron-builder --win",
@@ -23,6 +27,11 @@
     "dist": "electron-builder --linux --win --mac"
   },
   "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "code-with-zeeshan",
+      "repo": "universal-dependency-resolver"
+    },
     "appId": "com.udr.desktop",
     "productName": "UDR",
     "compression": "maximum",
@@ -35,6 +44,8 @@
       "backend-launcher.js",
       "preload.js",
       "index.html",
+      "app.js",
+      "app-utils.js",
       "!tests/**"
     ],
     "extraResources": [
@@ -138,9 +149,11 @@
       "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
     }
   },
+  "dependencies": {
+    "electron-updater": "^6.0.0"
+  },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.0.0",
-    "electron-updater": "^6.0.0"
+    "electron-builder": "^24.0.0"
   }
 }

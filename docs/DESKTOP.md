@@ -75,23 +75,23 @@ Displays comprehensive system information: OS, CPU, memory, GPU, CUDA version, P
 - Click **Check Compatibility** to run a system compatibility check against common package requirements
 
 ### Scan
-Detect dependency manifests (requirements.txt, package.json, Cargo.toml, etc.) in a project directory, GitHub repository, or uploaded ZIP file. After scanning, the tool resolves all detected packages and displays the results.
+Detect dependency manifests (requirements.txt, package.json, Cargo.toml, pyproject.toml, go.mod, environment.yml, Gemfile, pom.xml, and more) in a project directory, GitHub repository, or uploaded ZIP file. After scanning, the tool resolves all detected packages and displays the results.
 
 **Three input modes:**
 - **Local Path** — browse or type a directory path on this machine
 - **GitHub URL** — paste a GitHub repository URL (no cloning needed; downloads zipball)
 - **Upload ZIP** — upload a `.zip` file
 
-After a successful scan, click **Generate Lock File** to download a `udr-lock.json` with the resolved packages and system snapshot.
+After a successful scan, click **Generate Lock File** to download a `udr.lock` with the resolved packages and system snapshot.
 
 ### Graph
 Display a dependency tree for one or more packages. Shows direct and transitive dependencies in a hierarchical tree view.
 
 ### Verify Lock
-Paste a `udr-lock.json` file (or load from disk) to verify that every pinned version still exists in its respective package registry.
+Paste a `udr.lock` file (or load from disk) to verify that every pinned version still exists in its respective package registry.
 
 ### Install
-Paste a `udr-lock.json` file (or load from disk) to generate native install commands for all **direct** dependencies, grouped by ecosystem. Each command includes a **Copy** button.
+Paste a `udr.lock` file (or load from disk) to generate native install commands for all **direct** dependencies, grouped by ecosystem. Each command includes a **Copy** button.
 
 Commands run sequentially by ecosystem when executed:
 - PyPI → `pip install`

@@ -1,3 +1,4 @@
+"""Module docstring."""
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_by_python_version(results: List[Dict], python_version: str) -> List[Dict]:
+    """Filter by python version."""
     filtered = []
     for result in results:
         if "python_requires" in result:
@@ -27,6 +29,7 @@ def _filter_by_python_version(results: List[Dict], python_version: str) -> List[
 
 
 def _sort_search_results(results: List[Dict], sort_by: str) -> List[Dict]:
+    """Sort search results."""
     if not results:
         return results
     if sort_by == "downloads":
@@ -49,6 +52,7 @@ async def _get_recursive_dependencies(
     current_depth: int = 0,
     visited: Optional[set] = None,
 ) -> Dict:
+    """Get recursive dependencies."""
     if visited is None:
         visited = set()
     key = f"{package_name}:{version or 'latest'}"
@@ -83,6 +87,7 @@ async def _get_recursive_dependencies(
 
 
 def _count_dependencies(dep_tree: Dict) -> Dict:
+    """Count dependencies."""
     direct = 0
     transitive = 0
 
@@ -96,6 +101,7 @@ def _count_dependencies(dep_tree: Dict) -> Dict:
 
 
 def _generate_compatibility_summary(package_info: Dict) -> Dict:
+    """Generate compatibility summary."""
     summary = {
         "python_versions": package_info.get("python_requires", "unknown"),
         "platforms": package_info.get("platforms", []),
@@ -109,6 +115,7 @@ def _generate_compatibility_summary(package_info: Dict) -> Dict:
 
 
 def _extract_version_compatibility(package_info: Dict, version_str: str) -> Dict:
+    """Extract version compatibility."""
     versions = package_info.get("versions", [])
     for ver in versions:
         if ver.get("version") == version_str:
@@ -122,6 +129,7 @@ def _extract_version_compatibility(package_info: Dict, version_str: str) -> Dict
 
 
 async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
+    """Get package metrics."""
     from datetime import datetime
 
     logger.debug(f"Getting metrics for {package_name} in {ecosystem}")
@@ -134,16 +142,19 @@ async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
 
 
 def _validate_system_info(system_info: Dict) -> bool:
+    """Validate system info."""
     return "os" in system_info and "python_version" in system_info
 
 
 async def _analyze_compatibility_reports(
     package_name: str, ecosystem: str, version: str
 ):
+    """Analyze compatibility reports."""
     logger.info(f"Analyzing compatibility reports for {package_name}")
 
 
 async def _detect_package_ecosystem(package_name: str, aggregator) -> str:
+    """Detect package ecosystem."""
     supported_ecosystems = ["pypi", "npm", "crates", "rubygems", "nuget", "packagist"]
     for eco in supported_ecosystems:
         try:
@@ -156,6 +167,7 @@ async def _detect_package_ecosystem(package_name: str, aggregator) -> str:
 
 
 def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
+    """Filter comparison aspects."""
     aspect_map = {
         "dependencies": ["dependencies", "requirements"],
         "requirements": [
@@ -177,6 +189,7 @@ def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
 
 
 def _generate_comparison_summary(comparison_data: Dict) -> Dict:
+    """Generate comparison summary."""
     common_deps = None
     all_deps = {}
     for pkg_name, info in comparison_data.items():

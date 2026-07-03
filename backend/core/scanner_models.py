@@ -1,9 +1,12 @@
+"""Module docstring."""
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Any
 
 
 class OSType(Enum):
+    """Os Type functionality."""
+
     WINDOWS = "Windows"
     LINUX = "Linux"
     MACOS = "Darwin"
@@ -12,6 +15,8 @@ class OSType(Enum):
 
 
 class ContainerType(Enum):
+    """Container Type functionality."""
+
     DOCKER = "docker"
     PODMAN = "podman"
     LXC = "lxc"
@@ -22,6 +27,8 @@ class ContainerType(Enum):
 
 @dataclass
 class GPUInfo:
+    """Gpu Info functionality."""
+
     id: int
     name: str
     memory_total: int
@@ -36,6 +43,8 @@ class GPUInfo:
 
 @dataclass
 class CPUInfo:
+    """Cpu Info functionality."""
+
     brand: str
     arch: str
     bits: int
@@ -51,6 +60,8 @@ class CPUInfo:
 
 @dataclass
 class MemoryInfo:
+    """Memory Info functionality."""
+
     total: int
     available: int
     used: int
@@ -64,6 +75,8 @@ class MemoryInfo:
 
 @dataclass
 class DiskInfo:
+    """Disk Info functionality."""
+
     device: str
     mountpoint: str
     fstype: str
@@ -75,6 +88,8 @@ class DiskInfo:
 
 @dataclass
 class NetworkInterface:
+    """Network Interface functionality."""
+
     name: str
     addresses: List[Dict[str, str]]
     is_up: bool
@@ -85,6 +100,8 @@ class NetworkInterface:
 
 @dataclass
 class RuntimeInfo:
+    """Runtime Info functionality."""
+
     name: str
     version: str
     path: Optional[str] = None
@@ -95,6 +112,8 @@ class RuntimeInfo:
 
 @dataclass
 class PackageInfo:
+    """Package Info functionality."""
+
     name: str
     version: str
     manager: str

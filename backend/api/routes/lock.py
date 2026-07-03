@@ -1,24 +1,29 @@
+"""Module docstring."""
 # backend/api/routes/lock.py
 import asyncio
+import json
 import logging
 import os
+import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from backend.manifest_detector import ManifestDetector
 from backend.core.data_aggregator import DataAggregator
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_data_aggregator
-from backend.cli import (
+from backend.orchestrator import (
     _aggregator_to_resolver_input,
     _resolve_transitive,
     _apply_cuda_variants,
     _parse_package_spec,
 )
-from backend.cli.shared import _generate_install_command
+from backend.orchestrator.install import _generate_install_command
 
 SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
 
@@ -27,32 +32,74 @@ router = APIRouter()
 
 
 class VerifyRequest(BaseModel):
+    """Verify Request functionality."""
+
     lock_data: Dict[str, Any]
 
 
 class GraphRequest(BaseModel):
+    """Graph Request functionality."""
+
     packages: List[str]
     ecosystem: str = "pypi"
 
 
 class UpdateRequest(BaseModel):
+    """Update Request functionality."""
+
     lock_data: Dict[str, Any]
     package: str
     ecosystem: Optional[str] = None
 
 
 class GenerateLockRequest(BaseModel):
-    packages: List[Dict[str, Any]]
+    """Generate Lock Request functionality.
+
+    Two modes:
+    1. Pre-parsed mode (original): provide `packages`, `manifests`, `system`, `resolution`
+    2. Manifest content mode (mirrors `udr lock`): provide `manifest_contents` with filename->content
+       Optionally set `manifest_filter` to target a specific manifest file.
+       Optionally set `system` to override auto-detected system info.
+    """
+
+    packages: List[Dict[str, Any]] = []
     manifests: List[Dict[str, Any]] = []
     system: Optional[Dict[str, Any]] = None
     resolution: Optional[Dict[str, Any]] = None
+    manifest_contents: Optional[Dict[str, str]] = None
+    manifest_filter: Optional[str] = None
+
+
+class WhyRequest(BaseModel):
+    """Why Request — explain why a package version was selected."""
+
+    lock_data: Dict[str, Any]
+    package: str
+
+
+class OutdatedRequest(BaseModel):
+    """Outdated Request — check for newer versions in registries."""
+
+    lock_data: Dict[str, Any]
+    ecosystem: Optional[str] = None
+
+
+class DiffRequest(BaseModel):
+    """Diff Request — compare two lock files."""
+
+    lock_a: Dict[str, Any]
+    lock_b: Dict[str, Any]
 
 
 class InstallCommandsRequest(BaseModel):
+    """Install Commands Request functionality."""
+
     lock_data: Dict[str, Any]
 
 
 class RestoreRequest(BaseModel):
+    """Restore Request functionality."""
+
     lock_data: Dict[str, Any]
 
 
@@ -62,7 +109,8 @@ async def verify_lock(
     current_user=Depends(get_current_user),
 ):
     """Validate a lock file — check all resolved versions still exist.
-    Mirrors `udr verify`."""
+    Mirrors `udr verify`.
+    """
     aggregator = DataAggregator()
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
@@ -74,6 +122,7 @@ async def verify_lock(
     ok_count = 0
 
     async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+        """Check pkg."""
         eco = info.get("ecosystem", "pypi")
         ver = info.get("resolved_version")
         if not ver:
@@ -128,7 +177,8 @@ async def dependency_graph(
     current_user=Depends(get_current_user),
 ):
     """Get dependency tree for one or more packages.
-    Mirrors `udr graph`."""
+    Mirrors `udr graph`.
+    """
     resolver = ConflictResolver()
     specs = [_parse_package_spec(p, req.ecosystem) for p in req.packages]
     system_info = resolver._get_default_system_info()
@@ -136,7 +186,7 @@ async def dependency_graph(
     resolver_inputs = []
     package_details = {}
 
-    for pkg_name, eco in specs:
+    for pkg_name, eco, _ in specs:
         try:
             data = await aggregator.get_package_info(
                 pkg_name,
@@ -164,6 +214,7 @@ async def dependency_graph(
     rp = resolved.get("resolved_packages", {})
 
     def _build_tree(name: str, info: Dict) -> Dict:
+        """Build tree."""
         eco = info.get("ecosystem", "?")
         ver = info.get("version", "?")
         deps_list = []
@@ -197,7 +248,8 @@ async def update_package(
     current_user=Depends(get_current_user),
 ):
     """Re-resolve a single package and return updated lock data.
-    Mirrors `udr update <package> --directory <path> --json`."""
+    Mirrors `udr update <package> --directory <path> --json`.
+    """
     aggregator = DataAggregator()
     resolver = ConflictResolver()
     scanner = SystemScanner()
@@ -271,17 +323,158 @@ async def update_package(
     }
 
 
-@router.post("/generate-lock")
-async def generate_lock(
-    req: GenerateLockRequest,
-    current_user=Depends(get_current_user),
-):
-    """Generate a udr-lock.json from scan result data.
-    Mirrors `udr lock --json` output format."""
-    packages_in = req.packages
-    system = req.system or {}
-    resolution = req.resolution or {}
+async def _run_lock_pipeline(
+    manifest_contents: Dict[str, str],
+    manifest_filter: Optional[str] = None,
+    system_override: Optional[Dict[str, Any]] = None,
+) -> dict:
+    """Full pipeline: write manifests to temp dir, detect, parse, fetch, resolve, build lock data.
+    Mirrors ``udr lock --json`` internally.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="udr_lock_"))
+    try:
+        for filename, content in manifest_contents.items():
+            fp = tmp / filename
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(content)
 
+        detector = ManifestDetector(str(tmp))
+        aggregator = DataAggregator()
+        resolver = ConflictResolver()
+        scanner = SystemScanner()
+
+        manifests = detector.detect()
+        if not manifests:
+            return {"status": "no_manifests", "lock_data": None}
+
+        if manifest_filter:
+            target = manifest_filter.replace("\\", "/")
+            manifests = [
+                m
+                for m in manifests
+                if m["filename"] == target
+                or m["path"].replace("\\", "/").endswith("/" + target)
+            ]
+            if not manifests:
+                return {"status": "manifest_filter_no_match", "lock_data": None}
+
+        packages = detector.normalize(detector.parse_all(manifests))
+        if not packages:
+            return {"status": "no_packages", "lock_data": None}
+
+        seen = set()
+        resolver_inputs = []
+        package_details = {}
+
+        for pkg in packages:
+            key = (pkg["name"], pkg["ecosystem"])
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                data = await aggregator.get_package_info(
+                    pkg["name"],
+                    ecosystem=pkg["ecosystem"],
+                    include_dependencies=True,
+                    include_versions=True,
+                )
+                if data:
+                    package_details[pkg["name"]] = data
+                    rinput = _aggregator_to_resolver_input(data, pkg["ecosystem"])
+                    resolver_inputs.append(rinput)
+            except Exception as e:
+                logger.warning("Failed to fetch %s: %s", pkg["name"], e)
+
+        if system_override:
+            system_info = system_override
+        else:
+            system_info = await scanner.scan_all()
+
+        try:
+            resolved = await asyncio.wait_for(
+                _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+                timeout=SOLVER_API_TIMEOUT,
+            )
+        except (asyncio.TimeoutError, Exception):
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+
+        resolved = _apply_cuda_variants(resolved, package_details, system_info)
+        resolved_pkgs = resolved.get("resolved_packages", {})
+
+        plat = system_info.get("platform", {})
+        gpu_info = system_info.get("gpu", {})
+        gpu_name = None
+        if gpu_info.get("available"):
+            devices = gpu_info.get("devices", [])
+            if devices:
+                gpu_name = devices[0].get("name")
+
+        lock_data = {
+            "version": "2.0",
+            "generated_at": __import__("datetime").datetime.now().isoformat(),
+            "resolver": "sat",
+            "system": {
+                "os": f"{plat.get('system', '?')} {plat.get('release', '?')}",
+                "python": system_info.get("runtime_versions", {})
+                .get("python", {})
+                .get("version", "?"),
+                "cpu": system_info.get("cpu", {}).get("brand", "Unknown"),
+                "gpu": gpu_name,
+                "cuda": gpu_info.get("cuda") if gpu_info.get("available") else None,
+            },
+            "manifests": [m["filename"] for m in manifests],
+            "packages": {},
+            "warnings": resolved.get("warnings", []),
+        }
+
+        manifest_pkg_info = {
+            p["name"]: {
+                "constraint": p.get("constraint", "*"),
+                "source": p.get("source", "unknown"),
+            }
+            for p in packages
+        }
+
+        for pkg_name, rp in resolved_pkgs.items():
+            minfo = manifest_pkg_info.get(pkg_name, {})
+            is_direct = pkg_name in manifest_pkg_info
+            pkg_detail = package_details.get(pkg_name, {})
+            vulns = pkg_detail.get("security", {}).get("vulnerabilities", [])
+            lock_data["packages"][pkg_name] = {
+                "name": pkg_name,
+                "ecosystem": rp.get("ecosystem", "?"),
+                "resolved_version": rp.get("version"),
+                "direct": is_direct,
+                "cuda_variant": rp.get("cuda_variant", False),
+                "cuda_version": rp.get("cuda_version"),
+                "original_constraint": minfo.get("constraint", "*"),
+                "source": minfo.get("source", "transitive"),
+                "vulnerabilities": [
+                    {
+                        "id": v.get("id", ""),
+                        "summary": v.get("summary", ""),
+                        "severity": v.get("severity", "UNKNOWN"),
+                        "fixed_version": v.get("fixed_version"),
+                    }
+                    for v in vulns
+                    if v.get("id")
+                ],
+            }
+
+        return {"status": "success", "lock_data": lock_data}
+    finally:
+        import shutil
+
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _build_lock_from_synthesis(
+    packages_in: List[Dict[str, Any]],
+    manifests: List[Dict[str, Any]],
+    system: Dict[str, Any],
+    resolution: Dict[str, Any],
+) -> dict:
+    """Build lock data dict from pre-parsed inputs (original mode)."""
     resolved_pkgs = resolution.get("resolved_packages", {})
     plat = system.get("platform", {})
     gpu_info = system.get("gpu", {})
@@ -309,7 +502,6 @@ async def generate_lock(
 
     for name, rp in resolved_pkgs.items():
         if name not in pkg_map:
-            vulns: List[Dict] = []
             pkg_map[name] = {
                 "name": name,
                 "ecosystem": rp.get("ecosystem", "?"),
@@ -319,10 +511,10 @@ async def generate_lock(
                 "cuda_version": rp.get("cuda_version"),
                 "original_constraint": "*",
                 "source": "transitive",
-                "vulnerabilities": vulns,
+                "vulnerabilities": [],
             }
 
-    lock_data = {
+    return {
         "version": "2.0",
         "generated_at": __import__("datetime").datetime.now().isoformat(),
         "resolver": "sat",
@@ -335,10 +527,53 @@ async def generate_lock(
             "gpu": gpu_name,
             "cuda": gpu_info.get("cuda") if gpu_info.get("available") else None,
         },
-        "manifests": [m.get("filename", m.get("path", "?")) for m in req.manifests],
+        "manifests": [m.get("filename", m.get("path", "?")) for m in manifests],
         "packages": pkg_map,
         "warnings": resolution.get("warnings", []),
     }
+
+
+@router.post("/generate-lock")
+async def generate_lock(
+    req: GenerateLockRequest,
+    current_user=Depends(get_current_user),
+):
+    """Generate a udr.lock from project manifests or pre-parsed data.
+
+    Two modes:
+      1. **Manifest content mode** (mirrors ``udr lock``):
+         POST ``manifest_contents`` as a dict of ``{filename: content}``.
+         Optionally set ``manifest_filter`` to target one manifest file,
+         and ``system`` to override auto-detected system info.
+      2. **Pre-parsed mode** (original):
+         POST ``packages``, ``manifests``, ``system``, ``resolution``.
+
+    Returns ``{"status": "success", "lock_data": {...}}``.
+    """
+    if req.manifest_contents:
+        result = await _run_lock_pipeline(
+            req.manifest_contents,
+            manifest_filter=req.manifest_filter,
+            system_override=req.system,
+        )
+        if result["status"] != "success":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lock generation failed: {result['status']}",
+            )
+        lock_data = result["lock_data"]
+    else:
+        if not req.packages:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide either 'manifest_contents' (dict of filename->content) or 'packages' (pre-parsed)",
+            )
+        lock_data = _build_lock_from_synthesis(
+            req.packages,
+            req.manifests,
+            req.system or {},
+            req.resolution or {},
+        )
 
     return {"status": "success", "lock_data": lock_data}
 
@@ -349,7 +584,8 @@ async def install_commands(
     current_user=Depends(get_current_user),
 ):
     """Generate native install commands grouped by ecosystem from lock data.
-    Mirrors `udr install <package>` using locked versions."""
+    Mirrors `udr install <package>` using locked versions.
+    """
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
     ecosystem_groups: Dict[str, List[tuple]] = {}
@@ -377,13 +613,189 @@ async def install_commands(
     }
 
 
+def _find_dep_chain(
+    packages: dict, target: str, chain: list | None = None, visited: set | None = None
+) -> list | None:
+    """DFS to find the dependency chain leading to target."""
+    if chain is None:
+        chain = []
+    if visited is None:
+        visited = set()
+    if target in visited:
+        return None
+    visited.add(target)
+    for pkg_name, pinfo in packages.items():
+        if pkg_name == target:
+            continue
+        ver = pinfo.get("resolved_version")
+        if not ver:
+            continue
+        eco = pinfo.get("ecosystem", "pypi")
+        deps = pinfo.get("dependencies", {}).get(eco, {})
+        if target in deps:
+            return chain + [(pkg_name, ver, deps.get(target, "?"))]
+        sub = _find_dep_chain(packages, target, chain + [(pkg_name, ver, "?")], visited)
+        if sub is not None:
+            return sub
+    return None
+
+
+@router.post("/why")
+async def why_package(
+    req: WhyRequest,
+    current_user=Depends(get_current_user),
+):
+    """Explain why a package version was selected — dependency chain, constraint, direct/transitive.
+    Mirrors `udr why <package>`.
+    """
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    target = req.package
+
+    if target not in packages:
+        raise HTTPException(status_code=404, detail=f"Package '{target}' not found in lock data")
+
+    info = packages[target]
+    ver = info.get("resolved_version")
+    eco = info.get("ecosystem", "?")
+    direct = info.get("direct", False)
+    constraint = info.get("original_constraint", "*")
+
+    chain = []
+    if not direct:
+        found = _find_dep_chain(packages, target)
+        if found:
+            chain = [
+                {"package": p, "version": v, "required_as": r}
+                for p, v, r in found
+            ]
+
+    return {
+        "status": "success",
+        "package": target,
+        "version": ver,
+        "ecosystem": eco,
+        "direct": direct,
+        "original_constraint": constraint,
+        "source": info.get("source", "unknown"),
+        "dependency_chain": chain,
+    }
+
+
+@router.post("/outdated")
+async def outdated_packages(
+    req: OutdatedRequest,
+    current_user=Depends(get_current_user),
+):
+    """Check all packages against registries for newer versions.
+    Mirrors `udr outdated --json`.
+    """
+    aggregator = DataAggregator()
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    ecosystem_filter = req.ecosystem
+    outdated_list: List[Dict] = []
+
+    async def check_pkg(name: str, info: dict) -> None:
+        eco = info.get("ecosystem", "pypi")
+        if ecosystem_filter and eco != ecosystem_filter:
+            return
+        ver = info.get("resolved_version")
+        if not ver:
+            return
+        try:
+            data = await aggregator.get_package_info(
+                name, ecosystem=eco, include_versions=True
+            )
+            if data:
+                versions = data.get("versions", {}).get(eco, [])
+                version_strings = [
+                    v.get("version", "") if isinstance(v, dict) else str(v)
+                    for v in versions
+                ]
+                sorted_vers = sorted(
+                    [v for v in version_strings if v],
+                    key=lambda x: __import__("packaging.version").parse(x),
+                    reverse=True,
+                )
+                latest_str = sorted_vers[0] if sorted_vers else ver
+                if latest_str != ver:
+                    outdated_list.append({
+                        "name": name,
+                        "ecosystem": eco,
+                        "current": ver,
+                        "latest": latest_str,
+                        "type": "direct" if info.get("direct") else "transitive",
+                    })
+        except Exception:
+            pass
+
+    await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
+    await aggregator.close()
+    outdated_list.sort(key=lambda x: x["name"])
+
+    return {
+        "status": "success",
+        "outdated_count": len(outdated_list),
+        "packages": outdated_list,
+    }
+
+
+@router.post("/diff")
+async def diff_lock_files(
+    req: DiffRequest,
+    current_user=Depends(get_current_user),
+):
+    """Compare two lock data objects and report package differences.
+    Mirrors `udr diff <file_a> <file_b> --json`.
+    """
+    pkgs_a = req.lock_a.get("packages", {})
+    pkgs_b = req.lock_b.get("packages", {})
+
+    all_names = sorted(set(list(pkgs_a.keys()) + list(pkgs_b.keys())))
+
+    added = []
+    removed = []
+    changed = []
+    unchanged = 0
+
+    for name in all_names:
+        info_a = pkgs_a.get(name, {})
+        info_b = pkgs_b.get(name, {})
+        ver_a = info_a.get("resolved_version")
+        ver_b = info_b.get("resolved_version")
+
+        if not ver_a and ver_b:
+            added.append({"name": name, "ecosystem": info_b.get("ecosystem", "?"), "version": ver_b})
+        elif ver_a and not ver_b:
+            removed.append({"name": name, "ecosystem": info_a.get("ecosystem", "?"), "version": ver_a})
+        elif ver_a != ver_b:
+            changed.append({
+                "name": name,
+                "ecosystem": info_a.get("ecosystem", info_b.get("ecosystem", "?")),
+                "from": ver_a or "?",
+                "to": ver_b or "?",
+            })
+        elif ver_a == ver_b:
+            unchanged += 1
+
+    return {
+        "status": "success",
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "unchanged_count": unchanged,
+    }
+
+
 @router.post("/restore-commands")
 async def restore_commands(
     req: RestoreRequest,
     current_user=Depends(get_current_user),
 ):
     """Generate install commands for ALL packages in lock data (direct + transitive).
-    Mirrors `udr restore <lockfile>`."""
+    Mirrors `udr restore <lockfile>`.
+    """
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
     ecosystem_groups: Dict[str, List[tuple]] = {}

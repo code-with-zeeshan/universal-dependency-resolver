@@ -1,3 +1,4 @@
+"""Module docstring."""
 import sys
 
 from rich.panel import Panel
@@ -6,6 +7,7 @@ from ..shared import console
 
 
 def cmd_serve(args):
+    """Cmd serve."""
     try:
         from backend.api.main import app
         import uvicorn
@@ -15,7 +17,26 @@ def cmd_serve(args):
         console.print(
             f"  Host: [yellow]{args.host}[/yellow]  Port: [yellow]{args.port}[/yellow]"
         )
-        uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+        if args.log_level:
+            console.print(f"  Log level: [dim]{args.log_level}[/dim]")
+        if args.workers:
+            console.print(f"  Workers: [dim]{args.workers}[/dim]")
+        if args.ssl_keyfile and args.ssl_certfile:
+            console.print(f"  SSL: [dim]enabled[/dim]")
+
+        kwargs = {
+            "host": args.host,
+            "port": args.port,
+            "reload": args.reload,
+            "log_level": args.log_level,
+        }
+        if args.workers:
+            kwargs["workers"] = args.workers
+        if args.ssl_keyfile and args.ssl_certfile:
+            kwargs["ssl_keyfile"] = args.ssl_keyfile
+            kwargs["ssl_certfile"] = args.ssl_certfile
+
+        uvicorn.run(app, **kwargs)
     except KeyboardInterrupt:
         console.print("\n[yellow]Server stopped[/yellow]")
         sys.exit(0)

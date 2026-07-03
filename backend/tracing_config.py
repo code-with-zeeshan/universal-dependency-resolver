@@ -1,5 +1,4 @@
-"""
-OpenTelemetry tracing configuration.
+"""OpenTelemetry tracing configuration.
 
 Supports both self-hosted backends (Jaeger, local Tempo) and managed
 services (Grafana Cloud, Datadog, Honeycomb, New Relic, etc.)

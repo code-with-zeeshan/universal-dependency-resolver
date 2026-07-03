@@ -793,3 +793,691 @@ class TestNPMClient:
         result = client._format_person({"email": "alice@example.com"})
         assert result["name"] == ""
         assert result["email"] == "alice@example.com"
+
+    # === search_packages: popularity filter excludes (line 105)
+    @pytest.mark.asyncio
+    async def test_search_packages_popularity_filter_excludes(self, client, sample_search_response):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response):
+            results = await client.search_packages("express", popularity=0.995)
+        assert len(results) == 0
+
+    # === search_packages: maintenance filter excludes (line 107)
+    @pytest.mark.asyncio
+    async def test_search_packages_maintenance_filter_excludes(self, client, sample_search_response):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response):
+            results = await client.search_packages("express", maintenance=0.98)
+        assert len(results) == 0
+
+    # === get_dependencies with version param (line 307)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_with_version(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "dependencies": {
+                "dependencies": {"accepts": "~1.3.8"},
+            },
+        }):
+            result = await client.get_dependencies("express", version="4.18.2")
+        assert "direct" in result
+        assert "dependencies" in result["direct"]
+
+    # === get_dependencies returns empty when get_package_info returns None (line 313)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_no_info(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
+            result = await client.get_dependencies("nonexistent")
+        assert result == {}
+
+    # === get_dependencies returns empty when pkg_data is None (line 317)
+    @pytest.mark.asyncio
+    async def test_get_dependencies_pkg_data_none(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client.get_dependencies("pkg", version="1.0.0")
+        assert result == {}
+
+    # === get_dependencies with version and types filter
+    @pytest.mark.asyncio
+    async def test_get_dependencies_with_version_and_types(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "dependencies": {
+                "dependencies": {"accepts": "~1.3.8"},
+                "devDependencies": {"mocha": "^10.0.0"},
+            },
+        }):
+            result = await client.get_dependencies("express", version="4.18.2",
+                types=[DependencyType.DEV_DEPENDENCIES])
+        assert "devDependencies" in result["direct"]
+        assert "dependencies" not in result["direct"]
+
+    # === _resolve_transitive_dependencies: resolve_version returns None (line 358)
+    @pytest.mark.asyncio
+    async def test_resolve_transitive_deps_skip_when_no_resolved_version(self, client):
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value=None):
+            result = await client._resolve_transitive_dependencies({"sub": "^1.0.0"}, set(), 3)
+        assert result == {}
+
+    # === _resolve_transitive_dependencies: dep_info is None (line 364)
+    @pytest.mark.asyncio
+    async def test_resolve_transitive_deps_skip_when_no_dep_info(self, client):
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client._resolve_transitive_dependencies({"sub": "^1.0.0"}, set(), 3)
+        assert result == {}
+
+    # === check_compatibility: OS mismatch (lines 415-416)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_os_mismatch(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "engines": {},
+            "dependencies": {},
+            "os": ["linux"],
+        }):
+            result = await client.check_compatibility("pkg", "1.0.0", {"os": "win32"})
+        assert not result["compatible"]
+        assert any("OS" in e for e in result["errors"])
+
+    # === check_compatibility: CPU mismatch (lines 420-421)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_cpu_mismatch(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "engines": {},
+            "dependencies": {},
+            "cpu": ["x64"],
+        }):
+            result = await client.check_compatibility("pkg", "1.0.0", {"cpu": "arm64"})
+        assert not result["compatible"]
+        assert any("CPU" in e for e in result["errors"])
+
+    # === check_compatibility: peer dep missing (lines 433-437)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_peer_dep_missing(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "engines": {},
+            "dependencies": {
+                "peerDependencies": {"react": "^18.0.0"},
+            },
+        }):
+            result = await client.check_compatibility("pkg", "1.0.0", {"installed_packages": {}})
+        assert result["compatible"]
+        assert any("missing" in w.lower() for w in result["warnings"])
+
+    # === check_compatibility: peer dep version mismatch (lines 438-441)
+    @pytest.mark.asyncio
+    async def test_check_compatibility_peer_dep_version_mismatch(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "engines": {},
+            "dependencies": {
+                "peerDependencies": {"react": "^18.0.0"},
+            },
+        }):
+            result = await client.check_compatibility("pkg", "1.0.0", {"installed_packages": {"react": "17.0.0"}})
+        assert result["compatible"]
+        assert any("mismatch" in w.lower() for w in result["warnings"])
+
+    # === get_dependency_tree basic (lines 455-476)
+    @pytest.mark.asyncio
+    async def test_get_dependency_tree_basic(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={
+            "version": "1.0.0",
+            "latest_version_info": {"dependencies": {}},
+        }), \
+             patch.object(client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}):
+            result = await client.get_dependency_tree("express")
+        assert result["name"] == "express"
+        assert result["version"] == "1.0.0"
+
+    # === get_dependency_tree with version param
+    @pytest.mark.asyncio
+    async def test_get_dependency_tree_with_version(self, client):
+        with patch.object(client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}):
+            result = await client.get_dependency_tree("express", version="4.18.2")
+        assert result["name"] == "express"
+        assert result["version"] == "4.18.2"
+
+    # === get_dependency_tree when info is None (line 467)
+    @pytest.mark.asyncio
+    async def test_get_dependency_tree_no_info(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
+            result = await client.get_dependency_tree("nonexistent")
+        assert result["name"] == "nonexistent"
+        assert result["version"] == "latest"
+
+    # === _build_dependency_tree: pkg_data is None (line 498)
+    @pytest.mark.asyncio
+    async def test_build_dep_tree_no_pkg_data(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client._build_dependency_tree("root", "1.0.0", set(), 3)
+        assert result == {}
+
+    # === _build_dependency_tree: resolve_version fails (lines 509-510)
+    @pytest.mark.asyncio
+    async def test_build_dep_tree_unresolved_dep(self, client):
+        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
+            "dependencies": {"dependencies": {"missing": "^99.0.0"}},
+        }), \
+             patch.object(client, "resolve_version", new_callable=AsyncMock, return_value=None):
+            result = await client._build_dependency_tree("root", "1.0.0", set(), 3)
+        assert "missing" in result
+        assert result["missing"]["resolved"] is False
+
+    # === get_versions with include_deprecated
+    @pytest.mark.asyncio
+    async def test_get_versions_include_deprecated(self, client, sample_package_info_response):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=sample_package_info_response):
+            versions = await client.get_versions("express", include_deprecated=True)
+        version_strings = [v["version"] for v in versions]
+        assert "4.18.1" in version_strings
+
+    # === analyze_package success (lines 529-596)
+    @pytest.mark.asyncio
+    async def test_analyze_package_basic(self, client):
+        info = {
+            "name": "webpack", "version": "5.0.0", "description": "A bundler",
+            "license": "MIT", "author": {"name": "Tobias"},
+            "homepage": "https://webpack.js.org",
+            "repository": {"url": "https://github.com/webpack"},
+            "readme": "# Webpack",
+            "time": {"modified": "2026-06-01T00:00:00.000Z"},
+            "versions": [{"version": "5.0.0"}],
+            "maintainers": [{"name": "tobias"}],
+            "keywords": ["web", "pack"],
+            "downloads": {"weekly": 5000000},
+            "typescript": {"has_types": True},
+            "vulnerabilities": [],
+        }
+        pkg_data = {
+            "dependencies": {
+                "dependencies": {"tapable": "^2.0.0"},
+                "devDependencies": {"mocha": "^10.0.0"},
+                "peerDependencies": {},
+                "optionalDependencies": {},
+            },
+            "engines": {"node": ">=14.0.0"},
+            "dist": {"unpackedSize": 1000000, "fileCount": 50},
+            "scripts": {"test": "jest"},
+        }
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=info), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=pkg_data), \
+             patch.object(client, "_has_deprecated_dependencies", new_callable=AsyncMock, return_value=False):
+            result = await client.analyze_package("webpack")
+        assert result["name"] == "webpack"
+        assert result["quality_score"] > 0
+
+    # === analyze_package: no info (line 532)
+    @pytest.mark.asyncio
+    async def test_analyze_package_no_info(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
+            result = await client.analyze_package("nonexistent")
+        assert result == {}
+
+    # === analyze_package: no pkg_data (line 539)
+    @pytest.mark.asyncio
+    async def test_analyze_package_no_pkg_data(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"name": "pkg", "version": "1.0.0", "versions": []}), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client.analyze_package("pkg")
+        assert result == {}
+
+    # === _get_download_stats success (lines 599-616)
+    @pytest.mark.asyncio
+    async def test_get_download_stats_success(self, client):
+        def side_effect(method, url, **kwargs):
+            if "last-day" in url:
+                return {"downloads": 100}
+            if "last-week" in url:
+                return {"downloads": 700}
+            if "last-month" in url:
+                return {"downloads": 3000}
+            if "last-year" in url:
+                return {"downloads": 36000}
+            return None
+        with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=side_effect):
+            stats = await client._get_download_stats("express")
+        assert stats["daily"] == 100
+        assert stats["weekly"] == 700
+        assert stats["monthly"] == 3000
+        assert stats["yearly"] == 36000
+
+    # === _get_download_stats: some endpoints return None
+    @pytest.mark.asyncio
+    async def test_get_download_stats_partial_data(self, client):
+        calls = 0
+        def side_effect(method, url, **kwargs):
+            nonlocal calls
+            calls += 1
+            return None if calls == 1 else {"downloads": 50}
+        with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=side_effect):
+            stats = await client._get_download_stats("express")
+        assert stats["daily"] == 0
+
+    # === _get_download_stats exception (lines 618-619)
+    @pytest.mark.asyncio
+    async def test_get_download_stats_exception(self, client):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=Exception("API error")):
+            stats = await client._get_download_stats("express")
+        assert stats == {"daily": 0, "weekly": 0, "monthly": 0, "yearly": 0}
+
+    # === _check_typescript_support: inline types (lines 626-629)
+    @pytest.mark.asyncio
+    async def test_check_typescript_support_inline_types(self, client):
+        result = await client._check_typescript_support("pkg", {"types": "index.d.ts"})
+        assert result["has_types"] is True
+        assert result["included"] is True
+
+    # === _check_typescript_support: typings field
+    @pytest.mark.asyncio
+    async def test_check_typescript_support_typings_field(self, client):
+        result = await client._check_typescript_support("pkg", {"typings": "index.d.ts"})
+        assert result["has_types"] is True
+
+    # === _check_typescript_support: @types package exists (lines 631-639)
+    @pytest.mark.asyncio
+    async def test_check_typescript_support_at_types_package(self, client):
+        with patch.object(client, "_package_exists", new_callable=AsyncMock, return_value=True):
+            result = await client._check_typescript_support("express", {})
+        assert result["has_types"] is True
+        assert result["types_package"] == "@types/express"
+
+    # === _check_typescript_support: no types (line 641)
+    @pytest.mark.asyncio
+    async def test_check_typescript_support_no_types(self, client):
+        with patch.object(client, "_package_exists", new_callable=AsyncMock, return_value=False):
+            result = await client._check_typescript_support("no-types-pkg", {})
+        assert result["has_types"] is False
+        assert result["types_package"] is None
+
+    # === _package_exists returns True (lines 644-648)
+    @pytest.mark.asyncio
+    async def test_package_exists_true(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"name": "express"}):
+            assert await client._package_exists("express") is True
+
+    # === _package_exists returns False
+    @pytest.mark.asyncio
+    async def test_package_exists_false(self, client):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
+            assert await client._package_exists("nonexistent") is False
+
+    # === _check_vulnerabilities (lines 653-654)
+    @pytest.mark.asyncio
+    async def test_check_vulnerabilities(self, client):
+        result = await client._check_vulnerabilities("express", "1.0.0")
+        assert result == []
+
+    # === _has_deprecated_dependencies: True (lines 657-666)
+    @pytest.mark.asyncio
+    async def test_has_deprecated_dependencies_true(self, client):
+        pkg_data = {"dependencies": {"dependencies": {"old-pkg": "^1.0.0"}}}
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={"deprecated": "This is deprecated"}):
+            result = await client._has_deprecated_dependencies(pkg_data)
+        assert result is True
+
+    # === _has_deprecated_dependencies: False
+    @pytest.mark.asyncio
+    async def test_has_deprecated_dependencies_false(self, client):
+        pkg_data = {"dependencies": {"dependencies": {"good-pkg": "^1.0.0"}}}
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={"deprecated": None}):
+            result = await client._has_deprecated_dependencies(pkg_data)
+        assert result is False
+
+    # === _has_deprecated_dependencies: resolve_version returns None
+    @pytest.mark.asyncio
+    async def test_has_deprecated_dependencies_skip_unresolved(self, client):
+        pkg_data = {"dependencies": {"dependencies": {"unresolved": "^99.0.0"}}}
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value=None):
+            result = await client._has_deprecated_dependencies(pkg_data)
+        assert result is False
+
+    # === _has_deprecated_dependencies: dep_info is None
+    @pytest.mark.asyncio
+    async def test_has_deprecated_dependencies_skip_no_dep_info(self, client):
+        pkg_data = {"dependencies": {"dependencies": {"pkg": "^1.0.0"}}}
+        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
+             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+            result = await client._has_deprecated_dependencies(pkg_data)
+        assert result is False
+
+    # === _calculate_quality_score: max score (lines 671-715)
+    def test_calculate_quality_score_max(self, client):
+        info = {
+            "readme": "# README",
+            "homepage": "https://example.com",
+            "repository": {"url": "https://github.com"},
+            "license": "MIT",
+            "keywords": ["key"],
+            "time": {"modified": "2026-06-01T00:00:00.000Z"},
+            "downloads": {"weekly": 2000000},
+            "typescript": {"has_types": True},
+            "vulnerabilities": [],
+        }
+        pkg_data = {"scripts": {"test": "jest"}}
+        score = client._calculate_quality_score(info, pkg_data)
+        assert score == 0.95
+
+    # === _calculate_quality_score: medium score (no optional fields)
+    def test_calculate_quality_score_medium(self, client):
+        info = {
+            "readme": "# README",
+            "homepage": "",
+            "repository": None,
+            "license": "",
+            "keywords": [],
+            "time": {"modified": "2020-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 500},
+            "typescript": {"has_types": False},
+            "vulnerabilities": [{"id": "CVE-123"}],
+        }
+        pkg_data = {"scripts": {}}
+        score = client._calculate_quality_score(info, pkg_data)
+        assert score < 1.0
+
+    # === _calculate_quality_score: low weekly downloads
+    def test_calculate_quality_score_low_downloads(self, client):
+        info = {
+            "readme": "# README",
+            "time": {"modified": "2020-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 50},
+        }
+        pkg_data = {}
+        score = client._calculate_quality_score(info, pkg_data)
+        assert 0 < score < 0.5
+
+    # === _process_versions: skips invalid version (lines 723-724)
+    def test_process_versions_skips_invalid(self, client):
+        versions_data = {
+            "invalid": {"deprecated": None},
+            "1.0.0": {"deprecated": None, "dist": {}},
+        }
+        result = client._process_versions(versions_data, {})
+        assert len(result) == 1
+        assert result[0]["version"] == "1.0.0"
+
+    # === _process_versions: engines not a dict (line 728)
+    def test_process_versions_engines_not_dict(self, client):
+        versions_data = {
+            "1.0.0": {"deprecated": None, "engines": "node >= 14", "dist": {}},
+        }
+        result = client._process_versions(versions_data, {})
+        assert len(result) == 1
+        assert result[0]["node"] is None
+
+    # === _extract_detailed_requirements: npm (line 783)
+    def test_extract_detailed_requirements_with_npm(self, client):
+        data = {"engines": {"node": ">=14.0.0", "npm": ">=6.0.0"}}
+        result = client._extract_detailed_requirements(data)
+        assert result["npm"]["spec"] == ">=6.0.0"
+
+    # === _extract_detailed_requirements: scripts trigger build_tools (line 814)
+    def test_extract_detailed_requirements_scripts_build(self, client):
+        data = {
+            "scripts": {"install": "node-gyp rebuild"},
+            "dependencies": {},
+        }
+        result = client._extract_detailed_requirements(data)
+        assert result["build_tools_required"] is True
+
+    # === _extract_detailed_requirements: deps trigger native (lines 802-808)
+    def test_extract_detailed_requirements_native_deps(self, client):
+        data = {
+            "dependencies": {"nan": "^2.0.0"},
+            "scripts": {},
+        }
+        result = client._extract_detailed_requirements(data)
+        assert result["build_tools_required"] is True
+        assert result["python_required"] is True
+        assert "nan" in result["native_modules"]
+
+    # === _version_matches_requirement: * operator (line 878)
+    def test_version_matches_requirement_star(self, client):
+        req = client._parse_version_requirement("*")
+        assert client._version_matches_requirement("1.0.0", req) is True
+
+    # === _version_matches_requirement: ^ with major > 0 (line 889)
+    def test_version_matches_requirement_caret_major(self, client):
+        req = client._parse_version_requirement("^4.0.0")
+        assert client._version_matches_requirement("4.2.0", req) is True
+        assert client._version_matches_requirement("5.0.0", req) is False
+
+    # === _version_matches_requirement: ^ with major=0, minor>0 (lines 890-891)
+    def test_version_matches_requirement_caret_zero_minor(self, client):
+        req = client._parse_version_requirement("^0.2.0")
+        assert client._version_matches_requirement("0.2.1", req) is True
+        assert client._version_matches_requirement("0.3.0", req) is False
+
+    # === _version_matches_requirement: ^ with major=0, minor=0 (lines 892-893)
+    def test_version_matches_requirement_caret_zero_zero(self, client):
+        req = client._parse_version_requirement("^0.0.1")
+        assert client._version_matches_requirement("0.0.1", req) is True
+        assert client._version_matches_requirement("0.0.2", req) is False
+
+    # === _version_matches_requirement: ~ operator (lines 895-910)
+    def test_version_matches_requirement_tilde(self, client):
+        req = client._parse_version_requirement("~1.2.0")
+        assert client._version_matches_requirement("1.2.5", req) is True
+        assert client._version_matches_requirement("1.3.0", req) is False
+
+    # === _version_matches_requirement: >= operator (lines 912-919)
+    def test_version_matches_requirement_gte(self, client):
+        req = client._parse_version_requirement(">=4.0.0")
+        assert client._version_matches_requirement("5.0.0", req) is True
+        assert client._version_matches_requirement("3.0.0", req) is False
+
+    # === _version_matches_requirement: <= operator (lines 922-928)
+    def test_version_matches_requirement_lte(self, client):
+        req = client._parse_version_requirement("<=3.0.0")
+        assert client._version_matches_requirement("2.0.0", req) is True
+        assert client._version_matches_requirement("4.0.0", req) is False
+
+    # === _version_matches_requirement: exact match (lines 930-937)
+    def test_version_matches_requirement_exact(self, client):
+        req = client._parse_version_requirement("1.0.0")
+        assert client._version_matches_requirement("1.0.0", req) is True
+        assert client._version_matches_requirement("1.0.1", req) is False
+
+    # === _version_matches_requirement: invalid version string (line 875)
+    def test_version_matches_requirement_invalid_version(self, client):
+        req = client._parse_version_requirement("^1.0.0")
+        assert client._version_matches_requirement("not-a-version", req) is False
+
+    # === _version_matches_requirement: exception caught (lines 939-940)
+    def test_version_matches_requirement_exception(self, client):
+        req = client._parse_version_requirement("^1.0.0")
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=ValueError("oops")):
+            assert client._version_matches_requirement("1.0.0", req) is False
+
+    # === _check_os_compatibility: blocked (line 960)
+    def test_check_os_compatibility_blocked(self, client):
+        assert client._check_os_compatibility("win32", ["!win32", "linux"]) is False
+
+    # === _check_os_compatibility: allowed list not matched (lines 962-963)
+    def test_check_os_compatibility_allowed_not_matched(self, client):
+        assert client._check_os_compatibility("win32", ["linux", "darwin"]) is False
+
+    # === _check_os_compatibility: any (lines 953-954)
+    def test_check_os_compatibility_any(self, client):
+        assert client._check_os_compatibility("win32", ["any"]) is True
+
+    # === _check_os_compatibility: empty list (line 953)
+    def test_check_os_compatibility_empty(self, client):
+        assert client._check_os_compatibility("linux", []) is True
+
+    # === _check_cpu_compatibility: blocked (line 975)
+    def test_check_cpu_compatibility_blocked(self, client):
+        assert client._check_cpu_compatibility("x64", ["!x64", "arm64"]) is False
+
+    # === _check_cpu_compatibility: allowed list not matched (lines 977-978)
+    def test_check_cpu_compatibility_allowed_not_matched(self, client):
+        assert client._check_cpu_compatibility("s390x", ["x64", "arm64"]) is False
+
+    # === _check_cpu_compatibility: any (lines 968-969)
+    def test_check_cpu_compatibility_any(self, client):
+        assert client._check_cpu_compatibility("x64", ["any"]) is True
+
+    # === _check_cpu_compatibility: empty list (line 968)
+    def test_check_cpu_compatibility_empty(self, client):
+        assert client._check_cpu_compatibility("x64", []) is True
+
+    # === _extract_min_version (line 986)
+    def test_extract_min_version(self, client):
+        assert client._extract_min_version(">=14.0.0") == "14.0.0"
+        assert client._extract_min_version("^1.2") == "1.2"
+        assert client._extract_min_version("*") is None
+
+    # === _extract_publisher: string (line 1034)
+    def test_extract_publisher_string(self, client):
+        result = client._extract_publisher("someuser")
+        assert result["username"] == "someuser"
+
+    # === _extract_publisher: empty string
+    def test_extract_publisher_empty_string(self, client):
+        result = client._extract_publisher("")
+        assert result["username"] == ""
+
+    # === _extract_repository: from GitHub links (lines 1041-1046)
+    def test_extract_repository_from_github_links(self, client):
+        links = {"homepage": "https://github.com/expressjs/express", "repository": None}
+        result = client._extract_repository(links)
+        assert result == "https://github.com/expressjs/express"
+
+    # === _extract_repository: from gitlab links
+    def test_extract_repository_from_gitlab_links(self, client):
+        links = {"bugs": "https://gitlab.com/user/repo/issues", "repository": None}
+        result = client._extract_repository(links)
+        assert result == "https://gitlab.com/user/repo"
+
+    # === _extract_repository: from bitbucket links
+    def test_extract_repository_from_bitbucket_links(self, client):
+        links = {"homepage": "https://bitbucket.org/user/repo", "repository": None}
+        result = client._extract_repository(links)
+        assert result == "https://bitbucket.org/user/repo"
+
+    # === _extract_repository: no match found (lines 1047-1048)
+    def test_extract_repository_no_match(self, client):
+        links = {"homepage": "https://example.com/pkg", "repository": None}
+        result = client._extract_repository(links)
+        assert result is None
+
+    # === _extract_repository_info: string (line 1054)
+    def test_extract_repository_info_string(self, client):
+        result = client._extract_repository_info("https://github.com/user/repo")
+        assert result["type"] == "git"
+        assert result["url"] == "https://github.com/user/repo"
+
+    # === _calculate_quality_score: days between 365-730 (line 700)
+    def test_calculate_quality_score_days_365_730(self, client):
+        info = {
+            "readme": "# README",
+            "time": {"modified": "2025-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 50},
+        }
+        score = client._calculate_quality_score(info, {})
+        assert 0 < score
+
+    # === _calculate_quality_score: weekly > 10000 (line 706)
+    def test_calculate_quality_score_weekly_gt_10000(self, client):
+        info = {
+            "readme": "# README",
+            "time": {"modified": "2020-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 50000},
+        }
+        score = client._calculate_quality_score(info, {})
+        assert 0 < score
+
+    # === _calculate_quality_score: weekly > 1000 (line 708)
+    def test_calculate_quality_score_weekly_gt_1000(self, client):
+        info = {
+            "readme": "# README",
+            "time": {"modified": "2020-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 5000},
+        }
+        score = client._calculate_quality_score(info, {})
+        assert 0 < score
+
+    # === _calculate_quality_score: weekly > 100 (line 710)
+    def test_calculate_quality_score_weekly_gt_100(self, client):
+        info = {
+            "readme": "# README",
+            "time": {"modified": "2020-01-01T00:00:00.000Z"},
+            "downloads": {"weekly": 500},
+        }
+        score = client._calculate_quality_score(info, {})
+        assert 0 < score
+
+    # === _version_matches_requirement: ^ with req_v parse fail (line 886)
+    def test_version_matches_requirement_caret_parse_fail(self, client):
+        from packaging import version as pv
+        call_count = [0]
+        def mock_parse(v):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return None
+            return pv.parse(v)
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
+            req = client._parse_version_requirement("^1.0.0")
+            result = client._version_matches_requirement("1.0.0", req)
+        assert result is False
+
+    # === _version_matches_requirement: ~ with req_v parse fail (line 908)
+    def test_version_matches_requirement_tilde_parse_fail(self, client):
+        from packaging import version as pv
+        call_count = [0]
+        def mock_parse(v):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return None
+            return pv.parse(v)
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
+            req = client._parse_version_requirement("~1.0.0")
+            result = client._version_matches_requirement("1.0.0", req)
+        assert result is False
+
+    # === _version_matches_requirement: >= with req_v parse fail (line 918)
+    def test_version_matches_requirement_gte_parse_fail(self, client):
+        from packaging import version as pv
+        call_count = [0]
+        def mock_parse(v):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return None
+            return pv.parse(v)
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
+            req = client._parse_version_requirement(">=1.0.0")
+            result = client._version_matches_requirement("2.0.0", req)
+        assert result is False
+
+    # === _version_matches_requirement: <= with req_v parse fail (line 927)
+    def test_version_matches_requirement_lte_parse_fail(self, client):
+        from packaging import version as pv
+        call_count = [0]
+        def mock_parse(v):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return None
+            return pv.parse(v)
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
+            req = client._parse_version_requirement("<=2.0.0")
+            result = client._version_matches_requirement("1.0.0", req)
+        assert result is False
+
+    # === _version_matches_requirement: exact with req_v parse fail (line 936)
+    def test_version_matches_requirement_exact_parse_fail(self, client):
+        from packaging import version as pv
+        call_count = [0]
+        def mock_parse(v):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return None
+            return pv.parse(v)
+        with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
+            req = client._parse_version_requirement("1.0.0")
+            result = client._version_matches_requirement("1.0.0", req)
+        assert result is False
+
+    # === _check_os_compatibility: os in allowed list (line 965)
+    def test_check_os_compatibility_in_allowed(self, client):
+        assert client._check_os_compatibility("linux", ["linux", "!win32"]) is True
+
+    # === _check_cpu_compatibility: cpu in allowed list (line 980)
+    def test_check_cpu_compatibility_in_allowed(self, client):
+        assert client._check_cpu_compatibility("x64", ["x64", "!arm64"]) is True

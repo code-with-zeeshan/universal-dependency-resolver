@@ -1,3 +1,4 @@
+"""Module docstring."""
 # In data_sources/__init__.py
 from .pypi_client import PyPIClient
 from .npm_client import NPMClient

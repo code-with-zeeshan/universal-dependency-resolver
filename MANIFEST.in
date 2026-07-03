@@ -4,3 +4,7 @@ prune scripts
 prune desktop
 prune .github
 prune .vscode
+
+include README_PYPI.md
+include alembic.ini
+recursive-include alembic/ *.py *.mako *.ini

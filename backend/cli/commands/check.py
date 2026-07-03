@@ -1,3 +1,4 @@
+"""Module docstring."""
 import asyncio
 import sys
 
@@ -10,9 +11,11 @@ from ..shared import console, err_console, _output_json, PROJECT_ROOT
 
 
 def cmd_check(args):
+    """Cmd check."""
     from backend.core import SystemScanner
 
     async def _check():
+        """Check."""
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -22,6 +25,27 @@ def cmd_check(args):
             progress.add_task("Scanning system...", total=None)
             scanner = SystemScanner()
             info = await scanner.scan_all()
+
+        if args.cuda is not None:
+            if "gpu" not in info:
+                info["gpu"] = {}
+            info["gpu"]["available"] = True
+            info["gpu"]["cuda"] = args.cuda
+        if args.device is not None:
+            if "gpu" not in info:
+                info["gpu"] = {}
+            if args.device == "cpu":
+                info["gpu"]["available"] = False
+                info["gpu"]["cuda"] = ""
+            elif args.device == "cuda":
+                info["gpu"]["available"] = True
+                info["gpu"]["type"] = "cuda"
+                if not info["gpu"].get("cuda"):
+                    info["gpu"]["cuda"] = "12.1"
+            elif args.device == "mps":
+                info["gpu"]["available"] = True
+                info["gpu"]["type"] = "mps"
+                info["gpu"]["cuda"] = ""
 
         if getattr(args, "json", False):
             return _output_json(info, args)

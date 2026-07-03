@@ -1,3 +1,4 @@
+"""Module docstring."""
 # backend/api/routes/system.py
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional, Dict, List, Any
@@ -11,7 +12,7 @@ import logging
 from backend.core.system_scanner import SystemScanner
 from backend.api.dependencies import get_system_scanner, limiter
 from backend.api.auth import get_current_user
-from backend.database.models import User
+from backend.orchestrator.db_service import User
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,6 +25,8 @@ system_scanner = SystemScanner()
 
 # Keep all your existing models
 class SystemRequirement(BaseModel):
+    """System Requirement functionality."""
+
     type: str  # 'gpu', 'cpu', 'os', 'memory', 'disk', 'python', 'compiler'
     minimum: Optional[Dict[str, Any]] = Field(default_factory=dict)
     recommended: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -31,11 +34,15 @@ class SystemRequirement(BaseModel):
 
 
 class SystemCheckRequest(BaseModel):
+    """System Check Request functionality."""
+
     requirements: List[SystemRequirement]
     packages: Optional[List[str]] = None
 
 
 class EnvironmentAnalysis(BaseModel):
+    """Environment Analysis functionality."""
+
     filename: str
     type: str
     packages: List[Dict[str, Any]]
@@ -54,7 +61,7 @@ async def get_system_info(
     detailed: bool = False,
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Get current system information"""
+    """Get current system information."""
     try:
         info = await scanner.scan_all()
 
@@ -94,7 +101,7 @@ async def check_system_compatibility(
     scanner: SystemScanner = Depends(get_system_scanner),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Check if system meets specified requirements"""
+    """Check if system meets specified requirements."""
     try:
         system_info = await scanner.scan_all()
         results: Dict[str, Any] = {
@@ -134,7 +141,7 @@ async def check_system_compatibility(
 def _check_requirement_comprehensive(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Comprehensively check if system meets a specific requirement"""
+    """Comprehensively check if system meets a specific requirement."""
     result: Dict[str, Any] = {
         "type": requirement.type,
         "status": "pass",
@@ -169,7 +176,7 @@ def _check_requirement_comprehensive(
 def _check_gpu_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check GPU requirements"""
+    """Check GPU requirements."""
     result: Dict[str, Any] = {"details": {}}
 
     if not system_info["gpu"]["available"]:
@@ -229,7 +236,7 @@ def _check_gpu_requirement(
 def _check_cpu_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check CPU requirements"""
+    """Check CPU requirements."""
     result: Dict[str, Any] = {"details": {}}
 
     cpu_info = system_info["cpu"]
@@ -274,7 +281,7 @@ def _check_cpu_requirement(
 def _check_memory_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check memory requirements"""
+    """Check memory requirements."""
     import psutil
 
     result: Dict[str, Any] = {"details": {}}
@@ -315,7 +322,7 @@ def _check_memory_requirement(
 def _check_disk_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check disk space requirements"""
+    """Check disk space requirements."""
     import psutil
 
     result: Dict[str, Any] = {"details": {}}
@@ -344,7 +351,7 @@ def _check_disk_requirement(
 def _check_os_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check OS requirements"""
+    """Check OS requirements."""
     result: Dict[str, Any] = {"details": {}}
 
     os_info = system_info["platform"]
@@ -373,7 +380,7 @@ def _check_os_requirement(
 def _check_python_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check Python requirements"""
+    """Check Python requirements."""
     result: Dict[str, Any] = {"details": {}}
 
     python_info = system_info["runtime_versions"].get("python", {})
@@ -398,7 +405,7 @@ def _check_python_requirement(
 def _check_compiler_requirement(
     system_info: Dict[str, Any], requirement: SystemRequirement
 ) -> Dict[str, Any]:
-    """Check compiler requirements"""
+    """Check compiler requirements."""
     result: Dict[str, Any] = {"details": {}}
 
     if requirement.minimum:
@@ -419,7 +426,7 @@ def _check_compiler_requirement(
 
 
 def _extract_python_version_requirement(content: str) -> Optional[str]:
-    """Extract Python version requirement from requirements.txt"""
+    """Extract Python version requirement from requirements.txt."""
     for line in content.split("\n"):
         line = line.strip()
         if line.startswith("#") and "python" in line.lower():
@@ -434,8 +441,7 @@ def _extract_python_version_requirement(content: str) -> Optional[str]:
 async def _analyze_package_requirements(
     analysis: EnvironmentAnalysis,
 ) -> EnvironmentAnalysis:
-    """Analyze packages for system requirements and conflicts"""
-
+    """Analyze packages for system requirements and conflicts."""
     # Known packages with special requirements
     gpu_packages = {
         "tensorflow-gpu",
@@ -501,7 +507,7 @@ async def _analyze_package_requirements(
 
 
 def _detect_package_conflicts(packages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Detect potential package conflicts"""
+    """Detect potential package conflicts."""
     conflicts = []
 
     # Known conflicting packages
@@ -527,7 +533,7 @@ def _detect_package_conflicts(packages: List[Dict[str, Any]]) -> List[Dict[str, 
 
 
 async def _estimate_installation_size(packages: List[Dict[str, Any]]) -> int:
-    """Estimate total installation size in MB"""
+    """Estimate total installation size in MB."""
     # This would ideally fetch actual package sizes
     # For now, use rough estimates
 
@@ -561,7 +567,7 @@ async def _estimate_installation_size(packages: List[Dict[str, Any]]) -> int:
 
 
 async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
-    """Get detailed GPU information using nvidia-smi"""
+    """Get detailed GPU information using nvidia-smi."""
     gpu_details = []
 
     try:
@@ -624,7 +630,7 @@ async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
 
 
 def _check_gpu_compute_capabilities() -> Dict[str, Any]:
-    """Check GPU compute capabilities for various frameworks"""
+    """Check GPU compute capabilities for various frameworks."""
     capabilities: Dict[str, Any] = {}
 
     try:
@@ -655,7 +661,7 @@ def _check_gpu_compute_capabilities() -> Dict[str, Any]:
 
 
 def _check_gpu_framework_support() -> Dict[str, Any]:
-    """Check which deep learning frameworks can use the GPU"""
+    """Check which deep learning frameworks can use the GPU."""
     support: Dict[str, Any] = {}
 
     frameworks = {
@@ -677,7 +683,7 @@ def _check_gpu_framework_support() -> Dict[str, Any]:
 
 
 async def _check_docker() -> Dict[str, Any]:
-    """Check Docker installation and version"""
+    """Check Docker installation and version."""
     try:
         docker_info: Dict[str, Any]
         result = subprocess.run(
@@ -716,7 +722,7 @@ async def _check_docker() -> Dict[str, Any]:
 
 
 async def _check_rust() -> Dict[str, Any]:
-    """Check Rust installation"""
+    """Check Rust installation."""
     rust_info: Dict[str, Any] = {"available": False}
 
     try:
@@ -752,7 +758,7 @@ async def _check_rust() -> Dict[str, Any]:
 
 
 async def _check_go() -> Dict[str, Any]:
-    """Check Go installation"""
+    """Check Go installation."""
     try:
         result = subprocess.run(
             ["go", "version"], capture_output=True, text=True, timeout=5
@@ -785,7 +791,7 @@ async def _check_go() -> Dict[str, Any]:
 
 
 async def _check_julia() -> Dict[str, Any]:
-    """Check Julia installation"""
+    """Check Julia installation."""
     try:
         result = subprocess.run(
             ["julia", "--version"], capture_output=True, text=True, timeout=5
@@ -800,7 +806,7 @@ async def _check_julia() -> Dict[str, Any]:
 
 
 async def _check_r() -> Dict[str, Any]:
-    """Check R installation"""
+    """Check R installation."""
     try:
         result = subprocess.run(
             ["R", "--version"], capture_output=True, text=True, timeout=5
@@ -819,7 +825,7 @@ async def _check_r() -> Dict[str, Any]:
 
 
 async def _check_dotnet() -> Dict[str, Any]:
-    """Check .NET installation"""
+    """Check .NET installation."""
     try:
         result = subprocess.run(
             ["dotnet", "--info"], capture_output=True, text=True, timeout=5
@@ -851,7 +857,7 @@ async def _check_dotnet() -> Dict[str, Any]:
 
 
 async def _check_ruby() -> Dict[str, Any]:
-    """Check Ruby installation"""
+    """Check Ruby installation."""
     try:
         result = subprocess.run(
             ["ruby", "--version"], capture_output=True, text=True, timeout=5
@@ -876,7 +882,7 @@ async def _check_ruby() -> Dict[str, Any]:
 
 
 async def _check_php() -> Dict[str, Any]:
-    """Check PHP installation"""
+    """Check PHP installation."""
     try:
         result = subprocess.run(
             ["php", "--version"], capture_output=True, text=True, timeout=5
@@ -904,7 +910,7 @@ async def _check_php() -> Dict[str, Any]:
 
 
 async def _check_kotlin() -> Dict[str, Any]:
-    """Check Kotlin installation"""
+    """Check Kotlin installation."""
     try:
         result = subprocess.run(
             ["kotlin", "-version"], capture_output=True, text=True, timeout=5
@@ -919,7 +925,7 @@ async def _check_kotlin() -> Dict[str, Any]:
 
 
 async def _check_scala() -> Dict[str, Any]:
-    """Check Scala installation"""
+    """Check Scala installation."""
     try:
         result = subprocess.run(
             ["scala", "-version"], capture_output=True, text=True, timeout=5
@@ -937,7 +943,7 @@ async def _check_scala() -> Dict[str, Any]:
 
 
 def _get_npm_version() -> Optional[str]:
-    """Get npm version"""
+    """Get npm version."""
     try:
         result = subprocess.run(
             ["npm", "--version"], capture_output=True, text=True, timeout=5
@@ -952,7 +958,7 @@ def _get_npm_version() -> Optional[str]:
 
 
 async def _get_python_packages() -> List[Dict[str, Any]]:
-    """Get list of installed Python packages"""
+    """Get list of installed Python packages."""
     try:
         result = subprocess.run(
             ["pip", "list", "--format=json"], capture_output=True, text=True, timeout=10
@@ -967,7 +973,7 @@ async def _get_python_packages() -> List[Dict[str, Any]]:
 
 
 async def _get_npm_global_packages() -> List[str]:
-    """Get list of globally installed npm packages"""
+    """Get list of globally installed npm packages."""
     try:
         result = subprocess.run(
             ["npm", "list", "-g", "--depth=0"],
@@ -986,7 +992,7 @@ async def _get_npm_global_packages() -> List[str]:
 
 
 def _detect_virtual_env() -> Dict[str, Any]:
-    """Detect if running in a virtual environment"""
+    """Detect if running in a virtual environment."""
     import sys
     import os
 
@@ -1018,7 +1024,7 @@ def _detect_virtual_env() -> Dict[str, Any]:
 async def _check_package_requirements(
     packages: List[str], system_info: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Check system requirements for specific packages"""
+    """Check system requirements for specific packages."""
     results: Dict[str, Any] = {}
 
     # This would ideally query package metadata
@@ -1060,7 +1066,7 @@ async def _check_package_requirements(
 
 
 def _is_compatible_architecture(system_arch: str, required_arch: str) -> bool:
-    """Check if architectures are compatible"""
+    """Check if architectures are compatible."""
     arch_aliases = {
         "x86_64": ["x86_64", "amd64", "x64"],
         "i386": ["i386", "i686", "x86"],
@@ -1084,7 +1090,7 @@ def _is_compatible_architecture(system_arch: str, required_arch: str) -> bool:
 
 
 def _is_compatible_os(system_os: str, required_os: str) -> bool:
-    """Check if OS is compatible"""
+    """Check if OS is compatible."""
     os_aliases = {
         "linux": ["linux", "gnu/linux"],
         "darwin": ["darwin", "macos", "osx"],
@@ -1109,7 +1115,7 @@ def _is_compatible_os(system_os: str, required_os: str) -> bool:
 def _is_compatible_os_version(
     os_name: str, system_version: str, required_version: str
 ) -> bool:
-    """Check if OS version is compatible"""
+    """Check if OS version is compatible."""
     try:
         if os_name.lower() == "darwin":  # macOS
             # Convert macOS version format
@@ -1133,7 +1139,7 @@ def _is_compatible_os_version(
 
 
 def _is_compatible_version(installed: str, required: str) -> bool:
-    """Check if installed version satisfies requirement"""
+    """Check if installed version satisfies requirement."""
     try:
         from packaging import version
         from packaging.specifiers import SpecifierSet
@@ -1148,7 +1154,7 @@ def _is_compatible_version(installed: str, required: str) -> bool:
 
 
 def _get_compiler_version(compiler: str) -> Optional[str]:
-    """Get compiler version"""
+    """Get compiler version."""
     try:
         if compiler == "gcc":
             result = subprocess.run(
@@ -1181,7 +1187,7 @@ def _get_compiler_version(compiler: str) -> Optional[str]:
 
 
 async def _benchmark_cpu() -> Dict[str, Any]:
-    """Run CPU benchmark"""
+    """Run CPU benchmark."""
     import time
 
     results: Dict[str, Any] = {}
@@ -1224,7 +1230,7 @@ async def _benchmark_cpu() -> Dict[str, Any]:
 
 
 def _benchmark_memory() -> Dict[str, Any]:
-    """Run memory benchmark"""
+    """Run memory benchmark."""
     import psutil
 
     memory = psutil.virtual_memory()
@@ -1243,7 +1249,7 @@ def _benchmark_memory() -> Dict[str, Any]:
 
 
 async def _benchmark_disk() -> Dict[str, Any]:
-    """Run disk benchmark"""
+    """Run disk benchmark."""
     import psutil
     import tempfile
     import time
@@ -1290,7 +1296,7 @@ async def _benchmark_disk() -> Dict[str, Any]:
 
 
 async def _benchmark_gpu() -> Dict[str, Any]:
-    """Run GPU benchmark"""
+    """Run GPU benchmark."""
     results: Dict[str, Any] = {}
 
     try:
@@ -1361,7 +1367,7 @@ async def _benchmark_gpu() -> Dict[str, Any]:
 
 
 async def _benchmark_cpu_multicore() -> Dict[str, Any]:
-    """Run multi-core CPU benchmark"""
+    """Run multi-core CPU benchmark."""
     import concurrent.futures
     import time
     import multiprocessing
@@ -1372,6 +1378,7 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
         return {"error": "numpy not installed", "skipped": True}
 
     def cpu_task(size=1000):
+        """Cpu task."""
         a = np.random.rand(size, size)
         b = np.random.rand(size, size)
         c = np.dot(a, b)
@@ -1404,7 +1411,7 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
 
 
 async def _benchmark_network() -> Dict[str, Any]:
-    """Run network benchmark"""
+    """Run network benchmark."""
     import aiohttp
     import time
 
@@ -1443,7 +1450,7 @@ async def _benchmark_network() -> Dict[str, Any]:
 
 
 async def _benchmark_python() -> Dict[str, Any]:
-    """Run Python-specific benchmarks"""
+    """Run Python-specific benchmarks."""
     import time
 
     results: Dict[str, Any] = {}
@@ -1479,7 +1486,7 @@ async def _benchmark_python() -> Dict[str, Any]:
 
 
 def _compare_benchmark_results(benchmarks: Dict[str, Any]) -> Dict[str, Any]:
-    """Compare benchmark results with typical values"""
+    """Compare benchmark results with typical values."""
     typical_values: Dict[str, Any] = {
         "cpu": {
             "matrix_multiply_single": {

@@ -161,3 +161,118 @@ class TestCocoaPodsClient:
         ):
             deps = await client.get_dependencies("nonexistent", "1.0")
         assert deps == {}
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_without_version_fetches_info(self, client):
+        with patch.object(
+            client, "get_package_info_async", new_callable=AsyncMock, return_value={"name": "Alamofire", "version": "5.7.1"}
+        ):
+            with patch.object(
+                client, "_get_podspec", new_callable=AsyncMock, return_value={"dependencies": {"UIKit": ["~> 1.0"]}}
+            ):
+                deps = await client.get_dependencies("Alamofire")
+        assert isinstance(deps, dict)
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_without_version_returns_empty_on_no_info(self, client):
+        with patch.object(
+            client, "get_package_info_async", new_callable=AsyncMock, return_value=None
+        ):
+            deps = await client.get_dependencies("nonexistent")
+        assert deps == {}
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_async_no_latest_version(self, client):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"name": "Foo", "versions": []}
+        ):
+            result = await client.get_package_info_async("Foo")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_async_no_versions_key(self, client):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"name": "Foo"}
+        ):
+            result = await client.get_package_info_async("Foo")
+        assert result is None
+
+    def test_parse_dependencies_with_subspecs(self, client):
+        spec_data = {
+            "dependencies": {"UIKit": ["~> 1.0"]},
+            "subspecs": [
+                {
+                    "name": "Core",
+                    "dependencies": {"Foundation": ["~> 1.0"]},
+                }
+            ],
+        }
+        result = client._parse_dependencies(spec_data)
+        assert len(result["dependencies"]) == 2
+        assert result["dependencies"][1]["subspec"] == "Core"
+
+    def test_parse_dependencies_with_test_spec(self, client):
+        spec_data = {
+            "dependencies": {"UIKit": ["~> 1.0"]},
+            "test_spec": {
+                "dependencies": {"Quick": ["~> 2.0"]},
+            },
+        }
+        result = client._parse_dependencies(spec_data)
+        assert len(result["dependencies"]) == 1
+        assert len(result["development_dependencies"]) == 1
+        assert result["development_dependencies"][0]["name"] == "Quick"
+
+    def test_parse_dependencies_test_spec_not_dict(self, client):
+        spec_data = {
+            "test_spec": "some_string",
+        }
+        result = client._parse_dependencies(spec_data)
+        assert result == {"dependencies": [], "development_dependencies": []}
+
+    def test_parse_version_spec_string(self, client):
+        assert client._parse_version_spec("~> 1.0") == "~> 1.0"
+
+    def test_parse_version_spec_list(self, client):
+        assert client._parse_version_spec([">= 1.0", "< 2.0"]) == ">= 1.0, < 2.0"
+
+    def test_parse_version_spec_dict(self, client):
+        assert client._parse_version_spec({"git": "https://example.com"}) == str({"git": "https://example.com"})
+
+    def test_parse_version_spec_else(self, client):
+        assert client._parse_version_spec(42) == ""
+
+    def test_extract_system_requirements_with_swift_version(self, client):
+        spec_data = {"platforms": {"ios": "10.0"}, "swift_version": "5.0"}
+        reqs = client._extract_system_requirements(spec_data)
+        assert reqs["swift"] == {"version": "5.0"}
+
+    def test_extract_system_requirements_with_swift_versions(self, client):
+        spec_data = {"swift_versions": ["5.3", "5.4"]}
+        reqs = client._extract_system_requirements(spec_data)
+        assert reqs["swift"] == {"versions": ["5.3", "5.4"]}
+
+    def test_extract_system_requirements_frameworks(self, client):
+        spec_data = {"frameworks": ["UIKit", "Foundation"]}
+        reqs = client._extract_system_requirements(spec_data)
+        assert "frameworks" in reqs
+
+    def test_extract_system_requirements_libraries(self, client):
+        spec_data = {"libraries": ["xml2", "z"]}
+        reqs = client._extract_system_requirements(spec_data)
+        assert "libraries" in reqs
+
+    def test_extract_system_requirements_compiler_flags(self, client):
+        spec_data = {"compiler_flags": "-ObjC"}
+        reqs = client._extract_system_requirements(spec_data)
+        assert "compiler_flags" in reqs
+
+    def test_extract_system_requirements_requires_arc(self, client):
+        spec_data = {"requires_arc": True}
+        reqs = client._extract_system_requirements(spec_data)
+        assert reqs["requires_arc"] is True
+
+    def test_extract_system_requirements_platforms_not_dict(self, client):
+        spec_data = {"platforms": ["ios"]}
+        reqs = client._extract_system_requirements(spec_data)
+        assert "ios_deployment_target" not in reqs

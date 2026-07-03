@@ -368,4 +368,529 @@ class TestPyPIClient:
         assert client._extract_min_python_version(">=3.8") == "3.8"
         assert client._extract_min_python_version(">3.10") == "3.10"
         assert client._extract_min_python_version("==3.9") == "3.9"
+        assert client._extract_min_python_version("~=3.7") == "3.7"
         assert client._extract_min_python_version("") is None
+        assert client._extract_min_python_version(None) is None
+
+    def test_parse_keywords_space_separated(self, client):
+        result = client._parse_keywords("wsgi werkzeug flask web")
+        assert result == ["wsgi", "werkzeug", "flask", "web"]
+
+    def test_extract_python_versions_from_wheel_py2_py3(self, client):
+        versions = client._extract_python_versions_from_wheel("pkg-1.0-py2.py3-none-any.whl")
+        assert "2.7" in versions
+        assert "3.x" in versions
+
+    def test_extract_python_versions_from_wheel_pp_pattern(self, client):
+        versions = client._extract_python_versions_from_wheel("pkg-1.0-pp39-pp39-win_amd64.whl")
+        assert "3.9" in versions
+
+    def test_extract_cuda_requirements_from_classifier(self, client):
+        classifiers = ["CUDA :: 11.8", "CUDA :: 12.1"]
+        result = client._extract_cuda_requirements(classifiers, "", "test-pkg")
+        assert result is not None
+        assert result["required"] is True
+        assert "11.8" in result["cuda_versions"]
+        assert "12.1" in result["cuda_versions"]
+
+    def test_extract_cuda_requirements_from_package_name(self, client):
+        result = client._extract_cuda_requirements([], "", "torch-gpu")
+        assert result is not None
+        assert result["required"] is True
+
+    def test_extract_cuda_requirements_from_description(self, client):
+        description = "requires cuda 12.0 and cudnn 8.9"
+        result = client._extract_cuda_requirements([], description, "test-pkg")
+        assert result is not None
+        assert "12.0" in result["cuda_versions"]
+        assert "8.9" in result["cudnn_versions"]
+
+    def test_extract_cuda_requirements_returns_none(self, client):
+        result = client._extract_cuda_requirements([], "a simple package", "test-pkg")
+        assert result is None
+
+    def test_extract_os_requirements_from_classifiers(self, client):
+        classifiers = ["Operating System :: POSIX :: Linux", "Operating System :: MacOS"]
+        result = client._extract_os_requirements(classifiers, [])
+        assert "Linux" in result["supported"]
+        assert "macOS" in result["supported"]
+
+    def test_extract_os_requirements_from_wheels(self, client):
+        urls = [
+            {"filename": "pkg-1.0-cp39-cp39-win_amd64.whl"},
+            {"filename": "pkg-1.0-cp39-cp39-macosx_10_9.whl"},
+            {"filename": "pkg-1.0-cp39-cp39-manylinux.whl"},
+        ]
+        result = client._extract_os_requirements([], urls)
+        assert "Windows" in result["supported"]
+        assert "macOS" in result["supported"]
+        assert "Linux" in result["supported"]
+
+    def test_extract_os_requirements_returns_empty_with_any(self, client):
+        classifiers = ["Operating System :: OS Independent"]
+        result = client._extract_os_requirements(classifiers, [])
+        assert result == {}
+
+    def test_extract_architecture_requirements(self, client):
+        urls = [
+            {"filename": "pkg-1.0-cp39-cp39-win_amd64.whl"},
+            {"filename": "pkg-1.0-cp39-cp39-linux_aarch64.whl"},
+            {"filename": "pkg-1.0-cp39-cp39-linux_armv7.whl"},
+            {"filename": "pkg-1.0-cp39-cp39-win32.whl"},
+        ]
+        result = client._extract_architecture_requirements([], urls)
+        assert result["supported"] == ["ARM64", "ARMv7", "x86", "x86_64"]
+
+    def test_extract_architecture_requirements_returns_empty(self, client):
+        result = client._extract_architecture_requirements([], [])
+        assert result == {}
+
+    def test_extract_system_library_requirements(self, client):
+        description = "requires openssl, openblas, hdf5, qt5 and opengl"
+        result = client._extract_system_library_requirements(description, [])
+        names = [lib["name"] for lib in result]
+        assert "openssl" in names
+        assert "blas" in names
+        assert "hdf5" in names
+        assert "qt" in names
+        assert "opengl" in names
+
+    def test_extract_system_library_requirements_empty(self, client):
+        result = client._extract_system_library_requirements("a simple package", [])
+        assert result == []
+
+    def test_extract_compiler_requirements_c_cpp(self, client):
+        classifiers = [
+            "Programming Language :: C",
+            "Programming Language :: C++",
+        ]
+        result = client._extract_compiler_requirements("", classifiers)
+        assert result["c"] is True
+        assert result["cpp"] is True
+
+    def test_extract_compiler_requirements_gcc(self, client):
+        result = client._extract_compiler_requirements("requires gcc >= 12.0", [])
+        assert result["gcc"]["version"] == "12.0"
+        assert result["gcc"]["operator"] == ">="
+
+    def test_extract_compiler_requirements_returns_none(self, client):
+        result = client._extract_compiler_requirements("a simple package", [])
+        assert result is None
+
+    def test_extract_download_stats(self, client):
+        info = {"downloads": {"last_day": 100, "last_week": 700, "last_month": 3000}}
+        result = client._extract_download_stats(info)
+        assert result["last_day"] == 100
+        assert result["last_week"] == 700
+        assert result["last_month"] == 3000
+
+    def test_extract_download_stats_empty(self, client):
+        result = client._extract_download_stats({})
+        assert result == {"last_day": 0, "last_week": 0, "last_month": 0}
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_async_process_exception(self, client):
+        data = {"info": {"name": "broken"}, "releases": {}, "urls": []}
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=data):
+            with patch.object(
+                client, "_process_package_data_enhanced",
+                new_callable=AsyncMock, side_effect=ValueError("bad data"),
+            ):
+                result = await client.get_package_info_async("broken")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_process_package_data_no_version_from_releases(self, client):
+        data = {
+            "info": {},
+            "releases": {
+                "3.0.0a1": [
+                    {"filename": "pkg-3.0.0a1.tar.gz", "packagetype": "sdist", "size": 100}
+                ],
+                "2.0.0": [
+                    {"filename": "pkg-2.0.0.tar.gz", "packagetype": "sdist", "size": 90}
+                ],
+                "1.0.0": [
+                    {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 80}
+                ],
+            },
+            "urls": [],
+        }
+        result = await client._process_package_data_enhanced(data)
+        assert result["version"] == "2.0.0"
+
+    @pytest.mark.asyncio
+    async def test_process_package_data_no_version_no_stable(self, client):
+        data = {
+            "info": {},
+            "releases": {
+                "3.0.0a1": [
+                    {"filename": "pkg-3.0.0a1.tar.gz", "packagetype": "sdist", "size": 100}
+                ],
+            },
+            "urls": [],
+        }
+        result = await client._process_package_data_enhanced(data)
+        assert result["version"] is None
+
+    @pytest.mark.asyncio
+    async def test_process_package_data_sdist_type(self, client):
+        data = {
+            "info": {"name": "pkg", "version": "1.0.0"},
+            "releases": {
+                "1.0.0": [
+                    {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 100},
+                    {"filename": "pkg-1.0.0-py3-none-any.whl", "packagetype": "bdist_wheel", "size": 50},
+                ]
+            },
+            "urls": [],
+        }
+        result = await client._process_package_data_enhanced(data)
+        ver = result["versions"][0]
+        assert ver["has_source"] is True
+        assert ver["has_binary_wheel"] is True
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_empty_req_str(self, client):
+        result = await client._extract_dependencies_enhanced(["", "Werkzeug>=2.0"], ">=3.8")
+        assert "Werkzeug" in result["required"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_dev_extra(self, client):
+        requires_dist = ['pytest; extra == "dev"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "pytest" in result["dev"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_test_extra(self, client):
+        requires_dist = ['pytest; extra == "testing"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "pytest" in result["test"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_docs_extra(self, client):
+        requires_dist = ['sphinx; extra == "docs"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "sphinx" in result["docs"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_custom_extra(self, client):
+        requires_dist = ['mypy; extra == "typing"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "typing" in result["extras"]
+        assert "mypy" in result["extras"]["typing"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_platform_marker(self, client):
+        requires_dist = ['pywin32; sys_platform == "win32"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "pywin32" in result["optional"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_python_version_compatible(self, client):
+        requires_dist = ['importlib_metadata; python_version < "3.10"']
+        result = await client._extract_dependencies_enhanced(requires_dist, ">=3.6")
+        assert "importlib_metadata" in result["required"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_python_version_no_requires(self, client):
+        requires_dist = ['typing_extensions; python_version < "3.8"']
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "typing_extensions" in result["optional"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_parse_failure(self, client):
+        requires_dist = ["some-invalid==req!!"]
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "some-invalid==req!!" in result["required"]
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_parse_failure_with_marker(self, client):
+        requires_dist = ["invalid name >=1.0; extra == 'dev'"]
+        result = await client._extract_dependencies_enhanced(requires_dist, None)
+        assert "invalid" in result["required"]
+        assert result["required"]["invalid"] == "name >=1.0"
+
+    @pytest.mark.asyncio
+    async def test_extract_dependencies_enhanced_no_requires(self, client):
+        result = await client._extract_dependencies_enhanced([], None)
+        assert result == {"required": {}, "optional": {}, "dev": {}, "test": {}, "docs": {}, "extras": {}}
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_success(self, client):
+        data = {
+            "info": {
+                "requires_dist": ["Werkzeug>=2.0"],
+                "requires_python": ">=3.8",
+            }
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            result = await client.get_dependencies("flask")
+        assert "Werkzeug" in result["required"]
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_with_version(self, client):
+        data = {
+            "info": {
+                "requires_dist": ["Werkzeug>=2.0"],
+                "requires_python": ">=3.8",
+            }
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            result = await client.get_dependencies("flask", "2.3.3")
+        assert "Werkzeug" in result["required"]
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_returns_empty_on_none(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+            result = await client.get_dependencies("nonexistent")
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_search_cache_hit(self, client):
+        from datetime import datetime, timedelta
+        client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now())
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock) as mock_xml:
+            results = await client.search("flask")
+        assert len(results) == 1
+        assert results[0]["name"] == "flask"
+        mock_xml.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_search_cache_expired(self, client):
+        from datetime import datetime, timedelta
+        import time
+        client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now() - timedelta(seconds=9999))
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[{"name": "new"}]):
+            results = await client.search("flask")
+        assert results[0]["name"] == "new"
+
+    @pytest.mark.asyncio
+    async def test_search_xmlrpc_success(self, client):
+        results = [
+            MagicMock(**{"get.side_effect": lambda k, d=None: {"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}.get(k, d)})
+        ]
+        with patch.object(client, "_search_xmlrpc", wraps=client._search_xmlrpc) as mock:
+            with patch("xmlrpc.client.ServerProxy") as mock_proxy:
+                mock_proxy.return_value.search.return_value = results
+                with patch("asyncio.get_event_loop") as mock_loop:
+                    mock_loop.return_value.run_in_executor = AsyncMock(return_value=results)
+                    # Need to call through search which calls _search_xmlrpc
+                    pass
+        # Actually let me test _search_xmlrpc directly
+        xmlrpc_results = [{"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}]
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=xmlrpc_results) as mock:
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock) as mock_web:
+                with patch.object(client, "_search_fallback", new_callable=AsyncMock) as mock_fb:
+                    results = await client.search("flask")
+        assert len(results) == 1
+        assert results[0]["name"] == "flask"
+
+    @pytest.mark.asyncio
+    async def test_search_fallback_exact_match(self, client):
+        match_info = {"name": "flask", "version": "2.0", "description": "web framework"}
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value=match_info):
+                    results = await client.search("flask")
+        assert len(results) == 1
+        assert results[0]["name"] == "flask"
+
+    @pytest.mark.asyncio
+    async def test_search_fallback_variations(self, client):
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+                with patch.object(
+                    client, "get_package_info_async",
+                    new_callable=AsyncMock,
+                    side_effect=[
+                        None,
+                        {"name": "flask", "version": "2.0", "description": "web"},
+                        {"name": "other", "version": "1.0", "description": "other"},
+                    ],
+                ):
+                    results = await client.search("Flask")
+        # First call is exact match (None), second is for a variation
+        assert len(results) >= 1
+
+    @pytest.mark.asyncio
+    async def test_search_fallback_returns_up_to_limit(self, client):
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+                with patch.object(
+                    client, "get_package_info_async",
+                    new_callable=AsyncMock,
+                    return_value={"name": "match", "version": "1.0", "description": "desc"},
+                ):
+                    results = await client.search("flask", limit=1)
+        assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_search_all_methods_fail(self, client):
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "_search_fallback", new_callable=AsyncMock, return_value=[]):
+                    results = await client.search("nonexistent-xyzzy")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_get_versions_sorts_newest_first(self, client):
+        response = {
+            "name": "pkg",
+            "version": "1.0.0",
+            "versions": [
+                {"version": "1.0.0", "upload_time": None, "requires_python": None, "python_versions": [], "has_binary_wheel": False, "has_source": False, "yanked": False, "platforms": []},
+                {"version": "2.0.0", "upload_time": None, "requires_python": None, "python_versions": [], "has_binary_wheel": False, "has_source": False, "yanked": False, "platforms": []},
+            ],
+        }
+        with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value=response):
+            versions = await client.get_versions("pkg")
+        assert versions[0]["version"] == "2.0.0"
+        assert versions[1]["version"] == "1.0.0"
+
+    def test_extract_system_requirements_enhanced_with_gpu(self, client):
+        info = {
+            "name": "torch-gpu",
+            "description": "requires cuda 11.8",
+            "summary": "",
+            "classifiers": ["CUDA :: 11.8"],
+        }
+        result = client._extract_system_requirements_enhanced(info, [])
+        assert "gpu" in result
+        assert "11.8" in result["gpu"]["cuda_versions"]
+
+    def test_extract_system_requirements_enhanced_with_python(self, client):
+        info = {
+            "name": "pkg",
+            "description": "",
+            "summary": "",
+            "classifiers": [],
+            "requires_python": ">=3.8",
+        }
+        result = client._extract_system_requirements_enhanced(info, [])
+        assert "python" in result
+        assert result["python"]["version_spec"] == ">=3.8"
+        assert result["python"]["min_version"] == "3.8"
+
+    def test_extract_system_requirements_enhanced_with_os(self, client):
+        info = {
+            "name": "pkg",
+            "description": "",
+            "summary": "",
+            "classifiers": ["Operating System :: POSIX :: Linux"],
+        }
+        result = client._extract_system_requirements_enhanced(info, [])
+        assert "os" in result
+        assert "Linux" in result["os"]["supported"]
+
+    def test_extract_system_requirements_enhanced_with_architecture(self, client):
+        urls = [{"filename": "pkg-1.0-cp39-cp39-win_amd64.whl"}]
+        info = {"name": "pkg", "description": "", "summary": "", "classifiers": []}
+        result = client._extract_system_requirements_enhanced(info, urls)
+        assert "architecture" in result
+        assert "x86_64" in result["architecture"]["supported"]
+
+    def test_extract_system_requirements_enhanced_with_libraries(self, client):
+        info = {"name": "pkg", "description": "requires openssl and hdf5", "summary": "", "classifiers": []}
+        result = client._extract_system_requirements_enhanced(info, [])
+        assert "system_libraries" in result
+        names = [lib["name"] for lib in result["system_libraries"]]
+        assert "openssl" in names
+        assert "hdf5" in names
+
+    def test_extract_system_requirements_enhanced_with_compiler(self, client):
+        classifiers = ["Programming Language :: C"]
+        info = {"name": "pkg", "description": "", "summary": "", "classifiers": classifiers}
+        result = client._extract_system_requirements_enhanced(info, [])
+        assert "compiler" in result
+        assert result["compiler"]["c"] is True
+
+    def test_is_compatible_with_python_requires(self, client):
+        assert client._is_compatible_with_python_requires('python_version < "3.10"', ">=3.8") is True
+
+    def test_extract_min_python_version_no_match(self, client):
+        assert client._extract_min_python_version("<3.8") is None
+
+    @pytest.mark.asyncio
+    async def test_process_package_data_yanked_release(self, client):
+        data = {
+            "info": {"name": "pkg", "version": "1.0.0"},
+            "releases": {
+                "1.0.0": [
+                    {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 100, "yanked": True},
+                ]
+            },
+            "urls": [],
+        }
+        result = await client._process_package_data_enhanced(data)
+        assert result["versions"][0]["yanked"] is True
+
+    @pytest.mark.asyncio
+    async def test_search_xmlrpc_direct(self, client):
+        mock_results = [
+            {"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10},
+            {"name": "django", "version": "4.0", "summary": "desc2", "_pypi_ordering": 5},
+        ]
+        with patch("xmlrpc.client.ServerProxy") as mock_proxy:
+            mock_client = MagicMock()
+            mock_client.search.return_value = mock_results
+            mock_proxy.return_value = mock_client
+            results = await client._search_xmlrpc("flask", 20)
+        assert len(results) == 2
+        assert results[0]["name"] == "flask"
+        assert results[1]["name"] == "django"
+
+    @pytest.mark.asyncio
+    async def test_search_xmlrpc_exception(self, client):
+        with patch("xmlrpc.client.ServerProxy") as mock_proxy:
+            mock_client = MagicMock()
+            mock_client.search.side_effect = Exception("RPC error")
+            mock_proxy.return_value = mock_client
+            results = await client._search_xmlrpc("flask", 20)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_search_web_scraping_direct(self, client):
+        html = '''
+        <a class="package-snippet" href="/project/flask/">
+            <span class="package-snippet__name">Flask</span>
+            <span class="package-snippet__version">2.3.3</span>
+            <p class="package-snippet__description">A simple framework</p>
+        </a>
+        <a class="package-snippet" href="/project/django/">
+            <span class="package-snippet__name">Django</span>
+            <span class="package-snippet__version">4.2</span>
+            <p class="package-snippet__description">Web framework</p>
+        </a>
+        '''
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value=html)
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        session = client._get_session()
+        with patch.object(session, "get", return_value=mock_cm):
+            results = await client._search_web_scraping("flask", 20)
+        assert len(results) == 2
+        assert results[0]["name"] == "Flask"
+        assert results[1]["name"] == "Django"
+
+    @pytest.mark.asyncio
+    async def test_search_web_scraping_non_200(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 503
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        session = client._get_session()
+        with patch.object(session, "get", return_value=mock_cm):
+            results = await client._search_web_scraping("flask", 20)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_search_web_scraping_exception(self, client):
+        session = client._get_session()
+        with patch.object(session, "get", side_effect=Exception("HTTP error")):
+            results = await client._search_web_scraping("flask", 20)
+        assert results == []

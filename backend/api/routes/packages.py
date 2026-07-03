@@ -1,3 +1,4 @@
+"""Module docstring."""
 # backend/api/routes/packages.py
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from typing import List, Optional
@@ -9,7 +10,7 @@ from packaging import version
 from backend.core.data_aggregator import DataAggregator, Ecosystem
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
-from backend.database.compatibility_db import CompatibilityDB
+from backend.orchestrator.db_service import CompatibilityDB
 from backend.core.system_scanner import SystemScanner
 from backend.api.dependencies import (
     get_data_aggregator,
@@ -40,7 +41,7 @@ from backend.api.helpers.compatibility import (
     _is_prerelease,
     SystemSpec,
 )
-from backend.database.models import User
+from backend.orchestrator.db_service import User
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -49,6 +50,8 @@ router = APIRouter()
 
 
 class PackageSearchRequest(BaseModel):
+    """Package Search Request functionality."""
+
     query: str
     ecosystems: Optional[List[str]] = None
     limit: int = 20
@@ -64,7 +67,7 @@ async def resolve_dependencies(
     resolver: ConflictResolver = Depends(get_conflict_resolver),
     current_user: User = Depends(get_current_user),
 ):
-    """Resolve dependencies for multiple packages"""
+    """Resolve dependencies for multiple packages."""
     try:
         # Get system info if needed (cached for 5 minutes)
         if resolve_request.auto_detect_system and not resolve_request.system_info:
@@ -79,6 +82,7 @@ async def resolve_dependencies(
 
         # Get package information concurrently
         async def _fetch_pkg_info(pkg):
+            """Fetch pkg info."""
             info = await aggregator.get_package_info(pkg.name, pkg.ecosystem)
             if info is None:
                 logger.warning(f"Package {pkg.name} not found in {pkg.ecosystem}")
@@ -110,12 +114,18 @@ async def export_configuration(
     generator: ExportGenerator = Depends(get_export_generator),
     current_user: User = Depends(get_current_user),
 ):
-    """Export resolved dependencies to various formats"""
+    """Export resolved dependencies to various formats."""
     try:
+        system_info = export_request.system_info
+        if system_info is None:
+            system_info = {}
+        system_info.setdefault("runtime_versions", {"python": {"version": "3.x"}})
+        system_info.setdefault("os", {"system": "Unknown", "release": "", "machine": "unknown"})
+        system_info.setdefault("gpu", {"available": False, "cuda": None})
         output = generator.generate(
             export_request.resolved_packages,
             export_request.format,
-            export_request.system_info,
+            system_info,
             export_request.options,
         )
         return {"status": "success", "format": export_request.format, "content": output}
@@ -132,7 +142,7 @@ async def export_configuration(
 async def get_export_formats(
     request: Request, current_user: User = Depends(get_current_user)
 ):
-    """Get available export formats"""
+    """Get available export formats."""
     try:
         formats = [
             {
@@ -167,7 +177,7 @@ async def search_packages(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
-    """Search for packages across multiple ecosystems"""
+    """Search for packages across multiple ecosystems."""
     try:
         logger.info(f"Searching for packages: query='{q}', ecosystems={ecosystems}")
 
@@ -232,7 +242,7 @@ async def get_package_details(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
-    """Get detailed information about a specific package"""
+    """Get detailed information about a specific package."""
     try:
         logger.info(f"Getting package details: {ecosystem}/{package_name}")
 
@@ -294,7 +304,7 @@ async def get_package_versions(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
-    """Get all available versions of a package"""
+    """Get all available versions of a package."""
     try:
         logger.info(f"Getting versions for: {ecosystem}/{package_name}")
 
@@ -383,7 +393,7 @@ async def get_package_dependencies(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
-    """Get dependencies for a specific package version"""
+    """Get dependencies for a specific package version."""
     try:
         logger.info(
             f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}"
@@ -441,7 +451,7 @@ async def get_package_compatibility(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
-    """Get known compatibility information for a package"""
+    """Get known compatibility information for a package."""
     try:
         logger.info(
             f"Getting compatibility info for: {ecosystem}/{package_name}@{version or 'latest'}"
@@ -494,7 +504,7 @@ async def get_package_compatibility(
 async def get_supported_ecosystems(
     request: Request, current_user: User = Depends(get_current_user)
 ):
-    """Get list of supported package ecosystems with their capabilities"""
+    """Get list of supported package ecosystems with their capabilities."""
     ecosystems = {
         "pypi": {
             "name": "Python Package Index",

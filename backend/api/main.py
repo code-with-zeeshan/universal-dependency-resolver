@@ -1,3 +1,4 @@
+"""Module docstring."""
 # backend/api/main.py
 import os
 import time
@@ -53,7 +54,7 @@ logger = structlog.get_logger(__name__)
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handle application lifecycle events"""
+    """Handle application lifecycle events."""
     # Startup
     logger.info("Starting Universal Dependency Resolver API...")
 
@@ -76,7 +77,7 @@ async def lifespan(app: FastAPI):
 
     # Dispose of database connections
     try:
-        get_engine().dispose()
+        get_db_engine().dispose()
         logger.info("Database connections disposed")
     except Exception as e:
         logger.warning(f"Error disposing database connections: {e}")
@@ -131,7 +132,7 @@ app.add_middleware(
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Handle all unhandled exceptions consistently"""
+    """Handle all unhandled exceptions consistently."""
     log = structlog.get_logger("backend.api.main.exception")
     log.error(
         "Unhandled exception",
@@ -156,7 +157,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 # Custom HTTPException handler for consistent error format
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle HTTP exceptions with consistent format"""
+    """Handle HTTP exceptions with consistent format."""
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -172,7 +173,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 # Environment validation function
 async def validate_environment() -> None:
-    """Validate environment configuration on startup"""
+    """Validate environment configuration on startup."""
     standalone = os.getenv("UDR_STANDALONE", "false").lower() == "true"
 
     optional_env_vars = [
@@ -215,10 +216,10 @@ async def validate_environment() -> None:
 
     # Test database connection
     try:
-        from backend.database.models import get_engine
+        from backend.orchestrator.db_service import get_db_engine
         from sqlalchemy import text
 
-        with get_engine().connect() as conn:
+        with get_db_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info("Database connection successful")
     except Exception as e:
@@ -258,7 +259,7 @@ async def shutdown_tracing():
 @app.get("/", tags=["General"])
 @limiter.limit("10/minute")
 async def root(request: Request) -> dict:
-    """Get API information and available endpoints"""
+    """Get API information and available endpoints."""
     return {
         "name": "Universal Dependency Resolver API",
         "version": "1.0.0",
@@ -278,8 +279,7 @@ async def root(request: Request) -> dict:
 @app.get("/api/v1/health", tags=["General"])
 @limiter.limit("30/minute")
 async def health_check(request: Request) -> dict:
-    """
-    Health check endpoint that verifies all critical dependencies.
+    """Health check endpoint that verifies all critical dependencies.
     Returns detailed status of each component.
     """
     health_status: Dict[str, Any] = {
@@ -291,9 +291,9 @@ async def health_check(request: Request) -> dict:
 
     # Check database with detailed health information
     try:
-        from backend.database.models import check_db_health
+        from backend.orchestrator.db_service import check_health
 
-        db_health = check_db_health()
+        db_health = check_health()
         health_status["checks"]["database"] = db_health
         if db_health["status"] == "unhealthy":
             health_status["status"] = "unhealthy"
@@ -353,7 +353,7 @@ app.include_router(lock_routes.router, prefix="/api/v1", tags=["Lock"])
 # Optional: Add middleware for response time tracking
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next) -> Response:
-    """Add response time header"""
+    """Add response time header."""
     import time
 
     start_time = time.time()

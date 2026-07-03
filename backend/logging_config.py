@@ -1,6 +1,4 @@
-"""
-Structured logging configuration using structlog.
-"""
+"""Structured logging configuration using structlog."""
 
 import logging
 import sys
@@ -20,7 +18,6 @@ except ImportError:
 
 def setup_logging() -> None:
     """Configure structured logging for the application."""
-
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
     shared_processors: list[structlog.types.Processor] = [

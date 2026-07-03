@@ -1,8 +1,11 @@
+"""Module docstring."""
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Dict, Optional
 
+from packaging.version import parse as parse_version
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
@@ -12,6 +15,7 @@ from ..shared import console, err_console, _read_lock_file
 
 
 async def _cmd_verify_async(args):
+    """Cmd verify async."""
     from backend.core import DataAggregator
 
     lock_path = Path(args.lock_file)
@@ -36,6 +40,7 @@ async def _cmd_verify_async(args):
         verify_task = progress.add_task("Verifying packages...", total=len(packages))
 
         async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+            """Check pkg."""
             eco = info.get("ecosystem", "pypi")
             ver = info.get("resolved_version")
             if not ver:
@@ -56,12 +61,27 @@ async def _cmd_verify_async(args):
                         v.get("version", "") if isinstance(v, dict) else str(v)
                         for v in versions
                     ]
-                    if ver not in version_strings:
-                        return {
-                            "name": name,
-                            "issue": f"Version {ver} no longer available",
-                            "severity": "error",
-                        }
+                    try:
+                        target_ver = parse_version(ver)
+                        found = any(
+                            parse_version(vs) == target_ver
+                            for vs in version_strings
+                            if vs
+                        )
+                        if not found:
+                            if ver not in version_strings:
+                                return {
+                                    "name": name,
+                                    "issue": f"Version {ver} no longer available",
+                                    "severity": "error",
+                                }
+                    except Exception:
+                        if ver not in version_strings:
+                            return {
+                                "name": name,
+                                "issue": f"Version {ver} no longer available",
+                                "severity": "error",
+                            }
                 else:
                     return {
                         "name": name,
@@ -83,6 +103,18 @@ async def _cmd_verify_async(args):
             else:
                 ok_count += 1
             progress.advance(verify_task)
+
+    if getattr(args, "json", False):
+        data = {
+            "lock_file": str(lock_path),
+            "ok_count": ok_count,
+            "issue_count": len(issues),
+            "issues": issues,
+        }
+        json.dump(data, sys.stdout, indent=2, default=str)
+        print()
+        await aggregator.close()
+        return 1 if issues and any(i["severity"] == "error" for i in issues) else 0
 
     summary = Table(title=f"Lock File Verification — {lock_path.name}", box=box.ROUNDED)
     summary.add_column("Status", style="bold")
@@ -112,6 +144,7 @@ async def _cmd_verify_async(args):
 
 
 def cmd_verify(args):
+    """Cmd verify."""
     try:
         sys.exit(asyncio.run(_cmd_verify_async(args)))
     except KeyboardInterrupt:

@@ -1,3 +1,4 @@
+"""Module docstring."""
 # conflict_resolver.py
 from __future__ import annotations
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
@@ -33,21 +34,67 @@ from .cache import cached
 logger = logging.getLogger(__name__)
 
 SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "5000"))
+USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
+
+# Data-driven conflict rules: each rule specifies incompatible version ranges
+# across packages or ecosystems.  Used by _add_conflict_constraints().
+CONFLICT_RULES: List[Dict[str, Any]] = [
+    {
+        "id": "cuda:min_version >=11.0,<12.0 vs cuda:min_version >=12.0,<13.0",
+        "type": "cuda",
+        "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "11.0"},
+        "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "12.0"},
+        "mutually_exclusive_with": {
+            "field": "cuda.min_version", "op": ">=", "value": "12.0",
+        },
+    },
+    {
+        "id": "cuda:min_version >=12.0,<13.0 vs cuda:min_version >=11.0,<12.0",
+        "type": "cuda",
+        "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "12.0"},
+        "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "13.0"},
+        "mutually_exclusive_with": {
+            "field": "cuda.min_version", "op": ">=", "value": "11.0",
+        },
+    },
+    {
+        "id": "tensorflow vs numpy upper bound",
+        "type": "dependency",
+        "description": "tensorflow 2.15+ requires numpy <1.28",
+        "packages": ["tensorflow"],
+        "constraint": {"numpy": "<1.28"},
+    },
+]
 
 
 class ConflictResolver:
     """Resolves dependency conflicts using constraint satisfaction and graph algorithms."""
 
-    def __init__(self):
-        """Initialize the conflict resolver with Z3 solver and dependency graph."""
+    def __init__(self, use_optimization: Optional[bool] = None):
+        """Initialize the conflict resolver with Z3 solver and dependency graph.
+
+        Args:
+            use_optimization: If True, use z3.Optimize() with minimize() objectives
+                to prefer newer versions. If None, falls back to USE_Z3_OPTIMIZE env var.
+        """
         import z3
 
         self.dependency_graph = nx.DiGraph()
-        self.solver = z3.Solver()
+        if use_optimization is None:
+            use_optimization = USE_OPTIMIZATION
+        self._use_optimization = use_optimization
+        self._solver = z3.Optimize() if use_optimization else z3.Solver()
         self.version_vars = {}  # Maps package_version strings to Z3 variables
         self.version_to_int = {}  # Maps version strings to integers for Z3
         self.int_to_version = {}  # Reverse mapping
+        self._version_weights = []  # Weights for minimize() objective
+        self._minimization_added = False
         self.offline_mode = False
+
+    @property
+    def solver(self):
+        """Get the Z3 solver instance (backward-compatible access)."""
+        return self._solver
 
     # Additional error handling enhancements
     def resolve_dependencies(
@@ -175,6 +222,7 @@ class ConflictResolver:
 
         Returns:
             List of resolution results for each batch
+
         """
         batch_context = {"batch_count": len(package_batches)}
 
@@ -262,7 +310,7 @@ class ConflictResolver:
     def _generate_resolution_cache_key(
         self, packages: List[Dict], system_info: Dict
     ) -> str:
-        """Generate a cache key for resolution results based on packages and system info"""
+        """Generate a cache key for resolution results based on packages and system info."""
         # Create a deterministic representation of packages
         package_data = []
         for pkg in packages:
@@ -441,6 +489,7 @@ class ConflictResolver:
 
         Raises:
             ResolverError: If the provided system info fails validation.
+
         """
         context = {**resolution_context, "scope": "system_info_preparation"}
 
@@ -514,7 +563,6 @@ class ConflictResolver:
 
     def _get_default_system_info(self) -> Dict:
         """Provide default system info when none is provided."""
-
         return {
             "os": platform.system().lower(),
             "architecture": platform.machine(),
@@ -526,7 +574,14 @@ class ConflictResolver:
 
     def _reset_solver_state(self, solver_timeout: Optional[int] = None) -> None:
         """Reset the solver state and apply timeout if specified."""
-        self.solver.reset()
+        import z3
+
+        if self._use_optimization:
+            self._solver = z3.Optimize()
+            self._minimization_added = False
+            self._version_weights = []
+        else:
+            self._solver = z3.Solver()
         if solver_timeout is not None:
             self.solver.set(timeout=solver_timeout)
         else:
@@ -534,6 +589,7 @@ class ConflictResolver:
 
     @staticmethod
     def _get_default_python_version() -> str:
+        """Get default python version."""
         import sys
 
         return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -731,7 +787,7 @@ class ConflictResolver:
             )
 
     def _build_dependency_graph(self, packages: List[Dict]):
-        """Build a graph of package dependencies, including cross-ecosystem deps"""
+        """Build a graph of package dependencies, including cross-ecosystem deps."""
         self.dependency_graph.clear()
 
         for package in packages:
@@ -763,7 +819,7 @@ class ConflictResolver:
                     )
 
     def _create_version_mapping(self, package_name: str, versions: List[str]):
-        """Create integer mapping for versions to use in Z3"""
+        """Create integer mapping for versions to use in Z3."""
         # Use parse_version for safer version parsing
         parsed_versions = []
         for ver in versions:
@@ -780,7 +836,7 @@ class ConflictResolver:
             self.int_to_version[key] = ver
 
     def _create_constraints(self, packages: List[Dict], system_info: Dict) -> Dict:
-        """Create constraint system for SAT solver"""
+        """Create constraint system for SAT solver."""
         import z3
 
         constraints: Dict[str, Any] = {
@@ -789,6 +845,9 @@ class ConflictResolver:
             "conflicts": [],
             "dependencies": [],
         }
+
+        self._version_weights = []
+        self._minimization_added = False
 
         # Variable for each package version
         total_vars = 0
@@ -817,6 +876,13 @@ class ConflictResolver:
                 var = z3.Bool(var_name)
                 version_vars.append(var)
                 self.version_vars[var_name] = var
+
+                # Weight for minimization: higher version index = lower weight (preferred)
+                sorted_idx = self.version_to_int.get(var_name, 0)
+                total_versions = len(versions)
+                # Newest version gets weight 0, oldest gets weight total_versions
+                weight = total_versions - sorted_idx
+                self._version_weights.append(weight * var)
 
                 # Add system requirement constraints
                 if "system_requirements" in package:
@@ -861,7 +927,7 @@ class ConflictResolver:
         system_info: Dict,
         constraints: Dict,
     ):
-        """Add constraints based on system requirements"""
+        """Add constraints based on system requirements."""
         import z3
 
         for req_type, req_value in requirements.items():
@@ -896,7 +962,7 @@ class ConflictResolver:
                             self.solver.add(z3.Not(version_var))
 
     def _add_dependency_constraints(self, constraints: Dict):
-        """Add constraints for package dependencies"""
+        """Add constraints for package dependencies."""
         import z3
 
         for node in self.dependency_graph.nodes():
@@ -956,7 +1022,7 @@ class ConflictResolver:
                                 )
 
     def _add_conflict_constraints(self, packages: List[Dict], constraints: Dict):
-        """Add known conflict constraints"""
+        """Add known conflict constraints."""
         import z3
 
         # Example: CUDA 11.x packages conflict with CUDA 12.x packages
@@ -991,8 +1057,12 @@ class ConflictResolver:
                                 self.solver.add(z3.Not(z3.And(var11_ref, var12_ref)))
 
     def _solve_constraints(self, constraints: Dict, prefer_compatibility: bool) -> Dict:
-        """Solve the constraint system"""
+        """Solve the constraint system."""
         import z3
+
+        if self._use_optimization and self._version_weights and not self._minimization_added:
+            self.solver.minimize(z3.Sum(self._version_weights))
+            self._minimization_added = True
 
         result = self.solver.check()
 
@@ -1030,7 +1100,7 @@ class ConflictResolver:
     def _resolve_with_alternatives(
         self, packages: List[Dict], system_info: Dict
     ) -> Dict:
-        """Try to resolve conflicts by finding alternative packages or versions"""
+        """Try to resolve conflicts by finding alternative packages or versions."""
         alternatives: Dict[str, Any] = {
             "status": "partial",
             "packages": {},
@@ -1055,7 +1125,7 @@ class ConflictResolver:
         return alternatives
 
     def _find_compatible_versions(self, package: Dict, system_info: Dict) -> List[str]:
-        """Find versions compatible with system requirements"""
+        """Find versions compatible with system requirements."""
         compatible = []
 
         # Apply version_constraint from manifest (e.g. >=3.11,<3.13)
@@ -1111,7 +1181,7 @@ class ConflictResolver:
     def _check_version_compatibility(
         self, version_info: Dict, system_info: Dict
     ) -> bool:
-        """Check if a specific version is compatible with system"""
+        """Check if a specific version is compatible with system."""
         requirements = version_info.get("system_requirements", {})
 
         # Check CUDA compatibility
@@ -1134,7 +1204,7 @@ class ConflictResolver:
         return True
 
     def _format_solution(self, solution: Dict) -> Dict:
-        """Format the solution for output"""
+        """Format the solution for output."""
         formatted = {
             "resolved_packages": solution["packages"],
             "dependency_tree": self._build_dependency_tree(solution["packages"]),
@@ -1142,12 +1212,13 @@ class ConflictResolver:
             "installation_order": self._calculate_installation_order(
                 solution["packages"]
             ),
+            "status": solution.get("status", "satisfiable"),
         }
 
         return formatted
 
     def _build_dependency_tree(self, packages: Dict) -> Dict:
-        """Build a tree structure of dependencies"""
+        """Build a tree structure of dependencies."""
         tree = {}
 
         for pkg_name, pkg_info in packages.items():
@@ -1157,7 +1228,7 @@ class ConflictResolver:
         return tree
 
     def _calculate_installation_order(self, packages: Dict) -> List[str]:
-        """Calculate the order in which packages should be installed"""
+        """Calculate the order in which packages should be installed."""
         # Topological sort of dependency graph
         subgraph = self.dependency_graph.subgraph(
             [f"{name}@{info['ecosystem']}" for name, info in packages.items()]
@@ -1183,14 +1254,14 @@ class ConflictResolver:
             return list(packages.keys())
 
     def _get_ecosystem(self, package_name: str) -> str:
-        """Get ecosystem for a package from the graph"""
+        """Get ecosystem for a package from the graph."""
         for node in self.dependency_graph.nodes():
             if node.startswith(f"{package_name}@"):
                 return node.split("@")[1]
         return "unknown"
 
     def _get_package_dependencies(self, package_name: str, version_str: str) -> Dict:
-        """Get dependencies for a specific package version"""
+        """Get dependencies for a specific package version."""
         dependencies: Dict[str, Any] = {}
 
         # Find the node in the graph
@@ -1233,13 +1304,10 @@ class ConflictResolver:
         return dependencies
 
     def _analyze_conflicts(self) -> List[Dict]:
-        """Analyze why constraints are unsatisfiable using unsat core"""
+        """Analyze why constraints are unsatisfiable using unsat core."""
         import z3
 
         conflicts = []
-
-        # Enable unsat core generation
-        self.solver.set(unsat_core=True)
 
         # Create tracked assertions
         tracked_assertions = []
@@ -1248,6 +1316,8 @@ class ConflictResolver:
         # Re-add all assertions with tracking
         temp_solver = z3.Solver()
         temp_solver.set(unsat_core=True)
+        if not self._use_optimization:
+            self.solver.set(unsat_core=True)
 
         idx = 0
         for assertion in self.solver.assertions():
@@ -1314,7 +1384,7 @@ class ConflictResolver:
         return conflicts
 
     def _format_conflict_description(self, info: Dict, packages: List[Dict]) -> str:
-        """Format a human-readable description of the conflict"""
+        """Format a human-readable description of the conflict."""
         if info["type"] == "dependency":
             if len(packages) >= 2:
                 return f"{packages[0]['name']} {packages[0]['version']} requires incompatible version of {packages[1]['name']}"

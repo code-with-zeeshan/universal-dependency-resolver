@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  udr:
+    image: ud-resolver:latest
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - ENABLE_AUTH=${UDR_ENABLE_AUTH:-true}
+      - SECRET_KEY=${UDR_SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=${UDR_DATABASE_URL:-sqlite:///data/udr.db}
+      - REDIS_URL=${UDR_REDIS_URL:-redis://redis:6379/0}
+      - ENABLE_CACHE=${UDR_ENABLE_CACHE:-true}
+      - CACHE_TTL=${UDR_CACHE_TTL:-3600}
+      - LOG_LEVEL=${UDR_LOG_LEVEL:-info}
+      - ALLOWED_ORIGINS=${UDR_ALLOWED_ORIGINS:-http://localhost:3000}
+    volumes:
+      - udr-data:/home/udr/data
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./docker/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+volumes:
+  udr-data:
+  redis-data:

@@ -1,3 +1,4 @@
+"""Module docstring."""
 # npm_client.py
 import asyncio
 from typing import Dict, List, Optional, Set, Any, Union
@@ -167,6 +168,7 @@ class NPMClient(BaseDataSourceClient):
                 data.get("versions", {}), data.get("time", {})
             )
 
+        categorized_deps = self._categorize_dependencies(latest_data)
         info = {
             "name": data.get("name"),
             "version": latest_version,
@@ -192,8 +194,9 @@ class NPMClient(BaseDataSourceClient):
             "downloads": downloads,
             "typescript": types_info,
             "vulnerabilities": vulnerabilities,
+            "dependencies": categorized_deps,
             "latest_version_info": {
-                "dependencies": self._categorize_dependencies(latest_data),
+                "dependencies": categorized_deps,
                 "engines": latest_data.get("engines", {}),
                 "bin": latest_data.get("bin"),
                 "scripts": latest_data.get("scripts", {}),

@@ -1,3 +1,4 @@
+"""Module docstring."""
 # backend/api/routes/scan.py
 import asyncio
 import io
@@ -17,7 +18,7 @@ from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
 from backend.core.export_generator import ExportGenerator
 from backend.api.auth import get_current_user
-from backend.cli import (
+from backend.orchestrator import (
     _aggregator_to_resolver_input,
     _resolve_transitive,
     _apply_cuda_variants,
@@ -30,38 +31,19 @@ router = APIRouter()
 
 
 class GitHubScanRequest(BaseModel):
+    """Git Hub Scan Request functionality."""
+
     repo_url: str
     branch: Optional[str] = "main"
 
 
 class LocalScanRequest(BaseModel):
+    """Local Scan Request functionality."""
+
     directory_path: str
 
 
-def _download_github_repo(url: str, branch: str) -> Path:
-    """Download a GitHub repo as zipball and extract to temp dir."""
-    import re
-    import urllib.request
-
-    match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", url)
-    if not match:
-        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
-    owner, repo = match.group(1), match.group(2).rstrip(".git")
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
-    req = urllib.request.Request(api_url, headers={"User-Agent": "UDR/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        if resp.status != 200:
-            raise HTTPException(
-                status_code=400, detail=f"GitHub API returned {resp.status}"
-            )
-        data = resp.read()
-    tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
-    z = zipfile.ZipFile(io.BytesIO(data))
-    z.extractall(path=str(tmp))
-    contents = list(tmp.iterdir())
-    if contents and contents[0].is_dir():
-        return contents[0]
-    return tmp
+from backend.core.utils import download_github_repo as _download_github_repo
 
 
 async def _run_resolution_pipeline(
@@ -194,12 +176,15 @@ async def scan_github(
 ):
     """Clone a GitHub repo, detect manifests, resolve all dependencies."""
     loop = asyncio.get_event_loop()
-    project_dir = await loop.run_in_executor(
-        None,
-        _download_github_repo,  # type: ignore[arg-type]
-        req.repo_url,
-        req.branch,
-    )
+    try:
+        project_dir = await loop.run_in_executor(
+            None,
+            _download_github_repo,  # type: ignore[arg-type]
+            req.repo_url,
+            req.branch,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     try:
         result = await _run_resolution_pipeline(project_dir, export_format=export)
         result["source"] = "github"

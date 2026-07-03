@@ -1,6 +1,5 @@
-"""
-Backward-compat shim — delegates to backend/cli/ package.
-All functionality lives in backend/cli/{main,shared,commands/}*.py
+"""Backward-compat shim — delegates to backend/cli/ package.
+All functionality lives in backend/cli/{main,shared,commands/}*.py.
 """
 
 from backend.cli import *  # noqa: F401, F403

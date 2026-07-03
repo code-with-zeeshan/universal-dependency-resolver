@@ -9,29 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Desktop UI — Install/Restore tabs**: Generate native package manager commands from lock files, with Copy buttons. Direct deps (Install) vs all packages (Restore)
-- **Desktop UI — Lock file download**: "Generate Lock File" button in Scan results produces `udr-lock.json` download
-- **API endpoints**: `POST /api/v1/generate-lock`, `POST /api/v1/install-commands`, `POST /api/v1/restore-commands`
-- **Desktop usage guide**: New `docs/DESKTOP.md` covers all 15 sidebar tabs, keyboard shortcuts (`Ctrl+K` → Resolve), menu, troubleshooting
-
-### Changed
-
-- **Desktop workflow simplified**: Removed redundant linux arm64 QEMU matrix entry — x64 job cross-compiles both x86_64 and arm64 Linux artifacts via electron-builder
-- **Docs: ecosystem count corrected**: 13 → 14 across all docs (added `pub`/Dart/Flutter)
-- **CLI.md accuracy fixes**: Added `install`/`restore` command sections; added missing `--cuda`, `--device`, `--report`, `--manifest` flags; fixed `resolve -e` ecosystem choices; corrected rate-limiting claim in `--mode` docs
-
-### Fixed
-
-- **mypy**: `constraint_normalizer.py` type annotations — `-> str` → `Optional[str]` for functions returning `None`
-- **ruff**: Import ordering (`from typing import Optional` placed after `import re`)
-
-### Added
-
 - **CLI split into 14-module package**: Monolithic `cli.py` → `backend/cli/commands/` with subcommands (check, completion, config, export, info, install, list-ecosystems, lock, reconcile, resolve, scan, serve, uninstall)
 - **Shell completion**: `udr completion bash|zsh|fish` generates context-aware completions for all 13 subcommands
 - **CLI end-to-end tests**: 20 black-box subprocess tests in `tests/cli/`
 - **Desktop CI smoke tests**: Node.js backend-launcher tests run on every push via `desktop-tests` CI job
 - **Desktop smoke tests expanded**: Version consistency, file structure, API health endpoint, dependency resolution endpoint checks
+- **Desktop UI — Install/Restore tabs**: Generate native package manager commands from lock files, with Copy buttons. Direct deps (Install) vs all packages (Restore)
+- **Desktop UI — Lock file download**: "Generate Lock File" button in Scan results produces `udr.lock` download
+- **API endpoints**: `POST /api/v1/generate-lock`, `POST /api/v1/install-commands`, `POST /api/v1/restore-commands`
+- **Desktop usage guide**: New `docs/DESKTOP.md` covers all 15 sidebar tabs, keyboard shortcuts (`Ctrl+K` → Resolve), menu, troubleshooting
 
 ### Changed
 
@@ -40,17 +26,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Health endpoint hardened**: `external_apis` check now pings `pypi.org/pypi/pip/json` instead of stub
 - **Snyk gating**: Threshold changed to `--severity-threshold=critical` (only critical blocks main branch)
 - **mypy errors**: Reduced from 84 to 0 across all 75 source files
+- **Desktop workflow simplified**: Removed redundant linux arm64 QEMU matrix entry — x64 job cross-compiles both x86_64 and arm64 Linux artifacts via electron-builder
+- **Docs: ecosystem count corrected**: 13 → 14 across all docs (added `pub`/Dart/Flutter)
+- **CLI.md accuracy fixes**: Added `install`/`restore` command sections; added missing `--cuda`, `--device`, `--report`, `--manifest` flags; fixed `resolve -e` ecosystem choices; corrected rate-limiting claim in `--mode` docs
 
 ### Fixed
 
 - **`run_async()` crash**: Handles both `asyncio.run()` (no running loop) and `new_event_loop()` (called from existing loop)
 - **cpuinfo lazy-import**: Avoids crash on unsupported CPU arch in PyInstaller bundle
 - **ruff format/mypy type:ignore**: All formatting and type annotation issues resolved
+- **mypy**: `constraint_normalizer.py` type annotations — `-> str` → `Optional[str]` for functions returning `None`
+- **ruff**: Import ordering (`from typing import Optional` placed after `import re`)
 
 ### Security
 
 - Trivy + CodeQL gating (no `continue-on-error`)
 - Snyk gating on main only (requires `SNYK_TOKEN`)
+
+## [1.3.2] - 2026-07-01
+
+### Added
+
+- **`include_dependencies` wired to all 14 clients**: Parameter added to every client's `get_package_info`/`get_package_info_async` signature so the aggregator's introspection matches. Crates and Maven gate extra dependency-fetching API calls behind the flag.
+- **Crates transitive deps**: `get_package_info` now calls `get_dependencies()` and includes `"dependencies"` in the response.
+- **Maven transitive deps**: `get_package_info` now calls `get_dependencies()` and includes dependency data (with graceful fallback if POM fetch fails).
+- **Manifest parsers for 4 ecosystems**: Added `_parse_pom_xml` (Maven), `_parse_podfile`/`_parse_podfile_lock` (CocoaPods), `_parse_packages_config` (NuGet) to `manifest_detector.py`.
+- **`requires-python` from pyproject.toml**: Reads `[project].requires-python` and injects as a `python` package entry. Ecosystem configurable via `UDR_PYTHON_ECOSYSTEM` env var.
+- **Non-PEP-440 version normalization**: New `normalize_version()` + `strip_numeric_suffix()` in `constraint_normalizer.py` — strips Maven qualifiers (`-jre`, `-android`) and Conda build strings (`_cp314t`). Used for proper cross-ecosystem version sorting.
+- **Cross-ecosystem constraint propagation in SAT fallback**: `_resolve_with_alternatives` now builds a dependency graph, topo-sorts packages, and backtracks respecting cross-ecosystem dependency edges instead of greedy per-package picking.
+
+### Changed
+
+- **`parse_version` warning → debug**: Non-PEP-440 versions (Maven `*-jre`, Conda `*_cp*`) no longer flood stderr.
+- **npm version skip warning → debug**: Canary/experimental npm versions logged at debug level instead of warning.
+- **APK client fallback fetch error → debug**: 404 from fallback APKINDEX mirrors and transient fetch errors logged at debug level.
+
+### Fixed
+
+- **`@angular/core` edge case**: `_parse_package_spec` now handles scoped npm packages without ecosystem suffix (leading `@`). Unknown ecosystems log a warning instead of silently creating invalid specs.
+- **NPM dependency key location**: Now reads `dependencies` from top-level `info["latest_version_info"]["dependencies"]` in `_aggregator_to_resolver_input`.
+- **`_find_compatible_versions` indentation bug**: `sys_python` check was accidentally nested inside the `version_constraint` block — now always evaluated.
+
+### Security
+
+- All 14 ecosystems tested with real APIs in a 43-package megaproject scenario (frontend + backend + AI/ML + inference + system specification with CUDA)
 
 ## [1.2.5] - 2026-06-30
 

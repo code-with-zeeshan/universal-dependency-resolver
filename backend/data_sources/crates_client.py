@@ -1,3 +1,4 @@
+"""Module docstring."""
 # crates_client.py
 from typing import List, Optional, Dict, Any, Set
 from datetime import datetime

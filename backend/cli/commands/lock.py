@@ -1,3 +1,4 @@
+"""Module docstring."""
 import asyncio
 import json
 import sys
@@ -22,11 +23,13 @@ from ..shared import (
 
 
 def cmd_lock(args):
+    """Cmd lock."""
     from backend.manifest_detector import ManifestDetector
     from backend.core import DataAggregator, ConflictResolver, SystemScanner
     from backend.core.export_generator import ExportGenerator
 
     async def _lock():
+        """Lock."""
         directory = Path(args.directory).resolve()
         if not directory.is_dir():
             console.print(f"[red]Directory not found:[/red] {directory}")
@@ -117,6 +120,7 @@ def cmd_lock(args):
             )
 
             async def fetch_one(pkg):
+                """Fetch one."""
                 key = (pkg["name"], pkg["ecosystem"])
                 if key in seen:
                     return None
@@ -266,7 +270,7 @@ def cmd_lock(args):
         if getattr(args, "json", False):
             return _output_json(lock_data, args)
 
-        lock_path = directory / "udr-lock.json"
+        lock_path = directory / "udr.lock"
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
         console.print(f"[green]Lock file saved:[/green] {lock_path}")
 
@@ -343,8 +347,8 @@ def cmd_lock(args):
                 report_path = lock_path.with_suffix(".report.txt")
                 report_path.write_text("\n".join(report_lines) + "\n")
                 console.print(f"[green]Report saved:[/green] {report_path}")
-            except Exception:
-                pass
+            except Exception as exc:
+                console.print(f"[yellow]Warning: could not write report:[/yellow] {exc}")
 
         if getattr(args, "export", None):
             export_format = args.export
@@ -387,7 +391,12 @@ def cmd_lock(args):
             if not proceed:
                 return 0
         elif not getattr(args, "yes", False):
-            pass
+            console.print(
+                "[yellow]Non-interactive mode detected — skipping manifest update.[/yellow]"
+            )
+            console.print(
+                "[yellow]Use --yes to update manifests without prompting.[/yellow]"
+            )
 
         updated_count = 0
         updated_manifests = {}
@@ -438,7 +447,8 @@ def cmd_lock(args):
         return 0
 
     try:
-        sys.exit(asyncio.run(_lock()))
+        ret = asyncio.run(_lock())
+        sys.exit(ret if ret is not None else 0)
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(130)

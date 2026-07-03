@@ -73,7 +73,7 @@ describe('getEnv', () => {
     assert.strictEqual(env.UDR_HOST, '127.0.0.1')
     assert.strictEqual(env.UDR_DESKTOP, 'true')
     assert.strictEqual(env.UDR_STANDALONE, 'true')
-    assert.strictEqual(env.ENABLE_AUTH, 'true')
+    assert.strictEqual(env.ENABLE_AUTH, 'false')
     assert.strictEqual(env.PYTHONUNBUFFERED, '1')
     assert.ok(env.SECRET_KEY)
   })
@@ -84,10 +84,10 @@ describe('getEnv', () => {
     assert.strictEqual(env.CUSTOM, 'val')
   })
 
-  it('includes UDR_STANDALONE and ENABLE_AUTH', () => {
+  it('includes UDR_STANDALONE and disables ENABLE_AUTH for desktop', () => {
     const env = launcher.getEnv(8199)
     assert.strictEqual(env.UDR_STANDALONE, 'true')
-    assert.strictEqual(env.ENABLE_AUTH, 'true')
+    assert.strictEqual(env.ENABLE_AUTH, 'false')
   })
 
   it('uses existing SECRET_KEY from process.env', () => {

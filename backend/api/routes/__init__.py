@@ -1,3 +1,4 @@
+"""Module docstring."""
 from . import packages
 from . import system
 from . import scan

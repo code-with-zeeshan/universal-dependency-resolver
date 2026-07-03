@@ -1,55 +1,96 @@
 #!/usr/bin/env python3
-"""Update GitHub release bodies from CHANGELOG.md for all existing releases."""
-import re, os, sys, json, urllib.request
+"""Update GitHub release bodies from CHANGELOG.md using `gh` CLI.
 
-TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-if not TOKEN:
-    print("Set GH_TOKEN or GITHUB_TOKEN env var")
-    sys.exit(1)
+Requires `gh` to be installed and authenticated.
 
-REPO = "code-with-zeeshan/universal-dependency-resolver"
+Usage:
+    python scripts/update_release_bodies.py
+    python scripts/update_release_bodies.py --repo owner/repo
+"""
 
-with open("CHANGELOG.md") as f:
-    text = f.read()
+import argparse
+import re
+import subprocess
+import sys
 
-sections = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
 
-headers = {
-    "Accept": "application/vnd.github.v3+json",
-    "Authorization": f"Bearer {TOKEN}",
-}
+def get_releases(repo: str) -> list[dict]:
+    result = subprocess.run(
+        ["gh", "release", "list", "--repo", repo, "--json", "tagName,id,body", "--limit", "100"],
+        capture_output=True, text=True, check=True,
+    )
+    import json
+    return json.loads(result.stdout)
 
-# Fetch all releases
-req = urllib.request.Request(
-    f"https://api.github.com/repos/{REPO}/releases", headers=headers
-)
-releases = json.loads(urllib.request.urlopen(req).read())
 
-for r in releases:
-    tag = r["tag_name"]
-    ver = tag.lstrip("v")
-    body_sections = []
+def get_changelog_section(text: str, target_ver: str) -> str | None:
+    sections = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
+    match_sections = []
     found = False
     for s in sections[1:]:
         m = re.match(r"^## \[(\d+\.\d+\.\d+)\]", s)
         if m:
-            if not found and m.group(1) == ver:
+            if not found and m.group(1) == target_ver:
                 found = True
             if found:
-                body_sections.append(s)
-    if body_sections:
-        body = "".join(body_sections).strip()
-        if body != r.get("body", "").strip():
-            data = json.dumps({"body": body}).encode()
-            req2 = urllib.request.Request(
-                f"https://api.github.com/repos/{REPO}/releases/{r['id']}",
-                data=data,
-                headers={**headers, "Content-Type": "application/json"},
-                method="PATCH",
-            )
-            urllib.request.urlopen(req2)
-            print(f"Updated {tag}")
-        else:
-            print(f"Already up to date: {tag}")
+                match_sections.append(s)
+    if match_sections:
+        return "".join(match_sections).strip()
+    return None
+
+
+def update_release(repo: str, tag: str, body: str) -> None:
+    subprocess.run(
+        ["gh", "release", "edit", tag, "--repo", repo, "--notes", body],
+        capture_output=True, check=True,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Update release bodies from CHANGELOG.md")
+    parser.add_argument("--repo", default=None, help="GitHub repo (owner/name)")
+    args = parser.parse_args()
+
+    if args.repo:
+        repo = args.repo
     else:
-        print(f"No changelog for {tag}")
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            capture_output=True, text=True, check=True,
+        )
+        import json
+        repo = json.loads(result.stdout)["nameWithOwner"]
+
+    try:
+        with open("CHANGELOG.md") as f:
+            changelog = f.read()
+    except FileNotFoundError:
+        print("CHANGELOG.md not found in current directory", file=sys.stderr)
+        sys.exit(1)
+
+    releases = get_releases(repo)
+    if not releases:
+        print("No releases found.", file=sys.stderr)
+        sys.exit(1)
+
+    updated = 0
+    for rel in releases:
+        tag = rel["tagName"]
+        ver = tag.lstrip("v")
+        body = get_changelog_section(changelog, ver)
+        if not body:
+            print(f"  No changelog entry for {tag}")
+            continue
+        current_body = (rel.get("body") or "").strip()
+        if body == current_body:
+            print(f"  Already up to date: {tag}")
+            continue
+        update_release(repo, tag, body)
+        print(f"  Updated {tag}")
+        updated += 1
+
+    print(f"\nDone. {updated} release(s) updated.")
+
+
+if __name__ == "__main__":
+    main()

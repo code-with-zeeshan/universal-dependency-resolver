@@ -1,3 +1,4 @@
+"""Module docstring."""
 import aiohttp
 import asyncio
 import logging
@@ -95,7 +96,8 @@ class BaseDataSourceClient:
 
     async def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
         """Actual HTTP request without circuit breaker.
-        Returns None for 404, raises IOError for network/server errors."""
+        Returns None for 404, raises IOError for network/server errors.
+        """
         await self._throttle()
         session = self._get_session()
         headers = kwargs.pop("headers", {})
@@ -133,7 +135,8 @@ class BaseDataSourceClient:
         self, method: str, url: str, **kwargs
     ) -> Optional[Dict]:
         """Execute request with circuit breaker pattern.
-        404s (None results) do NOT count as circuit failures."""
+        404s (None results) do NOT count as circuit failures.
+        """
         now = datetime.now()
 
         if self._circuit_state == "OPEN":

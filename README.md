@@ -1,121 +1,144 @@
-# Universal Dependency Resolver
+# 🚀 Universal Dependency Resolver
 
-[![PyPI version](https://img.shields.io/pypi/v/ud-resolver?color=blue)](https://pypi.org/project/ud-resolver/)
-[![Python versions](https://img.shields.io/pypi/pyversions/ud-resolver)](https://pypi.org/project/ud-resolver/)
-[![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver)](LICENSE)
-[![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
-[![Desktop](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Type checked](https://img.shields.io/badge/mypy-0%20errors-brightgreen)](#)
+**Resolve any package, from any ecosystem, all at once.**
 
-Resolve dependencies across **14 ecosystems** — detect conflicts, check system compatibility, and export to any format.
-
-```
-  udr resolve torch@pypi express@npm serde@crates
-  → Compatible versions across PyPI, npm, and Cargo
-  → CUDA-aware: torch 2.1.2+cu121 (GPU) selected automatically
-```
+[![PyPI version](https://img.shields.io/pypi/v/ud-resolver?color=blue&label=%F0%9F%93%A6%20PyPI)](https://pypi.org/project/ud-resolver/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ud-resolver?color=important&label=%F0%9F%90%8D%20Python)](https://pypi.org/project/ud-resolver/)
+[![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
+[![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
+[![Tests](https://img.shields.io/badge/1681%2B%20tests-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
 ---
 
-## The Problem
-
-Your project pulls in packages from everywhere — Python scripts call Node services, Docker images need both `pip` and `apt` packages, and your CI pipeline has to pin every transitive dependency across all of them.
-
-Existing tools only work within one ecosystem. `pip-compile` handles Python. `npm ls` handles JavaScript. Cross-ecosystem conflicts go undetected until something breaks at runtime. System compatibility — GPU drivers, CUDA versions, OS patches — is never checked.
-
-**This tool fixes that.**
-
----
-
-## Quick Start
+## ✨ One tool. 18 ecosystems. Infinite possibilities.
 
 ```bash
+udr resolve torch@pypi express@npm serde@crates
+# ✅ Compatible versions across PyPI, npm, and Cargo
+# 🎯 CUDA-aware: torch 2.1.2+cu121 (GPU) selected automatically
+```
+
+> **Say goodbye to fragmented dependency management.**  
+> No more juggling `pip-compile`, `npm ls`, and `cargo tree` separately.
+
+---
+
+## 🎯 Why You Need This
+
+| The old way | With UDR |
+|---|---|
+| 😤 Manage dependencies separately per ecosystem | 🎉 Resolve everything in one command |
+| 😰 Cross-ecosystem conflicts caught at runtime | 🛡️ Detected & resolved at lock time |
+| 🤷‍♂️ CUDA/GPU compatibility? Hope and pray | 🧠 Auto-detected and handled |
+| 📝 Pin transitive deps manually | 🔗 SAT solver pins them automatically |
+| 🐌 Slow, repetitive, error-prone | ⚡ Fast, cached, reproducible |
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1️⃣ Install
 pip install ud-resolver
 
-# Resolve cross-ecosystem packages
+# 2️⃣ Resolve packages from any ecosystem
 udr resolve flask>=2.0 react@^18
 
-# Lock all dependencies in your project
+# 3️⃣ Lock your entire project
 udr lock
 
-# Check system compatibility
+# 4️⃣ Check system compatibility
 udr check
 
-# Start the API server
+# 5️⃣ Start the API server
 udr serve --port 8000
 ```
 
+> 🎯 **Pro tip:** Add `[system]` for GPU detection: `pip install "ud-resolver[system]"`
+
 ---
 
-## Features
+## 💎 Features at a Glance
 
-| Capability | Detail |
+### 🌍 18 Supported Ecosystems
+
+| ☁️ Cloud Native | 🐍 Dynamic | ☕ JVM & .NET | 📦 Package Managers | 🛠️ System |
+|---|---|---|---|---|
+| **PyPI** – Python | **npm** – JavaScript | **Maven** – Java | **CocoaPods** – Swift/ObjC | **APT** – Debian/Ubuntu |
+| **Conda** – Multi-language | **Crates.io** – Rust | **Gradle** – Java/Kotlin | **NuGet** – .NET | **APK** – Alpine |
+| **Go Modules** – Go | **RubyGems** – Ruby | **Pub** – Dart/Flutter | **Packagist** – PHP | **Homebrew** – macOS/Linux |
+| | **Hex** – Elixir | **Swift** – Swift | | |
+| | **Haskell** – Cabal | | | |
+
+### ⚡ Core Capabilities
+
+| Feature | What it does |
 |---|---|
-| **14 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter) |
-| **SAT-solver resolution** | Z3-based conflict resolver handles complex cross-ecosystem version constraints |
-| **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
-| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
-| **12 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat |
-| **13 CLI commands** | serve, check, resolve, info, lock, scan, graph, verify, list-ecosystems, update, install, restore, completion |
-| **24 REST API endpoints** | Full programmatic API with OpenAPI docs |
-| **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
-| **Zero config** | SQLite by default, in-memory cache, no Docker required |
-| **Lock file** | Reproducible `udr-lock.json` with full system snapshot |
+| 🧠 **SAT-solver resolution** | Z3-powered solver finds compatible versions across all ecosystems simultaneously |
+| 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
+| 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
+| 📤 **12 export formats** | requirements.txt, Dockerfile, docker-compose.yml, pyproject.toml, Cargo.toml, pom.xml, build.gradle, CMakeLists.txt, install.sh, install.bat, environment.yml, package.json |
+| 🎛️ **16 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details |
+| 🌐 **35+ REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
+| 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
+| 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
 
 ---
 
-## Components
+## 🧩 Components
 
-| Component | What it is | How to get |
-|---|---|---|
-| **CLI / Library** | `udr` CLI tool + Python importable library + REST API server | `pip install ud-resolver` |
-| **Desktop app** | Standalone app with built-in GUI, no setup required | Download from [Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) |
+| Component | What it is | How to get | Best for |
+|---|---|---|---|
+| 🖥️ **CLI** | Terminal tool with 16 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
+| 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
+| 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
+| 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
 
 See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
 
 ---
 
-## CLI Examples
+## 🎬 CLI in Action
 
 ```bash
-# Resolve packages from any ecosystem
+# Resolve from any ecosystem
 udr resolve numpy pandas scikit-learn
 udr resolve react vue -e npm
 udr resolve serde tokio -e crates
+udr resolve numpy@pypi express@npm               # mixed ecosystems
 
-# Lock a project's dependencies
+# Lock a project
 udr lock
-udr lock --manifest requirements.txt --manifest package.json --dry-run
+udr lock --manifest requirements.txt --dry-run    # preview only
 
-# Validate a lock file
-udr verify
+# Validate & inspect
+udr verify                                        # lock file valid?
+udr graph flask django                            # dependency tree
+udr why flask                                     # why this version?
 
-# Show dependency graph
-udr graph flask django
-
-# Scan a GitHub repo without cloning
+# Scan remote repos without cloning
 udr scan --github https://github.com/user/repo
 
 # CUDA override on CPU-only machines
 udr lock --cuda 12.1
 
-# System information
+# System info
 udr check
-udr info
-
-# List supported ecosystems
 udr list-ecosystems
 
-# Re-resolve a single package
+# Update & search
 udr update flask
-
-# Generate shell completion scripts
-udr completion bash
+udr search numpy --limit 50
+udr details react -e npm
 ```
 
 ---
 
-## Python Library
+## 🐍 Use as a Python Library
 
 ```python
 import asyncio
@@ -144,29 +167,80 @@ asyncio.run(main())
 
 ---
 
-## API Server
+## 🌐 API Server
 
 ```bash
 udr serve --host 0.0.0.0 --port 8000
 ```
 
-OpenAPI docs at `http://localhost:8000/api/v1/docs` (Swagger UI). Full reference in [docs/API.md](docs/API.md).
+📖 **Interactive docs:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) (Swagger UI)
+
+Full reference in [docs/API.md](docs/API.md).
 
 ---
 
-## Testing
+## 🔄 How It Works
+
+```
+          ┌─────────────┐
+          │ Your Request│
+          └──────┬──────┘
+                 ▼
+     ┌──────────────────────┐
+     │  🌐 Fetch metadata   │
+     │  from registry APIs  │
+     └──────────┬───────────┘
+                ▼
+     ┌──────────────────────┐
+     │  🔍 Scan system      │
+     │  OS · GPU · CUDA ·   │
+     │  Python · Node · GCC │
+     └──────────┬───────────┘
+                ▼
+     ┌──────────────────────┐
+     │  🧠 Resolve with Z3  │
+     │  SAT solver          │
+     │  (conflict-free!)    │
+     └──────────┬───────────┘
+                ▼
+     ┌───────────────────────┐
+     │  📤 Export / Lock     │
+     │  12 formats · udr.lock│
+     └───────────────────────┘
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-dive.
+
+---
+
+## 📊 By the Numbers
+
+| Metric | Value |
+|---|---|
+| ✅ Supported ecosystems | **18** |
+| 🧪 Tests passing | **1681+** |
+| 🎛️ CLI commands | **16** |
+| 🌐 API endpoints | **35+** |
+| 📤 Export formats | **12** |
+| 📦 PyPI downloads | [![Downloads](https://img.shields.io/pypi/dm/ud-resolver?color=blue&label=PyPI%20downloads)](https://pypi.org/project/ud-resolver/) |
+| 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
+| ⭐ Stars | [![Stars](https://img.shields.io/github/stars/code-with-zeeshan/universal-dependency-resolver?style=social)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
+
+---
+
+## 🧪 Testing
 
 ```bash
-# All tests
-python -m pytest tests/                        # 760+ tests
+# All 1681+ tests
+python -m pytest tests/
 
 # Unit only (fast, no deps)
 python -m pytest tests/unit/
 
-# CLI end-to-end (black-box subprocess tests)
+# CLI end-to-end (black-box subprocess)
 python -m pytest tests/cli/
 
-# Integration tests (SQLite, no Docker needed)
+# Integration (SQLite, no Docker needed)
 python -m pytest tests/integration/
 
 # Desktop smoke tests
@@ -175,41 +249,31 @@ cd desktop && node --test tests/
 
 ---
 
-## How It Works
-
-```
-Your request ──► Fetch metadata from registry APIs
-                      │
-                      ▼
-              Scan target system (OS, GPU, CUDA, runtimes)
-                      │
-                      ▼
-              Resolve conflicts with Z3 SAT solver
-                      │
-                      ▼
-              Export to 12 formats or write lock file
-```
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture.
-
----
-
-## Documentation
+## 📚 Documentation
 
 | Guide | Description |
 |---|---|
-| [CLI Reference](docs/CLI.md) | All 13 commands with flags, examples, exit codes |
-| [API Reference](docs/API.md) | 24 REST endpoints, request/response schemas |
-| [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
-| [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
-| [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library comparison |
-| [Deployment](docs/DEPLOYMENT.md) | Production deployment guide |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-| [Contributing](CONTRIBUTING.md) | How to contribute |
-| [Security](SECURITY.md) | Security policy |
+| 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
+| 🎮 [CLI Reference](docs/CLI.md) | All 16 commands, flags, examples, exit codes |
+| 🌐 [API Reference](docs/API.md) | 35+ REST endpoints, request/response schemas |
+| 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
+| 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
+| 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |
+| ☁️ [Deployment](docs/DEPLOYMENT.md) | Production deployment guide |
+| 🔧 [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| 🤝 [Contributing](CONTRIBUTING.md) | How to contribute |
+| 🔒 [Security](SECURITY.md) | Security policy |
 
 ---
 
-## License
+## 💬 Let's Connect
 
-MIT — see [LICENSE](LICENSE).
+Found a bug? 🐛 [Open an issue](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues)  
+Want a feature? 💡 [Suggest it](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues)  
+Love the tool? ⭐ [Star the repo](https://github.com/code-with-zeeshan/universal-dependency-resolver)
+
+---
+
+## 📜 License
+
+[MIT](LICENSE) — free for personal and commercial use. Go build something awesome! 🚀

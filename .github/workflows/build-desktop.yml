@@ -59,7 +59,7 @@ jobs:
       - name: Install UPX compressor
         shell: bash
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl binutils xz-utils fakeroot 2>/dev/null || true
+          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl binutils xz-utils fakeroot
           which upx && upx --version | head -1 || echo "UPX not available"
 
       - name: Build backend binary + Electron app
@@ -98,6 +98,13 @@ jobs:
         shell: bash
         run: |
           node --test tests/smoke.test.js
+        working-directory: desktop
+
+      - name: Headless render test (Xvfb)
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq xvfb 2>/dev/null || true
+          node --test tests/render.test.js
         working-directory: desktop
 
       - name: Upload artifacts
@@ -183,7 +190,7 @@ jobs:
       - name: Install UPX compressor
         shell: bash
         run: |
-          scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || true
+          scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || echo "UPX not available via scoop/choco"
           which upx && upx --version | head -1 || echo "UPX not available"
 
       - name: Build backend binary + Electron app
@@ -310,7 +317,7 @@ jobs:
       - name: Install UPX compressor
         shell: bash
         run: |
-          brew install upx 2>/dev/null || true
+          brew install upx 2>/dev/null || echo "UPX not available via Homebrew"
           which upx && upx --version | head -1 || echo "UPX not available"
 
       - name: Build backend binary + Electron app

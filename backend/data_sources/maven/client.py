@@ -1,3 +1,4 @@
+"""Module docstring."""
 import asyncio
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Dict, Any, Tuple, Set

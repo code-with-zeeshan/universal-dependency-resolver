@@ -19,33 +19,39 @@ from backend.cli import (
 
 class TestParsePackageSpec:
     def test_basic_pypi_default(self):
-        name, eco = _parse_package_spec("numpy")
+        name, eco, constraint = _parse_package_spec("numpy")
         assert name == "numpy"
         assert eco == "pypi"
+        assert constraint is None
 
     def test_with_ecosystem(self):
-        name, eco = _parse_package_spec("express@npm")
+        name, eco, constraint = _parse_package_spec("express@npm")
         assert name == "express"
         assert eco == "npm"
+        assert constraint is None
 
     def test_custom_default(self):
-        name, eco = _parse_package_spec("tokio", default_ecosystem="crates")
+        name, eco, constraint = _parse_package_spec("tokio", default_ecosystem="crates")
         assert name == "tokio"
         assert eco == "crates"
+        assert constraint is None
 
     def test_with_ecosystem_overrides_default(self):
-        name, eco = _parse_package_spec("numpy@conda", default_ecosystem="pypi")
+        name, eco, constraint = _parse_package_spec("numpy@conda", default_ecosystem="pypi")
         assert name == "numpy"
         assert eco == "conda"
+        assert constraint is None
 
     def test_multiple_at_signs(self):
-        name, eco = _parse_package_spec("scoped@stuff@npm")
+        name, eco, constraint = _parse_package_spec("scoped@stuff@npm")
         assert name == "scoped@stuff"
         assert eco == "npm"
+        assert constraint is None
 
     def test_empty_string(self):
-        name, eco = _parse_package_spec("")
+        name, eco, constraint = _parse_package_spec("")
         assert name == ""
+        assert constraint is None
 
 
 class TestExtractCudaVariants:
@@ -197,11 +203,11 @@ class TestCliArgumentParsing:
         args = p.parse_args(["check", "--json"])
         assert args.json
 
-    def test_info_json_flag(self):
+    def test_check_json_flag(self):
         from backend.cli import _build_parser
         p = _build_parser()
-        args = p.parse_args(["info", "--json"])
-        assert args.command == "info"
+        args = p.parse_args(["check", "--json"])
+        assert args.command == "check"
         assert args.json
 
     def test_lock_json_flag(self):

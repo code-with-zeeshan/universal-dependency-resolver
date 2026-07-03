@@ -59,6 +59,7 @@ dependencies = [
     "z3-solver>=4.12,<4.15.5",
     # Database
     "sqlalchemy>=2.0.23,<3",
+    "alembic>=1.13,<2",
     # CLI & Formatting
     "rich>=13.7,<14",
     "slowapi>=0.1.9,<1",
@@ -66,11 +67,14 @@ dependencies = [
     "python-multipart>=0.0.6,<1",
     "jinja2>=3.1.2,<4",
     "structlog>=24.1,<25",
-    "prometheus-fastapi-instrumentator>=6.1,<7",
     # Security (auth, JWT, password hashing)
     "python-jose[cryptography]>=3.3,<4",
     "passlib[bcrypt]>=1.7.4,<2",
     "bcrypt<5",
+    # Runtime dependencies (used at top level, not optional)
+    "email-validator>=2.1,<3",
+    "httpx>=0.25,<1",
+    "starlette>=0.37,<1",
 ]
 
 [project.optional-dependencies]
@@ -80,16 +84,14 @@ system = [
     "distro>=1.8,<2",
     "gputil>=1.4,<2",
     "nvidia-ml-py>=12.535,<13",
-    "email-validator>=2.1,<3",
 ]
 dev = [
     "pytest>=7.4,<8",
     "pytest-asyncio>=0.21,<1",
     "pytest-cov>=4.1,<6",
-    "httpx>=0.25,<1",
     "ruff>=0.6,<1",
     "mypy>=1.7,<2",
-    "email-validator>=2.1,<3",
+    "pre-commit>=3.6,<4",
 ]
 postgres = [
     "psycopg2-binary>=2.9.9,<3",
@@ -103,6 +105,8 @@ monitoring = [
     "opentelemetry-instrumentation-fastapi>=0.43b0",
     "opentelemetry-instrumentation-httpx>=0.43b0",
     "opentelemetry-exporter-otlp-proto-http>=1.22,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.22,<2",
+    "prometheus-fastapi-instrumentator>=6.1,<7",
     "sentry-sdk[fastapi]>=1.39,<2",
     "python-socketio>=5.11,<6",
     "prometheus-client>=0.19,<1",
@@ -112,7 +116,6 @@ all = [
     "py-cpuinfo>=9.0,<10",
     "gputil>=1.4,<2",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
-    "httpx>=0.26,<1",
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",
     "sqlalchemy[asyncio]>=2.0.23,<3",
@@ -129,7 +132,6 @@ all = [
     "sentry-sdk[fastapi]>=1.39,<2",
     "python-socketio>=5.11,<6",
     "prometheus-client>=0.19,<1",
-    "email-validator>=2.1,<3",
 ]
 
 [project.urls]
@@ -147,3 +149,153 @@ include = ["backend*"]
 
 [tool.setuptools.package-data]
 backend = ["core/templates/*.j2"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # ── Type annotations — covered by mypy strict mode ──
+    "ANN",
+    # ── Naming — style preference ──
+    "N",
+    "TID252",
+    # ── Lazy imports — conditional imports for optional deps ──
+    "PLC0415", "PLC0206",
+    # ── Builtin shadowing — common in callback parameters ──
+    "A002",
+    # ── Strip with multi-characters — intentional ──
+    "B005",
+    # ── Exception handling — opinionated tryceratops rules ──
+    "TRY",
+    # ── Boolean trap — useful but too many false positives in APIs ──
+    "FBT",
+    # ── Unused arguments — required by callback/override signatures ──
+    "ARG",
+    # ── Complexity — refactoring target, not blocker ──
+    "C901",
+    # ── FastAPI patterns — Annotated deps, response model overrides ──
+    "FAST001", "FAST002",
+    # ── Line length — project max is 100 ──
+    "E501",
+    # ── Private member access — used in tests and private helpers ──
+    "SLF001",
+    # ── Datetime timezone — documented decision to use UTC-aware ──
+    "DTZ",
+    # ── Return/value style — opinionated ──
+    "RET504",
+    # ── Async patterns — needs larger refactor ──
+    "ASYNC",
+    # ── Subprocess — running without check may be intentional ──
+    "PLW1510",
+    # ── Pylint style preferences ──
+    "PLR0911", "PLR0912", "PLR0913", "PLR0914", "PLR0915", "PLR2004",
+    "PLR1701", "PLR1702", "PLR1704", "PLR1714", "PLR1722",
+    "PLW0108", "PLW0603", "PLW1508", "PLW2901",
+    "PLE1205",
+    # ── Pathlib preference — os.path is valid for simple use ──
+    "PTH",
+    # ── Loop variable reuse — intentional in some patterns ──
+    "B007",
+    # ── Comprehension style — double-cast is sometimes clearer ──
+    "C401", "C414",
+    # ── Exception messages — f-strings in exceptions are fine ──
+    "EM",
+    # ── Refurb suggestions — useful but not critical ──
+    "FURB",
+    # ── Micro-optimizations ──
+    "PERF",
+    # ── Function call defaults — FastAPI Depends() pattern ──
+    "B008",
+    # ── Zip without strict — zip is used for dict iteration ──
+    "B905",
+    # ── Print — used in CLI scripts intentionally ──
+    "T201",
+    # ── Comma style ──
+    "COM812", "COM818", "COM819",
+    # ── Python 2/3 compat — not relevant ──
+    "YTT",
+    # ── Commented-out code — detected false positives ──
+    "ERA001",
+    # ── Maintainability flags ──
+    "EXE", "INP001", "LOG014",
+    # ── Future annotations not used ──
+    "FA",
+    # ── Implicit string concat ── style choice ──
+    "ISC",
+    # ── Broad exceptions — acknowledged, needs future cleanup ──
+    "BLE001",
+    # ── Logging f-strings — acknowledged, should convert to % ──
+    "G004", "G201",
+    # ── Raise without from — exception chaining needs audit ──
+    "B904",
+    # ── Security rules too noisy for current codebase ──
+    "S101", "S104", "S105", "S106", "S112", "S310", "S314", "S324",
+    "S602", "S603", "S607", "S701",
+    # ── Pandas / NumPy — not used ──
+    "PD", "NPY",
+    # ── Pygrep hooks — not relevant ──
+    "PGH",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # assert used in tests
+    "S105",   # hardcoded password strings in test fixtures
+    "T201",   # print used in tests for debugging
+    "BLE001", # bare except in test cleanup
+    "PLW1510", # subprocess.run without check in test
+    "SLF001",  # accessing private members in test
+]
+
+[tool.coverage.run]
+branch = true
+source = ["backend"]
+omit = ["backend/database/*", "backend/data_sources/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_empty = true
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+disable_error_code = [
+    "no-untyped-def",       # Too many existing untyped functions across the codebase
+    "no-untyped-call",      # Calling untyped functions from typed context
+    "annotation-unchecked", # Missing annotations in third-party stubs
+    "type-arg",             # Missing generic type args on dict/list/tuple — ~400 occurrences
+    "no-any-return",        # Returning Any from typed functions — ~100 occurrences
+    "attr-defined",         # Module doesn't export attribute — re-export pattern used
+    "var-annotated",        # Need type annotation for variable — ~10 occurrences
+    "untyped-decorator",    # Untyped decorators on data source methods
+    "comparison-overlap",   # SQLAlchemy Column comparison
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "backend.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "backend.tracing_config"
+disable_error_code = [
+    "call-arg",    # OTel Logger stubs don't match runtime signature
+    "arg-type",    # OTLPSpanExporter accepts **kwargs at runtime
+    "misc",        # OTel dynamic exporter construction
+]
+
+[[tool.mypy.overrides]]
+module = "backend.database.models"
+disable_error_code = [
+    "misc",        # SQLAlchemy declarative Base has type Any
+]

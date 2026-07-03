@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +16,8 @@ ENV = {
     "PYTHONPATH": REPO_ROOT,
     "TESTING": "true",
     "SECRET_KEY": "test-secret-key-for-ci",
+    "UDR_OFFLINE": "true",
+    "REQUEST_TIMEOUT": "3",
 }
 
 
@@ -136,3 +140,42 @@ class TestResolveHelp:
     def test_resolve_help_contains_usage(self):
         result = _run("resolve", "--help")
         assert "usage: udr resolve" in result.stdout
+
+
+class TestManifestDetection:
+    def test_brewfile_detected(self, tmp_path):
+        (tmp_path / "Brewfile").write_text('brew "curl"\nbrew "wget"\n')
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "Brewfile" in result.stdout
+        assert "curl" in result.stdout
+        assert "wget" in result.stdout
+
+    def test_brewfile_with_versions(self, tmp_path):
+        (tmp_path / "Brewfile").write_text('brew "python" "3.12"\nbrew "node"\n')
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "Brewfile" in result.stdout
+        assert "python" in result.stdout
+
+    def test_apt_packages_txt_detected(self, tmp_path):
+        (tmp_path / "apt-packages.txt").write_text("curl\nbuild-essential\n")
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "apt-packages.txt" in result.stdout
+        assert "curl" in result.stdout
+        assert "build-essential" in result.stdout
+
+    def test_apt_packages_with_versions(self, tmp_path):
+        (tmp_path / "apt-packages.txt").write_text("curl>=7.68\npython3==3.9\n")
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "apt-packages.txt" in result.stdout
+
+    def test_apk_packages_txt_detected(self, tmp_path):
+        (tmp_path / "apk-packages.txt").write_text("curl\nnginx\n")
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "apk-packages.txt" in result.stdout
+        assert "curl" in result.stdout
+        assert "nginx" in result.stdout
+
+    def test_apk_packages_with_versions(self, tmp_path):
+        (tmp_path / "apk-packages.txt").write_text("curl>=7.68\npython3==3.9\n")
+        result = _run("lock", "--directory", str(tmp_path))
+        assert "apk-packages.txt" in result.stdout

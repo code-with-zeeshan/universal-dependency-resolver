@@ -1,3 +1,4 @@
+"""Module docstring."""
 # rubygems_client.py
 import asyncio
 from typing import Dict, List, Optional, Any

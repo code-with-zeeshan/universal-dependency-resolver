@@ -1,3 +1,4 @@
+"""Module docstring."""
 # settings/__init__.py
 import os
 import logging
@@ -94,6 +95,10 @@ ECOSYSTEMS = [
     "packagist",
     "rubygems",
     "pub",
+    "gradle",
+    "swift",
+    "hex",
+    "haskell",
     "docs",
     "custom_db",
 ]
@@ -111,6 +116,11 @@ ECOSYSTEM_NAMES = {
     "nuget": "NuGet (.NET)",
     "packagist": "Packagist (PHP)",
     "rubygems": "RubyGems",
+    "pub": "Pub (Dart/Flutter)",
+    "gradle": "Gradle (Groovy/Kotlin DSL)",
+    "swift": "Swift Package Manager",
+    "hex": "Hex (Elixir)",
+    "haskell": "Haskell (Cabal)",
     "docs": "Documentation",
     "custom_db": "Custom Database",
 }
@@ -191,6 +201,7 @@ def validate_settings() -> list[str]:
 
 
 def get_ecosystem_config(ecosystem: str) -> Dict[str, Any]:
+    """Get ecosystem config."""
     configs = {
         "pypi": {
             "url": "https://pypi.org",
@@ -273,6 +284,31 @@ def get_ecosystem_config(ecosystem: str) -> Dict[str, Any]:
         "cocoapods": {
             "url": "https://trunk.cocoapods.org/api/v1",
             "specs_url": "https://cdn.cocoapods.org",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 600,
+        },
+        "gradle": {
+            "url": "https://plugins.gradle.org/api",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
+        },
+        "swift": {
+            "url": "https://swiftpackageindex.com/api",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
+        },
+        "hex": {
+            "url": "https://hex.pm/api",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
+        },
+        "haskell": {
+            "url": "https://hackage.haskell.org",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
+        },
+        "pub": {
+            "url": "https://pub.dev/api",
             "cache_ttl": CACHE_TTL,
             "rate_limit": 600,
         },

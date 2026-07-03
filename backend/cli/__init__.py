@@ -1,3 +1,4 @@
+"""Module docstring."""
 from .main import main, _build_parser
 
 from .shared import (

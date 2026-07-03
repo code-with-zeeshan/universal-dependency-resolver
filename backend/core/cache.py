@@ -35,6 +35,7 @@ class DictCache:
     """
 
     def __init__(self, persist_path: Optional[str] = None):
+        """Initialize."""
         self._store: Dict[str, tuple[Any, Optional[float]]] = {}
         self._persist_path = persist_path or os.path.join(
             tempfile.gettempdir(), "udr_cache.json"
@@ -43,6 +44,7 @@ class DictCache:
         self._load_from_disk()
 
     def _load_from_disk(self):
+        """Load from disk."""
         try:
             if os.path.exists(self._persist_path):
                 with open(self._persist_path, "r") as f:
@@ -55,6 +57,7 @@ class DictCache:
             logger.debug(f"Cache load from disk skipped: {exc}")
 
     def _save_to_disk(self):
+        """Save to disk."""
         if not self._dirty:
             return
         try:
@@ -68,6 +71,7 @@ class DictCache:
             logger.debug(f"Cache save to disk failed: {exc}")
 
     async def get(self, key: str) -> Optional[Any]:
+        """Get."""
         entry = self._store.get(key)
         if entry is None:
             return None
@@ -79,26 +83,31 @@ class DictCache:
         return value
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """Set."""
         expiry = (time.time() + ttl) if ttl is not None else None
         self._store[key] = (value, expiry)
         self._dirty = True
         self._save_to_disk()
 
     async def delete(self, key: str) -> None:
+        """Delete."""
         self._store.pop(key, None)
         self._dirty = True
         self._save_to_disk()
 
     async def clear(self) -> None:
+        """Clear."""
         self._store.clear()
         self._dirty = True
         self._save_to_disk()
 
     async def close(self) -> None:
+        """Close."""
         self._save_to_disk()
         self._store.clear()
 
     async def incr(self, key: str, delta: int = 1) -> int:
+        """Incr."""
         entry = self._store.get(key)
         if entry is None:
             self._store[key] = (delta, None)
@@ -111,19 +120,21 @@ class DictCache:
         return value
 
     async def ping(self) -> bool:
+        """Ping."""
         return True
 
 
 class CacheManager:
-    """Manages caching operations with aiocache"""
+    """Manages caching operations with aiocache."""
 
     def __init__(self, redis_url: str = REDIS_URL):
+        """Initialize."""
         self.redis_url = redis_url
         self._cache: Optional[Union[DictCache, Cache]] = None
         self._cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
 
     async def connect(self):
-        """Initialize cache backend"""
+        """Initialize cache backend."""
         if not FEATURES.get("ENABLE_CACHE", True):
             logger.info("Caching is disabled")
             return
@@ -156,12 +167,12 @@ class CacheManager:
             self._cache = DictCache()
 
     async def disconnect(self):
-        """Close cache connection"""
+        """Close cache connection."""
         if self._cache:
             await self._cache.close()
 
     def _generate_key(self, prefix: str, *args, **kwargs) -> str:
-        """Generate a cache key from prefix and arguments"""
+        """Generate a cache key from prefix and arguments."""
         key_parts = [prefix]
 
         for arg in args:
@@ -180,7 +191,7 @@ class CacheManager:
         return ":".join(key_parts)
 
     async def get(self, key: str) -> Optional[Any]:
-        """Get value from cache"""
+        """Get value from cache."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return None
 
@@ -197,7 +208,7 @@ class CacheManager:
             return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
-        """Set value in cache with optional TTL"""
+        """Set value in cache with optional TTL."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return False
 
@@ -213,7 +224,7 @@ class CacheManager:
             return False
 
     async def delete(self, key: str) -> bool:
-        """Delete value from cache"""
+        """Delete value from cache."""
         if not self._cache:
             return False
 
@@ -225,7 +236,7 @@ class CacheManager:
             return False
 
     async def clear_pattern(self, pattern: str) -> int:
-        """Clear all keys matching pattern"""
+        """Clear all keys matching pattern."""
         count = 0
         cache = self._cache
         if cache is None:
@@ -251,7 +262,7 @@ class CacheManager:
             return 0
 
     async def get_many(self, keys: List[str]) -> Dict[str, Any]:
-        """Get multiple values from cache"""
+        """Get multiple values from cache."""
         result: Dict[str, Any] = {}
 
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
@@ -273,7 +284,7 @@ class CacheManager:
     async def set_many(
         self, mapping: Dict[str, Any], ttl: Optional[int] = None
     ) -> bool:
-        """Set multiple values in cache"""
+        """Set multiple values in cache."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return False
 
@@ -290,7 +301,7 @@ class CacheManager:
             return False
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics."""
         total = self._cache_stats["hits"] + self._cache_stats["misses"]
         hit_rate = (self._cache_stats["hits"] / total * 100) if total > 0 else 0
 
@@ -302,7 +313,7 @@ class CacheManager:
         }
 
     async def increment(self, key: str, amount: int = 1) -> Optional[int]:
-        """Increment a counter in cache"""
+        """Increment a counter in cache."""
         if not self._cache:
             return None
 
@@ -313,7 +324,7 @@ class CacheManager:
             return None
 
     async def expire(self, key: str, ttl: int) -> bool:
-        """Set expiration time for a key"""
+        """Set expiration time for a key."""
         if not self._cache:
             return False
 
@@ -335,11 +346,12 @@ cache_manager = CacheManager()
 
 
 def cache_key(*args, **kwargs) -> Callable:
-    """Decorator to generate cache keys for methods"""
+    """Decorator to generate cache keys for methods."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(self, *method_args, **method_kwargs):
+            """Wrapper."""
             prefix = f"{self.__class__.__name__}:{func.__name__}"
             key = cache_manager._generate_key(prefix, *method_args, **method_kwargs)
 
@@ -361,11 +373,12 @@ def cache_key(*args, **kwargs) -> Callable:
 
 
 def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
-    """Decorator for caching function results"""
+    """Decorator for caching function results."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
+            """Async wrapper."""
             prefix = key_prefix or f"{func.__module__}:{func.__name__}"
             cache_key = cache_manager._generate_key(prefix, *args, **kwargs)
 
@@ -382,6 +395,7 @@ def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
+            """Sync wrapper."""
             return asyncio.run(async_wrapper(*args, **kwargs))
 
         if asyncio.iscoroutinefunction(func):
@@ -394,13 +408,13 @@ def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
 
 # Cache key generators for specific use cases
 class CacheKeys:
-    """Standardized cache key generators"""
+    """Standardized cache key generators."""
 
     @staticmethod
     def package_info(
         ecosystem: str, package_name: str, version: Optional[str] = None
     ) -> str:
-        """Generate cache key for package information"""
+        """Generate cache key for package information."""
         if version:
             return f"package:{ecosystem}:{package_name}:{version}"
         return f"package:{ecosystem}:{package_name}"
@@ -409,7 +423,7 @@ class CacheKeys:
     def search_results(
         query: str, ecosystems: Optional[List[str]] = None, **filters
     ) -> str:
-        """Generate cache key for search results"""
+        """Generate cache key for search results."""
         eco_str = ",".join(sorted(ecosystems)) if ecosystems else "all"
         filter_str = hashlib.md5(
             json.dumps(filters, sort_keys=True).encode()
@@ -418,15 +432,15 @@ class CacheKeys:
 
     @staticmethod
     def dependency_tree(ecosystem: str, package_name: str, version: str) -> str:
-        """Generate cache key for dependency tree"""
+        """Generate cache key for dependency tree."""
         return f"deps:{ecosystem}:{package_name}:{version}"
 
     @staticmethod
     def system_info() -> str:
-        """Generate cache key for system information"""
+        """Generate cache key for system information."""
         return "system:info:current"
 
     @staticmethod
     def compatibility_check(package_id: str, system_hash: str) -> str:
-        """Generate cache key for compatibility check"""
+        """Generate cache key for compatibility check."""
         return f"compat:{package_id}:{system_hash}"

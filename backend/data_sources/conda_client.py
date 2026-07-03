@@ -1,3 +1,4 @@
+"""Module docstring."""
 # conda_client.py
 import aiohttp
 from typing import Dict, List, Optional, Tuple, Any

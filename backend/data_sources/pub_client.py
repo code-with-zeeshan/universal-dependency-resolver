@@ -1,3 +1,4 @@
+"""Module docstring."""
 from typing import Dict, List, Optional, Any
 import logging
 from urllib.parse import quote

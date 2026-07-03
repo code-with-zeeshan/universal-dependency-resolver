@@ -1,7 +1,9 @@
+"""Module docstring."""
 # utils.py
 import asyncio
 import logging
 import re
+from pathlib import Path
 from packaging import version
 from packaging.version import Version
 from typing import Dict, List, Optional, Any, Coroutine
@@ -43,7 +45,8 @@ def parse_version(version_str: str) -> Optional[version.Version]:
 
 def parse_version_key(version_str: str) -> Version:
     """Parse a version string for use as a sort key.
-    Returns ``Version("0.0.0")`` for unparseable versions (never None)."""
+    Returns ``Version("0.0.0")`` for unparseable versions (never None).
+    """
     parsed = parse_version(version_str)
     return parsed if parsed is not None else Version("0.0.0")
 
@@ -155,9 +158,54 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
         "brew": "homebrew",
         "osx": "homebrew",
         "macos": "homebrew",
+        # Gradle
+        "gradle": "gradle",
+        "groovy": "gradle",
+        "kotlin": "gradle",
+        # Swift
+        "swift": "swift",
+        "spm": "swift",
+        # Hex / Elixir
+        "elixir": "hex",
+        "exlixir": "hex",
+        # Haskell / Cabal
+        "cabal": "haskell",
+        "haskell": "haskell",
+        "stack": "haskell",
+        # Dart / Flutter
+        "dart": "pub",
+        "flutter": "pub",
+        "pub.dev": "pub",
     }
     ecosystem_lower = ecosystem.lower().strip()
     return ecosystem_aliases.get(ecosystem_lower, ecosystem_lower)
+
+
+def download_github_repo(url: str, branch: str) -> Path:
+    """Download a GitHub repo as zipball and extract to temp dir."""
+    import io
+    import re
+    import tempfile
+    import urllib.request
+    import zipfile
+
+    match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", url)
+    if not match:
+        raise ValueError(f"Invalid GitHub URL: {url}")
+    owner, repo = match.group(1), match.group(2).rstrip(".git")
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
+    req = urllib.request.Request(api_url, headers={"User-Agent": "UDR/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"GitHub API returned {resp.status}")
+        data = resp.read()
+    tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
+    z = zipfile.ZipFile(io.BytesIO(data))
+    z.extractall(path=str(tmp))
+    contents = list(tmp.iterdir())
+    if contents and contents[0].is_dir():
+        return contents[0]
+    return tmp
 
 
 def compare_versions(v1: str, v2: str) -> int:

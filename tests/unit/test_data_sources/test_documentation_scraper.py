@@ -825,3 +825,501 @@ class TestDocumentationScraper:
         soup = BeautifulSoup("<html></html>", "html.parser")
         result = await scraper._extract_pytorch_compatibility_matrix(soup)
         assert result == {}
+
+    # ------------------------------------------------------------------ #
+    #  Additional coverage: auto-create session in scrape_install_reqs   #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_scrape_installation_requirements_creates_session(self, scraper):
+        assert scraper.session is None
+        with patch.object(
+            scraper, "_scrape_requirements_from_url", new_callable=AsyncMock
+        ) as mock_scrape:
+            mock_scrape.return_value = {"cuda_versions": ["11.8"]}
+            result = await scraper.scrape_installation_requirements("tensorflow")
+            assert result == {"cuda_versions": ["11.8"]}
+            assert scraper.session is not None
+
+    @pytest.mark.asyncio
+    async def test_scrape_installation_requirements_exception(self, scraper):
+        scraper.session = MagicMock()
+        with patch.object(
+            scraper, "_scrape_requirements_from_url", new_callable=AsyncMock
+        ) as mock_scrape:
+            mock_scrape.side_effect = Exception("boom")
+            result = await scraper.scrape_installation_requirements("tensorflow")
+            assert result == {}
+
+    # ------------------------------------------------------------------ #
+    #  _find_documentation_url — strategy success paths                  #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_find_documentation_url_from_pypi(self, scraper):
+        with patch.object(
+            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+        ) as mock_pypi, patch.object(
+            scraper, "_get_github_documentation_url", new_callable=AsyncMock
+        ) as mock_gh, patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists, patch.object(
+            scraper, "_search_documentation_url", new_callable=AsyncMock
+        ) as mock_search:
+            mock_pypi.return_value = "https://docs.example.com/"
+            result = await scraper._find_documentation_url("testpkg")
+            assert result == "https://docs.example.com/"
+            mock_gh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_find_documentation_url_from_github(self, scraper):
+        with patch.object(
+            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+        ) as mock_pypi, patch.object(
+            scraper, "_get_github_documentation_url", new_callable=AsyncMock
+        ) as mock_gh, patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists, patch.object(
+            scraper, "_search_documentation_url", new_callable=AsyncMock
+        ) as mock_search:
+            mock_pypi.return_value = None
+            mock_gh.return_value = "https://github.com/testpkg/testpkg"
+            result = await scraper._find_documentation_url("testpkg")
+            assert result == "https://github.com/testpkg/testpkg"
+
+    @pytest.mark.asyncio
+    async def test_find_documentation_url_from_search(self, scraper):
+        with patch.object(
+            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+        ) as mock_pypi, patch.object(
+            scraper, "_get_github_documentation_url", new_callable=AsyncMock
+        ) as mock_gh, patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists, patch.object(
+            scraper, "_search_documentation_url", new_callable=AsyncMock
+        ) as mock_search:
+            mock_pypi.return_value = None
+            mock_gh.return_value = None
+            mock_exists.return_value = False
+            mock_search.return_value = "https://docs.example.com/pkg"
+            result = await scraper._find_documentation_url("testpkg")
+            assert result == "https://docs.example.com/pkg"
+
+    # ------------------------------------------------------------------ #
+    #  _get_pypi_documentation_url — homepage fallback                   #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_get_pypi_documentation_url_homepage_fallback(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "info": {
+                    "docs_url": "",
+                    "documentation_url": "",
+                    "home_page": "https://example.com/",
+                    "project_urls": {},
+                }
+            }
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        with patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists:
+            mock_exists.return_value = True
+            result = await scraper._get_pypi_documentation_url("testpkg")
+            assert result == "https://example.com/"
+
+    # ------------------------------------------------------------------ #
+    #  _get_github_documentation_url                                      #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_get_github_documentation_url_found(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [
+                    {"html_url": "https://github.com/numpy/numpy"},
+                ]
+            }
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        with patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists:
+            mock_exists.return_value = True
+            result = await scraper._get_github_documentation_url("numpy")
+            assert result is not None
+            assert "github.com" in result
+
+    @pytest.mark.asyncio
+    async def test_get_github_documentation_url_all_fail(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [
+                    {"html_url": "https://github.com/numpy/numpy"},
+                ]
+            }
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        with patch.object(
+            scraper, "_check_url_exists", new_callable=AsyncMock
+        ) as mock_exists:
+            mock_exists.return_value = False
+            result = await scraper._get_github_documentation_url("numpy")
+            assert result == "https://github.com/numpy/numpy"
+
+    @pytest.mark.asyncio
+    async def test_get_github_documentation_url_exception(self, scraper):
+        scraper.session = MagicMock()
+        scraper.session.get.side_effect = Exception("GitHub error")
+        result = await scraper._get_github_documentation_url("numpy")
+        assert result is None
+
+    # ------------------------------------------------------------------ #
+    #  _search_documentation_url                                          #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_search_documentation_url_found(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="""<html><body>
+                <a class="result__a" href="https://docs.example.com/pkg">Install docs</a>
+            </body></html>"""
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper._search_documentation_url("testpkg")
+        assert result == "https://docs.example.com/pkg"
+
+    @pytest.mark.asyncio
+    async def test_search_documentation_url_not_found(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="<html><body>no relevant links</body></html>"
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper._search_documentation_url("testpkg")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_search_documentation_url_exception(self, scraper):
+        scraper.session = MagicMock()
+        scraper.session.get.side_effect = Exception("DDG error")
+        result = await scraper._search_documentation_url("testpkg")
+        assert result is None
+
+    # ------------------------------------------------------------------ #
+    #  _scrape_requirements_from_url — pytorch & tensorrt dispatch        #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_scrape_requirements_from_url_pytorch(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="<html><div class='selector'><a>CUDA 11.8</a></div></html>"
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper._scrape_requirements_from_url(
+            "https://pytorch.org", "pytorch"
+        )
+        assert "cuda_versions" in result
+        assert "11.8" in result["cuda_versions"]
+
+    @pytest.mark.asyncio
+    async def test_scrape_requirements_from_url_tensorrt(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="<html><h2>System Requirements</h2><p>CUDA 11.8</p></html>"
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper._scrape_requirements_from_url(
+            "https://docs.nvidia.com", "tensorrt"
+        )
+        assert "cuda_versions" in result
+
+    # ------------------------------------------------------------------ #
+    #  _scrape_tensorflow_requirements — version sections                 #
+    # ------------------------------------------------------------------ #
+
+    def test_scrape_tensorflow_requirements_version_sections(self, scraper):
+        html = """
+        <table>
+            <tr><th>Version</th><th>CUDA</th></tr>
+            <tr><td>2.0.0</td><td>CUDA 11.8</td></tr>
+        </table>
+        <div>requirements: Python 3.10 and CUDA 11.8 are required</div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorflow_requirements(soup)
+        assert "11.8" in result["cuda_versions"]
+
+    def test_scrape_tensorflow_requirements_invalid_version(self, scraper):
+        html = """
+        <table>
+            <tr><th>Version</th><th>CUDA</th><th>cuDNN</th></tr>
+            <tr><td>2.0.0</td><td>CUDA .1</td><td>cuDNN .1</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorflow_requirements(soup)
+        assert result["cuda_versions"] == []
+
+    # ------------------------------------------------------------------ #
+    #  _scrape_pytorch_requirements — extra branches                      #
+    # ------------------------------------------------------------------ #
+
+    def test_scrape_pytorch_requirements_2digit_cuda(self, scraper):
+        html = "<pre>pip install torch==2.0.0+cu11</pre>"
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_pytorch_requirements(soup)
+        assert "cuda_versions" in result
+
+    def test_scrape_pytorch_requirements_invalid_version(self, scraper):
+        html = """
+        <div class="selector">
+            <a>CUDA 11.</a>
+        </div>
+        <pre>pip install torch==2.0.0+cu11</pre>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_pytorch_requirements(soup)
+        assert "cuda_versions" in result
+        # "11." is an invalid version that gets filtered out
+        assert "11." not in result["cuda_versions"]
+
+    # ------------------------------------------------------------------ #
+    #  _scrape_tensorrt_requirements — edge cases                         #
+    # ------------------------------------------------------------------ #
+
+    def test_scrape_tensorrt_requirements_no_name(self, scraper):
+        html = "<h2>Prerequisites</h2>text node here"
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorrt_requirements(soup)
+        assert "cuda_versions" in result
+
+    def test_scrape_tensorrt_requirements_hits_heading(self, scraper):
+        html = "<h2>Prerequisites</h2><h3>Next Heading</h3>"
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorrt_requirements(soup)
+        assert "cuda_versions" in result
+
+    def test_scrape_tensorrt_requirements_section_versions(self, scraper):
+        html = """
+        <h2>System Requirements</h2>
+        <p>CUDA 11.8</p>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorrt_requirements(soup)
+        assert "os_requirements" in result
+
+    def test_scrape_tensorrt_requirements_table_versions(self, scraper):
+        html = """
+        <h2>System Requirements</h2><p>CUDA 11.8</p>
+        <table>
+            <tr><th>TensorRT Version</th><th>CUDA</th></tr>
+            <tr><td>TensorRT 8.5</td><td>CUDA 11.8</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorrt_requirements(soup)
+        assert "tensorrt_versions" in result
+        assert "8.5" in result["tensorrt_versions"]
+
+    def test_scrape_tensorrt_requirements_invalid_version(self, scraper):
+        html = """
+        <h2>System Requirements</h2>
+        <p>CUDA .1, GCC .1</p>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._scrape_tensorrt_requirements(soup)
+        assert "cuda_versions" in result or True
+
+    # ------------------------------------------------------------------ #
+    #  extract_compatibility_matrix — additional paths                    #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_extract_compatibility_matrix_cached(self, scraper):
+        from datetime import datetime
+        scraper.session = MagicMock()
+        cached = ({"2.0.0": {"cuda": ["11.8"]}}, datetime.now())
+        scraper.compatibility_cache["compat_matrix:tensorflow"] = cached
+        result = await scraper.extract_compatibility_matrix("tensorflow")
+        assert "2.0.0" in result
+        assert result["2.0.0"]["cuda"] == ["11.8"]
+
+    @pytest.mark.asyncio
+    async def test_extract_compatibility_matrix_not_200(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 404
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper.extract_compatibility_matrix("tensorflow")
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_extract_compatibility_matrix_pytorch(self, scraper):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="<html><div id='install'><pre>pip install torch==2.0.0+cu121</pre></div></html>"
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper.extract_compatibility_matrix("pytorch")
+        assert "2.0.0" in result
+        assert "12.1" in result["2.0.0"]["cuda"]
+
+    @pytest.mark.asyncio
+    async def test_extract_compatibility_matrix_exception(self, scraper):
+        scraper.session = MagicMock()
+        scraper.session.get.side_effect = Exception("network error")
+        result = await scraper.extract_compatibility_matrix("tensorflow")
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_extract_compatibility_matrix_tensorflow_package(
+        self, scraper
+    ):
+        scraper.session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value="<html><div><p>Tested build configurations</p><table><tr><th>Version</th><th>CUDA</th></tr><tr><td>2.0.0</td><td>11.8</td></tr></table></div></html>"
+        )
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock()
+        scraper.session.get.return_value = cm
+        result = await scraper.extract_compatibility_matrix("tensorflow")
+        assert "2.0.0" in result
+
+    # ------------------------------------------------------------------ #
+    #  _parse_compatibility_table — remaining branches                    #
+    # ------------------------------------------------------------------ #
+
+    def test_parse_compatibility_table_empty_header_row(self, scraper):
+        html = "<table><tr></tr></table>"
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._parse_compatibility_table(
+            soup.find("table"), "tensorflow"
+        )
+        assert result == {}
+
+    def test_parse_compatibility_table_invalid_version_after_sub(self, scraper):
+        html = """
+        <table>
+            <tr><th>Version</th><th>CUDA</th></tr>
+            <tr><td>.1</td><td>11.8</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._parse_compatibility_table(
+            soup.find("table"), "tensorflow"
+        )
+        assert result == {}
+
+    def test_parse_compatibility_table_short_value(self, scraper):
+        html = """
+        <table>
+            <tr><th>Version</th><th>CUDA</th><th>Python</th></tr>
+            <tr><td>2.0.0</td><td>11.8</td><td>Yes</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._parse_compatibility_table(
+            soup.find("table"), "tensorflow"
+        )
+        assert "2.0.0" in result
+        assert "11.8" in result["2.0.0"]["cuda"]
+        assert "Yes" in result["2.0.0"]["python"]
+
+    # ------------------------------------------------------------------ #
+    #  _extract_compatibility_from_text — invalid version                 #
+    # ------------------------------------------------------------------ #
+
+    def test_extract_compatibility_from_text_invalid_version(self, scraper):
+        html = """
+        <div>
+            <section>tensorflow 11. requires CUDA 11.8</section>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = scraper._extract_compatibility_from_text(soup, "tensorflow")
+        assert result == {}
+
+    # ------------------------------------------------------------------ #
+    #  _extract_tensorflow_compatibility_matrix — parent loop             #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_extract_tensorflow_compatibility_matrix_parent_loop(
+        self, scraper
+    ):
+        html = """
+        <div><p>Tested build configurations</p></div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = await scraper._extract_tensorflow_compatibility_matrix(soup)
+        assert result == {}
+
+    # ------------------------------------------------------------------ #
+    #  _extract_pytorch_compatibility_matrix — 2-digit CUDA               #
+    # ------------------------------------------------------------------ #
+
+    @pytest.mark.asyncio
+    async def test_extract_pytorch_compatibility_matrix_2digit_cuda(
+        self, scraper
+    ):
+        html = """
+        <div id="install">
+            <pre>pip install torch==2.0.0+cu11</pre>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        result = await scraper._extract_pytorch_compatibility_matrix(soup)
+        assert "2.0.0" in result

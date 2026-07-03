@@ -89,8 +89,11 @@ class TestMavenClient:
         mock_session.get.return_value = mock_cm
         with patch.object(client, "_get_session", return_value=mock_session):
             await client.get_package_info("com.google.guava", "guava")
-        params = mock_session.get.call_args[1].get("params", {})
-        assert "guava" in params.get("q", "")
+        found = any(
+            "guava" in call.kwargs.get("params", {}).get("q", "")
+            for call in mock_session.get.call_args_list
+        )
+        assert found, "No session.get call had 'guava' in the query params"
 
     @pytest.mark.asyncio
     async def test_get_package_info_not_found(self, client):
@@ -1737,3 +1740,251 @@ class TestMavenClient:
         result = client._parse_version_range_syntax("(,)")
         assert result["min_version"] is None
         assert result["max_version"] is None
+
+    # === New test: _fetch_pom success path (lines 557-558)
+    @pytest.mark.asyncio
+    async def test_fetch_pom_success(self, client):
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(return_value="<project></project>")
+        mock_cm = MagicMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_cm
+        with patch.object(client, "_get_session", return_value=mock_session):
+            result = await client._fetch_pom("g", "a", "1.0")
+        assert result == "<project></project>"
+
+    # === New test: _fetch_pom returns None for non-200
+    @pytest.mark.asyncio
+    async def test_fetch_pom_not_found(self, client):
+        mock_response = MagicMock()
+        mock_response.status = 404
+        mock_cm = MagicMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_cm
+        with patch.object(client, "_get_session", return_value=mock_session):
+            result = await client._fetch_pom("g", "a", "1.0")
+        assert result is None
+
+    # === New test: get_package_versions skips invalid version strings
+    @pytest.mark.asyncio
+    async def test_get_package_versions_skips_invalid(self, client):
+        mock_docs = [
+            {"v": "1.0.0", "timestamp": 1501881872000},
+            {"v": "not-a-real-version", "timestamp": 1501881872000},
+        ]
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"response": {"docs": mock_docs}})
+        mock_cm = MagicMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_cm
+        with patch.object(client, "_get_session", return_value=mock_session):
+            versions = await client.get_package_versions("g", "a")
+        assert len(versions) == 1
+        assert versions[0]["version"] == "1.0.0"
+
+    # === New test: get_package_versions exception raises HTTPException 500
+    @pytest.mark.asyncio
+    async def test_get_package_versions_session_error(self, client):
+        mock_session = MagicMock()
+        mock_session.get.side_effect = Exception("Network error")
+        with patch.object(client, "_get_session", return_value=mock_session):
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_package_versions("g", "a")
+        assert exc_info.value.status_code == 500
+
+    # === New test: get_dependencies returns empty on exception
+    @pytest.mark.asyncio
+    async def test_get_dependencies_exception_returns_empty(self, client):
+        with patch.object(
+            client,
+            "get_effective_pom",
+            new_callable=AsyncMock,
+            side_effect=Exception("Boom"),
+        ):
+            result = await client.get_dependencies("g", "a", "1.0")
+        assert result == []
+
+    # === New test: get_package_info returns info struct with no dependencies key
+    @pytest.mark.asyncio
+    async def test_get_package_info_dep_exception(self, client):
+        mock_docs = [{"g": "g", "a": "a", "latestVersion": "1.0", "versionCount": 1, "repositoryCount": 0, "timestamp": "2023-01-01"}]
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"response": {"docs": mock_docs}})
+        mock_cm = MagicMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_cm
+        with patch.object(client, "_get_session", return_value=mock_session):
+            with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[]):
+                with patch.object(client, "get_dependencies", new_callable=AsyncMock, side_effect=Exception("fail")):
+                    result = await client.get_package_info("g", "a")
+        # get_package_info does not include dependencies — just info struct
+        assert result["name"] == "g:a"
+        assert "ecosystem" in result
+        assert "info" in result
+
+    # === New test: _version_matches_range with SNAPSHOT version
+    def test_version_matches_range_snapshot(self, client):
+        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        assert client._version_matches_range("2.0.0-SNAPSHOT", range_info) is True
+
+    # === New test: _version_matches_range with SNAPSHOT and unparseable base
+    def test_version_matches_range_snapshot_unparseable(self, client):
+        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        assert client._version_matches_range("SNAPSHOT", range_info) is False
+
+    # === New test: _version_matches_range with unparseable max bound
+    def test_version_matches_range_unparseable_max(self, client):
+        range_info = {"min_version": "1.0.0", "max_version": "not-a-version", "min_inclusive": True, "max_inclusive": True}
+        assert client._version_matches_range("2.0.0", range_info) is False
+
+    # === New test: _version_matches_range with unparseable min bound
+    def test_version_matches_range_unparseable_min(self, client):
+        range_info = {"min_version": "not-a-version", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        assert client._version_matches_range("2.0.0", range_info) is False
+
+    # === New test: get_transitive_dependencies filters excluded scope
+    @pytest.mark.asyncio
+    async def test_get_transitive_dependencies_scope_filter(self, client):
+        mock_pom = {
+            "dependencies": [
+                {"group_id": "g", "artifact_id": "test-dep", "version": "1.0", "scope": "test"}
+            ]
+        }
+        with patch.object(client, "get_effective_pom", new_callable=AsyncMock, return_value=mock_pom):
+            result = await client.get_transitive_dependencies("g", "a", "1.0")
+        assert result == []
+
+    # === New test: get_transitive_dependencies with recursion
+    @pytest.mark.asyncio
+    async def test_get_transitive_dependencies_recursive(self, client):
+        call_count = [0]
+        async def mock_pom(g, a, v, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {
+                    "dependencies": [{"group_id": "g", "artifact_id": "inner", "version": "2.0", "scope": "compile"}],
+                    "repositories": [],
+                }
+            return {"dependencies": [], "repositories": []}
+        with patch.object(client, "get_effective_pom", new_callable=AsyncMock, side_effect=mock_pom):
+            repos = [{"id": "central", "url": "https://repo"}]
+            result = await client.get_transitive_dependencies("g", "outer", "1.0", repositories=repos)
+        assert len(result) == 1
+        assert result[0]["artifact_id"] == "inner"
+        assert call_count[0] == 2
+
+    # === New test: _parse_version_range with empty string
+    def test_parse_version_range_edge(self, client):
+        assert client._parse_version_range(None) == {"type": "unspecified"}
+
+    # === New test: delegation methods coverage
+    def test_delegation_parse_repositories(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><repositories><repository><id>c</id><url>u</url></repository></repositories></project>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert len(client._parse_repositories(root, N, {})) == 1
+
+    def test_delegation_parse_plugin_repositories(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><pluginRepositories><pluginRepository><id>c</id><url>u</url></pluginRepository></pluginRepositories></project>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert len(client._parse_plugin_repositories(root, N, {})) == 1
+
+    def test_delegation_parse_dependency_management(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies><dependency><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency></dependencies></dependencyManagement></project>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert "g:a" in client._parse_dependency_management(root, N, {})
+
+    def test_delegation_parse_plugin_management(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><build><pluginManagement><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></pluginManagement></build></project>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert "g:p" in client._parse_plugin_management(root, N, {})
+
+    def test_delegation_parse_profiles(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><profiles><profile><id>test</id></profile></profiles></project>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert "test" in client._parse_profiles(root, N, {})
+
+    def test_delegation_extract_dependency_info(self, client):
+        import xml.etree.ElementTree as ET
+        dep = ET.fromstring('<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        info = client._extract_dependency_info(dep, N, {}, {})
+        assert info["artifact_id"] == "a"
+
+    def test_delegation_extract_dependency_info_with_exclusions(self, client):
+        import xml.etree.ElementTree as ET
+        dep = ET.fromstring('<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        info = client._extract_dependency_info_with_exclusions(dep, N, {}, {})
+        assert info["artifact_id"] == "a"
+
+    def test_delegation_parse_plugins_section(self, client):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring('<build xmlns="http://maven.apache.org/POM/4.0.0"><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></build>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        assert len(client._parse_plugins_section(root, N, {}, {})) == 1
+
+    def test_delegation_extract_plugin_info(self, client):
+        import xml.etree.ElementTree as ET
+        plugin = ET.fromstring('<plugin xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin>')
+        N = {"maven": "http://maven.apache.org/POM/4.0.0"}
+        info = client._extract_plugin_info(plugin, N, {}, {})
+        assert info["artifact_id"] == "p"
+
+    def test_delegation_parse_configuration(self, client):
+        import xml.etree.ElementTree as ET
+        config = ET.fromstring('<configuration><source>1.8</source></configuration>')
+        result = client._parse_configuration(config, {})
+        assert result["source"] == "1.8"
+
+    def test_delegation_parse_pom_comprehensive(self, client):
+        pom_xml = '<project xmlns="http://maven.apache.org/POM/4.0.0"></project>'
+        result = client._parse_pom_comprehensive(pom_xml, "g", "a", "1.0")
+        assert result["properties"]["project.groupId"] == "g"
+        assert result["properties"]["project.artifactId"] == "a"
+
+    # === New test: _fetch_and_parse_pom_hierarchy with parent
+    @pytest.mark.asyncio
+    async def test_fetch_and_parse_pom_hierarchy_with_parent(self, client):
+        client._pom_cache = {}
+        async def mock_fetch_pom(*args, **kwargs):
+            return '<project xmlns="http://maven.apache.org/POM/4.0.0"><parent><groupId>parent.g</groupId><artifactId>parent.a</artifactId><version>1.0</version></parent></project>'
+
+        async def mock_fetch_parent(*args, **kwargs):
+            return '<project xmlns="http://maven.apache.org/POM/4.0.0"></project>'
+
+        with patch.object(client, "_fetch_pom_from_repos", side_effect=mock_fetch_pom):
+            with patch.object(client._pom_parser, "_parse_pom_comprehensive", side_effect=[
+                {"parent": {"group_id": "parent.g", "artifact_id": "parent.a", "version": "1.0"}, "properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []},
+                {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []},
+            ]):
+                with patch.object(client._pom_parser, "_merge_poms", side_effect=lambda a, b: {**a, **b}):
+                    result = await client._fetch_and_parse_pom_hierarchy("g", "a", "1.0", [{"id": "central", "url": "https://repo"}])
+        assert result is not None
+
+    # === New test: _fetch_and_parse_pom_hierarchy with child_pom_data
+    @pytest.mark.asyncio
+    async def test_fetch_and_parse_pom_hierarchy_no_parent(self, client):
+        client._pom_cache = {}
+        with patch.object(client, "_fetch_pom_from_repos", new_callable=AsyncMock, return_value='<project xmlns="http://maven.apache.org/POM/4.0.0"></project>'):
+            with patch.object(client._pom_parser, "_parse_pom_comprehensive", return_value={"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []}):
+                result = await client._fetch_and_parse_pom_hierarchy("g", "a", "1.0", [{"id": "central", "url": "https://repo"}], child_pom_data={"properties": {}, "dependency_management": {}, "dependencies": [{"group_id": "g", "artifact_id": "b", "version": "2.0"}], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []})
+        assert len(result["dependencies"]) == 1
+
+    # === New test: merge_poms with extra keys from child
+    def test_merge_poms_extra_keys(self, client):
+        parent = {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []}
+        child = {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": [], "extraKey": "extraValue"}
+        merged = client._merge_poms(parent, child)
+        assert merged["extraKey"] == "extraValue"

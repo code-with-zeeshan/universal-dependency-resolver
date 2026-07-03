@@ -1,3 +1,4 @@
+"""Module docstring."""
 # nuget_client.py
 import asyncio
 from typing import Dict, List, Optional, Any

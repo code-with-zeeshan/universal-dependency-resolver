@@ -1,0 +1,56 @@
+name: SAT-Solver Benchmark
+on:
+  schedule:
+    - cron: "0 6 * * 0"  # Every Sunday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,system]"
+
+      - name: Run resolver benchmarks with timing
+        env:
+          TESTING: "true"
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/e2e/test_problem_statement.py \
+            -v --tb=short --durations=0 -q \
+            -k "02 or 03 or 04 or 06" \
+            2>&1 | tee benchmark-results.txt
+
+      - name: Extract timing summary
+        run: |
+          echo "## Benchmark Summary" > benchmark-summary.md
+          echo "" >> benchmark-summary.md
+          echo "\`\`\`" >> benchmark-summary.md
+          grep -E "^(PASSED|FAILED|ERROR|slowest|duration)" benchmark-results.txt \
+            >> benchmark-summary.md 2>/dev/null || echo "(no timing data)" >> benchmark-summary.md
+          echo "\`\`\`" >> benchmark-summary.md
+          echo "" >> benchmark-summary.md
+          echo "### Slowest tests (seconds)" >> benchmark-summary.md
+          grep -A 30 "slowest durations" benchmark-results.txt \
+            >> benchmark-summary.md 2>/dev/null || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sat-solver-benchmark
+          path: |
+            benchmark-results.txt
+            benchmark-summary.md

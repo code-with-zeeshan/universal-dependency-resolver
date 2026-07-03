@@ -93,7 +93,7 @@ class TestSystemInfo:
 
 class TestHealthCheck:
     def test_health_check_success(self, client):
-        with patch("backend.database.models.check_db_health") as mock_db_health:
+        with patch("backend.orchestrator.db_service.check_health") as mock_db_health:
             mock_db_health.return_value = {"status": "healthy"}
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -103,7 +103,7 @@ class TestHealthCheck:
         assert "database" in data["checks"]
 
     def test_health_check_db_unhealthy(self, client):
-        with patch("backend.database.models.check_db_health") as mock_db_health:
+        with patch("backend.orchestrator.db_service.check_health") as mock_db_health:
             mock_db_health.return_value = {
                 "status": "unhealthy",
                 "error": "Connection failed",
@@ -116,7 +116,7 @@ class TestHealthCheck:
 
     def test_health_check_db_exception(self, client):
         with patch(
-            "backend.database.models.check_db_health", side_effect=Exception("DB error")
+            "backend.orchestrator.db_service.check_health", side_effect=Exception("DB error")
         ):
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -124,7 +124,7 @@ class TestHealthCheck:
         assert data["status"] == "unhealthy"
 
     def test_health_check_with_redis(self, client):
-        with patch("backend.database.models.check_db_health") as mock_db_health, patch.dict(
+        with patch("backend.orchestrator.db_service.check_health") as mock_db_health, patch.dict(
             "os.environ", {"REDIS_URL": "redis://localhost:6379"}
         ), patch("redis.from_url") as mock_redis:
             mock_db_health.return_value = {"status": "healthy"}

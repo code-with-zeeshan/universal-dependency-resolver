@@ -105,3 +105,72 @@ class TestPubClient:
         assert result is not None
         assert "flutter" not in result.get("dependencies", {}).get("dependencies", {})
         assert "test" in result.get("dependencies", {}).get("dev_dependencies", {})
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_skips_invalid_versions(self, client):
+        data = {
+            "name": "bad",
+            "latest": {"version": "1.0.0"},
+            "versions": [
+                {"version": "1.0.0", "published": "2023-01-01", "pubspec": {"name": "bad"}},
+                {"version": "not-a-version", "published": "2023-01-01", "pubspec": {}},
+            ],
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            result = await client.get_package_info("bad")
+        assert result is not None
+        assert len(result["versions"]) == 1
+        assert result["versions"][0]["version"] == "1.0.0"
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_fallback_to_first_version_pubspec(self, client):
+        data = {
+            "name": "testpkg",
+            "latest": {"version": "1.0.0"},
+            "versions": [
+                {
+                    "version": "1.0.0",
+                    "published": "2023-01-01",
+                    "pubspec": {
+                        "name": "testpkg",
+                        "dependencies": {"http": "^1.0.0"},
+                    },
+                },
+            ],
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            result = await client.get_package_info("testpkg")
+        assert result is not None
+        assert "http" in result["dependencies"]["dependencies"]
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_non_string_dependency(self, client):
+        data = {
+            "name": "testpkg",
+            "latest": {
+                "version": "1.0.0",
+                "pubspec": {
+                    "name": "testpkg",
+                    "dependencies": {
+                        "http": {"version": "^1.0.0"},
+                    },
+                },
+            },
+            "versions": [
+                {
+                    "version": "1.0.0",
+                    "published": "2023-01-01",
+                    "pubspec": {"name": "testpkg"},
+                },
+            ],
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            result = await client.get_package_info("testpkg")
+        assert result is not None
+        assert "http" in result["dependencies"]["dependencies"]
+
+    @pytest.mark.asyncio
+    async def test_get_package_versions_exception(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+            versions = await client.get_package_versions("broken")
+        assert versions == []

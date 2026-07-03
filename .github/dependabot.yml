@@ -1,0 +1,69 @@
+version: 2
+updates:
+  # Python (pip) dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+    groups:
+      test-deps:
+        patterns:
+          - "pytest*"
+          - "httpx"
+        update-types:
+          - "minor"
+          - "patch"
+      lint-deps:
+        patterns:
+          - "ruff"
+          - "mypy"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Desktop (npm) dependencies
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "desktop"
+    commit-message:
+      prefix: "deps(desktop)"
+    groups:
+      electron-deps:
+        patterns:
+          - "electron*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"

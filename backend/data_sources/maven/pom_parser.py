@@ -1,3 +1,4 @@
+"""Module docstring."""
 import xml.etree.ElementTree as ET
 import re
 from typing import List, Optional, Dict, Any, TYPE_CHECKING

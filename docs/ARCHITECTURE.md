@@ -1,53 +1,72 @@
 # Architecture
 
-```
-                         ┌──────────────────────┐
-                         │   CLI (udr ...)        │
-                         │ backend/cli/ package  │
-                         └────┬──────────┬───────┘
-                              │ inline   │ subprocess
-                              ▼          ▼
-                         ┌──────────────────────┐
-                         │    Desktop App        │
-                         │  (Electron + GUI)     │
-                         └────────┬─────────────┘
-                                  │ localhost:PORT
-                                  ▼
-┌────────────────────────────────────────────────┐
-│              API Layer (FastAPI)                │
-│  main.py  middleware.py  exceptions.py         │
-│  ┌──────────────────────────────────────────┐  │
-│  │  routes/                                 │  │
-│  │  packages.py   system.py  auth.py        │  │
-│  │  scan.py       lock.py                   │  │
-│  └──────────────────────────────────────────┘  │
-└────────────────────┬───────────────────────────┘
-                     │
-                     ▼
-┌────────────────────────────────────────────────┐
-│               Core Logic                        │
-│  conflict_resolver.py   data_aggregator.py     │
-│  export_generator.py    system_scanner.py      │
-│  cache.py               utils.py               │
-│  manifest_detector.py                          │
-└────────┬───────────────────────────┬───────────┘
-         │                           │
-         ▼                           ▼
-┌──────────────────┐  ┌──────────────────────────┐
-│  Data Sources     │  │  Database                │
-│  base_client.py   │  │  models.py               │
-│  pypi_client.py   │  │  compatibility_db.py     │
-│  npm_client.py    │  │                          │
-│  conda_client.py  │  │  SQLite (default) or     │
-│  + 9 more         │  │  PostgreSQL              │
-└──────────────────┘  └──────────────────────────┘
+```mermaid
+graph TB
+    subgraph UserLayer["👤 User Interfaces"]
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>16 commands"]:::cli
+        DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code><br/>Standalone binary"]:::desktop
+    end
+
+    subgraph APILayer["🌐 API Layer (FastAPI)"]
+        API_MAIN["<code>main.py</code><br/>App factory + middleware"]:::api
+        ROUTES["<code>routes/</code><br/>packages · system · auth<br/>scan · lock"]:::api
+        SCHEMAS["<code>schemas.py</code><br/>Pydantic request/response"]:::api
+    end
+
+    subgraph CoreLayer["🧠 Core Logic"]
+        CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]:::core
+        DA["<code>data_aggregator.py</code><br/>Async metadata aggregation"]:::core
+        EG["<code>export_generator.py</code><br/>12 export formats (Jinja2)"]:::core
+        SS["<code>system_scanner.py</code><br/>OS · CPU · GPU · CUDA · runtimes"]:::core
+        MD["<code>manifest_detector.py</code><br/>20+ manifest patterns"]:::core
+        CACHE["<code>cache.py</code><br/>DictCache + Redis"]:::core
+    end
+
+    subgraph DataLayer["📦 Data Sources"]
+        DS_CLIENTS["<code>data_sources/</code><br/>18 ecosystem clients"]:::data
+        PYPI["PyPI"]:::data
+        NPM["npm"]:::data
+        CRATES["Crates.io"]:::data
+        MAVEN["Maven"]:::data
+        MORE["+ 14 more..."]:::data
+    end
+
+    subgraph DBLayer["🗄️ Database"]
+        MODELS["<code>models.py</code><br/>SQLAlchemy ORM"]:::db
+        SQLITE["SQLite"]:::db
+        PG["PostgreSQL"]:::db
+    end
+
+    CLI -->|"subprocess"| DESKTOP
+    DESKTOP -->|"HTTP localhost"| API_MAIN
+    CLI -->|"inline call"| API_MAIN
+    CLI -->|"direct import"| CoreLayer
+    API_MAIN --> ROUTES
+    ROUTES --> SCHEMAS
+    ROUTES --> CoreLayer
+    CoreLayer --> DataLayer
+    CoreLayer --> DBLayer
+    DS_CLIENTS -.-> PYPI
+    DS_CLIENTS -.-> NPM
+    DS_CLIENTS -.-> CRATES
+    DS_CLIENTS -.-> MAVEN
+    DS_CLIENTS -.-> MORE
+    MODELS --> SQLITE
+    MODELS -.->|"optional"| PG
+
+    classDef cli fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef desktop fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef api fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef data fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    classDef db fill:#e0f2f1,stroke:#00695c,stroke-width:2px
 ```
 
 ## Layer breakdown
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 14 files packaged into a namespace:
+Modular CLI package with 20 files across 16 commands:
 
 ```
 backend/cli/
@@ -65,7 +84,13 @@ backend/cli/
     ├── scan.py        # cmd_scan — GitHub/local scan
     ├── update.py      # cmd_update — re-resolve single package
     ├── install.py     # cmd_install, cmd_restore — restore from lock
-    └── list_ecosystems.py  # cmd_list_ecosystems
+    ├── list_ecosystems.py  # cmd_list_ecosystems
+    ├── completion.py  # cmd_completion — shell completion
+    ├── why.py         # cmd_why — explain version selection
+    ├── outdated.py    # cmd_outdated — show outdated packages
+    ├── diff.py        # cmd_diff — compare lock files
+    ├── search.py      # cmd_search — search packages
+    └── details.py     # cmd_details — package details
 ```
 
 The old monolithic `backend/cli.py` (2105 lines) was replaced by this package. A 3-line backward-compat shim remains at `backend/cli.py` for existing imports.
@@ -91,7 +116,7 @@ Routes:
 
 ### Core logic (`backend/core/`)
 
-- **`conflict_resolver.py`** — Z3 SAT solver. All 13 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
+- **`conflict_resolver.py`** — Z3 SAT solver. All 18 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
 - **`export_generator.py`** — Jinja2 template-based export. 12 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
@@ -100,7 +125,7 @@ Routes:
 
 ### Data sources (`backend/data_sources/`)
 
-13 ecosystem clients, all inheriting from `BaseClient`:
+18 ecosystem clients, all inheriting from `BaseClient`:
 
 | Client | Ecosystem | Registry |
 |---|---|---|
@@ -117,17 +142,75 @@ Routes:
 | `cocoapods_client.py` | CocoaPods | trunk.cocoapods.org |
 | `apt_client.py` | APT (Debian) | deb.debian.org |
 | `apk_client.py` | APK (Alpine) | dl-cdn.alpinelinux.org |
+| `pub_client.py` | Pub (Dart/Flutter) | pub.dev |
+| `gradle_client.py` | Gradle | plugins.gradle.org |
+| `swift_client.py` | Swift | swiftpackageindex.com |
+| `hex_client.py` | Hex (Elixir) | hex.pm |
+| `haskell_client.py` | Haskell (Cabal) | hackage.haskell.org |
 
 All clients are lazily registered — they are only imported when their ecosystem is first accessed.
 
 ### Database (`backend/database/`)
 
-- **`models.py`** — SQLAlchemy ORM models. Schema created via `Base.metadata.create_all()` (no Alembic). SQLite by default, PostgreSQL optional.
-- **`compatibility_db.py`** — Compatibility matrix operations.
+- **`models.py`** — SQLAlchemy ORM models (8 tables, see ER diagram below). SQLite by default, PostgreSQL optional.
+- **`compatibility_db.py`** — Compatibility matrix operations (CRUD for packages, reports, conflicts, benchmarks, cache).
+
+## Import architecture rules
+
+The codebase enforces strict import layering. Arrows show allowed dependency directions:
+
+```mermaid
+graph LR
+    subgraph Layers["📐 Import Architecture"]
+        CLI["<b>cli/</b>"]:::cliLayer
+        API["<b>api/</b>"]:::apiLayer
+        ORCH["<b>orchestrator/</b>"]:::orchLayer
+        CORE["<b>core/</b>"]:::coreLayer
+        DS["<b>data_sources/</b>"]:::dsLayer
+        DB["<b>database/</b>"]:::dbLayer
+        SETTINGS["<b>settings/</b>"]:::infra
+        UTILS["<b>utils/</b>"]:::infra
+    end
+
+    CLI --> ORCH
+    API --> ORCH
+    ORCH --> CORE
+    ORCH --> DS
+    CORE --> SETTINGS
+    CORE --> UTILS
+    DB --> CORE
+    DS --> CORE
+
+    CLI -.->|"❌ NO"| API
+    API -.->|"❌ NO"| CLI
+    CLI -.->|"❌ NO"| DB
+    API -.->|"❌ NO"| DS
+
+    classDef cliLayer fill:#e8f5e9,stroke:#2e7d32
+    classDef apiLayer fill:#e3f2fd,stroke:#1565c0
+    classDef orchLayer fill:#fff8e1,stroke:#f57f17
+    classDef coreLayer fill:#f3e5f5,stroke:#7b1fa2
+    classDef dsLayer fill:#fce4ec,stroke:#c62828
+    classDef dbLayer fill:#e0f2f1,stroke:#00695c
+    classDef infra fill:#f5f5f5,stroke:#616161
+```
+
+| Violation | Count | Status |
+|---|---|---|
+| `api/ → cli/` | 0 | **Fixed** — switched to `orchestrator/` |
+| `cli/ → api/` | 0 | **Fixed** — `download_github_repo` moved to `core/utils.py` |
+| `api/ → database/` | 7 | Should fix — needs data-access service layer |
+| `data_sources/ → core/` | 50+ | **Accepted** — core utilities are natural dependency |
+| `database/ → core/` | 6 | **Accepted** — DB uses version parsing from core |
+| `cli/commands/serve.py → api/` | 1 | **Accepted** — serve wraps FastAPI app; deployment concern |
+| `manifest_detector.py → core/` | 1 | **Accepted** — utility import |
+| `backend/__init__.py → core/` | 4 | **Accepted** — public API re-exports |
+| `cli.py → cli/` | 3 | **Accepted** — entry point shim |
+| `run.py → api/` | 1 | **Accepted** — entry point |
 
 ## Key design decisions
 
-- **Lazy loading**: `import z3` inside methods (not at module level), 13 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
+- **Lazy loading**: `import z3` inside methods (not at module level), 18 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
 - **SQLite first**: No PostgreSQL or Redis required. SQLite + DictCache work for all standalone/desktop use cases.
 - **Auth conditionally registered**: `ENABLE_AUTH=false` by default. Auth router only mounted when explicitly enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.
@@ -137,10 +220,163 @@ All clients are lazily registered — they are only imported when their ecosyste
 
 ```
 tests/
-├── unit/         → 399 tests (CLI, API, core, data sources, settings)
-├── integration/  → 69 tests (API + DB + data flow, uses SQLite)
+├── unit/         → 1400+ tests (CLI, API, core, data sources, settings)
+├── integration/  → 90+ tests (API + DB + data flow, uses SQLite)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures
 ```
 
 Integration tests default to SQLite (no PostgreSQL needed). Tests use `_patch_engine` to substitute the production database engine with the test engine.
+
+## Data model (ER diagram)
+
+```mermaid
+erDiagram
+    Package ||--o{ PackageVersion : has
+    Package ||--o{ CompatibilityReport : has
+    Package ||--o{ ConflictRule : "conflicts as pkg1"
+    Package ||--o{ ConflictRule : "conflicts as pkg2"
+    User ||--o{ APIKey : owns
+    User ||--o{ CompatibilityReport : submits
+
+    Package {
+        int id PK
+        string name UK
+        string ecosystem UK
+        string latest_version
+        text description
+        string homepage
+        string repository
+        string license
+        datetime created_at
+        datetime updated_at
+    }
+
+    PackageVersion {
+        int id PK
+        int package_id FK
+        string version UK
+        datetime release_date
+        string python_requires
+        int size_bytes
+        int download_count
+        json system_requirements
+        json dependencies
+        json metadata_json
+        datetime created_at
+    }
+
+    CompatibilityReport {
+        int id PK
+        int package_id FK
+        string version
+        string os_name
+        string os_version
+        string cpu_architecture
+        string gpu_name
+        string cuda_version
+        string cudnn_version
+        string python_version
+        json system_info
+        bool works
+        text notes
+        string user_id
+        datetime created_at
+    }
+
+    ConflictRule {
+        int id PK
+        int package1_id FK
+        string package1_version_spec
+        int package2_id FK
+        string package2_version_spec
+        string conflict_type
+        text description
+        string severity
+        text resolution
+        datetime created_at
+        bool verified
+    }
+
+    VerifiedCombination {
+        int id PK
+        string name
+        text description
+        json packages
+        json system_requirements
+        string verified_by
+        datetime verification_date
+        json test_results
+        int usage_count
+        float success_rate
+        datetime created_at
+        datetime updated_at
+    }
+
+    SystemBenchmark {
+        int id PK
+        string system_hash UK
+        string os_name
+        string os_version
+        string cpu_model
+        int cpu_cores
+        float ram_gb
+        string gpu_model
+        float gpu_memory_gb
+        json system_info
+        json benchmarks
+        datetime created_at
+    }
+
+    ResolutionCache {
+        int id PK
+        string request_hash UK
+        json packages
+        json system_info
+        json constraints
+        json resolution
+        int resolution_time_ms
+        bool success
+        int hit_count
+        datetime created_at
+        datetime expires_at
+    }
+
+    User {
+        int id PK
+        string username UK
+        string email UK
+        string hashed_password
+        string full_name
+        bool is_active
+        bool is_superuser
+        json scopes
+        datetime created_at
+        datetime updated_at
+        datetime last_login
+    }
+
+    APIKey {
+        int id PK
+        string key UK
+        string name
+        text description
+        int user_id FK
+        json scopes
+        bool is_active
+        datetime expires_at
+        datetime last_used_at
+        int usage_count
+        datetime created_at
+        datetime revoked_at
+    }
+```
+
+**8 tables** across 3 domains:
+
+| Domain | Tables | Purpose |
+|---|---|---|
+| 📦 **Package data** | `packages`, `package_versions` | Registry metadata for resolved packages |
+| 🧪 **Compatibility** | `compatibility_reports`, `conflict_rules`, `verified_combinations` | Known-working combinations and conflicts |
+| ⚡ **Infrastructure** | `system_benchmarks`, `resolution_cache` | Performance data and cached resolutions |
+| 👤 **Auth** | `users`, `api_keys` | Authentication and API key management |

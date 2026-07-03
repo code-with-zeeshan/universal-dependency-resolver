@@ -1,3 +1,4 @@
+"""Module docstring."""
 import json
 import sys
 
@@ -8,8 +9,12 @@ from backend.settings import ECOSYSTEMS, ECOSYSTEM_NAMES
 
 from ..shared import console
 
+_VALID_ECOSYSTEMS = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
+
 
 def cmd_list_ecosystems(args):
+    """Cmd list ecosystems."""
+    ecosystems = _VALID_ECOSYSTEMS
     if getattr(args, "json", False):
         data = [
             {
@@ -17,17 +22,17 @@ def cmd_list_ecosystems(args):
                 "display": ECOSYSTEM_NAMES.get(eco, eco.replace("_", " ").title()),
                 "identifier": eco,
             }
-            for eco in ECOSYSTEMS
+            for eco in ecosystems
         ]
         json.dump(data, sys.stdout, indent=2)
         print()
         return
-    table = Table(title=f"Supported Ecosystems ({len(ECOSYSTEMS)})", box=box.ROUNDED)
+    table = Table(title=f"Supported Ecosystems ({len(ecosystems)})", box=box.ROUNDED)
     table.add_column("Name", style="cyan")
     table.add_column("Display Name")
     table.add_column("Identifier")
 
-    for eco in ECOSYSTEMS:
+    for eco in ecosystems:
         display = ECOSYSTEM_NAMES.get(eco, eco.replace("_", " ").title())
         table.add_row(eco, display, eco)
 

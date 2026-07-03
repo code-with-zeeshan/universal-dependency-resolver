@@ -1,5 +1,4 @@
-"""
-Manifest file discovery and parsing for `udr lock`.
+"""Manifest file discovery and parsing for `udr lock`.
 
 Auto-detects known dependency manifests in a directory,
 parses them into a uniform package list, and maps each
@@ -43,6 +42,27 @@ MANIFEST_PATTERNS: List[Tuple[str, str, str]] = [
     ("coordinator/*.in", "pypi", "requirements"),
     ("dependencies/*.txt", "pypi", "requirements"),
     ("dependencies/*.in", "pypi", "requirements"),
+    ("build.gradle", "gradle", "gradle"),
+    ("build.gradle.kts", "gradle", "gradle"),
+    ("Package.swift", "swift", "swift"),
+    ("mix.exs", "hex", "hex"),
+    ("*.cabal", "haskell", "cabal"),
+    ("pom.xml", "maven", "maven"),
+    ("Podfile", "cocoapods", "cocoapods"),
+    ("Podfile.lock", "cocoapods", "cocoapods"),
+    ("packages.config", "nuget", "nuget"),
+    ("Brewfile", "homebrew", "homebrew"),
+    ("Brewfile.lock.json", "homebrew", "homebrew"),
+    ("apt-packages.txt", "apt", "simple"),
+    ("apk-packages.txt", "apk", "simple"),
+    ("poetry.lock", "pypi", "poetry_lock"),
+    ("uv.lock", "pypi", "uv_lock"),
+    ("go.sum", "go", "go_sum"),
+    ("composer.lock", "packagist", "composer_lock"),
+    ("Gemfile.lock", "rubygems", "gemfile_lock"),
+    ("mix.lock", "hex", "mix_lock"),
+    ("Package.resolved", "swift", "package_resolved"),
+    ("udr.lock", "pypi", "udr_lock"),
 ]
 
 
@@ -50,6 +70,7 @@ class ManifestDetector:
     """Scans a directory for dependency manifests and parses them."""
 
     def __init__(self, directory: str | Path = "."):
+        """Initialize."""
         self.directory = Path(directory).resolve()
 
     def detect(self) -> List[Dict]:
@@ -78,6 +99,7 @@ class ManifestDetector:
         return found
 
     def _read_with_encoding_fallback(self, path: Path) -> str:
+        """Read with encoding fallback."""
         raw: Any = path.read_bytes()
         if raw[:3] == b"\xef\xbb\xbf":
             raw = raw[3:]
@@ -156,6 +178,7 @@ class ManifestDetector:
     # --- Private parsers ---
 
     def _get_parser(self, key: str):
+        """Get parser."""
         parsers = {
             "requirements": self._parse_requirements,
             "pipfile": self._parse_pipfile,
@@ -172,18 +195,63 @@ class ManifestDetector:
             "composer_json": self._parse_composer_json,
             "pnpm_lock": self._parse_pnpm_lock,
             "pubspec": self._parse_pubspec,
+            "gradle": self._parse_gradle,
+            "swift": self._parse_swift,
+            "hex": self._parse_hex,
+            "cabal": self._parse_cabal,
+            "maven": self._parse_maven,
+            "cocoapods": self._parse_cocoapods,
+            "nuget": self._parse_nuget,
+            "homebrew": self._parse_homebrew,
+            "simple": self._parse_simple,
+            "poetry_lock": self._parse_poetry_lock,
+            "uv_lock": self._parse_uv_lock,
+            "go_sum": self._parse_go_sum,
+            "composer_lock": self._parse_composer_lock,
+            "gemfile_lock": self._parse_gemfile_lock,
+            "mix_lock": self._parse_mix_lock,
+            "package_resolved": self._parse_package_resolved,
+            "udr_lock": self._parse_udr_lock,
         }
         return parsers[key]
 
     def _parse_requirements(self, content: str) -> List[Dict]:
+        """Parse requirements."""
         packages = []
         try:
             from packaging.requirements import Requirement
+
+            has_requirement = True
         except ImportError:
-            for line in content.split("\n"):
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
+            has_requirement = False
+
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("-"):
+                continue
+            if has_requirement:
+                try:
+                    req = Requirement(line)
+                    if req.extras:
+                        packages.append(
+                            {
+                                "name": req.name,
+                                "version": str(req.specifier) if req.specifier else "*",
+                                "extras": list(req.extras),
+                            }
+                        )
+                    else:
+                        packages.append(
+                            {
+                                "name": req.name,
+                                "version": str(req.specifier) if req.specifier else "*",
+                            }
+                        )
+                except Exception:
+                    packages.append({"name": line, "version": "*"})
+            else:
                 for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
                     if op in line:
                         n, v = line.split(op, 1)
@@ -193,7 +261,146 @@ class ManifestDetector:
                         break
                 else:
                     packages.append({"name": line, "version": "*"})
+        return packages
+
+    def _parse_gradle(self, content: str) -> List[Dict]:
+        """Parse Gradle build file."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            # Match: implementation 'group:name:version' or "group:name:version"
+            m = re.match(r"(implementation|api|compile|runtimeOnly)\s+['\"]([^'\"]+)['\"]", line)
+            if m:
+                parts = m.group(2).split(":")
+                if len(parts) >= 3:
+                    packages.append({"name": f"{parts[0]}:{parts[1]}", "version": parts[2]})
+        return packages
+
+    def _parse_swift(self, content: str) -> List[Dict]:
+        """Parse Swift Package Manager file."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            m = re.search(r'\.package\(url:\s*["\']([^"\']+)["\']', line)
+            if m:
+                url = m.group(1)
+                name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+                packages.append({"name": name, "version": "*"})
+        return packages
+
+    def _parse_hex(self, content: str) -> List[Dict]:
+        """Parse Elixir mix.exs file."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            m = re.match(r'\{\s*:(\w+)\s*,\s*["\']([^"\']+)["\']', line)
+            if m:
+                packages.append({"name": m.group(1), "version": m.group(2)})
+        return packages
+
+    def _parse_maven(self, content: str) -> List[Dict]:
+        """Parse Maven pom.xml."""
+        packages = []
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(content)
+            ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+            for dep in root.findall(".//m:dependencies/m:dependency", ns):
+                group = dep.find("m:groupId", ns)
+                artifact = dep.find("m:artifactId", ns)
+                version = dep.find("m:version", ns)
+                if group is not None and artifact is not None:
+                    name = f"{group.text}:{artifact.text}"
+                    ver = version.text if version is not None else "*"
+                    packages.append({"name": name, "version": ver})
+        except Exception:
+            pass
+        return packages
+
+    def _parse_cocoapods(self, content: str) -> List[Dict]:
+        """Parse CocoaPods Podfile."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            m = re.match(r"pod\s+['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?", line)
+            if m:
+                name = m.group(1)
+                version = m.group(2) if m.group(2) else "*"
+                packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_nuget(self, content: str) -> List[Dict]:
+        """Parse NuGet packages.config."""
+        packages = []
+        try:
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(content)
+            for pkg in root.findall(".//package"):
+                name = pkg.get("id")
+                version = pkg.get("version", "*")
+                if name:
+                    packages.append({"name": name, "version": version})
+        except Exception:
+            pass
+        return packages
+
+    def _parse_simple(self, content: str) -> List[Dict]:
+        """Parse simple line-based manifest (apt-packages.txt, apk-packages.txt)."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
+                if op in line:
+                    n, v = line.split(op, 1)
+                    packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                    break
+            else:
+                packages.append({"name": line, "version": "*"})
+        return packages
+
+    def _parse_homebrew(self, content: str) -> List[Dict]:
+        """Parse Homebrew Brewfile or Brewfile.lock.json."""
+        packages = []
+        stripped = content.strip()
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+                entries = data.get("entries", data)
+                if isinstance(entries, list):
+                    for e in entries:
+                        if isinstance(e, dict):
+                            name = e.get("name", e.get("package", ""))
+                            version = e.get("version", "*")
+                            if name:
+                                packages.append({"name": name, "version": version})
+            except Exception:
+                pass
             return packages
+        for line in content.split("\n"):
+            line = line.strip()
+            if line.startswith("#") or not line:
+                continue
+            m = re.match(r'(brew|cask)\s+["\']([^"\']+)["\']', line)
+            if m:
+                packages.append({"name": m.group(2), "version": "*"})
+        return packages
+
+    def _parse_cabal(self, content: str) -> List[Dict]:
+        """Parse Cabal build file."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            if line.startswith("build-depends:"):
+                rest = line[len("build-depends:"):].strip()
+                for part in re.split(r",\s*", rest):
+                    m = re.match(r"(\S+)\s*(.*)", part)
+                    if m:
+                        name = m.group(1)
+                        version_spec = m.group(2).strip() or "*"
+                        packages.append({"name": name, "version": version_spec})
+        return packages
         for line in content.split("\n"):
             line = line.strip()
             if (
@@ -215,6 +422,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pipfile(self, content: str) -> List[Dict]:
+        """Parse pipfile."""
         try:
             import tomllib
 
@@ -235,6 +443,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pipfile_lock(self, content: str) -> List[Dict]:
+        """Parse pipfile lock."""
         try:
             import json
 
@@ -254,6 +463,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pyproject(self, content: str) -> List[Dict]:
+        """Parse pyproject."""
         try:
             import tomllib
 
@@ -293,6 +503,7 @@ class ManifestDetector:
         return packages
 
     def _parse_package_json(self, content: str) -> List[Dict]:
+        """Parse package json."""
         try:
             data = json.loads(content)
         except Exception:
@@ -305,6 +516,7 @@ class ManifestDetector:
         return packages
 
     def _parse_package_lock(self, content: str) -> List[Dict]:
+        """Parse package lock."""
         try:
             data = json.loads(content)
         except Exception:
@@ -322,6 +534,7 @@ class ManifestDetector:
         return packages
 
     def _parse_yarn_lock(self, content: str) -> List[Dict]:
+        """Parse yarn lock."""
         packages = []
         for line in content.split("\n"):
             line = line.strip()
@@ -342,6 +555,7 @@ class ManifestDetector:
         return packages
 
     def _parse_cargo_toml(self, content: str) -> List[Dict]:
+        """Parse cargo toml."""
         try:
             import tomllib
 
@@ -361,6 +575,7 @@ class ManifestDetector:
         return packages
 
     def _parse_cargo_lock(self, content: str) -> List[Dict]:
+        """Parse cargo lock."""
         try:
             import tomllib
 
@@ -378,6 +593,7 @@ class ManifestDetector:
         return packages
 
     def _parse_go_mod(self, content: str) -> List[Dict]:
+        """Parse go mod."""
         packages = []
         for line in content.split("\n"):
             line = line.strip()
@@ -392,6 +608,7 @@ class ManifestDetector:
         return packages
 
     def _parse_conda_env(self, content: str) -> List[Dict]:
+        """Parse conda env."""
         try:
             import yaml  # type: ignore[import-untyped]
 
@@ -425,6 +642,7 @@ class ManifestDetector:
         return packages
 
     def _parse_gemfile(self, content: str) -> List[Dict]:
+        """Parse gemfile."""
         packages = []
         for line in content.split("\n"):
             line = line.strip()
@@ -438,6 +656,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pnpm_lock(self, content: str) -> List[Dict]:
+        """Parse pnpm lock."""
         try:
             import yaml
 
@@ -460,6 +679,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pubspec(self, content: str) -> List[Dict]:
+        """Parse pubspec."""
         try:
             import yaml
 
@@ -481,6 +701,7 @@ class ManifestDetector:
         return packages
 
     def _parse_composer_json(self, content: str) -> List[Dict]:
+        """Parse composer json."""
         try:
             data = json.loads(content)
         except Exception:
@@ -491,5 +712,138 @@ class ManifestDetector:
             for name, version in deps.items():
                 if name == "php":
                     continue
+                packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_poetry_lock(self, content: str) -> List[Dict]:
+        """Parse poetry.lock (TOML format)."""
+        try:
+            import tomllib
+            data = tomllib.loads(content)
+        except Exception:
+            return []
+        packages = []
+        for entry in data.get("package", []):
+            name = entry.get("name")
+            version = entry.get("version", "*")
+            if name:
+                packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_uv_lock(self, content: str) -> List[Dict]:
+        """Parse uv.lock (TOML format)."""
+        try:
+            import tomllib
+            data = tomllib.loads(content)
+        except Exception:
+            return []
+        packages = []
+        for entry in data.get("package", []):
+            name = entry.get("name")
+            source = entry.get("source", {})
+            version = source.get("version") if isinstance(source, dict) else entry.get("version", "*")
+            if name:
+                packages.append({"name": name, "version": version or "*"})
+        return packages
+
+    def _parse_go_sum(self, content: str) -> List[Dict]:
+        """Parse go.sum."""
+        packages = []
+        seen = set()
+        for line in content.split("\n"):
+            line = line.strip()
+            parts = line.split()
+            if len(parts) >= 2 and "/" in parts[0]:
+                name = parts[0]
+                ver = parts[1] if parts[1] else "*"
+                if name.startswith("go.mod"):
+                    continue
+                if name not in seen:
+                    seen.add(name)
+                    packages.append({"name": name, "version": ver})
+        return packages
+
+    def _parse_composer_lock(self, content: str) -> List[Dict]:
+        """Parse composer.lock (JSON format)."""
+        try:
+            data = json.loads(content)
+        except Exception:
+            return []
+        packages = []
+        for section in ["packages", "packages-dev"]:
+            for entry in data.get(section, []):
+                name = entry.get("name")
+                version = entry.get("version", "*")
+                if name:
+                    packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_gemfile_lock(self, content: str) -> List[Dict]:
+        """Parse Gemfile.lock."""
+        packages = []
+        in_specs = False
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped == "specs:":
+                in_specs = True
+                continue
+            if in_specs:
+                if stripped == "":
+                    continue
+                indent = len(line) - len(line.lstrip())
+                if indent < 4:
+                    break
+                if indent >= 4 and "(" in stripped:
+                    m = re.match(r"(\S+)\s+\(([^)]+)\)", stripped)
+                    if m:
+                        packages.append({"name": m.group(1), "version": m.group(2)})
+        return packages
+
+    def _parse_mix_lock(self, content: str) -> List[Dict]:
+        """Parse mix.lock."""
+        packages = []
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("%"):
+                continue
+            line = line.rstrip(",")
+            m = re.match(r'["\']([^"\']+)["\']\s*:', line)
+            if not m:
+                continue
+            name = m.group(1)
+            inner = line[m.end():].strip().lstrip("{").strip()
+            parts = inner.split(",")
+            if len(parts) >= 3:
+                ver_m = re.search(r'["\']([^"\']+)["\']', parts[2])
+                if ver_m:
+                    packages.append({"name": name, "version": ver_m.group(1)})
+        return packages
+
+    def _parse_package_resolved(self, content: str) -> List[Dict]:
+        """Parse Package.resolved (Swift)."""
+        try:
+            data = json.loads(content)
+        except Exception:
+            return []
+        packages = []
+        pins = data.get("pins", data.get("object", {}).get("pins", []))
+        for entry in pins:
+            name = entry.get("identity", entry.get("package", ""))
+            version = entry.get("version", entry.get("state", {}).get("version", "*"))
+            if name:
+                packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_udr_lock(self, content: str) -> List[Dict]:
+        """Parse udr.lock — UDR's own lock file format."""
+        try:
+            data = json.loads(content)
+        except Exception:
+            return []
+        packages = []
+        for entry in data.get("packages", []):
+            name = entry.get("name")
+            version = entry.get("version", "*")
+            if name:
                 packages.append({"name": name, "version": version})
         return packages

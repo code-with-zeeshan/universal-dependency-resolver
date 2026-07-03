@@ -1,3 +1,4 @@
+"""Module docstring."""
 # documentation_scraper.py
 import aiohttp
 from typing import Dict, List, Optional, Any
@@ -79,7 +80,7 @@ class DocumentationScraper:
             self.session = None
 
     async def scrape_installation_requirements(self, package_name: str) -> Dict:
-        """Scrape installation requirements from official documentation"""
+        """Scrape installation requirements from official documentation."""
         package_name = normalize_package_name(package_name)
         if not self.session:
             self.session = aiohttp.ClientSession(
@@ -118,7 +119,7 @@ class DocumentationScraper:
             return {}
 
     async def _find_documentation_url(self, package_name: str) -> Optional[str]:
-        """Try to find official documentation URL using multiple strategies"""
+        """Try to find official documentation URL using multiple strategies."""
         package_name = normalize_package_name(package_name)
 
         # Strategy 1: Check PyPI for project URLs
@@ -152,7 +153,7 @@ class DocumentationScraper:
         return None
 
     async def _get_pypi_documentation_url(self, package_name: str) -> Optional[str]:
-        """Get documentation URL from PyPI"""
+        """Get documentation URL from PyPI."""
         package_name = normalize_package_name(package_name)
         try:
             pypi_api_url = f"https://pypi.org/pypi/{package_name}/json"
@@ -192,7 +193,7 @@ class DocumentationScraper:
         return None
 
     async def _get_github_documentation_url(self, package_name: str) -> Optional[str]:
-        """Try to find GitHub repository and documentation"""
+        """Try to find GitHub repository and documentation."""
         package_name = normalize_package_name(package_name)
         try:
             # Search GitHub for the package
@@ -234,7 +235,7 @@ class DocumentationScraper:
         return None
 
     async def _search_documentation_url(self, package_name: str) -> Optional[str]:
-        """Search for documentation using DuckDuckGo HTML"""
+        """Search for documentation using DuckDuckGo HTML."""
         package_name = normalize_package_name(package_name)
         try:
             # Use DuckDuckGo HTML search (no API key required)
@@ -271,7 +272,7 @@ class DocumentationScraper:
         return None
 
     async def _check_url_exists(self, url: str) -> bool:
-        """Check if a URL exists and is accessible"""
+        """Check if a URL exists and is accessible."""
         try:
             async with self.session.head(
                 url, allow_redirects=True, timeout=5
@@ -281,7 +282,7 @@ class DocumentationScraper:
             return False
 
     async def _scrape_requirements_from_url(self, url: str, package_name: str) -> Dict:
-        """Scrape requirements from a documentation page"""
+        """Scrape requirements from a documentation page."""
         try:
             async with self.session.get(url, timeout=30) as response:
                 if response.status != 200:
@@ -325,7 +326,7 @@ class DocumentationScraper:
             return {}
 
     def _scrape_tensorflow_requirements(self, soup: BeautifulSoup) -> Dict:
-        """Scrape TensorFlow-specific requirements"""
+        """Scrape TensorFlow-specific requirements."""
         requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "cudnn_versions": [],
@@ -401,7 +402,7 @@ class DocumentationScraper:
         return requirements
 
     def _scrape_pytorch_requirements(self, soup: BeautifulSoup) -> Dict:
-        """Scrape PyTorch-specific requirements"""
+        """Scrape PyTorch-specific requirements."""
         requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "python_versions": [],
@@ -478,7 +479,7 @@ class DocumentationScraper:
         return requirements
 
     def _scrape_tensorrt_requirements(self, soup: BeautifulSoup) -> Dict:
-        """Scrape TensorRT-specific requirements"""
+        """Scrape TensorRT-specific requirements."""
         requirements: Dict[str, Any] = {
             "cuda_versions": [],
             "cudnn_versions": [],
@@ -580,7 +581,7 @@ class DocumentationScraper:
         return requirements
 
     def _scrape_generic_requirements(self, soup: BeautifulSoup) -> Dict:
-        """Generic requirements scraper"""
+        """Generic requirements scraper."""
         requirements: Dict[str, Any] = {
             "system_requirements": [],
             "dependencies": [],
@@ -673,7 +674,7 @@ class DocumentationScraper:
         return requirements
 
     async def _extract_requirements_from_tables(self, soup: BeautifulSoup) -> Dict:
-        """Extract requirements from HTML tables"""
+        """Extract requirements from HTML tables."""
         requirements: Dict[str, Any] = {}
         tables = soup.find_all("table")
 
@@ -751,7 +752,7 @@ class DocumentationScraper:
         return requirements
 
     async def extract_compatibility_matrix(self, package_name: str) -> Dict:
-        """Extract compatibility matrix from documentation"""
+        """Extract compatibility matrix from documentation."""
         package_name = normalize_package_name(package_name)
         if not self.session:
             self.session = aiohttp.ClientSession(
@@ -818,7 +819,7 @@ class DocumentationScraper:
         return compatibility_matrix
 
     def _parse_compatibility_table(self, table, package_name: str) -> Dict:
-        """Parse a compatibility table into a matrix"""
+        """Parse a compatibility table into a matrix."""
         matrix: Dict[str, Any] = {}
         # Get headers
         headers = []
@@ -908,7 +909,7 @@ class DocumentationScraper:
     def _extract_compatibility_from_text(
         self, soup: BeautifulSoup, package_name: str
     ) -> Dict:
-        """Extract compatibility information from text content"""
+        """Extract compatibility information from text content."""
         matrix: Dict[str, Any] = {}
         # Look for version-specific sections
         version_sections = soup.find_all(
@@ -949,7 +950,7 @@ class DocumentationScraper:
     async def _extract_tensorflow_compatibility_matrix(
         self, soup: BeautifulSoup
     ) -> Dict:
-        """Extract TensorFlow-specific compatibility matrix"""
+        """Extract TensorFlow-specific compatibility matrix."""
         matrix: Dict[str, Any] = {}
         # TensorFlow often has a specific compatibility table
         # Look for it by searching for "tested build configurations"
@@ -971,7 +972,7 @@ class DocumentationScraper:
         return matrix
 
     async def _extract_pytorch_compatibility_matrix(self, soup: BeautifulSoup) -> Dict:
-        """Extract PyTorch-specific compatibility matrix"""
+        """Extract PyTorch-specific compatibility matrix."""
         matrix: Dict[str, Any] = {}
         # PyTorch compatibility is often in the installation matrix
         # Look for CUDA version mappings
@@ -1017,7 +1018,7 @@ class DocumentationScraper:
         min_version: Optional[str] = None,
         max_version: Optional[str] = None,
     ) -> Optional[str]:
-        """Get the latest compatible version from a list"""
+        """Get the latest compatible version from a list."""
         if not versions:
             return None
 

@@ -1,3 +1,4 @@
+"""Module docstring."""
 import re
 from typing import Dict, Optional
 

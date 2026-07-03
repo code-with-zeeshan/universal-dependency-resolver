@@ -1,3 +1,4 @@
+"""Module docstring."""
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -6,6 +7,8 @@ from packaging import version
 
 
 class SystemSpec(BaseModel):
+    """System Spec functionality."""
+
     os: Optional[str] = Field(
         None, description="Operating system (linux, windows, macos)"
     )
@@ -19,6 +22,7 @@ class SystemSpec(BaseModel):
 
     @classmethod
     def from_string(cls, spec_string: str) -> "SystemSpec":
+        """From string."""
         spec = cls(
             os=None,
             os_version=None,
@@ -52,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 
 def _check_version_compatibility(version_info: Dict, system_spec: str) -> bool:
+    """Check version compatibility."""
     try:
         spec = SystemSpec.from_string(system_spec)
         is_compatible, _ = _check_version_compatibility_detailed(version_info, spec)
@@ -63,6 +68,7 @@ def _check_version_compatibility(version_info: Dict, system_spec: str) -> bool:
 def _check_version_compatibility_detailed(
     version_info: Dict, system_spec: SystemSpec
 ) -> Tuple[bool, List[str]]:
+    """Check version compatibility detailed."""
     compatibility_notes = []
     is_compatible = True
 
@@ -110,6 +116,7 @@ def _check_version_compatibility_detailed(
 
 
 def _check_python_compatibility(system_python: str, requires_python: str) -> bool:
+    """Check python compatibility."""
     try:
         from packaging.specifiers import SpecifierSet
 
@@ -122,6 +129,7 @@ def _check_python_compatibility(system_python: str, requires_python: str) -> boo
 
 
 def _check_os_compatibility(system_os: str, supported_platforms: List[str]) -> bool:
+    """Check os compatibility."""
     if not supported_platforms or "any" in supported_platforms:
         return True
     os_mapping = {
@@ -139,6 +147,7 @@ def _check_os_compatibility(system_os: str, supported_platforms: List[str]) -> b
 
 
 def _check_cuda_compatibility(system_cuda: str, required_cuda: List[str]) -> bool:
+    """Check cuda compatibility."""
     try:
         system_version = version.parse(system_cuda)
         for req_cuda in required_cuda:
@@ -163,6 +172,7 @@ def _check_cuda_compatibility(system_cuda: str, required_cuda: List[str]) -> boo
 
 
 def _is_prerelease(version_str: str) -> bool:
+    """Check if prerelease."""
     try:
         v = version.parse(version_str)
         return v.is_prerelease

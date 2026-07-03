@@ -10,6 +10,7 @@ let backendCrashed = false
 let tray = null
 let healthCheckInterval = null
 let restarting = false
+let trayStatus = { version: '', lastResolved: '', backendStatus: 'starting' }
 
 const isDev = !app.isPackaged
 const isWin = process.platform === 'win32'
@@ -135,6 +136,81 @@ function stopHealthCheck() {
   }
 }
 
+// ── Auto-updater (production only) ─────────────────────────────────
+function setupAutoUpdater() {
+  if (isDev) return
+  try {
+    const { autoUpdater } = require('electron-updater')
+    autoUpdater.checkForUpdatesAndNotify()
+    autoUpdater.on('checking-for-update', () => {
+      console.log('[updater] Checking for updates...')
+    })
+    autoUpdater.on('update-available', (info) => {
+      console.log('[updater] Update available:', info.version)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-available', info)
+      }
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UDR Update Available',
+          body: `Version ${info.version} is available. Downloading...`,
+        })
+      }
+    })
+    autoUpdater.on('download-progress', (progress) => {
+      const pct = Math.round(progress.percent)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-progress', pct)
+      }
+    })
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[updater] Update downloaded:', info.version)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-downloaded', info.version)
+      }
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UDR Update Ready',
+          body: `Version ${info.version} downloaded. Restart to apply.`,
+        })
+      }
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: `Version ${info.version} has been downloaded. Restart now to apply the update?`,
+        buttons: ['Restart', 'Later'],
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall()
+      })
+    })
+    autoUpdater.on('update-not-available', () => {
+      console.log('[updater] No updates available')
+      if (mainWindow) {
+        mainWindow.webContents.send('update-not-available')
+      }
+    })
+    autoUpdater.on('error', (err) => {
+      console.error('[updater] Error:', err.message)
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', err.message)
+      }
+    })
+    return autoUpdater
+  } catch (e) {
+    console.warn('Auto-updater not available:', e.message)
+    return null
+  }
+}
+
+function checkForUpdates() {
+  try {
+    const { autoUpdater } = require('electron-updater')
+    autoUpdater.checkForUpdatesAndNotify()
+  } catch (e) {
+    console.warn('Auto-updater not available:', e.message)
+  }
+}
+
 // ── Fallback commands ─────────────────────────────────────────────────
 function getFallbackCommands() {
   const cmds = []
@@ -194,31 +270,7 @@ async function createWindow() {
   const backendUrl = `http://${BACKEND_HOST}:${backendPort}`
 
   // Auto-update (only in production)
-  if (!isDev) {
-    try {
-      const { autoUpdater } = require('electron-updater')
-      autoUpdater.checkForUpdatesAndNotify()
-      autoUpdater.on('update-downloaded', () => {
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'UDR Update',
-            body: 'A new version has been downloaded. Restart to apply.',
-          })
-        }
-        const { dialog: d } = require('electron')
-        d.showMessageBox(mainWindow, {
-          type: 'info',
-          title: 'Update Ready',
-          message: 'A new version has been downloaded. Restart now to apply the update?',
-          buttons: ['Restart', 'Later'],
-        }).then(({ response }) => {
-          if (response === 0) autoUpdater.quitAndInstall()
-        })
-      })
-    } catch (e) {
-      console.warn('Auto-updater not available:', e.message)
-    }
-  }
+  setupAutoUpdater()
 
   const savedState = loadWindowState()
   const winOptions = {
@@ -311,22 +363,60 @@ ipcMain.handle('get-backend-url', () => {
   return `http://${BACKEND_HOST}:${backendPort}`
 })
 
+ipcMain.on('update-tray-status', (event, status) => {
+  if (status) {
+    if (status.version !== undefined) trayStatus.version = status.version
+    if (status.lastResolved !== undefined) trayStatus.lastResolved = status.lastResolved
+    if (status.backendStatus !== undefined) trayStatus.backendStatus = status.backendStatus
+    updateTray()
+  }
+})
+
 function createTray() {
   try {
     const iconPath = path.join(__dirname, 'assets', 'tray-icon.png')
     if (!fs.existsSync(iconPath)) return
     tray = new Tray(iconPath)
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'Show UDR', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } } },
-      { type: 'separator' },
-      { label: 'Quit', click: () => { app.isQuitting = true; app.quit() } },
-    ])
-    tray.setToolTip('Universal Dependency Resolver')
-    tray.setContextMenu(contextMenu)
+    updateTray()
     tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } })
   } catch (e) {
     console.warn('Tray creation failed:', e.message)
   }
+}
+
+function updateTray() {
+  if (!tray) return
+  const s = trayStatus
+  const statusText = s.backendStatus === 'running' ? 'Running' :
+    s.backendStatus === 'starting' ? 'Starting...' :
+    s.backendStatus === 'crashed' ? 'Crashed' : 'Stopped'
+  const tooltip = ['Universal Dependency Resolver']
+  if (s.version) tooltip.push(`Version ${s.version}`)
+  tooltip.push(`Status: ${statusText}`)
+  if (s.lastResolved) tooltip.push(`Last resolve: ${s.lastResolved}`)
+  tray.setToolTip(tooltip.join(' — '))
+  const menuItems = [
+    { label: 'Show UDR', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } } },
+    { type: 'separator' },
+    { label: `● ${statusText}`, enabled: false },
+  ]
+  if (s.version) {
+    menuItems.push({ label: `Version ${s.version}`, enabled: false })
+  }
+  if (s.lastResolved) {
+    menuItems.push({ label: `Last Resolve: ${s.lastResolved}`, enabled: false })
+  }
+  menuItems.push(
+    { type: 'separator' },
+    { label: 'Restart Backend', click: () => restartBackend() },
+    { label: 'Check for Updates...', click: () => checkForUpdates() },
+    { type: 'separator' },
+    { label: 'Toggle Developer Tools', accelerator: 'CmdOrCtrl+Shift+I',
+      click: () => { if (mainWindow) mainWindow.webContents.toggleDevTools() } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit() } },
+  )
+  tray.setContextMenu(Menu.buildFromTemplate(menuItems))
 }
 
 function createMenu() {
@@ -366,6 +456,11 @@ function createMenu() {
               detail: `Version ${app.getVersion()}\nElectron ${process.versions.electron}\nNode.js ${process.versions.node}\n\nCross-ecosystem dependency resolver for PyPI, npm, Cargo, Conda, Maven, and more.`,
             })
           },
+        },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates(),
         },
         { type: 'separator' },
         {

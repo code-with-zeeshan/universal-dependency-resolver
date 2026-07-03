@@ -657,3 +657,161 @@ class TestCratesClient:
                     versions = await client.get_package_versions("serde")
         assert len(versions) == 1
         assert versions[0]["version"] == "1.0.0"
+
+    # === Coverage: search_packages exception handlers (lines 90-95) ===
+    @pytest.mark.asyncio
+    async def test_search_packages_re_raises_http_exception(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail="rate limited")):
+            with pytest.raises(HTTPException) as exc_info:
+                await client.search_packages("serde")
+        assert exc_info.value.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_search_packages_wraps_generic_exception(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")):
+            with pytest.raises(HTTPException) as exc_info:
+                await client.search_packages("serde")
+        assert exc_info.value.status_code == 500
+        assert "Crates search error" in exc_info.value.detail
+
+    # === Coverage: get_package_versions except for features (lines 237-238) ===
+    @pytest.mark.asyncio
+    async def test_get_package_versions_features_exception(self, client):
+        data = {
+            "versions": [
+                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 500, "license": "MIT"},
+            ]
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
+            with patch.object(client, "_get_version_features", new_callable=AsyncMock, side_effect=Exception("fail")):
+                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+                    versions = await client.get_package_versions("serde")
+        assert len(versions) == 1
+
+    # === Coverage: get_dependencies filters (lines 302-305) ===
+    @pytest.mark.asyncio
+    async def test_get_dependencies_skips_dev_by_default(self, client):
+        mock_data = {
+            "dependencies": [
+                {"crate_id": "dep1", "kind": "dev", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+            ]
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
+            deps = await client.get_dependencies("serde", "1.0.0")
+        assert len(deps["dev"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_skips_build_by_default(self, client):
+        mock_data = {
+            "dependencies": [
+                {"crate_id": "dep1", "kind": "build", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+            ]
+        }
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
+            deps = await client.get_dependencies("serde", "1.0.0")
+        assert len(deps["build"]) == 0
+
+    # === Coverage: get_dependencies exception handlers (lines 332-337) ===
+    @pytest.mark.asyncio
+    async def test_get_dependencies_re_raises_http_exception(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail="rate limited")):
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_dependencies("serde", "1.0.0")
+        assert exc_info.value.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_wraps_generic_exception(self, client):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")):
+            with pytest.raises(HTTPException) as exc_info:
+                await client.get_dependencies("serde", "1.0.0")
+        assert exc_info.value.status_code == 500
+        assert "Crates dependencies error" in exc_info.value.detail
+
+    # === Coverage: check_compatibility compatible branch (line 408) ===
+    @pytest.mark.asyncio
+    async def test_check_compatibility_rust_compatible(self, client):
+        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={"normal": [], "dev": [], "build": []}):
+            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+                result = await client.check_compatibility("serde", "1.0.0", {"rust_version": "1.65.0"})
+        assert result["compatible"] is True
+        assert "rust_version" in result["details"]
+
+    # === Coverage: _get_version_msrv exception (lines 519-520) ===
+    @pytest.mark.asyncio
+    async def test_get_version_msrv_handles_exception(self, client):
+        with patch.object(client, "get_package_versions", new_callable=AsyncMock, side_effect=Exception("fail")):
+            msrv = await client._get_version_msrv("crate", "1.0.0")
+        assert msrv is None
+
+    # === Coverage: _version_matches_requirement default caret (line 565) ===
+    def test_version_matches_requirement_default_caret(self, client):
+        assert client._version_matches_requirement("1.5.0", "1.0") is True
+        assert client._version_matches_requirement("2.0.0", "1.0") is False
+
+    # === Coverage: _caret_matches v/r None check (line 573) ===
+    def test_caret_matches_none_version(self, client):
+        assert client._caret_matches("invalid", "1.0") is False
+        assert client._caret_matches("1.0.0", "invalid") is False
+
+    # === Coverage: _caret_matches r.major==0, r.minor>0 and r.major==0, r.minor==0 (lines 577-580) ===
+    def test_caret_matches_zero_minor_and_patch(self, client):
+        assert client._version_matches_requirement("0.3.5", "^0.3") is True
+        assert client._version_matches_requirement("0.0.3", "^0.0.3") is True
+        assert client._version_matches_requirement("0.0.5", "^0.0.3") is False
+
+    # === Coverage: _tilde_matches v/r None check (line 590) ===
+    def test_tilde_matches_none_version(self, client):
+        assert client._tilde_matches("invalid", "1.5") is False
+        assert client._tilde_matches("1.5.0", "invalid") is False
+
+    # === Coverage: _comparison_matches no regex match (line 599) ===
+    def test_comparison_matches_no_match(self, client):
+        assert client._comparison_matches("1.0.0", ">") is False
+        assert client._version_matches_requirement("1.0.0", ">") is False
+
+    # === Coverage: _comparison_matches v/r None (line 608) ===
+    def test_comparison_matches_none_version(self, client):
+        assert client._comparison_matches("invalid", ">=1.0") is False
+
+    # === Coverage: _comparison_matches operators (lines 613, 615, 618-619) ===
+    def test_comparison_matches_operators(self, client):
+        assert client._comparison_matches("1.0.0", "<=2.0") is True
+        assert client._comparison_matches("3.0.0", "<=2.0") is False
+        assert client._comparison_matches("3.0.0", ">2.0") is True
+        assert client._comparison_matches("1.0.0", ">2.0") is False
+        assert client._comparison_matches("2.0.0", "=2.0.0") is True
+        assert client._comparison_matches("2.0.1", "=2.0.0") is False
+
+    # === Coverage: _comparison_matches trailing return False (line 624) ===
+    def test_comparison_matches_trailing_return(self, client):
+        assert client._comparison_matches("1.0.0", "===1.0.0") is False
+
+    # === Coverage: _target_matches (lines 653, 656-665) ===
+    def test_target_matches_various(self, client):
+        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "windows")') is False
+        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "macos")') is False
+        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_arch = "aarch64")') is False
+        assert client._target_matches("aarch64-unknown-linux-gnu", 'cfg(target_arch = "x86_64")') is False
+        assert client._target_matches("any", "plain-dep") is True
+
+    # === Coverage: _extract_msrv from keyword (lines 670-673) ===
+    def test_extract_msrv_from_keyword(self, client):
+        result = client._extract_msrv({"keywords": ["rust-1.65", "other"]})
+        assert result == "1.65"
+
+    # === Coverage: _extract_msrv from description regex (line 680) ===
+    def test_extract_msrv_from_description(self, client):
+        result = client._extract_msrv({"keywords": [], "description": "MSRV: 1.60"})
+        assert result == "1.60"
+
+    # === Coverage: _extract_supported_os with keywords (lines 691-693) ===
+    def test_extract_supported_os_with_keywords(self, client):
+        result = client._extract_supported_os({"keywords": ["windows-api", "linux-driver"]})
+        assert "windows" in result
+        assert "linux" in result
+
+    # === Coverage: _extract_system_dependencies -sys suffix (lines 727-728) ===
+    def test_extract_system_dependencies_sys_suffix(self, client):
+        deps = {"normal": [{"name": "my-sys"}], "dev": [], "build": []}
+        result = client._extract_system_dependencies(deps)
+        assert "my" in result

@@ -1,11 +1,87 @@
 # Performance
 
+## SAT solver internals
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 Input"]
+        PACKAGES["Package list<br/>with versions & deps"]
+        SYSINFO["System info<br/>OS · GPU · CUDA · Python"]
+    end
+
+    subgraph Normalize["1️⃣ Normalize"]
+        NORM["Normalize package names<br/>Validate inputs"]
+        GRAPH["Build dependency graph<br/>(NetworkX DiGraph)"]
+    end
+
+    subgraph Variables["2️⃣ Create Z3 Variables"]
+        VARS["Create Bool vars per version<br/><code>z3.Bool('torch_2.1.2')</code>"]
+        CLUSTER["Cluster versions<br/>(major.minor, latest patch)"]
+        WEIGHTS["Assign optimization weights<br/>newer = lower weight"]
+    end
+
+    subgraph Constraints["3️⃣ Add Constraints"]
+        ONEVER["Exactly one version per pkg<br/><code>z3.Or() + z3.AtMost(1)</code>"]
+        SYSREQ["System requirements<br/>CUDA ≥ min_version<br/>Python ≥ min_version"]
+        DEP["Dependency constraints<br/><code>z3.Implies(pkg, valid_deps)</code>"]
+        CONFLICT["Conflict rules<br/>CUDA 11 vs 12 XOR<br/>tensorflow + numpy upper bound"]
+    end
+
+    subgraph Solve["4️⃣ Solve"]
+        OPT["<code>z3.Optimize()</code><br/>minimize(Sum(weights))"]
+        CHECK["<code>solver.check()</code>"]
+        RESULT{"Result?"}
+        SAT["SAT ✅<br/>Extract model<br/><code>solver.model()</code>"]
+        UNSAT["UNSAT ❌<br/>Analyze conflicts"]
+        TIMEOUT["TIMEOUT ⏰<br/>Fallback: backtracking"]
+    end
+
+    subgraph Output["5️⃣ Output"]
+        SOLUTION["Formatted solution<br/>version · ecosystem · tree"]
+        PARTIAL["Partial solution<br/>per-package alternatives"]
+        ERROR["Error payload<br/>with correlation ID"]
+    end
+
+    Input --> Normalize
+    NORM --> GRAPH
+    GRAPH --> Variables
+    CLUSTER --> VARS
+    VARS --> WEIGHTS
+    WEIGHTS --> Constraints
+    ONEVER --> SYSREQ
+    SYSREQ --> DEP
+    DEP --> CONFLICT
+    CONFLICT --> Solve
+    OPT --> CHECK
+    CHECK --> RESULT
+    RESULT -->|"sat"| SAT
+    RESULT -->|"unsat"| UNSAT
+    RESULT -->|"unknown"| TIMEOUT
+    SAT --> SOLUTION
+    UNSAT --> PARTIAL
+    TIMEOUT --> PARTIAL
+    PARTIAL --> ERROR
+
+    style SAT fill:#c8e6c9,stroke:#2e7d32
+    style UNSAT fill:#ffcdd2,stroke:#c62828
+    style TIMEOUT fill:#fff9c4,stroke:#f57f17
+```
+
+**Key implementation details:**
+- Z3 boolean variables are created per package version (`z3.Bool(f"{name}_{version}")`)
+- Exactly-one constraint enforced via `z3.Or()` + `z3.AtMost(1)` per package
+- Dependency constraints use `z3.Implies(pkg_var, Or(valid_dep_vars))`
+- CUDA 11 vs 12 conflict: `z3.Not(And(var11, var12))` for each pair
+- `SOLVER_MAX_VARS` env var (default 5000) prevents memory blowup
+- Version clustering caps at 50 versions per package via `SOLVER_MAX_VERSIONS_PER_PKG`
+- When UNSAT/timeout, falls back to DFS backtracking in `_resolve_with_alternatives()`
+
 ## Startup time
 
 The CLI starts in ~0.85s on a modern machine. This is achieved through:
 
 - **Lazy `import z3`**: Z3 is imported inside 7 methods of `ConflictResolver`, not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
-- **Lazy data source clients**: All 13 ecosystem clients are registered via `importlib.import_module()` in `_register_client()` builders. They are only imported when first accessed.
+- **Lazy data source clients**: All 18 ecosystem clients are registered via `importlib.import_module()` in `_register_client()` builders. They are only imported when first accessed.
 - **Lazy aggregator**: `DataAggregator` creates clients on demand.
 
 ## Resolution performance

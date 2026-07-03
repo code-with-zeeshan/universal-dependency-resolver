@@ -1,3 +1,4 @@
+"""Module docstring."""
 import sys
 
 from rich.panel import Panel
@@ -7,10 +8,10 @@ from .lock import cmd_lock
 
 
 def cmd_scan(args):
+    """Cmd scan."""
     if args.github:
         _cmd_scan_github(args)
     elif args.directory:
-        args.directory = args.directory
         cmd_lock(args)
     else:
         console.print("[red]Specify --github <url> or --directory <path>[/red]")
@@ -18,8 +19,9 @@ def cmd_scan(args):
 
 
 def _cmd_scan_github(args):
+    """Cmd scan github."""
     try:
-        from backend.api.routes.scan import _download_github_repo
+        from backend.core.utils import download_github_repo as _download_github_repo
 
         console.print(f"[bold]Scanning GitHub repo:[/bold] [cyan]{args.github}[/cyan]")
         repo_path = _download_github_repo(args.github, args.branch)

@@ -1,7 +1,5 @@
 # backend/__init__.py
-"""
-Universal Dependency Resolver Backend Package
-"""
+"""Universal Dependency Resolver Backend Package."""
 
 from .settings import get_ecosystem_config
 from .core import DataAggregator, ConflictResolver, SystemScanner, ExportGenerator

@@ -339,3 +339,104 @@ class TestBaseDataSourceClient:
         assert len(mock_sleep.call_args_list) == client.max_retries - 1
         sleep_args = [call[0][0] for call in mock_sleep.call_args_list]
         assert sleep_args == [2.0**i for i in range(client.max_retries - 1)]
+
+    @pytest.mark.asyncio
+    async def test_close_method(self, client):
+        mock_session = AsyncMock()
+        client.session = mock_session
+        await client.close()
+        mock_session.close.assert_awaited_once()
+        assert client.session is None
+
+    @pytest.mark.asyncio
+    async def test_close_no_session(self, client):
+        client.session = None
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_session_creates_when_none(self, client):
+        client.session = None
+        session = client._get_session()
+        assert session is not None
+        assert client.session is not None
+        await session.close()
+
+    def test_get_session_returns_existing(self, client):
+        mock_session = MagicMock()
+        client.session = mock_session
+        session = client._get_session()
+        assert session is mock_session
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_skips_request(self, client):
+        client._circuit_state = "OPEN"
+        client._circuit_last_open_time = datetime.now()
+        result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
+        assert result is None
+        assert client._circuit_state == "OPEN"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_transitions_to_half_open(self, client):
+        client._circuit_state = "OPEN"
+        client._circuit_last_open_time = datetime.now() - timedelta(seconds=9999)
+        with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
+            mock_make.return_value = {"result": "ok"}
+            result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
+        assert result == {"result": "ok"}
+        assert client._circuit_state == "HALF_OPEN"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_half_open_failure_reopens(self, client):
+        client._circuit_state = "HALF_OPEN"
+        with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
+            mock_make.side_effect = IOError("fail")
+            result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
+        assert result is None
+        assert client._circuit_state == "OPEN"
+        assert client._circuit_last_open_time is not None
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_opens_after_threshold(self, client):
+        client._circuit_failure_count = client._circuit_failure_threshold - 1
+        with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
+            mock_make.side_effect = IOError("fail")
+            result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
+        assert result is None
+        assert client._circuit_state == "OPEN"
+        assert client._circuit_last_open_time is not None
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_half_open_success_closes(self, client):
+        client._circuit_state = "HALF_OPEN"
+        client._circuit_half_open_successes = client._circuit_half_open_max_successes - 1
+        with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
+            mock_make.return_value = {"result": "ok"}
+            result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
+        assert result == {"result": "ok"}
+        assert client._circuit_state == "CLOSED"
+        assert client._circuit_failure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_cached_get_offline_mode(self, client):
+        with patch.dict("os.environ", {"UDR_OFFLINE": "true"}):
+            result = await client.cached_get("key", "https://api.example.com/data")
+        assert result is None
+
+    def test_circuit_state_property(self, client):
+        client._circuit_state = "OPEN"
+        assert client.circuit_state == "OPEN"
+        client._circuit_state = "HALF_OPEN"
+        assert client.circuit_state == "HALF_OPEN"
+        client._circuit_state = "CLOSED"
+        assert client.circuit_state == "CLOSED"
+
+    def test_reset_circuit(self, client):
+        client._circuit_state = "OPEN"
+        client._circuit_failure_count = 5
+        client._circuit_half_open_successes = 1
+        client._circuit_last_open_time = datetime.now()
+        client.reset_circuit()
+        assert client._circuit_state == "CLOSED"
+        assert client._circuit_failure_count == 0
+        assert client._circuit_half_open_successes == 0
+        assert client._circuit_last_open_time is None
