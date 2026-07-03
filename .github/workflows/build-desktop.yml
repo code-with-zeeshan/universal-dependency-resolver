@@ -25,7 +25,7 @@ jobs:
           node-version: 20
 
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: desktop/node_modules
           key: desktop-npm-linux-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
@@ -156,7 +156,7 @@ jobs:
           node-version: 20
 
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: desktop/node_modules
           key: desktop-npm-windows-${{ matrix.arch }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
@@ -283,7 +283,7 @@ jobs:
           node-version: 20
 
       - name: Cache npm dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: desktop/node_modules
           key: desktop-npm-macos-${{ matrix.arch }}-${{ hashFiles('desktop/package-lock.json', 'desktop/package.json') }}
