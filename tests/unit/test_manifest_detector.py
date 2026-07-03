@@ -1,13 +1,11 @@
 """Tests for ManifestDetector — manifest file discovery and parsing."""
 
 import json
-import os
 
 import pytest
 import yaml
 
 from backend.manifest_detector import ManifestDetector
-
 
 # ---------------------------------------------------------------------------
 # detect()
@@ -284,10 +282,10 @@ class TestParseGoMod:
         p = tmp_path / "go.mod"
         p.write_text(
             "module example.com/m\n"
-            'require (\n'
-            '\tgithub.com/pkg/errors v0.9.1\n'
-            '\tgolang.org/x/text v0.3.0\n'
-            ')\n'
+            "require (\n"
+            "\tgithub.com/pkg/errors v0.9.1\n"
+            "\tgolang.org/x/text v0.3.0\n"
+            ")\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_mod"})

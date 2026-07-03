@@ -1,7 +1,8 @@
 """Integration tests for the FastAPI application with real database and services."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from backend.database.models import Package, PackageVersion
 

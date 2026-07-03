@@ -1,11 +1,10 @@
 # tests/unit/test_database/test_compatibility_db.py
-from unittest.mock import MagicMock, patch, Mock, PropertyMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from backend.database.compatibility_db import CompatibilityDB
-
 
 # ---------------------------------------------------------------------------
 # Pure-method tests (no DB needed)

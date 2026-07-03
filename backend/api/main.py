@@ -1,20 +1,20 @@
 """Module docstring."""
+
 # backend/api/main.py
 import os
 import time
-from datetime import datetime
 from contextlib import asynccontextmanager
-from starlette.responses import Response
+from datetime import datetime
+from typing import Any
 
 import structlog
-
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Any, Dict
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.responses import Response
 
 # Monitoring imports
 try:
@@ -34,17 +34,20 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
+from backend.api.middleware import setup_middleware
 from backend.api.routes import (
-    packages,
-    system,
-    scan,
-    lock as lock_routes,
     auth as auth_routes,
 )
-from backend.api.middleware import setup_middleware
+from backend.api.routes import (
+    lock as lock_routes,
+)
+from backend.api.routes import (
+    packages,
+    scan,
+    system,
+)
 from backend.logging_config import setup_logging
 from backend.tracing_config import setup_tracing
-from backend.database.models import get_engine
 
 # Configure structured logging
 setup_logging()
@@ -112,9 +115,7 @@ if sentry_dsn and SENTRY_AVAILABLE:
     logger.info("Sentry monitoring enabled")
 
 if PROMETHEUS_AVAILABLE:
-    Instrumentator().instrument(app).expose(
-        app, endpoint="/metrics", include_in_schema=False
-    )
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     logger.info("Prometheus metrics enabled at /metrics")
 
 # Configure CORS
@@ -216,8 +217,9 @@ async def validate_environment() -> None:
 
     # Test database connection
     try:
-        from backend.orchestrator.db_service import get_db_engine
         from sqlalchemy import text
+
+        from backend.orchestrator.db_service import get_db_engine
 
         with get_db_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -235,9 +237,7 @@ async def validate_environment() -> None:
             r.ping()
             logger.info("Redis connection successful")
         except Exception as e:
-            logger.warning(
-                f"Redis connection failed: {e}. Falling back to in-memory cache."
-            )
+            logger.warning(f"Redis connection failed: {e}. Falling back to in-memory cache.")
 
 
 # Shutdown handler for graceful tracer shutdown
@@ -282,7 +282,7 @@ async def health_check(request: Request) -> dict:
     """Health check endpoint that verifies all critical dependencies.
     Returns detailed status of each component.
     """
-    health_status: Dict[str, Any] = {
+    health_status: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",
@@ -432,7 +432,5 @@ if __name__ == "__main__":
         "backend.api.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True
-        if os.getenv("ENVIRONMENT", "development") == "development"
-        else False,
+        reload=os.getenv("ENVIRONMENT", "development") == "development",
     )

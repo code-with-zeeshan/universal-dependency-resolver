@@ -6,42 +6,41 @@ middleware, authentication, and exception handling.
 """
 
 # Import main app instance
-from .main import app
-
-# Import routers
-from .routes import packages, system
-
-# Import middleware
-from .middleware import (
-    CorrelationIDMiddleware,
-    LoggingMiddleware,
-    PerformanceMiddleware,
-    CompressionMiddleware,
-    SecurityHeadersMiddleware,
-    RequestSizeLimitMiddleware,
-    CacheMiddleware,
-    MetricsMiddleware,
-    MaintenanceModeMiddleware,
-    AuditLogMiddleware,
-    CSRFProtectionMiddleware,
-    setup_middleware,
-    get_client_ip,
-    get_user_agent,
-)
-
 # Import auth components
 from .auth import (
+    APIKeyCreate,
+    AuthService,
     Token,
     UserCreate,
     UserLogin,
-    APIKeyCreate,
-    get_current_user,
     get_current_active_user,
-    require_scopes,
-    AuthService,
-    oauth2_scheme,
+    get_current_user,
     login_for_access_token,
+    oauth2_scheme,
+    require_scopes,
 )
+from .main import app
+
+# Import middleware
+from .middleware import (
+    AuditLogMiddleware,
+    CacheMiddleware,
+    CompressionMiddleware,
+    CorrelationIDMiddleware,
+    CSRFProtectionMiddleware,
+    LoggingMiddleware,
+    MaintenanceModeMiddleware,
+    MetricsMiddleware,
+    PerformanceMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+    get_client_ip,
+    get_user_agent,
+    setup_middleware,
+)
+
+# Import routers
+from .routes import packages, system
 
 # Version info
 try:
@@ -54,36 +53,36 @@ __author__ = "Universal Dependency Resolver Team"
 
 # Export main components
 __all__ = [
-    # App
-    "app",
-    # Routers
-    "packages",
-    "system",
-    # Middleware
-    "setup_middleware",
+    "APIKeyCreate",
+    "AuditLogMiddleware",
+    "AuthService",
+    "CSRFProtectionMiddleware",
+    "CacheMiddleware",
+    "CompressionMiddleware",
     "CorrelationIDMiddleware",
     "LoggingMiddleware",
-    "PerformanceMiddleware",
-    "CompressionMiddleware",
-    "SecurityHeadersMiddleware",
-    "RequestSizeLimitMiddleware",
-    "CacheMiddleware",
-    "MetricsMiddleware",
     "MaintenanceModeMiddleware",
-    "AuditLogMiddleware",
-    "CSRFProtectionMiddleware",
+    "MetricsMiddleware",
+    "PerformanceMiddleware",
+    "RequestSizeLimitMiddleware",
+    "SecurityHeadersMiddleware",
     # Auth
     "Token",
     "UserCreate",
     "UserLogin",
-    "APIKeyCreate",
-    "AuthService",
-    "get_current_user",
-    "get_current_active_user",
-    "require_scopes",
-    "oauth2_scheme",
-    "login_for_access_token",
+    # App
+    "app",
     # Utilities
     "get_client_ip",
+    "get_current_active_user",
+    "get_current_user",
     "get_user_agent",
+    "login_for_access_token",
+    "oauth2_scheme",
+    # Routers
+    "packages",
+    "require_scopes",
+    # Middleware
+    "setup_middleware",
+    "system",
 ]

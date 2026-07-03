@@ -1,10 +1,12 @@
 """Module docstring."""
+
 # data_sources/apt_client.py
-from typing import Dict, List, Optional, Any
+import gzip
 import logging
 import re
-import gzip
 from io import BytesIO
+from typing import Any
+
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
@@ -15,6 +17,7 @@ from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -26,9 +29,7 @@ class APTClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="apt",
-            base_url=apt_config.get("repositories", ["http://deb.debian.org/debian"])[
-                0
-            ],
+            base_url=apt_config.get("repositories", ["http://deb.debian.org/debian"])[0],
             cache_ttl=apt_config.get("cache_ttl", CACHE_TTL),
             rate_limit=apt_config.get("rate_limit", 600),
         )
@@ -43,11 +44,9 @@ class APTClient(BaseDataSourceClient):
         )
 
         self.main_repo = self.repositories[0]
-        self.distributions = apt_config.get(
-            "distributions", ["stable", "testing", "unstable"]
-        )
+        self.distributions = apt_config.get("distributions", ["stable", "testing", "unstable"])
         self.components = apt_config.get("components", ["main", "contrib", "non-free"])
-        self._packages_cache: Dict[str, Any] = {}
+        self._packages_cache: dict[str, Any] = {}
 
     def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
@@ -57,9 +56,9 @@ class APTClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
         query = normalize_package_name(query)
-        results: List[Dict] = []
+        results: list[dict] = []
 
         try:
             packages = await self._get_packages_list("stable", "main")
@@ -88,7 +87,7 @@ class APTClient(BaseDataSourceClient):
         return results
 
     @cached(ttl=CACHE_TTL)
-    async def get_package_info_async(self, package_name: str) -> Optional[Dict]:
+    async def get_package_info_async(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -136,13 +135,13 @@ class APTClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Optional[Dict]:
+    def get_package_info(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_versions(self, package_name: str) -> List[Dict]:
+    async def get_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
-        versions: List[Any] = []
+        versions: list[Any] = []
         for dist in self.distributions:
             for component in self.components:
                 packages = await self._get_packages_list(dist, component)
@@ -165,9 +164,7 @@ class APTClient(BaseDataSourceClient):
 
         return versions
 
-    async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict:
+    async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -187,9 +184,7 @@ class APTClient(BaseDataSourceClient):
 
         return self._parse_dependencies(package_data)
 
-    async def _get_packages_list(
-        self, distribution: str, component: str
-    ) -> Dict[str, Dict]:
+    async def _get_packages_list(self, distribution: str, component: str) -> dict[str, dict]:
         cache_key = f"packages:{distribution}:{component}"
 
         if cache_key in self._packages_cache:
@@ -201,9 +196,7 @@ class APTClient(BaseDataSourceClient):
             session = self._get_session()
             async with session.get(url) as response:
                 if response.status != 200:
-                    logger.error(
-                        f"Failed to fetch Packages from {url}: {response.status}"
-                    )
+                    logger.error(f"Failed to fetch Packages from {url}: {response.status}")
                     return {}
 
                 content = await response.read()
@@ -219,9 +212,9 @@ class APTClient(BaseDataSourceClient):
             logger.error(f"Error fetching packages list: {e}")
             return {}
 
-    def _parse_packages_file(self, content: str) -> Dict[str, Dict]:
-        packages: Dict[str, Any] = {}
-        current_package: Dict[str, Any] = {}
+    def _parse_packages_file(self, content: str) -> dict[str, dict]:
+        packages: dict[str, Any] = {}
+        current_package: dict[str, Any] = {}
         current_field = None
 
         for line in content.split("\n"):
@@ -250,8 +243,8 @@ class APTClient(BaseDataSourceClient):
 
         return packages
 
-    def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies: Dict[str, List[Dict]] = {
+    def _parse_dependencies(self, package_data: dict) -> dict[str, list[dict]]:
+        dependencies: dict[str, list[dict]] = {
             "depends": [],
             "recommends": [],
             "suggests": [],
@@ -281,8 +274,8 @@ class APTClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _parse_dependency_string(self, deps_str: str) -> List[Dict]:
-        dependencies: List[Dict] = []
+    def _parse_dependency_string(self, deps_str: str) -> list[dict]:
+        dependencies: list[dict] = []
         for dep_group in deps_str.split(","):
             dep_group = dep_group.strip()
 
@@ -304,7 +297,7 @@ class APTClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _extract_system_requirements(self, package_data: Dict) -> Dict[str, Any]:
+    def _extract_system_requirements(self, package_data: dict) -> dict[str, Any]:
         requirements = {
             "architecture": package_data.get("architecture", "all"),
             "essential": package_data.get("essential", "no") == "yes",

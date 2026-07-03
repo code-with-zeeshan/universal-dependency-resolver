@@ -1,30 +1,31 @@
 """Module docstring."""
+
 # compatibility_db.py
-from typing import Any, Dict, List, Optional
 import hashlib
 import json
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
 import logging
+from datetime import datetime, timedelta
+from typing import Any
 
-from .models import (
-    Package,
-    PackageVersion,
-    CompatibilityReport,
-    ConflictRule,
-    VerifiedCombination,
-    SystemBenchmark,
-    ResolutionCache,
-    get_db,
-    init_db,
-)
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
 
 from ..core.utils import (
-    normalize_package_name,
-    sanitize_ecosystem_name,
     hash_system_info,
+    normalize_package_name,
     parse_version,
+    sanitize_ecosystem_name,
+)
+from .models import (
+    CompatibilityReport,
+    ConflictRule,
+    Package,
+    PackageVersion,
+    ResolutionCache,
+    SystemBenchmark,
+    VerifiedCombination,
+    get_db,
+    init_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class CompatibilityDB:
     def __init__(self):
         init_db()
 
-    def add_package(self, name: str, ecosystem: str, info: Dict) -> int:
+    def add_package(self, name: str, ecosystem: str, info: dict) -> int:
         """Add or update package information."""
         # Normalize inputs
         name = normalize_package_name(name)
@@ -82,7 +83,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def _add_package_version(self, db: Session, package_id: int, version_info: Dict):
+    def _add_package_version(self, db: Session, package_id: int, version_info: dict):
         """Add package version information."""
         version_str = version_info.get("version")
 
@@ -116,7 +117,7 @@ class CompatibilityDB:
             db.add(version)
             db.commit()
 
-    def _extract_system_fields(self, system_info: Dict) -> Dict:
+    def _extract_system_fields(self, system_info: dict) -> dict:
         """Extract flat fields from nested system_info structure."""
         platform = system_info.get("platform", {})
         cpu = system_info.get("cpu", {})
@@ -164,10 +165,10 @@ class CompatibilityDB:
         package_name: str,
         version: str,
         ecosystem: str,
-        system_info: Dict,
+        system_info: dict,
         works: bool,
-        notes: Optional[str] = None,
-        user_id: Optional[str] = None,
+        notes: str | None = None,
+        user_id: str | None = None,
     ) -> int:
         """Add a compatibility report from user."""
         # Normalize inputs
@@ -179,9 +180,7 @@ class CompatibilityDB:
             # Find or create package
             package = (
                 db.query(Package)
-                .filter(
-                    and_(Package.name == package_name, Package.ecosystem == ecosystem)
-                )
+                .filter(and_(Package.name == package_name, Package.ecosystem == ecosystem))
                 .first()
             )
 
@@ -223,7 +222,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def get_compatibility_rules(self, package_name: str) -> Dict:
+    def get_compatibility_rules(self, package_name: str) -> dict:
         """Get compatibility rules for a package."""
         # Normalize package name
         package_name = normalize_package_name(package_name)
@@ -269,21 +268,15 @@ class CompatibilityDB:
 
             # Aggregate results
             return {
-                "known_conflicts": [
-                    self._serialize_conflict(c, package.id) for c in conflicts
-                ],
-                "verified_combinations": [
-                    self._serialize_combination(v) for v in verified
-                ],
+                "known_conflicts": [self._serialize_conflict(c, package.id) for c in conflicts],
+                "verified_combinations": [self._serialize_combination(v) for v in verified],
                 "community_reports": self._aggregate_reports(reports),
             }
 
         finally:
             db.close()
 
-    def get_package_by_normalized_name(
-        self, name: str, ecosystem: str
-    ) -> Optional[Package]:
+    def get_package_by_normalized_name(self, name: str, ecosystem: str) -> Package | None:
         """Get package using normalized name."""
         name = normalize_package_name(name)
         ecosystem = sanitize_ecosystem_name(ecosystem)
@@ -298,7 +291,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def bulk_import_packages(self, packages: List[Dict]) -> int:
+    def bulk_import_packages(self, packages: list[dict]) -> int:
         """Bulk import packages with normalization."""
         imported = 0
         for pkg in packages:
@@ -313,17 +306,15 @@ class CompatibilityDB:
         return imported
 
     def check_version_compatibility(
-        self, package_name: str, version: str, system_info: Dict
-    ) -> Dict:
+        self, package_name: str, version: str, system_info: dict
+    ) -> dict:
         """Check if a specific version is compatible with system."""
         package_name = normalize_package_name(package_name)
 
         db = next(get_db())
         try:
             # Get package
-            package = self.get_package_by_normalized_name(
-                package_name, "pypi"
-            )  # Default to pypi
+            package = self.get_package_by_normalized_name(package_name, "pypi")  # Default to pypi
             if not package:
                 return {
                     "compatible": True,
@@ -343,8 +334,7 @@ class CompatibilityDB:
                         CompatibilityReport.package_id == package.id,
                         CompatibilityReport.version == version,
                         CompatibilityReport.os_name == sys_fields["os_name"],
-                        CompatibilityReport.python_version
-                        == sys_fields["python_version"],
+                        CompatibilityReport.python_version == sys_fields["python_version"],
                     )
                 )
                 .all()
@@ -375,16 +365,14 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def _extract_warnings_from_reports(
-        self, reports: List[CompatibilityReport]
-    ) -> List[str]:
+    def _extract_warnings_from_reports(self, reports: list[CompatibilityReport]) -> list[str]:
         """Extract common warnings from failed reports."""
         warnings = []
         failed_reports = [r for r in reports if not r.works and r.notes]
 
         if failed_reports:
             # Extract common patterns
-            common_issues: Dict[str, int] = {}
+            common_issues: dict[str, int] = {}
             for report in failed_reports:
                 if "cuda" in report.notes.lower():
                     common_issues["cuda"] = common_issues.get("cuda", 0) + 1
@@ -396,13 +384,11 @@ class CompatibilityDB:
             # Convert to warnings
             for issue, count in common_issues.items():
                 if count >= len(failed_reports) * 0.3:  # If 30% or more mention this
-                    warnings.append(
-                        f"Common issue: {issue} (reported by {count} users)"
-                    )
+                    warnings.append(f"Common issue: {issue} (reported by {count} users)")
 
         return warnings
 
-    def get_package_stats(self, package_name: str) -> Dict:
+    def get_package_stats(self, package_name: str) -> dict:
         """Get aggregated statistics for a package."""
         package_name = normalize_package_name(package_name)
 
@@ -421,9 +407,7 @@ class CompatibilityDB:
 
             # Get version count
             versions = (
-                db.query(PackageVersion)
-                .filter(PackageVersion.package_id == package.id)
-                .count()
+                db.query(PackageVersion).filter(PackageVersion.package_id == package.id).count()
             )
 
             # Calculate stats
@@ -431,7 +415,7 @@ class CompatibilityDB:
             successful_reports = sum(1 for r in reports if r.works)
 
             # Group by version
-            version_stats: Dict[str, Dict[str, Any]] = {}
+            version_stats: dict[str, dict[str, Any]] = {}
             for report in reports:
                 if report.version not in version_stats:
                     version_stats[report.version] = {
@@ -453,9 +437,7 @@ class CompatibilityDB:
 
             for version, stats in version_stats.items():
                 success_rate = stats["successful"] / stats["total"]
-                if (
-                    success_rate > highest_success_rate and stats["total"] >= 5
-                ):  # Min 5 reports
+                if success_rate > highest_success_rate and stats["total"] >= 5:  # Min 5 reports
                     highest_success_rate = success_rate
                     most_compatible = version
 
@@ -482,8 +464,8 @@ class CompatibilityDB:
             db.close()
 
     def get_compatibility_statistics(
-        self, package_name: str, ecosystem: str, version: Optional[str] = None
-    ) -> Dict:
+        self, package_name: str, ecosystem: str, version: str | None = None
+    ) -> dict:
         """Get compatibility statistics filtered by ecosystem and optional version."""
         stats = self.get_package_stats(package_name)
         if "error" in stats:
@@ -500,11 +482,7 @@ class CompatibilityDB:
         db = next(get_db())
         try:
             cutoff = datetime.utcnow() - timedelta(days=days)
-            deleted = (
-                db.query(ResolutionCache)
-                .filter(ResolutionCache.created_at < cutoff)
-                .delete()
-            )
+            deleted = db.query(ResolutionCache).filter(ResolutionCache.created_at < cutoff).delete()
             db.commit()
             logger.info(f"Cleaned up {deleted} old cache entries")
         except Exception as e:
@@ -513,7 +491,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def _serialize_conflict(self, conflict: ConflictRule, package_id: int) -> Dict:
+    def _serialize_conflict(self, conflict: ConflictRule, package_id: int) -> dict:
         """Serialize conflict rule."""
         is_package1 = conflict.package1_id == package_id
 
@@ -530,7 +508,7 @@ class CompatibilityDB:
             "resolution": conflict.resolution,
         }
 
-    def _serialize_combination(self, combination: VerifiedCombination) -> Dict:
+    def _serialize_combination(self, combination: VerifiedCombination) -> dict:
         """Serialize verified combination."""
         return {
             "name": combination.name,
@@ -545,7 +523,7 @@ class CompatibilityDB:
             "success_rate": combination.success_rate,
         }
 
-    def _aggregate_reports(self, reports: List[CompatibilityReport]) -> Dict:
+    def _aggregate_reports(self, reports: list[CompatibilityReport]) -> dict:
         """Aggregate compatibility reports."""
         aggregated = {
             "total_reports": len(reports),
@@ -597,7 +575,7 @@ class CompatibilityDB:
         failed_reports = [r for r in reports if not r.works and r.notes]
         if failed_reports:
             # Simple keyword extraction
-            issue_keywords: Dict[str, int] = {}
+            issue_keywords: dict[str, int] = {}
             for report in failed_reports:
                 words = report.notes.lower().split()
                 for word in [
@@ -613,9 +591,7 @@ class CompatibilityDB:
 
             aggregated["common_issues"] = [
                 {"keyword": k, "frequency": v}
-                for k, v in sorted(
-                    issue_keywords.items(), key=lambda x: x[1], reverse=True
-                )[:5]
+                for k, v in sorted(issue_keywords.items(), key=lambda x: x[1], reverse=True)[:5]
             ]
 
         return aggregated
@@ -629,7 +605,7 @@ class CompatibilityDB:
         conflict_type: str,
         description: str,
         severity: str = "error",
-        resolution: Optional[str] = None,
+        resolution: str | None = None,
     ):
         """Add a known conflict rule."""
         # Normalize package names
@@ -677,9 +653,9 @@ class CompatibilityDB:
     def add_verified_combination(
         self,
         name: str,
-        packages: List[Dict],
-        system_requirements: Optional[Dict] = None,
-        verified_by: Optional[str] = None,
+        packages: list[dict],
+        system_requirements: dict | None = None,
+        verified_by: str | None = None,
     ):
         """Add a verified working combination."""
         # Normalize package names in the combination
@@ -711,9 +687,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def get_cached_resolution(
-        self, packages: List[Dict], system_info: Dict
-    ) -> Optional[Dict]:
+    def get_cached_resolution(self, packages: list[dict], system_info: dict) -> dict | None:
         """Get cached resolution if available."""
         # Normalize package names before creating hash
         normalized_packages = []
@@ -749,9 +723,9 @@ class CompatibilityDB:
 
     def cache_resolution(
         self,
-        packages: List[Dict],
-        system_info: Dict,
-        resolution: Dict,
+        packages: list[dict],
+        system_info: dict,
+        resolution: dict,
         resolution_time_ms: int,
     ):
         """Cache a resolution result."""
@@ -803,7 +777,7 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def _generate_cache_key(self, packages: List[Dict], system_info: Dict) -> str:
+    def _generate_cache_key(self, packages: list[dict], system_info: dict) -> str:
         """Generate consistent cache key."""
         # Sort packages for consistent hashing
         sorted_packages = sorted(packages, key=lambda x: x.get("name", ""))
@@ -814,11 +788,9 @@ class CompatibilityDB:
         # Combine for final hash
         request_data = {"packages": sorted_packages, "system_hash": system_hash}
 
-        return hashlib.sha256(
-            json.dumps(request_data, sort_keys=True).encode()
-        ).hexdigest()
+        return hashlib.sha256(json.dumps(request_data, sort_keys=True).encode()).hexdigest()
 
-    def record_system_benchmark(self, system_info: Dict, benchmarks: Dict):
+    def record_system_benchmark(self, system_info: dict, benchmarks: dict):
         """Record system benchmark results."""
         # Extract system fields
         sys_fields = self._extract_system_fields(system_info)
@@ -829,9 +801,7 @@ class CompatibilityDB:
         db = next(get_db())
         try:
             benchmark = (
-                db.query(SystemBenchmark)
-                .filter(SystemBenchmark.system_hash == system_hash)
-                .first()
+                db.query(SystemBenchmark).filter(SystemBenchmark.system_hash == system_hash).first()
             )
 
             # Extract memory info

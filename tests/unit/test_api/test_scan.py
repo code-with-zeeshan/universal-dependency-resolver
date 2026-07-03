@@ -1,11 +1,10 @@
 """Tests for the scan API routes (/api/v1/scan/*)."""
 
-import zipfile
 import io
+import zipfile
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 
 
 @pytest.fixture

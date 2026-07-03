@@ -6,23 +6,23 @@ import os
 
 from backend.settings import ECOSYSTEMS
 
-from .shared import VERSION
-from .commands.serve import cmd_serve
 from .commands.check import cmd_check
-from .commands.resolve import cmd_resolve
-from .commands.lock import cmd_lock
-from .commands.scan import cmd_scan
-from .commands.graph import cmd_graph
-from .commands.verify import cmd_verify
-from .commands.list_ecosystems import cmd_list_ecosystems
-from .commands.update import cmd_update
-from .commands.install import cmd_install
 from .commands.completion import cmd_completion
-from .commands.why import cmd_why
-from .commands.outdated import cmd_outdated
-from .commands.diff import cmd_diff
-from .commands.search import cmd_search
 from .commands.details import cmd_details
+from .commands.diff import cmd_diff
+from .commands.graph import cmd_graph
+from .commands.install import cmd_install
+from .commands.list_ecosystems import cmd_list_ecosystems
+from .commands.lock import cmd_lock
+from .commands.outdated import cmd_outdated
+from .commands.resolve import cmd_resolve
+from .commands.scan import cmd_scan
+from .commands.search import cmd_search
+from .commands.serve import cmd_serve
+from .commands.update import cmd_update
+from .commands.verify import cmd_verify
+from .commands.why import cmd_why
+from .shared import VERSION
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -44,9 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_p = sub.add_parser("serve", help="Start the API server")
     serve_p.add_argument("--host", default="127.0.0.1", help="Bind address")
     serve_p.add_argument("--port", type=int, default=8000, help="Bind port")
-    serve_p.add_argument(
-        "--reload", action="store_true", help="Enable auto-reload for development"
-    )
+    serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
     serve_p.add_argument(
         "--mode",
         choices=["local", "saas"],
@@ -77,12 +75,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     check_p = sub.add_parser("check", help="Check system compatibility")
-    check_p.add_argument(
-        "-v", "--verbose", action="store_true", help="Show detailed info"
-    )
-    check_p.add_argument(
-        "--deps", action="store_true", help="Show project core dependencies"
-    )
+    check_p.add_argument("-v", "--verbose", action="store_true", help="Show detailed info")
+    check_p.add_argument("--deps", action="store_true", help="Show project core dependencies")
     check_p.add_argument("--json", action="store_true", help="Output as JSON")
     check_p.add_argument(
         "--cuda",
@@ -95,9 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Simulate system check for a specific compute device",
     )
 
-    resolve_p = sub.add_parser(
-        "resolve", help="Resolve dependencies for one or more packages"
-    )
+    resolve_p = sub.add_parser("resolve", help="Resolve dependencies for one or more packages")
     resolve_p.add_argument(
         "packages",
         nargs="+",
@@ -133,12 +125,8 @@ def _build_parser() -> argparse.ArgumentParser:
     lock_p = sub.add_parser(
         "lock", help="Auto-detect manifests, resolve all dependencies, write lock file"
     )
-    lock_p.add_argument(
-        "--directory", "-d", default=".", help="Project directory to scan"
-    )
-    lock_p.add_argument(
-        "--manifest", "-m", help="Only process a specific manifest file"
-    )
+    lock_p.add_argument("--directory", "-d", default=".", help="Project directory to scan")
+    lock_p.add_argument("--manifest", "-m", help="Only process a specific manifest file")
     lock_p.add_argument(
         "--export",
         help="Export to a specific format (e.g. requirements.txt, Dockerfile)",
@@ -175,9 +163,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write readable report file (udr-lock-report.txt) alongside lock file",
     )
 
-    graph_p = sub.add_parser(
-        "graph", help="Show dependency tree for one or more packages"
-    )
+    graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
     graph_p.add_argument(
         "packages",
         nargs="+",
@@ -202,9 +188,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
 
-    verify_p = sub.add_parser(
-        "verify", help="Validate lock file — check all versions still exist"
-    )
+    verify_p = sub.add_parser("verify", help="Validate lock file — check all versions still exist")
     verify_p.add_argument(
         "lock_file",
         nargs="?",
@@ -216,13 +200,9 @@ def _build_parser() -> argparse.ArgumentParser:
     list_eco_p = sub.add_parser("list-ecosystems", help="List all supported ecosystems")
     list_eco_p.add_argument("--json", action="store_true", help="Output as JSON")
 
-    update_p = sub.add_parser(
-        "update", help="Re-resolve a package and update lock file"
-    )
+    update_p = sub.add_parser("update", help="Re-resolve a package and update lock file")
     update_p.add_argument("package", help="Package name to re-resolve")
-    update_p.add_argument(
-        "--directory", "-d", default=".", help="Project directory with lock file"
-    )
+    update_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     update_p.add_argument(
         "--interactive",
         "-i",
@@ -245,9 +225,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
 
-    install_p = sub.add_parser(
-        "install", help="Install packages from udr.lock lock file"
-    )
+    install_p = sub.add_parser("install", help="Install packages from udr.lock lock file")
     install_p.add_argument(
         "--directory", "-d", default=".", help="Project directory with lock file"
     )
@@ -268,9 +246,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show install commands without executing",
     )
-    install_p.add_argument(
-        "--yes", "-y", action="store_true", help="Skip confirmation prompt"
-    )
+    install_p.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     install_p.add_argument(
         "--restore",
         action="store_true",
@@ -288,19 +264,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Shell to generate completions for (auto-detected if omitted)",
     )
 
-    scan_p = sub.add_parser(
-        "scan", help="Scan a GitHub repo or local path without manual clone/cd"
-    )
+    scan_p = sub.add_parser("scan", help="Scan a GitHub repo or local path without manual clone/cd")
     scan_p.add_argument(
         "--github", help="GitHub repository URL (e.g. https://github.com/user/repo)"
     )
-    scan_p.add_argument(
-        "--branch", default="main", help="Git branch to scan (default: main)"
-    )
+    scan_p.add_argument("--branch", default="main", help="Git branch to scan (default: main)")
     scan_p.add_argument("--directory", help="Local project directory to scan")
-    scan_p.add_argument(
-        "--manifest", "-m", help="Only process a specific manifest file"
-    )
+    scan_p.add_argument("--manifest", "-m", help="Only process a specific manifest file")
     scan_p.add_argument(
         "-y", "--yes", action="store_true", help="Update manifests without prompting"
     )
@@ -330,12 +300,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Explain why a package version was selected — show dependency chain",
     )
     why_p.add_argument("package", help="Package name to explain")
-    why_p.add_argument(
-        "--directory", "-d", default=".", help="Project directory with lock file"
-    )
-    why_p.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    why_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    why_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     outdated_p = sub.add_parser(
         "outdated",
@@ -344,9 +310,7 @@ def _build_parser() -> argparse.ArgumentParser:
     outdated_p.add_argument(
         "--directory", "-d", default=".", help="Project directory with lock file"
     )
-    outdated_p.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    outdated_p.add_argument("--json", action="store_true", help="Output as JSON")
     outdated_p.add_argument(
         "--ecosystem",
         "-e",
@@ -360,9 +324,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     diff_p.add_argument("lock_file_a", help="First lock file path")
     diff_p.add_argument("lock_file_b", help="Second lock file path")
-    diff_p.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    diff_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     search_p = sub.add_parser(
         "search",

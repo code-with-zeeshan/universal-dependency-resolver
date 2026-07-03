@@ -1,19 +1,17 @@
 # tests/unit/test_core/test_utils.py
-import asyncio
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 from backend.core.utils import (
-    run_async,
-    parse_version,
-    parse_version_key,
-    is_compatible_version,
-    normalize_package_name,
+    compare_versions,
     extract_requirements,
     hash_system_info,
+    is_compatible_version,
+    normalize_package_name,
+    parse_version,
+    parse_version_key,
+    run_async,
     sanitize_ecosystem_name,
-    compare_versions,
 )
 
 
@@ -27,7 +25,8 @@ class TestRunAsync:
 
     def test_run_async_with_running_loop(self):
         """run_async may raise RuntimeError when called from a running loop
-        depending on Python version; just verify it doesn't crash the process."""
+        depending on Python version; just verify it doesn't crash the process.
+        """
         async def inner():
             return "inner"
 
@@ -137,7 +136,7 @@ class TestHashSystemInfo:
 
 
 class TestSanitizeEcosystemName:
-    @pytest.mark.parametrize("alias,expected", [
+    @pytest.mark.parametrize(("alias", "expected"), [
         ("pip", "pypi"),
         ("python", "pypi"),
         ("node", "npm"),

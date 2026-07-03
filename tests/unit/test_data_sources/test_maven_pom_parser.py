@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.data_sources.maven.pom_parser import PomParser
-from backend.data_sources.maven.version_utils import _get_element_text
 
 
 @pytest.fixture
@@ -540,7 +539,7 @@ class TestParsePomComprehensive:
         assert result["properties"]["project.artifactId"] == "a"
 
     def test_with_all_sections(self, parser):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <parent>
     <groupId>parent.g</groupId>
     <artifactId>parent.a</artifactId>
@@ -588,7 +587,7 @@ class TestParsePomComprehensive:
       </properties>
     </profile>
   </profiles>
-</project>'''
+</project>"""
         result = parser._parse_pom_comprehensive(pom_xml, "g", "a", "1.0", active_profiles=["test-profile"])
         assert result["parent"]["group_id"] == "parent.g"
         assert "com.example:managed-lib" in result["dependency_management"]
@@ -663,7 +662,7 @@ class TestExtractPluginInfo:
         assert info["version"] == "3.8.1"
 
     def test_plugin_with_dependencies(self, parser):
-        xml = '''<plugin xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<plugin xmlns="http://maven.apache.org/POM/4.0.0">
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
             <version>3.0.0</version>
@@ -674,14 +673,14 @@ class TestExtractPluginInfo:
                     <version>3.0.0</version>
                 </dependency>
             </dependencies>
-        </plugin>'''
+        </plugin>"""
         plugin_elem = ET.fromstring(xml)
         info = parser._extract_plugin_info(plugin_elem, NAMESPACES, {}, {})
         assert len(info["dependencies"]) == 1
         assert info["dependencies"][0]["artifact_id"] == "surefire-api"
 
     def test_plugin_with_nested_configuration(self, parser):
-        xml = '''<plugin xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<plugin xmlns="http://maven.apache.org/POM/4.0.0">
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
             <version>3.8.1</version>
@@ -691,7 +690,7 @@ class TestExtractPluginInfo:
                     <arg>-Xlint:all</arg>
                 </compilerArgs>
             </configuration>
-        </plugin>'''
+        </plugin>"""
         plugin_elem = ET.fromstring(xml)
         info = parser._extract_plugin_info(plugin_elem, NAMESPACES, {}, {})
         assert info["configuration"]["source"] == "1.8"

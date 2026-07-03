@@ -25,17 +25,10 @@ def get_releases(repo: str) -> list[dict]:
 
 def get_changelog_section(text: str, target_ver: str) -> str | None:
     sections = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
-    match_sections = []
-    found = False
     for s in sections[1:]:
         m = re.match(r"^## \[(\d+\.\d+\.\d+)\]", s)
-        if m:
-            if not found and m.group(1) == target_ver:
-                found = True
-            if found:
-                match_sections.append(s)
-    if match_sections:
-        return "".join(match_sections).strip()
+        if m and m.group(1) == target_ver:
+            return s.strip()
     return None
 
 

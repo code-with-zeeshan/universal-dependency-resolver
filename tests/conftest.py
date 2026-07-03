@@ -1,9 +1,6 @@
-"""
-Pytest configuration and shared fixtures for Universal Dependency Resolver tests.
-"""
+"""Pytest configuration and shared fixtures for Universal Dependency Resolver tests."""
 
 import os
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -21,7 +18,6 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only")
 
 # Import your application
 from backend.api.main import app
-from backend.core.cache import cache_manager
 from backend.database.models import Base, get_db
 
 # Test Database Setup
@@ -36,7 +32,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 def override_get_db():
-    """Override database dependency for testing"""
+    """Override database dependency for testing."""
     try:
         db = TestingSessionLocal()
         yield db
@@ -50,7 +46,7 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    """Set up test database via Alembic migrations"""
+    """Set up test database via Alembic migrations."""
     from backend.database.models import run_migrations
 
     run_migrations()
@@ -60,7 +56,7 @@ def setup_test_db():
 
 @pytest.fixture
 def db_session():
-    """Create a fresh database session for each test"""
+    """Create a fresh database session for each test."""
     connection = engine.connect()
     transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)
@@ -74,7 +70,7 @@ def db_session():
 
 @pytest.fixture
 def client():
-    """Create a test client for FastAPI (skip lifespan to avoid DB requirement)"""
+    """Create a test client for FastAPI (skip lifespan to avoid DB requirement)."""
     return TestClient(app)
 
 
@@ -91,7 +87,7 @@ def disable_rate_limiter():
 
 # Markers for different test types
 def pytest_configure(config):
-    """Configure pytest markers"""
+    """Configure pytest markers."""
     config.addinivalue_line("markers", "unit: mark test as a unit test")
     config.addinivalue_line("markers", "integration: mark test as an integration test")
     config.addinivalue_line("markers", "e2e: mark test as an end-to-end test")
@@ -103,7 +99,7 @@ def pytest_configure(config):
 
 # Test collection customization
 def pytest_collection_modifyitems(config, items):
-    """Modify test collection to add markers automatically"""
+    """Modify test collection to add markers automatically."""
     for item in items:
         # Add unit marker to unit tests
         if "unit" in str(item.fspath):

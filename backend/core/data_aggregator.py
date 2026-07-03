@@ -1,26 +1,27 @@
 """Module docstring."""
+
 # data_aggregator.py
-from typing import Dict, List, Optional, Any, Union
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import importlib
+import json
 import logging
 import re
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
-from backend.core.cache import cache_manager
-from backend.core.utils import (
-    normalize_package_name,
-    sanitize_ecosystem_name,
-    hash_system_info,
-)
-import json
-import hashlib
 from collections import defaultdict
-import importlib
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
 import aiohttp
 
-
+from backend.core.cache import cache_manager
+from backend.core.utils import (
+    hash_system_info,
+    normalize_package_name,
+    sanitize_ecosystem_name,
+)
 from backend.settings import OSV_API_URL
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class PackageVersion:
 
     version: str
     ecosystem: Ecosystem
-    release_date: Optional[datetime] = None
+    release_date: datetime | None = None
     deprecated: bool = False
     yanked: bool = False
     prerelease: bool = False
@@ -81,7 +82,7 @@ class Dependency:
     ecosystem: Ecosystem
     optional: bool = False
     dev_only: bool = False
-    resolved_version: Optional[str] = None
+    resolved_version: str | None = None
 
 
 @dataclass
@@ -90,7 +91,7 @@ class SystemRequirement:
 
     type: str  # 'runtime', 'compiler', 'os', 'arch', etc.
     name: str
-    version_spec: Optional[str] = None
+    version_spec: str | None = None
     optional: bool = False
 
 
@@ -101,18 +102,16 @@ class CompatibilityIssue:
     severity: ConflictSeverity
     ecosystem: Ecosystem
     description: str
-    affected_versions: List[str] = field(default_factory=list)
-    resolution: Optional[str] = None
+    affected_versions: list[str] = field(default_factory=list)
+    resolution: str | None = None
 
 
-_CLIENT_BUILDERS: Dict[Ecosystem, Any] = {}
+_CLIENT_BUILDERS: dict[Ecosystem, Any] = {}
 
 
 def _register_client(ecosystem: Ecosystem, module: str, class_name: str):
     """Register a lazy-loaded data source client builder."""
-    _CLIENT_BUILDERS[ecosystem] = lambda: getattr(
-        importlib.import_module(module), class_name
-    )()
+    _CLIENT_BUILDERS[ecosystem] = lambda: getattr(importlib.import_module(module), class_name)()
 
 
 _register_client(Ecosystem.PYPI, "backend.data_sources.pypi_client", "PyPIClient")
@@ -120,58 +119,38 @@ _register_client(Ecosystem.NPM, "backend.data_sources.npm_client", "NPMClient")
 _register_client(Ecosystem.CONDA, "backend.data_sources.conda_client", "CondaClient")
 _register_client(Ecosystem.MAVEN, "backend.data_sources.maven_client", "MavenClient")
 _register_client(Ecosystem.CRATES, "backend.data_sources.crates_client", "CratesClient")
-_register_client(
-    Ecosystem.GOMODULES, "backend.data_sources.gomodules_client", "GoModulesClient"
-)
+_register_client(Ecosystem.GOMODULES, "backend.data_sources.gomodules_client", "GoModulesClient")
 _register_client(Ecosystem.APT, "backend.data_sources.apt_client", "APTClient")
 _register_client(Ecosystem.APK, "backend.data_sources.apk_client", "APKClient")
-_register_client(
-    Ecosystem.COCOAPODS, "backend.data_sources.cocoapods_client", "CocoaPodsClient"
-)
-_register_client(
-    Ecosystem.HOMEBREW, "backend.data_sources.homebrew_client", "HomebrewClient"
-)
+_register_client(Ecosystem.COCOAPODS, "backend.data_sources.cocoapods_client", "CocoaPodsClient")
+_register_client(Ecosystem.HOMEBREW, "backend.data_sources.homebrew_client", "HomebrewClient")
 _register_client(Ecosystem.NUGET, "backend.data_sources.nuget_client", "NuGetClient")
-_register_client(
-    Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "PackagistClient"
-)
-_register_client(
-    Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient"
-)
+_register_client(Ecosystem.PACKAGIST, "backend.data_sources.packagist_client", "PackagistClient")
+_register_client(Ecosystem.RUBYGEMS, "backend.data_sources.rubygems_client", "RubyGemsClient")
 _register_client(
     Ecosystem.DOCS, "backend.data_sources.documentation_scraper", "DocumentationScraper"
 )
-_register_client(
-    Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB"
-)
+_register_client(Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "CompatibilityDB")
 _register_client(Ecosystem.PUB, "backend.data_sources.pub_client", "PubClient")
-_register_client(
-    Ecosystem.GRADLE, "backend.data_sources.gradle_client", "GradleClient"
-)
-_register_client(
-    Ecosystem.SWIFT, "backend.data_sources.swift_client", "SwiftClient"
-)
+_register_client(Ecosystem.GRADLE, "backend.data_sources.gradle_client", "GradleClient")
+_register_client(Ecosystem.SWIFT, "backend.data_sources.swift_client", "SwiftClient")
 _register_client(Ecosystem.HEX, "backend.data_sources.hex_client", "HexClient")
-_register_client(
-    Ecosystem.HASKELL, "backend.data_sources.haskell_client", "HaskellClient"
-)
+_register_client(Ecosystem.HASKELL, "backend.data_sources.haskell_client", "HaskellClient")
 
 
 class DataAggregator:
     """Data Aggregator functionality."""
 
-    def __init__(
-        self, cache_ttl: int = 3600, max_workers: int = 10, enable_caching: bool = True
-    ):
+    def __init__(self, cache_ttl: int = 3600, max_workers: int = 10, enable_caching: bool = True):
         """Initialize."""
-        self._sources: Dict[Ecosystem, Any] = {}
+        self._sources: dict[Ecosystem, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.cache_ttl = cache_ttl
         self.enable_caching = enable_caching
-        self._ecosystem_cache: Dict[str, List[Ecosystem]] = {}
+        self._ecosystem_cache: dict[str, list[Ecosystem]] = {}
 
     @property
-    def sources(self) -> Dict[str, Any]:
+    def sources(self) -> dict[str, Any]:
         """Expose lazy-initialized sources keyed by ecosystem name."""
         return {eco.value: client for eco, client in self._sources.items()}
 
@@ -217,12 +196,12 @@ class DataAggregator:
     async def get_package_info(
         self,
         package_name: str,
-        ecosystem: Optional[Union[str, Ecosystem]] = None,
-        version: Optional[str] = None,
+        ecosystem: str | Ecosystem | None = None,
+        version: str | None = None,
         include_dependencies: bool = True,
         include_versions: bool = True,
         include_documentation: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get comprehensive package information from all sources."""
         if ecosystem and isinstance(ecosystem, str):
             eco_str = ecosystem
@@ -270,7 +249,7 @@ class DataAggregator:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Aggregate results
-        aggregated_info: Dict[str, Any] = {
+        aggregated_info: dict[str, Any] = {
             "name": package_name,
             "version": version,
             "ecosystems": {},
@@ -306,7 +285,7 @@ class DataAggregator:
                 continue
 
             if result:
-                eco_result: Dict[Any, Any] = result  # type: ignore[assignment]
+                eco_result: dict[Any, Any] = result  # type: ignore[assignment]
                 aggregated_info["ecosystems"][eco.value] = eco_result
                 aggregated_info["metadata"]["data_sources"].append(
                     {"ecosystem": eco.value, "status": "success"}
@@ -322,9 +301,7 @@ class DataAggregator:
         await self._analyze_cross_ecosystem_compatibility(aggregated_info)
 
         # Calculate quality scores
-        aggregated_info["quality_metrics"] = self._calculate_quality_metrics(
-            aggregated_info
-        )
+        aggregated_info["quality_metrics"] = self._calculate_quality_metrics(aggregated_info)
 
         # Add documentation if requested
         if include_documentation:
@@ -336,9 +313,7 @@ class DataAggregator:
         vulnerabilities = []
         for eco in ecosystems:
             if eco != Ecosystem.DOCS and eco != Ecosystem.CUSTOM_DB:
-                vulns = await self.check_vulnerabilities(
-                    package_name, eco.value, version
-                )
+                vulns = await self.check_vulnerabilities(package_name, eco.value, version)
                 vulnerabilities.extend(vulns)
         aggregated_info["security"] = {
             "vulnerabilities": vulnerabilities,
@@ -350,7 +325,7 @@ class DataAggregator:
 
         return aggregated_info
 
-    async def _detect_ecosystems(self, package_name: str) -> List[Ecosystem]:
+    async def _detect_ecosystems(self, package_name: str) -> list[Ecosystem]:
         """Detect which ecosystems a package might belong to."""
         package_name = normalize_package_name(package_name)
 
@@ -358,7 +333,7 @@ class DataAggregator:
         if package_name in self._ecosystem_cache:
             return self._ecosystem_cache[package_name]
 
-        ecosystems: List[Ecosystem] = []
+        ecosystems: list[Ecosystem] = []
 
         # Check each source concurrently
         tasks = []
@@ -382,9 +357,7 @@ class DataAggregator:
 
         return ecosystems
 
-    async def _check_ecosystem_exists(
-        self, ecosystem: Ecosystem, package_name: str
-    ) -> bool:
+    async def _check_ecosystem_exists(self, ecosystem: Ecosystem, package_name: str) -> bool:
         """Check if package exists in an ecosystem."""
         package_name = normalize_package_name(package_name)
         try:
@@ -394,24 +367,22 @@ class DataAggregator:
             if hasattr(client, "package_exists"):
                 if asyncio.iscoroutinefunction(client.package_exists):
                     return await client.package_exists(package_name)
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    self.executor, client.package_exists, package_name
+                )
+            # Try to get package info as existence check
+            try:
+                if hasattr(client, "get_package_info_async"):
+                    info = await client.get_package_info_async(package_name)
                 else:
                     loop = asyncio.get_event_loop()
-                    return await loop.run_in_executor(
-                        self.executor, client.package_exists, package_name
+                    info = await loop.run_in_executor(
+                        self.executor, client.get_package_info, package_name
                     )
-            else:
-                # Try to get package info as existence check
-                try:
-                    if hasattr(client, "get_package_info_async"):
-                        info = await client.get_package_info_async(package_name)
-                    else:
-                        loop = asyncio.get_event_loop()
-                        info = await loop.run_in_executor(
-                            self.executor, client.get_package_info, package_name
-                        )
-                    return info is not None
-                except Exception:
-                    return False
+                return info is not None
+            except Exception:
+                return False
 
         except Exception as e:
             logger.debug(f"Error checking {package_name} in {ecosystem.value}: {e}")
@@ -421,10 +392,10 @@ class DataAggregator:
         self,
         ecosystem: Ecosystem,
         package_name: str,
-        version: Optional[str],
+        version: str | None,
         include_dependencies: bool,
         include_versions: bool,
-    ) -> Dict:
+    ) -> dict:
         """Fetch package data from a specific ecosystem."""
         _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods"}
         if ecosystem.value not in _dot_sensitive:
@@ -433,7 +404,7 @@ class DataAggregator:
             client = self._get_client(ecosystem)
 
             # Build method arguments based on client capabilities
-            kwargs: Dict[str, Any] = {}
+            kwargs: dict[str, Any] = {}
             if version and hasattr(client, "get_package_version"):
                 method_name = "get_package_version"
                 args: tuple = (package_name, version)
@@ -465,9 +436,7 @@ class DataAggregator:
             else:
                 method = getattr(client, method_name)
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    self.executor, lambda: method(*args, **kwargs)
-                )
+                result = await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
 
             return result
 
@@ -475,34 +444,28 @@ class DataAggregator:
             logger.error(f"Error fetching {package_name} from {ecosystem.value}: {e}")
             raise
 
-    async def _merge_ecosystem_data(
-        self, aggregated: Dict, ecosystem: Ecosystem, data: Dict
-    ):
+    async def _merge_ecosystem_data(self, aggregated: dict, ecosystem: Ecosystem, data: dict):
         """Merge data from an ecosystem into aggregated result."""
         # Merge basic metadata
         unified = aggregated["unified_data"]
 
         # Description (prefer longer descriptions)
-        if "description" in data and data["description"]:
-            if not unified["description"] or len(data["description"]) > len(
-                unified["description"]
-            ):
+        if data.get("description"):
+            if not unified["description"] or len(data["description"]) > len(unified["description"]):
                 unified["description"] = data["description"]
 
         # License
-        if "license" in data and data["license"]:
-            if not unified["license"]:
-                unified["license"] = data["license"]
+        if data.get("license") and not unified["license"]:
+            unified["license"] = data["license"]
 
         # Homepage
-        if "homepage" in data and data["homepage"]:
-            if not unified["homepage"]:
-                unified["homepage"] = data["homepage"]
+        if data.get("homepage") and not unified["homepage"]:
+            unified["homepage"] = data["homepage"]
 
         # Repository
         repo_keys = ["repository", "repo", "source"]
         for key in repo_keys:
-            if key in data and data[key]:
+            if data.get(key):
                 if not unified["repository"]:
                     unified["repository"] = data[key]
                 break
@@ -515,9 +478,7 @@ class DataAggregator:
         for person_type in ["authors", "author", "maintainers", "maintainer"]:
             if person_type in data:
                 persons = data[person_type]
-                if isinstance(persons, str):
-                    persons = [persons]
-                elif isinstance(persons, dict):
+                if isinstance(persons, str) or isinstance(persons, dict):
                     persons = [persons]
 
                 target = "authors" if "author" in person_type else "maintainers"
@@ -544,22 +505,18 @@ class DataAggregator:
         # Merge system requirements
         if "system_requirements" in data:
             aggregated["system_requirements"][ecosystem.value] = (
-                self._normalize_system_requirements(
-                    data["system_requirements"], ecosystem
-                )
+                self._normalize_system_requirements(data["system_requirements"], ecosystem)
             )
 
         # Extract compatibility information
         if "compatibility" in data:
             aggregated["compatibility_matrix"][ecosystem.value] = data["compatibility"]
         elif "compatibility_matrix" in data:
-            aggregated["compatibility_matrix"][ecosystem.value] = data[
-                "compatibility_matrix"
-            ]
+            aggregated["compatibility_matrix"][ecosystem.value] = data["compatibility_matrix"]
 
     def _normalize_dependencies(
-        self, deps: Union[Dict, List], ecosystem: Ecosystem
-    ) -> Dict[str, List[Dependency]]:
+        self, deps: dict | list, ecosystem: Ecosystem
+    ) -> dict[str, list[Dependency]]:
         """Normalize dependency data from different ecosystems."""
         normalized = defaultdict(list)
 
@@ -633,8 +590,8 @@ class DataAggregator:
         return dict(normalized)
 
     def _normalize_system_requirements(
-        self, reqs: Union[Dict, List], ecosystem: Ecosystem
-    ) -> List[SystemRequirement]:
+        self, reqs: dict | list, ecosystem: Ecosystem
+    ) -> list[SystemRequirement]:
         """Normalize system requirements from different ecosystems."""
         normalized = []
 
@@ -644,18 +601,14 @@ class DataAggregator:
                 py_req = reqs.get("python") or reqs.get("python_version")
                 if isinstance(py_req, str):
                     normalized.append(
-                        SystemRequirement(
-                            type="runtime", name="python", version_spec=py_req
-                        )
+                        SystemRequirement(type="runtime", name="python", version_spec=py_req)
                     )
                 elif isinstance(py_req, dict):
                     normalized.append(
                         SystemRequirement(
                             type="runtime",
                             name="python",
-                            version_spec=py_req.get(
-                                "version_spec", py_req.get("min", "*")
-                            ),
+                            version_spec=py_req.get("version_spec", py_req.get("min", "*")),
                         )
                     )
 
@@ -664,9 +617,7 @@ class DataAggregator:
                 node_req = reqs.get("node") or reqs.get("node_version")
                 if isinstance(node_req, str):
                     normalized.append(
-                        SystemRequirement(
-                            type="runtime", name="node", version_spec=node_req
-                        )
+                        SystemRequirement(type="runtime", name="node", version_spec=node_req)
                     )
 
             # Java requirements
@@ -674,9 +625,7 @@ class DataAggregator:
                 java_req = reqs.get("java") or reqs.get("java_version")
                 if isinstance(java_req, str):
                     normalized.append(
-                        SystemRequirement(
-                            type="runtime", name="java", version_spec=java_req
-                        )
+                        SystemRequirement(type="runtime", name="java", version_spec=java_req)
                     )
 
             # Rust requirements
@@ -684,9 +633,7 @@ class DataAggregator:
                 rust_req = reqs.get("rust") or reqs.get("rust_version")
                 if isinstance(rust_req, str):
                     normalized.append(
-                        SystemRequirement(
-                            type="compiler", name="rust", version_spec=rust_req
-                        )
+                        SystemRequirement(type="compiler", name="rust", version_spec=rust_req)
                     )
 
             # OS requirements
@@ -711,7 +658,7 @@ class DataAggregator:
 
         return normalized
 
-    async def _analyze_cross_ecosystem_compatibility(self, aggregated: Dict):
+    async def _analyze_cross_ecosystem_compatibility(self, aggregated: dict):
         """Analyze compatibility across ecosystems."""
         conflicts = []
 
@@ -742,9 +689,7 @@ class DataAggregator:
         deps_by_eco = aggregated["dependencies"]
         if len(deps_by_eco) > 1:
             # Find common dependencies with different version requirements
-            dep_versions: Dict[str, Dict[str, List[Any]]] = defaultdict(
-                lambda: defaultdict(list)
-            )
+            dep_versions: dict[str, dict[str, list[Any]]] = defaultdict(lambda: defaultdict(list))
 
             for eco, deps in deps_by_eco.items():
                 if "all" in deps:
@@ -758,9 +703,7 @@ class DataAggregator:
                     for eco, versions in eco_versions.items():
                         specs.extend(versions)
 
-                    if len(set(specs)) > 1 and not self._are_version_specs_compatible(
-                        specs
-                    ):
+                    if len(set(specs)) > 1 and not self._are_version_specs_compatible(specs):
                         conflicts.append(
                             CompatibilityIssue(
                                 severity=ConflictSeverity.HIGH,
@@ -775,9 +718,7 @@ class DataAggregator:
         sys_reqs_by_eco = aggregated["system_requirements"]
         if len(sys_reqs_by_eco) > 1:
             # Compare runtime requirements
-            runtime_reqs: Dict[str, Dict[str, List[Any]]] = defaultdict(
-                lambda: defaultdict(list)
-            )
+            runtime_reqs: dict[str, dict[str, list[Any]]] = defaultdict(lambda: defaultdict(list))
 
             for eco, reqs in sys_reqs_by_eco.items():
                 for req in reqs:
@@ -825,7 +766,7 @@ class DataAggregator:
                             break
         aggregated["cross_ecosystem_deps"] = cross_eco
 
-    def _are_version_specs_compatible(self, specs: List[str]) -> bool:
+    def _are_version_specs_compatible(self, specs: list[str]) -> bool:
         """Check if multiple version specifications are compatible."""
         # Simplified compatibility check
         # In production, use proper version parsing
@@ -838,20 +779,13 @@ class DataAggregator:
 
         # Check for obvious incompatibilities
         has_exact = any(
-            not any(op in spec for op in [">", "<", "~", "^", "*"])
-            for spec in unique_specs
+            not any(op in spec for op in [">", "<", "~", "^", "*"]) for spec in unique_specs
         )
-        has_range = any(
-            any(op in spec for op in [">", "<", "~", "^"]) for spec in unique_specs
-        )
+        has_range = any(any(op in spec for op in [">", "<", "~", "^"]) for spec in unique_specs)
 
-        if has_exact and has_range:
-            return False
+        return not (has_exact and has_range)
 
-        # More sophisticated checks would go here
-        return True
-
-    def _calculate_quality_metrics(self, aggregated: Dict) -> Dict[str, float]:
+    def _calculate_quality_metrics(self, aggregated: dict) -> dict[str, float]:
         """Calculate quality metrics for the package."""
         metrics = {
             "documentation_score": 0.0,
@@ -908,18 +842,16 @@ class DataAggregator:
             "compatibility_score": 0.25,
         }
 
-        metrics["overall_score"] = sum(
-            metrics[key] * weight for key, weight in weights.items()
-        )
+        metrics["overall_score"] = sum(metrics[key] * weight for key, weight in weights.items())
 
         return metrics
 
     async def _aggregate_documentation(
-        self, package_name: str, ecosystems: List[Ecosystem]
-    ) -> Dict[str, Any]:
+        self, package_name: str, ecosystems: list[Ecosystem]
+    ) -> dict[str, Any]:
         """Aggregate documentation from multiple sources."""
         package_name = normalize_package_name(package_name)
-        docs: Dict[str, Any] = {
+        docs: dict[str, Any] = {
             "official_docs": [],
             "tutorials": [],
             "examples": [],
@@ -962,19 +894,17 @@ class DataAggregator:
 
         return docs
 
-    async def _fetch_custom_compatibility(self, package_name: str) -> Optional[Dict]:
+    async def _fetch_custom_compatibility(self, package_name: str) -> dict | None:
         """Fetch custom compatibility data from database."""
         package_name = normalize_package_name(package_name)
         try:
             client = self._get_client(Ecosystem.CUSTOM_DB)
-            return await self._call_client_method(
-                client, "get_compatibility_rules", package_name
-            )
+            return await self._call_client_method(client, "get_compatibility_rules", package_name)
         except Exception as e:
             logger.error(f"Error fetching custom compatibility: {e}")
             return None
 
-    async def _merge_custom_data(self, aggregated: Dict, custom_data: Dict):
+    async def _merge_custom_data(self, aggregated: dict, custom_data: dict):
         """Merge custom database information."""
         if "known_conflicts" in custom_data:
             for conflict in custom_data["known_conflicts"]:
@@ -991,9 +921,7 @@ class DataAggregator:
         if "verified_combinations" in custom_data:
             if "verified_combinations" not in aggregated:
                 aggregated["verified_combinations"] = []
-            aggregated["verified_combinations"].extend(
-                custom_data["verified_combinations"]
-            )
+            aggregated["verified_combinations"].extend(custom_data["verified_combinations"])
 
         if "community_notes" in custom_data:
             if "community_notes" not in aggregated:
@@ -1001,8 +929,8 @@ class DataAggregator:
             aggregated["community_notes"].extend(custom_data["community_notes"])
 
     async def check_vulnerabilities(
-        self, package_name: str, ecosystem: str, version: Optional[str] = None
-    ) -> List[Dict]:
+        self, package_name: str, ecosystem: str, version: str | None = None
+    ) -> list[dict]:
         """Check for security vulnerabilities using OSV database."""
         try:
             # Map ecosystem to OSV format
@@ -1015,22 +943,23 @@ class DataAggregator:
             if version:
                 query["package"]["version"] = version
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     OSV_API_URL, json=query, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        vulnerabilities = data.get("vulns", [])
-                        return vulnerabilities
-                    else:
-                        logger.error(f"OSV API error: {response.status}")
-                        return []
+                ) as response,
+            ):
+                if response.status == 200:
+                    data = await response.json()
+                    vulnerabilities = data.get("vulns", [])
+                    return vulnerabilities
+                logger.error(f"OSV API error: {response.status}")
+                return []
         except Exception as e:
             logger.error(f"Error checking vulnerabilities for {package_name}: {e}")
             return []
 
-    def _map_ecosystem_to_osv(self, ecosystem: str) -> Optional[str]:
+    def _map_ecosystem_to_osv(self, ecosystem: str) -> str | None:
         """Map internal ecosystem names to OSV ecosystem names."""
         mapping = {
             "pypi": "PyPI",
@@ -1044,34 +973,28 @@ class DataAggregator:
         }
         return mapping.get(ecosystem.lower())
 
-    async def _call_client_method(
-        self, client: Any, method_name: str, *args, **kwargs
-    ) -> Any:
+    async def _call_client_method(self, client: Any, method_name: str, *args, **kwargs) -> Any:
         """Call a client method, handling both sync and async."""
         if hasattr(client, f"{method_name}_async"):
             method = getattr(client, f"{method_name}_async")
             return await method(*args, **kwargs)
-        elif hasattr(client, method_name):
+        if hasattr(client, method_name):
             method = getattr(client, method_name)
             if asyncio.iscoroutinefunction(method):
                 return await method(*args, **kwargs)
-            else:
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(
-                    self.executor, lambda: method(*args, **kwargs)
-                )
-        else:
-            raise AttributeError(f"Client has no method {method_name}")
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
+        raise AttributeError(f"Client has no method {method_name}")
 
     async def search_packages(
         self,
         query: str,
-        ecosystems: Optional[List[Union[str, Ecosystem]]] = None,
+        ecosystems: list[str | Ecosystem] | None = None,
         limit: int = 10,
-    ) -> Dict[str, List[Dict]]:
+    ) -> dict[str, list[dict]]:
         """Search for packages across multiple ecosystems."""
         query = normalize_package_name(query)
-        eco_list: List[Ecosystem]
+        eco_list: list[Ecosystem]
         if ecosystems:
             eco_list = []
             for e in ecosystems:
@@ -1084,11 +1007,9 @@ class DataAggregator:
                 else:
                     eco_list.append(e)
         else:
-            eco_list = [
-                e for e in Ecosystem if e not in [Ecosystem.DOCS, Ecosystem.CUSTOM_DB]
-            ]
+            eco_list = [e for e in Ecosystem if e not in [Ecosystem.DOCS, Ecosystem.CUSTOM_DB]]
 
-        results: Dict[str, List[Dict]] = {}
+        results: dict[str, list[dict]] = {}
         tasks = []
 
         for eco in eco_list:
@@ -1103,34 +1024,31 @@ class DataAggregator:
                 logger.error(f"Search error in {eco.value}: {result}")
                 results[eco.value] = []
             else:
-                search_result: List[Dict] = result or []  # type: ignore[assignment]
+                search_result: list[dict] = result or []  # type: ignore[assignment]
                 results[eco.value] = search_result
 
         return results
 
     async def _search_in_ecosystem(
         self, ecosystem: Ecosystem, client: Any, query: str, limit: int
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Search in a specific ecosystem."""
         query = normalize_package_name(query)
         try:
             if hasattr(client, "search_packages"):
-                return await self._call_client_method(
-                    client, "search_packages", query, limit
-                )
-            elif hasattr(client, "search"):
+                return await self._call_client_method(client, "search_packages", query, limit)
+            if hasattr(client, "search"):
                 return await self._call_client_method(client, "search", query, limit)
-            else:
-                return []
+            return []
         except Exception as e:
             logger.error(f"Search error in {ecosystem.value}: {e}")
             return []
 
     async def check_compatibility(
-        self, packages: List[Dict[str, str]], system_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, packages: list[dict[str, str]], system_info: dict[str, Any]
+    ) -> dict[str, Any]:
         """Check compatibility of multiple packages with system."""
-        compatibility_report: Dict[str, Any] = {
+        compatibility_report: dict[str, Any] = {
             "overall_compatible": True,
             "package_compatibility": {},
             "conflicts": [],
@@ -1158,7 +1076,7 @@ class DataAggregator:
             pkg_info = await self.get_package_info(name, ecosystem, version)
 
             # Check individual compatibility
-            pkg_compat: Dict[str, Any] = {
+            pkg_compat: dict[str, Any] = {
                 "compatible": True,
                 "issues": [],
                 "requirements": [],
@@ -1170,9 +1088,7 @@ class DataAggregator:
                     if req.type == "runtime" and req.name in system_info:
                         if not self._check_requirement_compatibility(req, system_info):
                             pkg_compat["compatible"] = False
-                            pkg_compat["issues"].append(
-                                f"Requires {req.name} {req.version_spec}"
-                            )
+                            pkg_compat["issues"].append(f"Requires {req.name} {req.version_spec}")
 
             compatibility_report["package_compatibility"][name] = pkg_compat
 
@@ -1187,7 +1103,7 @@ class DataAggregator:
 
         return compatibility_report
 
-    async def _check_inter_package_conflicts(self, packages: List[Dict], report: Dict):
+    async def _check_inter_package_conflicts(self, packages: list[dict], report: dict):
         """Check for conflicts between packages."""
         # Check for duplicate dependencies with different versions
         all_deps = defaultdict(list)
@@ -1227,7 +1143,7 @@ class DataAggregator:
                     )
 
     def _check_requirement_compatibility(
-        self, requirement: SystemRequirement, system_info: Dict
+        self, requirement: SystemRequirement, system_info: dict
     ) -> bool:
         """Check if system meets requirement."""
         from backend.core.utils import is_compatible_version
@@ -1240,7 +1156,7 @@ class DataAggregator:
             return is_compatible_version(system_version, requirement.version_spec)
         return True
 
-    def _generate_compatibility_recommendations(self, report: Dict):
+    def _generate_compatibility_recommendations(self, report: dict):
         """Generate recommendations based on compatibility analysis."""
         if not report["overall_compatible"]:
             report["recommendations"].append(

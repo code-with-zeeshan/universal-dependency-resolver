@@ -1,24 +1,20 @@
 """Module docstring."""
-import logging
-from typing import Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field
+import logging
+
 from packaging import version
+from pydantic import BaseModel, Field
 
 
 class SystemSpec(BaseModel):
     """System Spec functionality."""
 
-    os: Optional[str] = Field(
-        None, description="Operating system (linux, windows, macos)"
-    )
-    os_version: Optional[str] = Field(None, description="OS version")
-    architecture: Optional[str] = Field(
-        None, description="CPU architecture (x86_64, arm64)"
-    )
-    python_version: Optional[str] = Field(None, description="Python version")
-    cuda_version: Optional[str] = Field(None, description="CUDA version if available")
-    gpu_available: Optional[bool] = Field(False, description="GPU availability")
+    os: str | None = Field(None, description="Operating system (linux, windows, macos)")
+    os_version: str | None = Field(None, description="OS version")
+    architecture: str | None = Field(None, description="CPU architecture (x86_64, arm64)")
+    python_version: str | None = Field(None, description="Python version")
+    cuda_version: str | None = Field(None, description="CUDA version if available")
+    gpu_available: bool | None = Field(False, description="GPU availability")
 
     @classmethod
     def from_string(cls, spec_string: str) -> "SystemSpec":
@@ -55,7 +51,7 @@ class SystemSpec(BaseModel):
 logger = logging.getLogger(__name__)
 
 
-def _check_version_compatibility(version_info: Dict, system_spec: str) -> bool:
+def _check_version_compatibility(version_info: dict, system_spec: str) -> bool:
     """Check version compatibility."""
     try:
         spec = SystemSpec.from_string(system_spec)
@@ -66,8 +62,8 @@ def _check_version_compatibility(version_info: Dict, system_spec: str) -> bool:
 
 
 def _check_version_compatibility_detailed(
-    version_info: Dict, system_spec: SystemSpec
-) -> Tuple[bool, List[str]]:
+    version_info: dict, system_spec: SystemSpec
+) -> tuple[bool, list[str]]:
     """Check version compatibility detailed."""
     compatibility_notes = []
     is_compatible = True
@@ -92,15 +88,11 @@ def _check_version_compatibility_detailed(
         architectures = version_info["architectures"]
         if system_spec.architecture not in architectures:
             is_compatible = False
-            compatibility_notes.append(
-                f"Not available for {system_spec.architecture} architecture"
-            )
+            compatibility_notes.append(f"Not available for {system_spec.architecture} architecture")
 
     if system_spec.cuda_version and version_info.get("cuda_required"):
         cuda_versions = version_info.get("cuda_versions", [])
-        if cuda_versions and not _check_cuda_compatibility(
-            system_spec.cuda_version, cuda_versions
-        ):
+        if cuda_versions and not _check_cuda_compatibility(system_spec.cuda_version, cuda_versions):
             is_compatible = False
             compatibility_notes.append(
                 f"Requires CUDA {', '.join(cuda_versions)}, but system has {system_spec.cuda_version}"
@@ -128,7 +120,7 @@ def _check_python_compatibility(system_python: str, requires_python: str) -> boo
         return True
 
 
-def _check_os_compatibility(system_os: str, supported_platforms: List[str]) -> bool:
+def _check_os_compatibility(system_os: str, supported_platforms: list[str]) -> bool:
     """Check os compatibility."""
     if not supported_platforms or "any" in supported_platforms:
         return True
@@ -146,7 +138,7 @@ def _check_os_compatibility(system_os: str, supported_platforms: List[str]) -> b
     return False
 
 
-def _check_cuda_compatibility(system_cuda: str, required_cuda: List[str]) -> bool:
+def _check_cuda_compatibility(system_cuda: str, required_cuda: list[str]) -> bool:
     """Check cuda compatibility."""
     try:
         system_version = version.parse(system_cuda)

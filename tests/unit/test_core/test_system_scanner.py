@@ -1,12 +1,11 @@
-import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from backend.core.system_scanner import (
-    SystemScanner,
-    OSType,
     ContainerType,
+    OSType,
+    SystemScanner,
 )
 
 
@@ -218,17 +217,17 @@ class TestSystemScanner:
 
     def test_scan_all(self, scanner):
         import asyncio
-        with patch.object(scanner, 'detect_platform_info', return_value={}), \
-             patch.object(scanner, 'detect_cpu_info', return_value={}), \
-             patch.object(scanner, 'detect_memory_info', return_value={}), \
-             patch.object(scanner, 'detect_gpu_info', return_value={}), \
-             patch.object(scanner, 'detect_disk_info', return_value={}), \
-             patch.object(scanner, 'detect_network_info', return_value={}), \
-             patch.object(scanner, 'detect_container_info', return_value={}), \
-             patch.object(scanner, 'detect_runtime_versions', return_value={}), \
-             patch.object(scanner, 'detect_installed_packages', return_value={}), \
-             patch.object(scanner, 'get_performance_metrics', return_value={}), \
-             patch.object(scanner, 'detect_system_capabilities', return_value={}):
+        with patch.object(scanner, "detect_platform_info", return_value={}), \
+             patch.object(scanner, "detect_cpu_info", return_value={}), \
+             patch.object(scanner, "detect_memory_info", return_value={}), \
+             patch.object(scanner, "detect_gpu_info", return_value={}), \
+             patch.object(scanner, "detect_disk_info", return_value={}), \
+             patch.object(scanner, "detect_network_info", return_value={}), \
+             patch.object(scanner, "detect_container_info", return_value={}), \
+             patch.object(scanner, "detect_runtime_versions", return_value={}), \
+             patch.object(scanner, "detect_installed_packages", return_value={}), \
+             patch.object(scanner, "get_performance_metrics", return_value={}), \
+             patch.object(scanner, "detect_system_capabilities", return_value={}):
             result = asyncio.run(scanner.scan_all())
 
         assert "platform" in result

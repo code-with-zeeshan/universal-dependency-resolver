@@ -1,4 +1,5 @@
 """Module docstring."""
+
 from fastapi import HTTPException
 
 
@@ -11,4 +12,4 @@ async def safe_data_source_call(coro, error_msg: str = "Data source operation fa
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"{error_msg}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{error_msg}: {e!s}")

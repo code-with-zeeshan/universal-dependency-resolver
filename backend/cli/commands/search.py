@@ -1,11 +1,12 @@
 """Search for packages across ecosystems."""
+
 import asyncio
 import json
 import sys
 
+from rich import box
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 from ..shared import console, err_console
 
@@ -33,9 +34,7 @@ async def _cmd_search_async(args):
     finally:
         await aggregator.close()
 
-    total = sum(
-        len(items) for items in results.values() if isinstance(items, list)
-    )
+    total = sum(len(items) for items in results.values() if isinstance(items, list))
 
     if getattr(args, "json", False):
         json.dump(results, sys.stdout, indent=2, default=str)

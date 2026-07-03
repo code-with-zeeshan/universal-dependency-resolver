@@ -7,8 +7,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 UDR = [sys.executable, "-m", "backend.cli"]
 
@@ -77,7 +75,7 @@ class TestProblemStatement:
             (d / "requirements.txt").write_text("requests>=2.28\nurllib3>=2.0\ntorch>=2.0\n")
             (d / "package.json").write_text('{"dependencies":{"express":"^4.18.0"}}')
             (d / "Cargo.toml").write_text(
-                "[package]\nname = \"test-proj\"\nversion = \"0.1.0\"\n[dependencies]\nserde = \"1.0\"\ntokio = \"1.0\"\n"
+                '[package]\nname = "test-proj"\nversion = "0.1.0"\n[dependencies]\nserde = "1.0"\ntokio = "1.0"\n'
             )
             data = _lock(d, cuda="12.1", timeout=300)
             pkgs = data.get("packages", {})
@@ -85,7 +83,9 @@ class TestProblemStatement:
             ecosystems = {p.get("ecosystem") for p in pkgs.values()}
             assert len(pkgs) >= 25, f"Expected >=25 packages, got {len(pkgs)}"
             assert resolved == len(pkgs), f"Expected all resolved, got {resolved}/{len(pkgs)}"
-            assert "pypi" in ecosystems and "npm" in ecosystems and "crates" in ecosystems
+            assert "pypi" in ecosystems
+            assert "npm" in ecosystems
+            assert "crates" in ecosystems
 
     def test_03_cuda_variant_selection(self):
         """CUDA variant selection: torch with CUDA 12.1."""
@@ -110,7 +110,7 @@ class TestProblemStatement:
             data = _lock(d, timeout=120)
             pkgs = data.get("packages", {})
             resolved = sum(1 for p in pkgs.values() if p.get("resolved_version"))
-            assert resolved >= 1, f"SAT solver couldn't resolve any packages"
+            assert resolved >= 1, "SAT solver couldn't resolve any packages"
 
     def test_05_lock_file_structure(self):
         """Lock file has correct structure."""
@@ -160,7 +160,7 @@ class TestProblemStatement:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "Package.swift").write_text(
-                "// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(\n    name: \"MyLibrary\",\n    dependencies: [\n        .package(url: \"https://github.com/Alamofire/Alamofire.git\", from: \"5.8.0\"),\n    ]\n)\n"
+                '// swift-tools-version:5.9\nimport PackageDescription\nlet package = Package(\n    name: "MyLibrary",\n    dependencies: [\n        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.8.0"),\n    ]\n)\n'
             )
             data = _lock(d, timeout=60)
             pkgs = data.get("packages", {})
@@ -171,7 +171,7 @@ class TestProblemStatement:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "mix.exs").write_text(
-                "defmodule MyApp.MixProject do\n  use Mix.Project\n  def project do\n    [app: :my_app, version: \"0.1.0\", deps: deps()]\n  end\n  defp deps do\n    [{:phoenix, \"~> 1.7.7\"}]\n  end\nend\n"
+                'defmodule MyApp.MixProject do\n  use Mix.Project\n  def project do\n    [app: :my_app, version: "0.1.0", deps: deps()]\n  end\n  defp deps do\n    [{:phoenix, "~> 1.7.7"}]\n  end\nend\n'
             )
             data = _lock(d, timeout=60)
             pkgs = data.get("packages", {})

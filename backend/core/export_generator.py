@@ -1,11 +1,11 @@
 import json
-from typing import Dict, List, Any, Optional
-from datetime import datetime
-from pathlib import Path
-
-from enum import Enum
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
 from jinja2 import Environment, PackageLoader
 
 logger = logging.getLogger(__name__)
@@ -38,10 +38,10 @@ class PackageInfo:
     name: str
     version: str
     ecosystem: PackageEcosystem
-    extras: Optional[Dict[str, Any]] = None
+    extras: dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, name: str, info: Dict[str, Any]) -> "PackageInfo":
+    def from_dict(cls, name: str, info: dict[str, Any]) -> "PackageInfo":
         """Create PackageInfo from dictionary."""
         ecosystem_str = info.get("ecosystem", "unknown")
         try:
@@ -69,7 +69,7 @@ class ExportGenerator:
         )
         self._add_template_filters()
 
-        self.template_map: Dict[str, str] = {
+        self.template_map: dict[str, str] = {
             "requirements.txt": "requirements.txt.j2",
             "package.json": "package.json.j2",
             "Dockerfile": "Dockerfile.j2",
@@ -87,10 +87,11 @@ class ExportGenerator:
             "pom.xml": "pom.xml.j2",
         }
 
-        self.formats: Dict[str, Any] = {}
+        self.formats: dict[str, Any] = {}
 
     def _add_template_filters(self):
         """Add template filters."""
+
         @staticmethod
         def to_package_str(pkg: dict, pin_versions: bool = True) -> str:
             """Format a package dict into a dependency string."""
@@ -120,10 +121,10 @@ class ExportGenerator:
 
     def generate(
         self,
-        resolved_packages: Dict[str, Any],
+        resolved_packages: dict[str, Any],
         format: str,
-        system_info: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        system_info: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> str:
         """Generate output in specified format."""
         if not resolved_packages:
@@ -147,21 +148,19 @@ class ExportGenerator:
 
     def generate_multiple(
         self,
-        resolved_packages: Dict[str, Any],
-        formats: List[str],
-        system_info: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, str]:
+        resolved_packages: dict[str, Any],
+        formats: list[str],
+        system_info: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
         """Generate multiple export formats."""
         results = {}
         for fmt in formats:
             try:
-                results[fmt] = self.generate(
-                    resolved_packages, fmt, system_info, options
-                )
+                results[fmt] = self.generate(resolved_packages, fmt, system_info, options)
             except Exception as e:
                 logger.error(f"Failed to generate {fmt}: {e}")
-                results[fmt] = f"# Error generating {fmt}: {str(e)}"
+                results[fmt] = f"# Error generating {fmt}: {e!s}"
         return results
 
     def save_to_file(self, content: str, filepath: Path, format: str) -> None:
@@ -174,7 +173,7 @@ class ExportGenerator:
         else:
             filepath.write_text(content)
 
-    def _parse_packages(self, resolved_packages: Dict[str, Any]) -> List[PackageInfo]:
+    def _parse_packages(self, resolved_packages: dict[str, Any]) -> list[PackageInfo]:
         """Parse resolved packages into structured format."""
         packages = []
         package_dict = resolved_packages.get("resolved_packages", resolved_packages)
@@ -187,17 +186,17 @@ class ExportGenerator:
 
     def _build_context(
         self,
-        resolved_packages: Dict[str, Any],
-        system_info: Dict[str, Any],
-        options: Dict[str, Any],
+        resolved_packages: dict[str, Any],
+        system_info: dict[str, Any],
+        options: dict[str, Any],
         format: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build template context from packages, system_info, and options."""
         packages = self._parse_packages(resolved_packages)
 
         timestamp = datetime.now().isoformat()
 
-        ecosystems: Dict[str, List[Dict[str, Any]]] = {}
+        ecosystems: dict[str, list[dict[str, Any]]] = {}
         for pkg in packages:
             eco = pkg.ecosystem.value
             if eco not in ecosystems:
@@ -211,7 +210,7 @@ class ExportGenerator:
                 }
             )
 
-        context: Dict[str, Any] = {
+        context: dict[str, Any] = {
             "packages": [
                 {
                     "name": p.name,
@@ -241,9 +240,9 @@ class ExportGenerator:
 
     def _add_requirements_context(
         self,
-        context: Dict[str, Any],
-        packages: List["PackageInfo"],
-        options: Dict[str, Any],
+        context: dict[str, Any],
+        packages: list["PackageInfo"],
+        options: dict[str, Any],
     ) -> None:
         """Pre-process packages for requirements.txt template."""
         python_pkgs = [p for p in packages if p.ecosystem == PackageEcosystem.PYPI]
@@ -263,11 +262,7 @@ class ExportGenerator:
 
         formatted = []
         for pkg in sorted_pkgs:
-            spec = (
-                f"{pkg.name}=={pkg.version}"
-                if pin_versions
-                else f"{pkg.name}>={pkg.version}"
-            )
+            spec = f"{pkg.name}=={pkg.version}" if pin_versions else f"{pkg.name}>={pkg.version}"
             extras_dict = pkg.extras or {}
             if extras_dict.get("extras"):
                 spec = f"{pkg.name}[{','.join(extras_dict['extras'])}]=={pkg.version}"
@@ -277,7 +272,7 @@ class ExportGenerator:
 
         categorized = None
         if options.get("group_by_category"):
-            cats: Dict[str, List[str]] = {
+            cats: dict[str, list[str]] = {
                 "Core Dependencies": [],
                 "Development Tools": [],
                 "Testing": [],
@@ -305,10 +300,10 @@ class ExportGenerator:
 
     def _add_dockerfile_context(
         self,
-        context: Dict[str, Any],
-        packages: List["PackageInfo"],
-        system_info: Dict[str, Any],
-        options: Dict[str, Any],
+        context: dict[str, Any],
+        packages: list["PackageInfo"],
+        system_info: dict[str, Any],
+        options: dict[str, Any],
     ) -> None:
         """Pre-compute Dockerfile-specific values."""
         custom_base = options.get("base_image")
@@ -317,28 +312,16 @@ class ExportGenerator:
         else:
             gpu_info = system_info.get("gpu", {})
             if gpu_info.get("available") and gpu_info.get("cuda"):
-                context["base_image"] = (
-                    f"nvidia/cuda:{gpu_info['cuda']}-cudnn8-runtime-ubuntu22.04"
-                )
+                context["base_image"] = f"nvidia/cuda:{gpu_info['cuda']}-cudnn8-runtime-ubuntu22.04"
             else:
                 has_python = any(p.ecosystem == PackageEcosystem.PYPI for p in packages)
                 has_node = any(p.ecosystem == PackageEcosystem.NPM for p in packages)
-                has_ruby = any(
-                    p.ecosystem == PackageEcosystem.RUBYGEMS for p in packages
-                )
-                has_php = any(
-                    p.ecosystem == PackageEcosystem.PACKAGIST for p in packages
-                )
-                has_dotnet = any(
-                    p.ecosystem == PackageEcosystem.NUGET for p in packages
-                )
-                has_go = any(
-                    p.ecosystem == PackageEcosystem.GOMODULES for p in packages
-                )
+                has_ruby = any(p.ecosystem == PackageEcosystem.RUBYGEMS for p in packages)
+                has_php = any(p.ecosystem == PackageEcosystem.PACKAGIST for p in packages)
+                has_dotnet = any(p.ecosystem == PackageEcosystem.NUGET for p in packages)
+                has_go = any(p.ecosystem == PackageEcosystem.GOMODULES for p in packages)
 
-                if has_python and has_node:
-                    context["base_image"] = "python:3.11-slim"
-                elif has_python:
+                if (has_python and has_node) or has_python:
                     context["base_image"] = "python:3.11-slim"
                 elif has_node:
                     context["base_image"] = "node:18-alpine"
@@ -362,10 +345,10 @@ class ExportGenerator:
 
     def _add_package_json_context(
         self,
-        context: Dict[str, Any],
-        packages: List["PackageInfo"],
-        system_info: Dict[str, Any],
-        options: Dict[str, Any],
+        context: dict[str, Any],
+        packages: list["PackageInfo"],
+        system_info: dict[str, Any],
+        options: dict[str, Any],
     ) -> None:
         """Build full package.json dict for template."""
         npm_pkgs = context["ecosystems"].get("npm", [])
@@ -378,7 +361,7 @@ class ExportGenerator:
                 return v
             return f"^{v}" if use_caret else f"~{v}"
 
-        package_json: Dict[str, Any] = {}
+        package_json: dict[str, Any] = {}
         package_json["name"] = options.get("project_name", "my-project")
         package_json["version"] = options.get("project_version", "1.0.0")
         package_json["description"] = options.get(
@@ -386,10 +369,8 @@ class ExportGenerator:
         )
         package_json["main"] = options.get("main", "index.js")
 
-        scripts: Dict[str, str] = {}
-        scripts["test"] = options.get(
-            "test_command", 'echo "Error: no test specified" && exit 1'
-        )
+        scripts: dict[str, str] = {}
+        scripts["test"] = options.get("test_command", 'echo "Error: no test specified" && exit 1')
         if options.get("include_standard_scripts", True):
             scripts.update(
                 {
@@ -405,9 +386,9 @@ class ExportGenerator:
         package_json["author"] = options.get("author", "")
         package_json["license"] = options.get("license", "MIT")
 
-        deps: Dict[str, str] = {}
-        dev_deps: Dict[str, str] = {}
-        peer_deps: Dict[str, str] = {}
+        deps: dict[str, str] = {}
+        dev_deps: dict[str, str] = {}
+        peer_deps: dict[str, str] = {}
 
         for pkg in npm_pkgs:
             ver = fmt_version(pkg["version"])
@@ -423,7 +404,7 @@ class ExportGenerator:
         package_json["devDependencies"] = dev_deps
         package_json["peerDependencies"] = peer_deps
 
-        engines: Dict[str, str] = {}
+        engines: dict[str, str] = {}
         node_info = system_info.get("runtime_versions", {}).get("node", {})
         npm_info = system_info.get("runtime_versions", {}).get("npm", {})
         if node_info.get("version"):
@@ -442,28 +423,24 @@ class ExportGenerator:
             package_json["publishConfig"] = {"registry": "https://registry.npmjs.org/"}
 
         package_json = {
-            k: v
-            for k, v in package_json.items()
-            if v or k in ["dependencies", "devDependencies"]
+            k: v for k, v in package_json.items() if v or k in ["dependencies", "devDependencies"]
         }
 
         context["package_json"] = package_json
 
     def _add_composer_json_context(
         self,
-        context: Dict[str, Any],
-        packages: List["PackageInfo"],
-        system_info: Dict[str, Any],
-        options: Dict[str, Any],
+        context: dict[str, Any],
+        packages: list["PackageInfo"],
+        system_info: dict[str, Any],
+        options: dict[str, Any],
     ) -> None:
         """Build full composer.json dict for template."""
         php_pkgs = context["ecosystems"].get("packagist", [])
 
-        composer: Dict[str, Any] = {
+        composer: dict[str, Any] = {
             "name": f"{options.get('vendor_name', 'vendor')}/{options.get('project_name', 'project')}",
-            "description": options.get(
-                "description", "Generated by Universal Dependency Resolver"
-            ),
+            "description": options.get("description", "Generated by Universal Dependency Resolver"),
             "type": options.get("type", "library"),
             "license": options.get("license", "MIT"),
             "authors": [

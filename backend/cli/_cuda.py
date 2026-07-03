@@ -3,12 +3,6 @@
 Re-exports from orchestrator for backward compatibility.
 """
 
-from backend.orchestrator.resolve import (
-    _extract_cuda_variants,
-    _normalize_cuda,
-    _select_best_cuda_variant,
-)
-
 
 def _extract_severity(vuln: dict) -> str:
     """Extract Severity."""

@@ -1,5 +1,4 @@
-"""
-Integration test fixtures using real PostgreSQL and Redis.
+"""Integration test fixtures using real PostgreSQL and Redis.
 These tests are run against actual database and cache instances.
 Falls back to SQLite when PostgreSQL is unavailable, and skips Redis-dependent tests
 when Redis is unavailable.
@@ -56,11 +55,10 @@ def _redis_reachable(url: str, timeout: int = 2) -> bool:
 
 USING_SQLITE = DATABASE_URL.startswith("sqlite")
 
-if DATABASE_URL.startswith("postgresql"):
-    if not _postgres_reachable(DATABASE_URL):
-        logger.warning("PostgreSQL not reachable, falling back to SQLite")
-        DATABASE_URL = "sqlite:////tmp/test_integration.db"
-        USING_SQLITE = True
+if DATABASE_URL.startswith("postgresql") and not _postgres_reachable(DATABASE_URL):
+    logger.warning("PostgreSQL not reachable, falling back to SQLite")
+    DATABASE_URL = "sqlite:////tmp/test_integration.db"
+    USING_SQLITE = True
 
 REDIS_AVAILABLE = False
 if REDIS_URL:

@@ -1,16 +1,17 @@
 """List packages with newer versions available in registries."""
+
 import asyncio
 import json
 import sys
 from pathlib import Path
 
 from packaging.version import parse as parse_version
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.table import Table
 from rich import box
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
-from ..shared import console, err_console, _read_lock_file
+from ..shared import _read_lock_file, console, err_console
 
 
 async def _cmd_outdated_async(args):
@@ -49,14 +50,11 @@ async def _cmd_outdated_async(args):
                 progress.advance(check_task)
                 return
             try:
-                data = await aggregator.get_package_info(
-                    name, ecosystem=eco, include_versions=True
-                )
+                data = await aggregator.get_package_info(name, ecosystem=eco, include_versions=True)
                 if data:
                     versions = data.get("versions", {}).get(eco, [])
                     version_strings = [
-                        v.get("version", "") if isinstance(v, dict) else str(v)
-                        for v in versions
+                        v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
                     ]
                     current = parse_version(ver)
                     newer = sorted(
@@ -67,13 +65,15 @@ async def _cmd_outdated_async(args):
                     latest_str = newer[0] if newer else ver
                     latest_ver = parse_version(latest_str)
                     if latest_ver > current:
-                        outdated_list.append({
-                            "name": name,
-                            "ecosystem": eco,
-                            "current": ver,
-                            "latest": latest_str,
-                            "type": "direct" if info.get("direct") else "transitive",
-                        })
+                        outdated_list.append(
+                            {
+                                "name": name,
+                                "ecosystem": eco,
+                                "current": ver,
+                                "latest": latest_str,
+                                "type": "direct" if info.get("direct") else "transitive",
+                            }
+                        )
             except Exception:
                 pass
             progress.advance(check_task)
@@ -102,9 +102,7 @@ async def _cmd_outdated_async(args):
     table.add_column("Latest", style="green")
     table.add_column("Type")
     for p in outdated_list:
-        table.add_row(
-            p["name"], p["ecosystem"], p["current"], p["latest"], p["type"]
-        )
+        table.add_row(p["name"], p["ecosystem"], p["current"], p["latest"], p["type"])
     console.print(table)
     console.print("\n[yellow]Run 'udr update <package>' to update a package[/yellow]")
     return 1

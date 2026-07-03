@@ -1,11 +1,12 @@
 """Module docstring."""
+
 import json
 import sys
 
-from rich.table import Table
 from rich import box
+from rich.table import Table
 
-from backend.settings import ECOSYSTEMS, ECOSYSTEM_NAMES
+from backend.settings import ECOSYSTEM_NAMES, ECOSYSTEMS
 
 from ..shared import console
 

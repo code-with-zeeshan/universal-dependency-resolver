@@ -1,36 +1,36 @@
 """Module docstring."""
+
 # In data_sources/__init__.py
-from .pypi_client import PyPIClient
-from .npm_client import NPMClient
-from .conda_client import CondaClient
-from .maven_client import MavenClient
-from .crates_client import CratesClient
-from .gomodules_client import GoModulesClient
-from .apt_client import APTClient
 from .apk_client import APKClient
+from .apt_client import APTClient
 from .cocoapods_client import CocoaPodsClient
+from .conda_client import CondaClient
+from .crates_client import CratesClient
 from .documentation_scraper import DocumentationScraper
-from .rubygems_client import RubyGemsClient
-from .packagist_client import PackagistClient
-from .nuget_client import NuGetClient
+from .gomodules_client import GoModulesClient
 from .homebrew_client import HomebrewClient
+from .maven_client import MavenClient
+from .npm_client import NPMClient
+from .nuget_client import NuGetClient
+from .packagist_client import PackagistClient
+from .pypi_client import PyPIClient
+from .rubygems_client import RubyGemsClient
 from .utils import safe_data_source_call
 
-
 __all__ = [
-    "PyPIClient",
-    "NPMClient",
-    "CondaClient",
-    "MavenClient",
-    "CratesClient",
-    "GoModulesClient",
-    "APTClient",
     "APKClient",
+    "APTClient",
     "CocoaPodsClient",
+    "CondaClient",
+    "CratesClient",
     "DocumentationScraper",
-    "RubyGemsClient",
-    "PackagistClient",
-    "NuGetClient",
+    "GoModulesClient",
     "HomebrewClient",
+    "MavenClient",
+    "NPMClient",
+    "NuGetClient",
+    "PackagistClient",
+    "PyPIClient",
+    "RubyGemsClient",
     "safe_data_source_call",
 ]

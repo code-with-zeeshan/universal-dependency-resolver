@@ -1,19 +1,22 @@
 """Module docstring."""
+
 # pypi_client.py
-from typing import Dict, List, Optional, Any, Set
+import asyncio
+import logging
+import re
+import xmlrpc.client
+from datetime import datetime
+from typing import Any
+
+from bs4 import BeautifulSoup
 from packaging.requirements import Requirement
+
 from ..core.utils import (
     normalize_package_name,
     parse_version,
     parse_version_key,
     run_async,
 )
-from datetime import datetime
-import logging
-import re
-import asyncio
-import xmlrpc.client
-from bs4 import BeautifulSoup
 from ..settings import CACHE_TTL
 from .base_client import BaseDataSourceClient
 
@@ -44,9 +47,7 @@ class PyPIClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def get_package_info_async(
-        self, package_name: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_package_info_async(self, package_name: str) -> dict[str, Any] | None:
         """Get comprehensive package information from PyPI."""
         package_name = normalize_package_name(package_name)
 
@@ -62,14 +63,12 @@ class PyPIClient(BaseDataSourceClient):
             logger.error(f"Error processing PyPI package {package_name}: {e}")
             return None
 
-    def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
+    def get_package_info(self, package_name: str) -> dict[str, Any] | None:
         """Synchronous wrapper for get_package_info_async."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def _process_package_data_enhanced(
-        self, data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def _process_package_data_enhanced(self, data: dict[str, Any]) -> dict[str, Any]:
         """Process raw PyPI data with enhanced extraction."""
         info = data.get("info") or {}
         releases = data.get("releases") or {}
@@ -80,7 +79,7 @@ class PyPIClient(BaseDataSourceClient):
         if not latest_version and releases:
             # Find latest stable version
             stable_versions = []
-            for v in releases.keys():
+            for v in releases:
                 parsed_v = parse_version(v)  # CHANGED from version.parse(v)
                 if parsed_v and not parsed_v.is_prerelease:  # ADD null check
                     stable_versions.append(v)
@@ -178,7 +177,7 @@ class PyPIClient(BaseDataSourceClient):
             "project_urls": info.get("project_urls") or {},
         }
 
-    def _extract_python_versions_from_wheel(self, filename: str) -> Set[str]:
+    def _extract_python_versions_from_wheel(self, filename: str) -> set[str]:
         """Extract Python versions from wheel filename."""
         python_versions = set()
 
@@ -206,7 +205,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return python_versions
 
-    def _extract_platform_from_wheel(self, filename: str) -> Optional[str]:
+    def _extract_platform_from_wheel(self, filename: str) -> str | None:
         """Extract platform from wheel filename."""
         # Common platform tags
         platform_mapping = {
@@ -225,10 +224,10 @@ class PyPIClient(BaseDataSourceClient):
         return None
 
     async def _extract_dependencies_enhanced(
-        self, requires_dist: List[str], python_requires: Optional[str]
-    ) -> Dict[str, Any]:
+        self, requires_dist: list[str], python_requires: str | None
+    ) -> dict[str, Any]:
         """Extract and categorize dependencies with enhanced parsing."""
-        deps: Dict[str, Any] = {
+        deps: dict[str, Any] = {
             "required": {},
             "optional": {},
             "dev": {},
@@ -259,9 +258,7 @@ class PyPIClient(BaseDataSourceClient):
 
                     # Parse extra dependencies
                     if "extra" in marker_str:
-                        extra_match = re.search(
-                            r'extra\s*==\s*["\']([^"\']+)["\']', marker_str
-                        )
+                        extra_match = re.search(r'extra\s*==\s*["\']([^"\']+)["\']', marker_str)
                         if extra_match:
                             extra_name = extra_match.group(1)
 
@@ -280,10 +277,7 @@ class PyPIClient(BaseDataSourceClient):
                                 continue
 
                     # Check for platform-specific dependencies
-                    elif any(
-                        platform in marker_str
-                        for platform in ["win32", "linux", "darwin"]
-                    ):
+                    elif any(platform in marker_str for platform in ["win32", "linux", "darwin"]):
                         category = "optional"
 
                     # Check for Python version-specific dependencies
@@ -335,9 +329,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return cleaned_deps
 
-    def _is_compatible_with_python_requires(
-        self, marker_str: str, python_requires: str
-    ) -> bool:
+    def _is_compatible_with_python_requires(self, marker_str: str, python_requires: str) -> bool:
         """Check if a marker is compatible with python_requires."""
         try:
             # This is a simplified check
@@ -348,20 +340,16 @@ class PyPIClient(BaseDataSourceClient):
             return True
 
     def _extract_system_requirements_enhanced(
-        self, info: Dict[str, Any], urls: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, info: dict[str, Any], urls: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Extract system requirements with enhanced detection."""
-        requirements: Dict[str, Any] = {}
+        requirements: dict[str, Any] = {}
 
         classifiers = info.get("classifiers") or []
-        description = (
-            (info.get("description") or "") + " " + (info.get("summary") or "")
-        ).lower()
+        description = ((info.get("description") or "") + " " + (info.get("summary") or "")).lower()
 
         # Check for GPU/CUDA requirements
-        cuda_info = self._extract_cuda_requirements(
-            classifiers, description, info.get("name", "")
-        )
+        cuda_info = self._extract_cuda_requirements(classifiers, description, info.get("name", ""))
         if cuda_info:
             requirements["gpu"] = cuda_info
 
@@ -384,9 +372,7 @@ class PyPIClient(BaseDataSourceClient):
             requirements["architecture"] = arch_info
 
         # Check for other system libraries
-        system_libs = self._extract_system_library_requirements(
-            description, classifiers
-        )
+        system_libs = self._extract_system_library_requirements(description, classifiers)
         if system_libs:
             requirements["system_libraries"] = system_libs
 
@@ -398,8 +384,8 @@ class PyPIClient(BaseDataSourceClient):
         return requirements
 
     def _extract_cuda_requirements(
-        self, classifiers: List[str], description: str, package_name: str
-    ) -> Optional[Dict[str, Any]]:
+        self, classifiers: list[str], description: str, package_name: str
+    ) -> dict[str, Any] | None:
         """Extract CUDA/GPU requirements."""
         cuda_versions = set()
         cudnn_versions = set()
@@ -425,9 +411,7 @@ class PyPIClient(BaseDataSourceClient):
         package_requires_cuda = any(
             indicator in package_name.lower() for indicator in cuda_indicators
         )
-        desc_mentions_cuda = any(
-            indicator in description for indicator in cuda_indicators
-        )
+        desc_mentions_cuda = any(indicator in description for indicator in cuda_indicators)
 
         if cuda_versions or package_requires_cuda or desc_mentions_cuda:
             # Extract CUDA versions from description
@@ -450,8 +434,8 @@ class PyPIClient(BaseDataSourceClient):
         return None
 
     def _extract_os_requirements(
-        self, classifiers: List[str], urls: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, classifiers: list[str], urls: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Extract OS requirements from classifiers and wheel files."""
         supported_os = set()
 
@@ -487,8 +471,8 @@ class PyPIClient(BaseDataSourceClient):
         return {}
 
     def _extract_architecture_requirements(
-        self, classifiers: List[str], urls: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, classifiers: list[str], urls: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Extract architecture requirements."""
         architectures = set()
 
@@ -511,8 +495,8 @@ class PyPIClient(BaseDataSourceClient):
         return {}
 
     def _extract_system_library_requirements(
-        self, description: str, classifiers: List[str]
-    ) -> List[Dict[str, Any]]:
+        self, description: str, classifiers: list[str]
+    ) -> list[dict[str, Any]]:
         """Extract system library requirements."""
         libraries = []
 
@@ -542,10 +526,10 @@ class PyPIClient(BaseDataSourceClient):
         return libraries
 
     def _extract_compiler_requirements(
-        self, description: str, classifiers: List[str]
-    ) -> Optional[Dict[str, Any]]:
+        self, description: str, classifiers: list[str]
+    ) -> dict[str, Any] | None:
         """Extract compiler requirements."""
-        compilers: Dict[str, Any] = {}
+        compilers: dict[str, Any] = {}
 
         # Check for C/C++ extensions
         if any("Programming Language :: C" in c for c in classifiers):
@@ -566,7 +550,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_min_python_version(self, python_requires: str) -> Optional[str]:
+    def _extract_min_python_version(self, python_requires: str) -> str | None:
         """Extract minimum Python version from version spec."""
         if not python_requires:
             return None
@@ -586,7 +570,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_repository_url(self, info: Dict[str, Any]) -> Optional[str]:
+    def _extract_repository_url(self, info: dict[str, Any]) -> str | None:
         """Extract repository URL from project URLs."""
         project_urls = info.get("project_urls") or {}
 
@@ -606,7 +590,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_documentation_url(self, info: Dict[str, Any]) -> Optional[str]:
+    def _extract_documentation_url(self, info: dict[str, Any]) -> str | None:
         """Extract documentation URL from project URLs."""
         project_urls = info.get("project_urls") or {}
 
@@ -619,7 +603,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return None
 
-    def _parse_keywords(self, keywords_str: str) -> List[str]:
+    def _parse_keywords(self, keywords_str: str) -> list[str]:
         """Parse keywords string into list."""
         if not keywords_str:
             return []
@@ -633,14 +617,14 @@ class PyPIClient(BaseDataSourceClient):
         # Filter out empty strings
         return [k for k in keywords if k]
 
-    def _extract_development_status(self, classifiers: List[str]) -> Optional[str]:
+    def _extract_development_status(self, classifiers: list[str]) -> str | None:
         """Extract development status from classifiers."""
         for classifier in classifiers:
             if classifier.startswith("Development Status ::"):
                 return classifier.split("::")[1].strip()
         return None
 
-    def _extract_download_stats(self, info: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_download_stats(self, info: dict[str, Any]) -> dict[str, Any]:
         """Extract download statistics."""
         downloads = info.get("downloads") or {}
 
@@ -650,7 +634,7 @@ class PyPIClient(BaseDataSourceClient):
             "last_month": downloads.get("last_month", 0),
         }
 
-    async def search(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    async def search(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         """Search for packages on PyPI using multiple methods."""
         cache_key = f"search:{query}:{limit}"
         if cache_key in self._search_cache:
@@ -679,7 +663,7 @@ class PyPIClient(BaseDataSourceClient):
             logger.error(f"Error searching PyPI: {e}")
             return []
 
-    async def _search_xmlrpc(self, query: str, limit: int) -> List[Dict[str, Any]]:
+    async def _search_xmlrpc(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search using PyPI XML-RPC API."""
         try:
             # Use asyncio to run the XML-RPC call in a thread
@@ -714,9 +698,7 @@ class PyPIClient(BaseDataSourceClient):
             logger.debug(f"XML-RPC search failed: {e}")
             return []
 
-    async def _search_web_scraping(
-        self, query: str, limit: int
-    ) -> List[Dict[str, Any]]:
+    async def _search_web_scraping(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search by scraping PyPI search page."""
         try:
             search_url = "https://pypi.org/search/"
@@ -739,21 +721,15 @@ class PyPIClient(BaseDataSourceClient):
 
                 for package in packages[:limit]:
                     name_elem = package.find("span", class_="package-snippet__name")
-                    version_elem = package.find(
-                        "span", class_="package-snippet__version"
-                    )
+                    version_elem = package.find("span", class_="package-snippet__version")
                     desc_elem = package.find("p", class_="package-snippet__description")
 
                     if name_elem:
                         results.append(
                             {
                                 "name": name_elem.text.strip(),
-                                "version": version_elem.text.strip()
-                                if version_elem
-                                else "",
-                                "description": desc_elem.text.strip()
-                                if desc_elem
-                                else "",
+                                "version": version_elem.text.strip() if version_elem else "",
+                                "description": desc_elem.text.strip() if desc_elem else "",
                                 "url": f"https://pypi.org{package.get('href', '')}",
                             }
                         )
@@ -764,7 +740,7 @@ class PyPIClient(BaseDataSourceClient):
             logger.debug(f"Web scraping search failed: {e}")
             return []
 
-    async def _search_fallback(self, query: str, limit: int) -> List[Dict[str, Any]]:
+    async def _search_fallback(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Fallback search using exact and fuzzy matching."""
         results = []
 
@@ -816,7 +792,7 @@ class PyPIClient(BaseDataSourceClient):
 
         return results[:limit]
 
-    async def get_versions(self, package_name: str) -> List[Dict[str, Any]]:
+    async def get_versions(self, package_name: str) -> list[dict[str, Any]]:
         """Get all available versions of a package."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info_async(package_name)
@@ -847,8 +823,8 @@ class PyPIClient(BaseDataSourceClient):
         return versions
 
     async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str | None = None
+    ) -> dict[str, Any]:
         """Get dependencies for a specific package version."""
         package_name = normalize_package_name(package_name)
 

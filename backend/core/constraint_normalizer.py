@@ -1,6 +1,6 @@
 """Module docstring."""
+
 import re
-from typing import Optional
 
 
 def normalize_version(ver: str, ecosystem: str = "pypi") -> str:
@@ -30,7 +30,7 @@ def parse_semver(ver: str):
     return major, minor, patch
 
 
-def normalize_constraint(constraint: str, ecosystem: str) -> Optional[str]:
+def normalize_constraint(constraint: str, ecosystem: str) -> str | None:
     """Normalize constraint."""
     given = constraint
     if not constraint:
@@ -52,12 +52,12 @@ def normalize_constraint(constraint: str, ecosystem: str) -> Optional[str]:
     return given.strip()
 
 
-def _normalize_pip(constraint: str) -> Optional[str]:
+def _normalize_pip(constraint: str) -> str | None:
     """Normalize pip."""
     m = re.match(r"\s*(~=)\s*(\d+(?:\.\d+)*(?:\.\d+)?)\s*$", constraint)
     if m:
         ver = m.group(2)
-        major, minor, patch = parse_semver(ver)
+        major, _minor, _patch = parse_semver(ver)
         return f">={ver},<{major + 1}.0.0"
 
     m = re.match(r"\s*(!=)\s*(\d+(?:\.\d+)*(?:\.\d+)?)\s*$", constraint)
@@ -86,13 +86,13 @@ def _normalize_pip(constraint: str) -> Optional[str]:
                 normalized.append(result)
         if len(normalized) > 1:
             return ",".join(normalized)
-        elif len(normalized) == 1:
+        if len(normalized) == 1:
             return normalized[0]
 
     return None
 
 
-def _normalize_npm(constraint: str, ecosystem: str) -> Optional[str]:
+def _normalize_npm(constraint: str, ecosystem: str) -> str | None:
     """Normalize npm."""
     if ecosystem not in ("npm", "crates", "rubygems", "pub", "packagist"):
         return None
@@ -115,12 +115,10 @@ def _normalize_npm(constraint: str, ecosystem: str) -> Optional[str]:
         if op == "^":
             if major > 0:
                 return f">={ver},<{major + 1}.0.0"
-            elif minor > 0:
+            if minor > 0:
                 return f">={ver},<0.{minor + 1}.0"
-            else:
-                return f">={ver},<0.0.{patch + 1}"
-        else:
-            return f">={ver},<{major}.{minor + 1}.0"
+            return f">={ver},<0.0.{patch + 1}"
+        return f">={ver},<{major}.{minor + 1}.0"
 
     m = re.match(r"^(\d+(?:\.\d+)*(?:\.\d+)?)$", constraint)
     if m:
@@ -129,10 +127,9 @@ def _normalize_npm(constraint: str, ecosystem: str) -> Optional[str]:
         if ecosystem == "crates":
             if major > 0:
                 return f">={ver},<{major + 1}.0.0"
-            elif minor > 0:
+            if minor > 0:
                 return f">={ver},<0.{minor + 1}.0"
-            else:
-                return f">={ver},<0.0.{patch + 1}"
+            return f">={ver},<0.0.{patch + 1}"
         return f">={ver}"
 
     m = re.match(r"^\s*(>=|<=|>|<|==|!=)\s*(\d+(?:\.\d+)*(?:\.\d+)?)$", constraint)

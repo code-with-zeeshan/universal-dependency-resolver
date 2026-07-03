@@ -2,16 +2,16 @@
 import pytest
 
 from backend.core.constraint_normalizer import (
+    _normalize_npm,
+    _normalize_pip,
+    normalize_constraint,
     normalize_version,
     parse_semver,
-    normalize_constraint,
-    _normalize_pip,
-    _normalize_npm,
 )
 
 
 class TestNormalizeVersion:
-    @pytest.mark.parametrize("input_ver,expected", [
+    @pytest.mark.parametrize(("input_ver", "expected"), [
         ("1.2.3", "1.2.3"),
         ("v2.0.0", "2.0.0"),
         ("=3.0.0", "3.0.0"),
@@ -75,7 +75,8 @@ class TestNormalizeConstraint:
 
     def test_pep440_comma_separated(self):
         result = normalize_constraint(">=1.0,<2.0", "pypi")
-        assert ">=" in result and "<" in result
+        assert ">=" in result
+        assert "<" in result
 
     def test_npm_caret_zero_major(self):
         result = normalize_constraint("^0.5.0", "npm")
@@ -143,7 +144,8 @@ class TestNormalizePip:
 
     def test_comma_separated(self):
         result = _normalize_pip(">=1.0,<2.0")
-        assert ">=" in result and "<" in result
+        assert ">=" in result
+        assert "<" in result
 
     def test_none_on_unrecognized(self):
         assert _normalize_pip("something-weird") is None

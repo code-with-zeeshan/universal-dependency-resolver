@@ -1,15 +1,16 @@
 # backend/core/cache.py
-import json
+import asyncio
 import hashlib
+import json
+import logging
 import os
+import shutil
 import tempfile
 import time
-import shutil
-from typing import Any, Optional, List, Dict, Callable, Union
-import asyncio
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 from urllib.parse import urlparse
-import logging
 
 try:
     from aiocache import Cache
@@ -20,9 +21,9 @@ except ImportError:
     AIOCACHE_AVAILABLE = False
 
 from backend.settings import (
-    REDIS_URL,
     CACHE_TTL,
     FEATURES,
+    REDIS_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,12 +35,10 @@ class DictCache:
     Persists to a JSON file so cached data survives process restarts.
     """
 
-    def __init__(self, persist_path: Optional[str] = None):
+    def __init__(self, persist_path: str | None = None):
         """Initialize."""
-        self._store: Dict[str, tuple[Any, Optional[float]]] = {}
-        self._persist_path = persist_path or os.path.join(
-            tempfile.gettempdir(), "udr_cache.json"
-        )
+        self._store: dict[str, tuple[Any, float | None]] = {}
+        self._persist_path = persist_path or os.path.join(tempfile.gettempdir(), "udr_cache.json")
         self._dirty = False
         self._load_from_disk()
 
@@ -47,7 +46,7 @@ class DictCache:
         """Load from disk."""
         try:
             if os.path.exists(self._persist_path):
-                with open(self._persist_path, "r") as f:
+                with open(self._persist_path) as f:
                     raw = json.load(f)
                 now = time.time()
                 for key, (value, expiry) in raw.items():
@@ -70,7 +69,7 @@ class DictCache:
         except Exception as exc:
             logger.debug(f"Cache save to disk failed: {exc}")
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get."""
         entry = self._store.get(key)
         if entry is None:
@@ -82,7 +81,7 @@ class DictCache:
             return None
         return value
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set."""
         expiry = (time.time() + ttl) if ttl is not None else None
         self._store[key] = (value, expiry)
@@ -130,8 +129,8 @@ class CacheManager:
     def __init__(self, redis_url: str = REDIS_URL):
         """Initialize."""
         self.redis_url = redis_url
-        self._cache: Optional[Union[DictCache, Cache]] = None
-        self._cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
+        self._cache: DictCache | Cache | None = None
+        self._cache_stats: dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
 
     async def connect(self):
         """Initialize cache backend."""
@@ -161,9 +160,7 @@ class CacheManager:
                 self._cache = Cache(Cache.MEMORY)
                 logger.info("Using in-memory cache (no Redis URL configured)")
         except Exception as e:
-            logger.warning(
-                f"Failed to connect to Redis: {e}. Using DictCache fallback."
-            )
+            logger.warning(f"Failed to connect to Redis: {e}. Using DictCache fallback.")
             self._cache = DictCache()
 
     async def disconnect(self):
@@ -177,9 +174,7 @@ class CacheManager:
 
         for arg in args:
             if isinstance(arg, (dict, list)):
-                key_parts.append(
-                    hashlib.md5(json.dumps(arg, sort_keys=True).encode()).hexdigest()
-                )
+                key_parts.append(hashlib.md5(json.dumps(arg, sort_keys=True).encode()).hexdigest())
             else:
                 key_parts.append(str(arg))
 
@@ -190,7 +185,7 @@ class CacheManager:
 
         return ":".join(key_parts)
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get value from cache."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return None
@@ -207,7 +202,7 @@ class CacheManager:
             self._cache_stats["errors"] += 1
             return None
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Set value in cache with optional TTL."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return False
@@ -245,9 +240,7 @@ class CacheManager:
             if hasattr(cache, "client") and cache.client is not None:
                 cursor = 0
                 while True:
-                    cursor, keys = await cache.client.scan(
-                        cursor, match=pattern, count=100
-                    )
+                    cursor, keys = await cache.client.scan(cursor, match=pattern, count=100)
                     if keys and hasattr(cache, "client") and cache.client is not None:
                         await cache.client.delete(*keys)
                         count += len(keys)
@@ -261,9 +254,9 @@ class CacheManager:
             logger.error(f"Cache clear pattern error: {e}")
             return 0
 
-    async def get_many(self, keys: List[str]) -> Dict[str, Any]:
+    async def get_many(self, keys: list[str]) -> dict[str, Any]:
         """Get multiple values from cache."""
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return result
@@ -281,9 +274,7 @@ class CacheManager:
             logger.error(f"Cache get_many error: {e}")
             return {}
 
-    async def set_many(
-        self, mapping: Dict[str, Any], ttl: Optional[int] = None
-    ) -> bool:
+    async def set_many(self, mapping: dict[str, Any], ttl: int | None = None) -> bool:
         """Set multiple values in cache."""
         if not FEATURES.get("ENABLE_CACHE", True) or not self._cache:
             return False
@@ -292,15 +283,13 @@ class CacheManager:
             ttl = CACHE_TTL
 
         try:
-            await asyncio.gather(
-                *[self._cache.set(k, v, ttl=ttl) for k, v in mapping.items()]
-            )
+            await asyncio.gather(*[self._cache.set(k, v, ttl=ttl) for k, v in mapping.items()])
             return True
         except Exception as e:
             logger.error(f"Cache set_many error: {e}")
             return False
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         total = self._cache_stats["hits"] + self._cache_stats["misses"]
         hit_rate = (self._cache_stats["hits"] / total * 100) if total > 0 else 0
@@ -312,7 +301,7 @@ class CacheManager:
             "local_cache_size": 0,
         }
 
-    async def increment(self, key: str, amount: int = 1) -> Optional[int]:
+    async def increment(self, key: str, amount: int = 1) -> int | None:
         """Increment a counter in cache."""
         if not self._cache:
             return None
@@ -372,7 +361,7 @@ def cache_key(*args, **kwargs) -> Callable:
     return decorator
 
 
-def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
+def cached(ttl: int | None = None, key_prefix: str | None = None):
     """Decorator for caching function results."""
 
     def decorator(func: Callable) -> Callable:
@@ -400,8 +389,7 @@ def cached(ttl: Optional[int] = None, key_prefix: Optional[str] = None):
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
-        else:
-            return sync_wrapper
+        return sync_wrapper
 
     return decorator
 
@@ -411,23 +399,17 @@ class CacheKeys:
     """Standardized cache key generators."""
 
     @staticmethod
-    def package_info(
-        ecosystem: str, package_name: str, version: Optional[str] = None
-    ) -> str:
+    def package_info(ecosystem: str, package_name: str, version: str | None = None) -> str:
         """Generate cache key for package information."""
         if version:
             return f"package:{ecosystem}:{package_name}:{version}"
         return f"package:{ecosystem}:{package_name}"
 
     @staticmethod
-    def search_results(
-        query: str, ecosystems: Optional[List[str]] = None, **filters
-    ) -> str:
+    def search_results(query: str, ecosystems: list[str] | None = None, **filters) -> str:
         """Generate cache key for search results."""
         eco_str = ",".join(sorted(ecosystems)) if ecosystems else "all"
-        filter_str = hashlib.md5(
-            json.dumps(filters, sort_keys=True).encode()
-        ).hexdigest()
+        filter_str = hashlib.md5(json.dumps(filters, sort_keys=True).encode()).hexdigest()
         return f"search:{query}:{eco_str}:{filter_str}"
 
     @staticmethod

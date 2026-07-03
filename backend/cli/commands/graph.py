@@ -1,4 +1,5 @@
 """Module docstring."""
+
 import asyncio
 import json
 import sys
@@ -7,15 +8,17 @@ from rich.panel import Panel
 from rich.tree import Tree
 
 from ..shared import (
+    _fetch_package_data_async,
+    _parse_package_spec,
+    _resolve_transitive,
     console,
     err_console,
-    _parse_package_spec,
-    _fetch_package_data_async,
-    _resolve_transitive,
 )
 
 
-def _build_recursive_tree(rp: dict, name: str, info: dict, max_depth: int = 5, _depth: int = 0) -> Tree:
+def _build_recursive_tree(
+    rp: dict, name: str, info: dict, max_depth: int = 5, _depth: int = 0
+) -> Tree:
     """Build recursive dependency tree."""
     eco = info.get("ecosystem", "?")
     ver = info.get("version", "?")
@@ -53,7 +56,7 @@ def _build_recursive_tree(rp: dict, name: str, info: dict, max_depth: int = 5, _
 
 def cmd_graph(args):
     """Cmd graph."""
-    from backend.core import DataAggregator, ConflictResolver
+    from backend.core import ConflictResolver, DataAggregator
 
     async def _graph():
         """Graph."""
@@ -82,9 +85,7 @@ def cmd_graph(args):
                     system_info["gpu"]["cuda"] = "12.1"
 
         specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
-        resolver_inputs, package_details = await _fetch_package_data_async(
-            aggregator, specs
-        )
+        resolver_inputs, _package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:
             console.print("[red]No packages could be resolved[/red]")

@@ -1,32 +1,34 @@
 """Module docstring."""
+
 # system_scanner.py
-import platform
-import subprocess
-import json
-import os
-import re
 import asyncio
-import socket
+import json
+import logging
+import os
+import platform
+import re
 import shutil
+import socket
+import subprocess
 import sys
-from typing import Dict, List, Optional, Any, Union, Tuple
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-import logging
-from concurrent.futures import ThreadPoolExecutor
-from backend.core.utils import hash_system_info
+from typing import Any
+
 from backend.core.scanner_models import (
-    OSType,
     ContainerType,
-    GPUInfo,
     CPUInfo,
-    MemoryInfo,
     DiskInfo,
+    GPUInfo,
+    MemoryInfo,
     NetworkInterface,
-    RuntimeInfo,
+    OSType,
     PackageInfo,
+    RuntimeInfo,
 )
+from backend.core.utils import hash_system_info
 
 # Third-party imports with fallback
 try:
@@ -38,17 +40,17 @@ except Exception:
 
 try:
     from pynvml import (
-        nvmlInit,
-        nvmlShutdown,
+        NVML_TEMPERATURE_GPU,
         nvmlDeviceGetCount,
         nvmlDeviceGetHandleByIndex,
-        nvmlDeviceGetName,
         nvmlDeviceGetMemoryInfo,
-        nvmlDeviceGetUtilizationRates,
+        nvmlDeviceGetName,
         nvmlDeviceGetTemperature,
-        nvmlSystemGetDriverVersion,
+        nvmlDeviceGetUtilizationRates,
+        nvmlInit,
+        nvmlShutdown,
         nvmlSystemGetCudaDriverVersion,
-        NVML_TEMPERATURE_GPU,
+        nvmlSystemGetDriverVersion,
     )
 
     HAS_PYNVML = True
@@ -98,9 +100,9 @@ class SystemScanner:
         self.scan_network = scan_network
         self.scan_packages = scan_packages
         self.deep_scan = deep_scan
-        self._cache: Dict[str, Tuple[Any, datetime]] = {}
+        self._cache: dict[str, tuple[Any, datetime]] = {}
         self._executor = ThreadPoolExecutor(max_workers=10)
-        self.system_info: Dict[str, Any] = {}
+        self.system_info: dict[str, Any] = {}
 
     async def __aenter__(self):
         """Aenter."""
@@ -124,7 +126,7 @@ class SystemScanner:
         # Use hash_system_info to create a consistent cache key
         return f"system_scan_{hash_system_info(system_identifiers)}"
 
-    def _get_cached(self, key: str) -> Optional[Any]:
+    def _get_cached(self, key: str) -> Any | None:
         """Get cached data if available."""
         if not self.enable_cache:
             return None
@@ -133,8 +135,7 @@ class SystemScanner:
             data, timestamp = self._cache[key]
             if (datetime.now() - timestamp).total_seconds() < self.cache_ttl:
                 return data
-            else:
-                del self._cache[key]
+            del self._cache[key]
         return None
 
     def _set_cache(self, key: str, data: Any):
@@ -142,7 +143,7 @@ class SystemScanner:
         if self.enable_cache:
             self._cache[key] = (data, datetime.now())
 
-    async def scan_all(self, categories: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def scan_all(self, categories: list[str] | None = None) -> dict[str, Any]:
         """Perform complete or selective system scan."""
         start_time = datetime.now()
 
@@ -156,9 +157,7 @@ class SystemScanner:
             "network": self.detect_network_info if self.scan_network else None,
             "container": self.detect_container_info,
             "runtime_versions": self.detect_runtime_versions,
-            "installed_packages": self.detect_installed_packages
-            if self.scan_packages
-            else None,
+            "installed_packages": self.detect_installed_packages if self.scan_packages else None,
             "security": self.detect_security_info if self.deep_scan else None,
             "performance": self.get_performance_metrics,
             "capabilities": self.detect_system_capabilities,
@@ -167,9 +166,7 @@ class SystemScanner:
         # Filter categories if specified
         if categories:
             scan_categories = {
-                k: v
-                for k, v in all_categories.items()
-                if k in categories and v is not None
+                k: v for k, v in all_categories.items() if k in categories and v is not None
             }
         else:
             scan_categories = {k: v for k, v in all_categories.items() if v is not None}
@@ -230,9 +227,9 @@ class SystemScanner:
 
         return result
 
-    def detect_platform_info(self) -> Dict[str, Any]:
+    def detect_platform_info(self) -> dict[str, Any]:
         """Detect comprehensive platform information."""
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "system": platform.system(),
             "node": platform.node(),
             "release": platform.release(),
@@ -275,16 +272,15 @@ class SystemScanner:
         system = platform.system()
         if system == "Windows":
             return OSType.WINDOWS
-        elif system == "Linux":
+        if system == "Linux":
             return OSType.LINUX
-        elif system == "Darwin":
+        if system == "Darwin":
             return OSType.MACOS
-        elif "BSD" in system:
+        if "BSD" in system:
             return OSType.BSD
-        else:
-            return OSType.UNKNOWN
+        return OSType.UNKNOWN
 
-    def _get_linux_distribution(self) -> Dict[str, str]:
+    def _get_linux_distribution(self) -> dict[str, str]:
         """Get detailed Linux distribution info."""
         dist_info = {}
 
@@ -301,7 +297,7 @@ class SystemScanner:
         # Fallback to os-release
         elif os.path.exists("/etc/os-release"):
             try:
-                with open("/etc/os-release", "r") as f:
+                with open("/etc/os-release") as f:
                     for line in f:
                         if "=" in line:
                             key, value = line.strip().split("=", 1)
@@ -312,21 +308,21 @@ class SystemScanner:
         # Additional detection for specific distros
         if os.path.exists("/etc/redhat-release"):
             try:
-                with open("/etc/redhat-release", "r") as f:
+                with open("/etc/redhat-release") as f:
                     dist_info["redhat_release"] = f.read().strip()
             except Exception:
                 pass
 
         return dist_info
 
-    def _get_kernel_version(self) -> Optional[str]:
+    def _get_kernel_version(self) -> str | None:
         """Get Linux kernel version."""
         try:
             return subprocess.check_output(["uname", "-r"]).decode().strip()
         except Exception:
             return None
 
-    def _get_libc_version(self) -> Optional[Dict[str, str]]:
+    def _get_libc_version(self) -> dict[str, str] | None:
         """Get libc version."""
         try:
             ldd_output = subprocess.check_output(["ldd", "--version"]).decode()
@@ -340,7 +336,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _get_windows_edition(self) -> Optional[str]:
+    def _get_windows_edition(self) -> str | None:
         """Get Windows edition."""
         try:
             import winreg  # type: ignore[import-not-found]
@@ -355,7 +351,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _get_windows_version(self) -> Optional[Dict[str, str]]:
+    def _get_windows_version(self) -> dict[str, str] | None:
         """Get detailed Windows version."""
         try:
             output = subprocess.check_output(
@@ -371,7 +367,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _get_macos_version(self) -> Optional[Dict[str, str]]:
+    def _get_macos_version(self) -> dict[str, str] | None:
         """Get macOS version details."""
         try:
             output = subprocess.check_output(["sw_vers"]).decode()
@@ -384,9 +380,9 @@ class SystemScanner:
         except Exception:
             return None
 
-    def detect_cpu_info(self) -> Dict[str, Any]:
+    def detect_cpu_info(self) -> dict[str, Any]:
         """Detect comprehensive CPU information."""
-        cpu_data: Dict[str, Any] = {}
+        cpu_data: dict[str, Any] = {}
 
         # Basic info from platform
         cpu_data["processor"] = platform.processor()
@@ -462,9 +458,7 @@ class SystemScanner:
                 }
 
                 # Per-CPU usage
-                cpu_data["usage_per_cpu"] = psutil.cpu_percent(
-                    percpu=True, interval=0.1
-                )
+                cpu_data["usage_per_cpu"] = psutil.cpu_percent(percpu=True, interval=0.1)
                 cpu_data["usage_total"] = psutil.cpu_percent(interval=0.1)
 
             except Exception as e:
@@ -480,7 +474,7 @@ class SystemScanner:
 
         return cpu_data
 
-    def _get_cpu_temperature(self) -> Optional[float]:
+    def _get_cpu_temperature(self) -> float | None:
         """Get CPU temperature."""
         if not HAS_PSUTIL:
             return None
@@ -508,9 +502,7 @@ class SystemScanner:
 
         return None
 
-    def _detect_virtualization_support(
-        self, cpu_features: List[str]
-    ) -> Dict[str, bool]:
+    def _detect_virtualization_support(self, cpu_features: list[str]) -> dict[str, bool]:
         """Detect CPU virtualization support."""
         virt_support = {
             "vmx": False,  # Intel VT-x
@@ -525,7 +517,7 @@ class SystemScanner:
 
         return virt_support
 
-    def detect_memory_info(self) -> Dict[str, Any]:
+    def detect_memory_info(self) -> dict[str, Any]:
         """Detect memory information."""
         mem_data = {}
 
@@ -565,7 +557,7 @@ class SystemScanner:
             # Fallback for basic memory info
             try:
                 if platform.system() == "Linux":
-                    with open("/proc/meminfo", "r") as f:
+                    with open("/proc/meminfo") as f:
                         for line in f:
                             if line.startswith("MemTotal:"):
                                 mem_data["total"] = int(line.split()[1]) * 1024
@@ -576,17 +568,15 @@ class SystemScanner:
 
         return mem_data
 
-    def detect_gpu_info(self) -> Dict[str, Any]:
+    def detect_gpu_info(self) -> dict[str, Any]:
         """Detect comprehensive GPU information."""
-        gpu_data: Dict[str, Any] = {
+        gpu_data: dict[str, Any] = {
             "available": False,
             "devices": [],
             "cuda": self._detect_cuda_info(),
             "opencl": self._detect_opencl_info(),
             "vulkan": self._detect_vulkan_info(),
-            "metal": self._detect_metal_info()
-            if platform.system() == "Darwin"
-            else None,
+            "metal": self._detect_metal_info() if platform.system() == "Darwin" else None,
         }
 
         # NVIDIA GPUs
@@ -606,7 +596,7 @@ class SystemScanner:
 
         return gpu_data
 
-    def _detect_gpus_pynvml(self) -> List[Dict[str, Any]]:
+    def _detect_gpus_pynvml(self) -> list[dict[str, Any]]:
         """Detect NVIDIA GPUs using pynvml."""
         gpus = []
         try:
@@ -639,7 +629,7 @@ class SystemScanner:
 
         return gpus
 
-    def _detect_nvidia_gpus(self) -> List[Dict[str, Any]]:
+    def _detect_nvidia_gpus(self) -> list[dict[str, Any]]:
         """Detect NVIDIA GPUs."""
         gpus = []
 
@@ -672,7 +662,7 @@ class SystemScanner:
 
         return gpus
 
-    def _parse_nvidia_smi(self) -> List[Dict[str, Any]]:
+    def _parse_nvidia_smi(self) -> list[dict[str, Any]]:
         """Parse nvidia-smi output."""
         gpus = []
         try:
@@ -695,9 +685,7 @@ class SystemScanner:
                             "memory_used": int(parts[3]),
                             "memory_free": int(parts[4]),
                             "utilization": float(parts[5]),
-                            "temperature": float(parts[6])
-                            if parts[6] != "N/A"
-                            else None,
+                            "temperature": float(parts[6]) if parts[6] != "N/A" else None,
                             "driver_version": parts[7],
                             "vendor": "NVIDIA",
                         }
@@ -716,7 +704,7 @@ class SystemScanner:
 
         return gpus
 
-    def _detect_amd_gpus(self) -> List[Dict[str, Any]]:
+    def _detect_amd_gpus(self) -> list[dict[str, Any]]:
         """Detect AMD GPUs."""
         gpus = []
 
@@ -738,7 +726,7 @@ class SystemScanner:
 
         return gpus
 
-    def _detect_intel_gpus(self) -> List[Dict[str, Any]]:
+    def _detect_intel_gpus(self) -> list[dict[str, Any]]:
         """Detect Intel GPUs."""
         gpus = []
 
@@ -760,9 +748,9 @@ class SystemScanner:
 
         return gpus
 
-    def _detect_cuda_info(self) -> Optional[Dict[str, Any]]:
+    def _detect_cuda_info(self) -> dict[str, Any] | None:
         """Detect CUDA installation and version."""
-        cuda_info: Dict[str, Any] = {}
+        cuda_info: dict[str, Any] = {}
 
         # Try pynvml first for CUDA driver version
         if HAS_PYNVML:
@@ -818,7 +806,7 @@ class SystemScanner:
 
         return cuda_info if cuda_info else None
 
-    def _detect_cudnn_version(self) -> Optional[Dict[str, str]]:
+    def _detect_cudnn_version(self) -> dict[str, str] | None:
         """Detect cuDNN version."""
         cudnn_info = {}
 
@@ -832,7 +820,7 @@ class SystemScanner:
         for header_path in header_paths:
             if os.path.exists(header_path):
                 try:
-                    with open(header_path, "r") as f:
+                    with open(header_path) as f:
                         content = f.read()
                         major = re.search(r"#define CUDNN_MAJOR (\d+)", content)
                         minor = re.search(r"#define CUDNN_MINOR (\d+)", content)
@@ -860,9 +848,9 @@ class SystemScanner:
 
         return None
 
-    def _detect_opencl_info(self) -> Optional[Dict[str, Any]]:
+    def _detect_opencl_info(self) -> dict[str, Any] | None:
         """Detect OpenCL support."""
-        opencl_info: Dict[str, Any] = {
+        opencl_info: dict[str, Any] = {
             "available": False,
             "version": None,
             "devices": [],
@@ -889,7 +877,7 @@ class SystemScanner:
 
         return opencl_info if opencl_info["available"] else None
 
-    def _get_opencl_devices(self) -> List[Dict[str, Any]]:
+    def _get_opencl_devices(self) -> list[dict[str, Any]]:
         """Get OpenCL device list by parsing clinfo output."""
         devices = []
         try:
@@ -910,9 +898,9 @@ class SystemScanner:
             pass
         return devices
 
-    def _detect_vulkan_info(self) -> Optional[Dict[str, Any]]:
+    def _detect_vulkan_info(self) -> dict[str, Any] | None:
         """Detect Vulkan support."""
-        vulkan_info: Dict[str, Any] = {"available": False, "version": None}
+        vulkan_info: dict[str, Any] = {"available": False, "version": None}
 
         try:
             # Try vulkaninfo
@@ -921,9 +909,7 @@ class SystemScanner:
                 vulkan_info["available"] = True
 
                 # Extract version
-                version_match = re.search(
-                    r"Vulkan Instance Version:\s*(\d+\.\d+\.\d+)", output
-                )
+                version_match = re.search(r"Vulkan Instance Version:\s*(\d+\.\d+\.\d+)", output)
                 if version_match:
                     vulkan_info["version"] = version_match.group(1)
 
@@ -932,7 +918,7 @@ class SystemScanner:
 
         return vulkan_info if vulkan_info["available"] else None
 
-    def _detect_metal_info(self) -> Optional[Dict[str, Any]]:
+    def _detect_metal_info(self) -> dict[str, Any] | None:
         """Detect Metal support (macOS)."""
         metal_info = {"available": False}
 
@@ -956,9 +942,9 @@ class SystemScanner:
 
         return metal_info if metal_info["available"] else None
 
-    def detect_disk_info(self) -> Dict[str, Any]:
+    def detect_disk_info(self) -> dict[str, Any]:
         """Detect disk information."""
-        disk_data: Dict[str, Any] = {"disks": [], "partitions": [], "io_counters": {}}
+        disk_data: dict[str, Any] = {"disks": [], "partitions": [], "io_counters": {}}
 
         if HAS_PSUTIL:
             # Get disk partitions
@@ -999,7 +985,7 @@ class SystemScanner:
 
         return disk_data
 
-    def _detect_physical_disks(self) -> List[Dict[str, Any]]:
+    def _detect_physical_disks(self) -> list[dict[str, Any]]:
         """Detect physical disk information."""
         disks = []
 
@@ -1064,9 +1050,9 @@ class SystemScanner:
 
         return disks
 
-    def detect_network_info(self) -> Dict[str, Any]:
+    def detect_network_info(self) -> dict[str, Any]:
         """Detect network information."""
-        network_data: Dict[str, Any] = {
+        network_data: dict[str, Any] = {
             "interfaces": [],
             "connections": [],
             "stats": {},
@@ -1105,12 +1091,8 @@ class SystemScanner:
                         "fd": conn.fd,
                         "family": str(conn.family),
                         "type": str(conn.type),
-                        "laddr": f"{conn.laddr.ip}:{conn.laddr.port}"
-                        if conn.laddr
-                        else None,
-                        "raddr": f"{conn.raddr.ip}:{conn.raddr.port}"
-                        if conn.raddr
-                        else None,
+                        "laddr": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else None,
+                        "raddr": f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else None,
                         "status": conn.status,
                         "pid": conn.pid,
                     }
@@ -1146,13 +1128,13 @@ class SystemScanner:
 
         return network_data
 
-    def _get_dns_servers(self) -> List[str]:
+    def _get_dns_servers(self) -> list[str]:
         """Get DNS server addresses."""
         dns_servers = []
 
         if platform.system() == "Linux":
             try:
-                with open("/etc/resolv.conf", "r") as f:
+                with open("/etc/resolv.conf") as f:
                     for line in f:
                         if line.startswith("nameserver"):
                             dns_servers.append(line.split()[1])
@@ -1189,13 +1171,11 @@ class SystemScanner:
 
         return list(set(dns_servers))  # Remove duplicates
 
-    def _get_default_gateway(self) -> Optional[str]:
+    def _get_default_gateway(self) -> str | None:
         """Get default gateway."""
         if platform.system() == "Linux":
             try:
-                output = subprocess.check_output(
-                    ["ip", "route", "show", "default"]
-                ).decode()
+                output = subprocess.check_output(["ip", "route", "show", "default"]).decode()
                 match = re.search(r"default via (\S+)", output)
                 if match:
                     return match.group(1)
@@ -1217,9 +1197,7 @@ class SystemScanner:
 
         elif platform.system() == "Darwin":
             try:
-                output = subprocess.check_output(
-                    ["route", "-n", "get", "default"]
-                ).decode()
+                output = subprocess.check_output(["route", "-n", "get", "default"]).decode()
                 match = re.search(r"gateway: (\S+)", output)
                 if match:
                     return match.group(1)
@@ -1228,9 +1206,9 @@ class SystemScanner:
 
         return None
 
-    def detect_container_info(self) -> Dict[str, Any]:
+    def detect_container_info(self) -> dict[str, Any]:
         """Detect container/virtualization environment."""
-        container_data: Dict[str, Any] = {
+        container_data: dict[str, Any] = {
             "type": ContainerType.BARE_METAL.value,
             "detected": False,
             "details": {},
@@ -1260,13 +1238,11 @@ class SystemScanner:
         # WSL detection
         if platform.system() == "Linux":
             try:
-                with open("/proc/version", "r") as f:
+                with open("/proc/version") as f:
                     if "Microsoft" in f.read() or "WSL" in f.read():
                         container_data["type"] = ContainerType.WSL.value
                         container_data["detected"] = True
-                        container_data["details"]["wsl_version"] = (
-                            self._get_wsl_version()
-                        )
+                        container_data["details"]["wsl_version"] = self._get_wsl_version()
             except Exception:
                 pass
 
@@ -1288,20 +1264,20 @@ class SystemScanner:
 
         # Check cgroup
         try:
-            with open("/proc/self/cgroup", "r") as f:
+            with open("/proc/self/cgroup") as f:
                 return "docker" in f.read()
         except Exception:
             pass
 
         return False
 
-    def _get_docker_info(self) -> Dict[str, Any]:
+    def _get_docker_info(self) -> dict[str, Any]:
         """Get Docker container information."""
         info = {}
 
         # Get container ID
         try:
-            with open("/proc/self/cgroup", "r") as f:
+            with open("/proc/self/cgroup") as f:
                 for line in f:
                     if "docker" in line:
                         parts = line.strip().split("/")
@@ -1322,22 +1298,22 @@ class SystemScanner:
 
         return info
 
-    def _get_wsl_version(self) -> Optional[str]:
+    def _get_wsl_version(self) -> str | None:
         """Get WSL version."""
         try:
             # Check for WSL 2
-            with open("/proc/version", "r") as f:
+            with open("/proc/version") as f:
                 content = f.read()
                 if "WSL2" in content:
                     return "2"
-                elif "Microsoft" in content:
+                if "Microsoft" in content:
                     return "1"
         except Exception:
             pass
 
         return None
 
-    def _detect_vm(self) -> Optional[Dict[str, Any]]:
+    def _detect_vm(self) -> dict[str, Any] | None:
         """Detect virtual machine environment."""
         vm_info = {}
 
@@ -1345,9 +1321,7 @@ class SystemScanner:
         if platform.system() == "Linux":
             try:
                 # Check systemd-detect-virt
-                output = (
-                    subprocess.check_output(["systemd-detect-virt"]).decode().strip()
-                )
+                output = subprocess.check_output(["systemd-detect-virt"]).decode().strip()
                 if output and output != "none":
                     vm_info["type"] = output
                     return vm_info
@@ -1358,7 +1332,7 @@ class SystemScanner:
             try:
                 dmi_path = "/sys/devices/virtual/dmi/id/product_name"
                 if os.path.exists(dmi_path):
-                    with open(dmi_path, "r") as f:
+                    with open(dmi_path) as f:
                         product = f.read().strip().lower()
                         if "virtualbox" in product:
                             vm_info["type"] = "virtualbox"
@@ -1388,9 +1362,9 @@ class SystemScanner:
         except Exception:
             pass
 
-        return None if not vm_info else vm_info
+        return vm_info if vm_info else None
 
-    def detect_runtime_versions(self) -> Dict[str, Any]:
+    def detect_runtime_versions(self) -> dict[str, Any]:
         """Detect runtime environment versions."""
         runtimes = {}
 
@@ -1477,16 +1451,12 @@ class SystemScanner:
             runtimes["clang"] = clang_info
 
         # Convert dataclasses to dicts
-        return {
-            k: asdict(v) if hasattr(v, "__dict__") else v for k, v in runtimes.items()
-        }
+        return {k: asdict(v) if hasattr(v, "__dict__") else v for k, v in runtimes.items()}
 
-    def _detect_nodejs(self) -> Optional[RuntimeInfo]:
+    def _detect_nodejs(self) -> RuntimeInfo | None:
         """Detect Node.js installation."""
         try:
-            node_version = (
-                subprocess.check_output(["node", "--version"]).decode().strip()
-            )
+            node_version = subprocess.check_output(["node", "--version"]).decode().strip()
             npm_version = subprocess.check_output(["npm", "--version"]).decode().strip()
 
             return RuntimeInfo(
@@ -1501,7 +1471,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_java(self) -> Optional[RuntimeInfo]:
+    def _detect_java(self) -> RuntimeInfo | None:
         """Detect Java installation."""
         try:
             java_output = subprocess.check_output(
@@ -1534,7 +1504,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_dotnet(self) -> Optional[RuntimeInfo]:
+    def _detect_dotnet(self) -> RuntimeInfo | None:
         """Detect .NET installation."""
         try:
             output = subprocess.check_output(["dotnet", "--info"]).decode()
@@ -1555,7 +1525,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _parse_dotnet_sdks(self, dotnet_output: str) -> List[str]:
+    def _parse_dotnet_sdks(self, dotnet_output: str) -> list[str]:
         """Parse .NET SDK versions from dotnet --info."""
         sdks = []
         in_sdk_section = False
@@ -1564,16 +1534,16 @@ class SystemScanner:
             if ".NET SDKs installed:" in line:
                 in_sdk_section = True
                 continue
-            elif in_sdk_section and line.strip() and not line[0].isspace():
+            if in_sdk_section and line.strip() and not line[0].isspace():
                 break
-            elif in_sdk_section and line.strip():
+            if in_sdk_section and line.strip():
                 version_match = re.search(r"(\d+\.\d+\.\d+)", line)
                 if version_match:
                     sdks.append(version_match.group(1))
 
         return sdks
 
-    def _parse_dotnet_runtimes(self, dotnet_output: str) -> List[str]:
+    def _parse_dotnet_runtimes(self, dotnet_output: str) -> list[str]:
         """Parse .NET runtime versions from dotnet --info."""
         runtimes = []
         in_runtime_section = False
@@ -1582,16 +1552,16 @@ class SystemScanner:
             if ".NET runtimes installed:" in line:
                 in_runtime_section = True
                 continue
-            elif in_runtime_section and line.strip() and not line[0].isspace():
+            if in_runtime_section and line.strip() and not line[0].isspace():
                 break
-            elif in_runtime_section and line.strip():
+            if in_runtime_section and line.strip():
                 version_match = re.search(r"(\d+\.\d+\.\d+)", line)
                 if version_match:
                     runtimes.append(version_match.group(1))
 
         return runtimes
 
-    def _detect_ruby(self) -> Optional[RuntimeInfo]:
+    def _detect_ruby(self) -> RuntimeInfo | None:
         """Detect Ruby installation."""
         try:
             ruby_version = subprocess.check_output(["ruby", "--version"]).decode()
@@ -1611,7 +1581,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_go(self) -> Optional[RuntimeInfo]:
+    def _detect_go(self) -> RuntimeInfo | None:
         """Detect Go installation."""
         try:
             go_version = subprocess.check_output(["go", "version"]).decode()
@@ -1631,7 +1601,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_rust(self) -> Optional[RuntimeInfo]:
+    def _detect_rust(self) -> RuntimeInfo | None:
         """Detect Rust installation."""
         try:
             rustc_version = subprocess.check_output(["rustc", "--version"]).decode()
@@ -1640,9 +1610,7 @@ class SystemScanner:
             if version_match:
                 cargo_version = None
                 try:
-                    cargo_output = subprocess.check_output(
-                        ["cargo", "--version"]
-                    ).decode()
+                    cargo_output = subprocess.check_output(["cargo", "--version"]).decode()
                     cargo_match = re.search(r"cargo (\d+\.\d+\.\d+)", cargo_output)
                     if cargo_match:
                         cargo_version = cargo_match.group(1)
@@ -1664,7 +1632,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_php(self) -> Optional[RuntimeInfo]:
+    def _detect_php(self) -> RuntimeInfo | None:
         """Detect PHP installation."""
         try:
             output = subprocess.check_output(["php", "--version"]).decode()
@@ -1682,7 +1650,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_swift(self) -> Optional[RuntimeInfo]:
+    def _detect_swift(self) -> RuntimeInfo | None:
         """Detect Swift installation."""
         try:
             output = subprocess.check_output(["swift", "--version"]).decode()
@@ -1697,13 +1665,17 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_kotlin(self) -> Optional[RuntimeInfo]:
+    def _detect_kotlin(self) -> RuntimeInfo | None:
         """Detect Kotlin installation."""
         try:
-            output = subprocess.check_output(["kotlin", "-version"], stderr=subprocess.STDOUT).decode()
+            output = subprocess.check_output(
+                ["kotlin", "-version"], stderr=subprocess.STDOUT
+            ).decode()
             m = re.search(r"(\d+\.\d+\.\d+)", output)
             if not m:
-                output = subprocess.check_output(["kotlinc", "-version"], stderr=subprocess.STDOUT).decode()
+                output = subprocess.check_output(
+                    ["kotlinc", "-version"], stderr=subprocess.STDOUT
+                ).decode()
                 m = re.search(r"(\d+\.\d+\.\d+)", output)
             if m:
                 return RuntimeInfo(
@@ -1715,7 +1687,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_dart(self) -> Optional[RuntimeInfo]:
+    def _detect_dart(self) -> RuntimeInfo | None:
         """Detect Dart installation."""
         try:
             output = subprocess.check_output(["dart", "--version"]).decode()
@@ -1733,7 +1705,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_elixir(self) -> Optional[RuntimeInfo]:
+    def _detect_elixir(self) -> RuntimeInfo | None:
         """Detect Elixir installation."""
         try:
             output = subprocess.check_output(["elixir", "--version"]).decode()
@@ -1752,7 +1724,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_haskell(self) -> Optional[RuntimeInfo]:
+    def _detect_haskell(self) -> RuntimeInfo | None:
         """Detect Haskell (GHC) installation."""
         try:
             output = subprocess.check_output(["ghc", "--version"]).decode()
@@ -1771,13 +1743,11 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_gcc(self) -> Optional[RuntimeInfo]:
+    def _detect_gcc(self) -> RuntimeInfo | None:
         """Detect GCC installation."""
         try:
             gcc_output = subprocess.check_output(["gcc", "--version"]).decode()
-            version_match = re.search(
-                r"gcc.*?(\d+\.\d+\.\d+)", gcc_output, re.IGNORECASE
-            )
+            version_match = re.search(r"gcc.*?(\d+\.\d+\.\d+)", gcc_output, re.IGNORECASE)
 
             if version_match:
                 return RuntimeInfo(
@@ -1793,7 +1763,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _get_gcc_target(self) -> Optional[str]:
+    def _get_gcc_target(self) -> str | None:
         """Get GCC target architecture."""
         try:
             output = subprocess.check_output(["gcc", "-dumpmachine"]).decode().strip()
@@ -1801,7 +1771,7 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _detect_clang(self) -> Optional[RuntimeInfo]:
+    def _detect_clang(self) -> RuntimeInfo | None:
         """Detect Clang installation."""
         try:
             clang_output = subprocess.check_output(["clang", "--version"]).decode()
@@ -1821,17 +1791,15 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _get_llvm_version(self) -> Optional[str]:
+    def _get_llvm_version(self) -> str | None:
         """Get LLVM version."""
         try:
-            output = (
-                subprocess.check_output(["llvm-config", "--version"]).decode().strip()
-            )
+            output = subprocess.check_output(["llvm-config", "--version"]).decode().strip()
             return output
         except Exception:
             return None
 
-    def detect_installed_packages(self) -> Dict[str, List[Any]]:
+    def detect_installed_packages(self) -> dict[str, list[Any]]:
         """Detect installed packages across different package managers."""
         packages = {}
 
@@ -1860,17 +1828,17 @@ class SystemScanner:
         packages["cargo"] = self._get_cargo_packages()
 
         # Convert to dict format
-        result: Dict[str, list[Dict[str, Any]]] = {}
+        result: dict[str, list[dict[str, Any]]] = {}
         for manager, pkg_list in packages.items():
             if pkg_list:
-                converted: List[Any] = []
+                converted: list[Any] = []
                 for pkg in pkg_list:
                     converted.append(asdict(pkg) if hasattr(pkg, "__dict__") else pkg)
                 result[manager] = converted
 
         return result
 
-    def _get_python_packages(self) -> List[PackageInfo]:
+    def _get_python_packages(self) -> list[PackageInfo]:
         """Get installed Python packages (basic)."""
         packages = []
 
@@ -1898,16 +1866,14 @@ class SystemScanner:
                 pip_packages = json.loads(output)
                 for pkg in pip_packages:
                     packages.append(
-                        PackageInfo(
-                            name=pkg["name"], version=pkg["version"], manager="pip"
-                        )
+                        PackageInfo(name=pkg["name"], version=pkg["version"], manager="pip")
                     )
             except Exception:
                 pass
 
         return packages
 
-    def _get_python_packages_detailed(self) -> List[PackageInfo]:
+    def _get_python_packages_detailed(self) -> list[PackageInfo]:
         """Get detailed Python package information."""
         packages = []
 
@@ -1925,9 +1891,7 @@ class SystemScanner:
                         [sys.executable, "-m", "pip", "show", pkg["name"]]
                     ).decode()
 
-                    pkg_info = PackageInfo(
-                        name=pkg["name"], version=pkg["version"], manager="pip"
-                    )
+                    pkg_info = PackageInfo(name=pkg["name"], version=pkg["version"], manager="pip")
 
                     # Parse pip show output
                     for line in show_output.split("\n"):
@@ -1936,18 +1900,14 @@ class SystemScanner:
                         elif line.startswith("Requires:"):
                             deps = line.split(":", 1)[1].strip()
                             if deps:
-                                pkg_info.dependencies = [
-                                    d.strip() for d in deps.split(",")
-                                ]
+                                pkg_info.dependencies = [d.strip() for d in deps.split(",")]
 
                     packages.append(pkg_info)
 
                 except Exception:
                     # Fallback to basic info
                     packages.append(
-                        PackageInfo(
-                            name=pkg["name"], version=pkg["version"], manager="pip"
-                        )
+                        PackageInfo(name=pkg["name"], version=pkg["version"], manager="pip")
                     )
 
         except Exception:
@@ -1956,15 +1916,13 @@ class SystemScanner:
 
         return packages
 
-    def _get_npm_packages(self) -> List[PackageInfo]:
+    def _get_npm_packages(self) -> list[PackageInfo]:
         """Get installed npm packages."""
         packages = []
 
         try:
             # Global packages
-            output = subprocess.check_output(
-                ["npm", "list", "-g", "--json", "--depth=0"]
-            ).decode()
+            output = subprocess.check_output(["npm", "list", "-g", "--json", "--depth=0"]).decode()
 
             data = json.loads(output)
             if "dependencies" in data:
@@ -1983,9 +1941,7 @@ class SystemScanner:
         # Local packages (if in a project directory)
         if os.path.exists("package.json"):
             try:
-                output = subprocess.check_output(
-                    ["npm", "list", "--json", "--depth=0"]
-                ).decode()
+                output = subprocess.check_output(["npm", "list", "--json", "--depth=0"]).decode()
 
                 data = json.loads(output)
                 if "dependencies" in data:
@@ -2003,7 +1959,7 @@ class SystemScanner:
 
         return packages
 
-    def _get_linux_packages(self) -> Dict[str, List[PackageInfo]]:
+    def _get_linux_packages(self) -> dict[str, list[PackageInfo]]:
         """Get Linux system packages."""
         packages = {}
 
@@ -2033,7 +1989,7 @@ class SystemScanner:
 
         return packages
 
-    def _get_apt_packages(self) -> List[PackageInfo]:
+    def _get_apt_packages(self) -> list[PackageInfo]:
         """Get APT packages."""
         packages = []
 
@@ -2046,17 +2002,13 @@ class SystemScanner:
                 if line and "\t" in line:
                     parts = line.split("\t")
                     if len(parts) >= 3 and "installed" in parts[2]:
-                        packages.append(
-                            PackageInfo(name=parts[0], version=parts[1], manager="apt")
-                        )
+                        packages.append(PackageInfo(name=parts[0], version=parts[1], manager="apt"))
         except Exception:
             pass
 
-        return (
-            packages[:100] if not self.deep_scan else packages
-        )  # Limit if not deep scan
+        return packages[:100] if not self.deep_scan else packages  # Limit if not deep scan
 
-    def _get_rpm_packages(self) -> List[PackageInfo]:
+    def _get_rpm_packages(self) -> list[PackageInfo]:
         """Get RPM packages."""
         packages = []
 
@@ -2069,15 +2021,13 @@ class SystemScanner:
                 if line and "\t" in line:
                     parts = line.split("\t")
                     if len(parts) >= 2:
-                        packages.append(
-                            PackageInfo(name=parts[0], version=parts[1], manager="rpm")
-                        )
+                        packages.append(PackageInfo(name=parts[0], version=parts[1], manager="rpm"))
         except Exception:
             pass
 
         return packages[:100] if not self.deep_scan else packages
 
-    def _get_pacman_packages(self) -> List[PackageInfo]:
+    def _get_pacman_packages(self) -> list[PackageInfo]:
         """Get Pacman packages."""
         packages = []
 
@@ -2089,16 +2039,14 @@ class SystemScanner:
                     parts = line.split()
                     if len(parts) >= 2:
                         packages.append(
-                            PackageInfo(
-                                name=parts[0], version=parts[1], manager="pacman"
-                            )
+                            PackageInfo(name=parts[0], version=parts[1], manager="pacman")
                         )
         except Exception:
             pass
 
         return packages[:100] if not self.deep_scan else packages
 
-    def _get_snap_packages(self) -> List[PackageInfo]:
+    def _get_snap_packages(self) -> list[PackageInfo]:
         """Get Snap packages."""
         packages = []
 
@@ -2109,15 +2057,13 @@ class SystemScanner:
             for line in lines:
                 parts = line.split()
                 if len(parts) >= 2:
-                    packages.append(
-                        PackageInfo(name=parts[0], version=parts[1], manager="snap")
-                    )
+                    packages.append(PackageInfo(name=parts[0], version=parts[1], manager="snap"))
         except Exception:
             pass
 
         return packages
 
-    def _get_flatpak_packages(self) -> List[PackageInfo]:
+    def _get_flatpak_packages(self) -> list[PackageInfo]:
         """Get Flatpak packages."""
         packages = []
 
@@ -2131,16 +2077,14 @@ class SystemScanner:
                     parts = line.split("\t")
                     if len(parts) >= 2:
                         packages.append(
-                            PackageInfo(
-                                name=parts[0], version=parts[1], manager="flatpak"
-                            )
+                            PackageInfo(name=parts[0], version=parts[1], manager="flatpak")
                         )
         except Exception:
             pass
 
         return packages
 
-    def _get_homebrew_packages(self) -> List[PackageInfo]:
+    def _get_homebrew_packages(self) -> list[PackageInfo]:
         """Get Homebrew packages (macOS)."""
         packages = []
 
@@ -2152,39 +2096,33 @@ class SystemScanner:
                     parts = line.split(" ", 1)
                     if len(parts) >= 2:
                         packages.append(
-                            PackageInfo(
-                                name=parts[0], version=parts[1], manager="homebrew"
-                            )
+                            PackageInfo(name=parts[0], version=parts[1], manager="homebrew")
                         )
         except Exception:
             pass
 
         return packages
 
-    def _get_chocolatey_packages(self) -> List[PackageInfo]:
+    def _get_chocolatey_packages(self) -> list[PackageInfo]:
         """Get Chocolatey packages (Windows)."""
         packages = []
 
         try:
-            output = subprocess.check_output(
-                ["choco", "list", "--local-only", "-r"]
-            ).decode()
+            output = subprocess.check_output(["choco", "list", "--local-only", "-r"]).decode()
 
             for line in output.split("\n"):
                 if line and "|" in line:
                     parts = line.split("|")
                     if len(parts) >= 2:
                         packages.append(
-                            PackageInfo(
-                                name=parts[0], version=parts[1], manager="chocolatey"
-                            )
+                            PackageInfo(name=parts[0], version=parts[1], manager="chocolatey")
                         )
         except Exception:
             pass
 
         return packages
 
-    def _get_apk_packages(self) -> List[PackageInfo]:
+    def _get_apk_packages(self) -> list[PackageInfo]:
         """Get APK packages (Alpine Linux)."""
         packages = []
         try:
@@ -2198,15 +2136,17 @@ class SystemScanner:
                         nv_parts = name_ver.rsplit("-", 2)
                         if len(nv_parts) >= 2:
                             name = nv_parts[0]
-                            version = f"{nv_parts[1]}-{nv_parts[2]}" if len(nv_parts) == 3 else nv_parts[1]
-                            packages.append(
-                                PackageInfo(name=name, version=version, manager="apk")
+                            version = (
+                                f"{nv_parts[1]}-{nv_parts[2]}"
+                                if len(nv_parts) == 3
+                                else nv_parts[1]
                             )
+                            packages.append(PackageInfo(name=name, version=version, manager="apk"))
         except Exception:
             pass
         return packages[:100] if not self.deep_scan else packages
 
-    def _get_ruby_gems(self) -> List[PackageInfo]:
+    def _get_ruby_gems(self) -> list[PackageInfo]:
         """Get Ruby gems."""
         packages = []
 
@@ -2229,7 +2169,7 @@ class SystemScanner:
 
         return packages[:50] if not self.deep_scan else packages
 
-    def _get_cargo_packages(self) -> List[PackageInfo]:
+    def _get_cargo_packages(self) -> list[PackageInfo]:
         """Get Rust cargo packages."""
         packages = []
 
@@ -2251,7 +2191,7 @@ class SystemScanner:
 
         return packages
 
-    def detect_security_info(self) -> Dict[str, Any]:
+    def detect_security_info(self) -> dict[str, Any]:
         """Detect security-related information."""
         security_data = {
             "firewall": self._detect_firewall(),
@@ -2262,9 +2202,9 @@ class SystemScanner:
 
         return security_data
 
-    def _detect_firewall(self) -> Dict[str, Any]:
+    def _detect_firewall(self) -> dict[str, Any]:
         """Detect firewall status."""
-        firewall_info: Dict[str, Any] = {"enabled": False, "type": None}
+        firewall_info: dict[str, Any] = {"enabled": False, "type": None}
 
         if platform.system() == "Linux":
             # Check iptables
@@ -2330,7 +2270,7 @@ class SystemScanner:
 
         return firewall_info
 
-    def _detect_antivirus(self) -> List[Dict[str, str]]:
+    def _detect_antivirus(self) -> list[dict[str, str]]:
         """Detect installed antivirus software."""
         av_list = []
 
@@ -2365,14 +2305,14 @@ class SystemScanner:
 
         return av_list
 
-    def _detect_selinux(self) -> Optional[Dict[str, str]]:
+    def _detect_selinux(self) -> dict[str, str] | None:
         """Detect SELinux status (Linux only)."""
         if platform.system() != "Linux":
             return None
 
         try:
             output = subprocess.check_output(["sestatus"]).decode()
-            status: Dict[str, Any] = {}
+            status: dict[str, Any] = {}
 
             for line in output.split("\n"):
                 if "SELinux status:" in line:
@@ -2386,9 +2326,9 @@ class SystemScanner:
         except Exception:
             return None
 
-    def _check_system_updates(self) -> Dict[str, Any]:
+    def _check_system_updates(self) -> dict[str, Any]:
         """Check for available system updates."""
-        updates: Dict[str, Any] = {"available": False, "count": 0}
+        updates: dict[str, Any] = {"available": False, "count": 0}
 
         if platform.system() == "Linux":
             # Check apt
@@ -2399,12 +2339,8 @@ class SystemScanner:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                    output = subprocess.check_output(
-                        ["apt", "list", "--upgradable"]
-                    ).decode()
-                    count = len(
-                        [line for line in output.split("\n") if "upgradable" in line]
-                    )
+                    output = subprocess.check_output(["apt", "list", "--upgradable"]).decode()
+                    count = len([line for line in output.split("\n") if "upgradable" in line])
                     if count > 0:
                         updates["available"] = True
                         updates["count"] = count
@@ -2429,7 +2365,7 @@ class SystemScanner:
 
         return updates
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> dict[str, Any]:
         """Get current system performance metrics."""
         metrics = {
             "timestamp": datetime.now().isoformat(),
@@ -2478,9 +2414,9 @@ class SystemScanner:
 
         return metrics
 
-    def detect_system_capabilities(self) -> Dict[str, Any]:
+    def detect_system_capabilities(self) -> dict[str, Any]:
         """Detect system capabilities and features."""
-        capabilities: Dict[str, Any] = {
+        capabilities: dict[str, Any] = {
             "virtualization": {},
             "hardware_acceleration": {},
             "development_tools": {},
@@ -2571,9 +2507,7 @@ class SystemScanner:
             "tar",
             "gzip",
         ]
-        capabilities["shell_tools"] = {
-            tool: shutil.which(tool) is not None for tool in shell_tools
-        }
+        capabilities["shell_tools"] = {tool: shutil.which(tool) is not None for tool in shell_tools}
 
         # Multimedia libraries
         multimedia = {
@@ -2592,8 +2526,7 @@ class SystemScanner:
             return os.path.exists("C:\\Program Files (x86)\\VMware") or os.path.exists(
                 "C:\\Program Files\\VMware"
             )
-        else:
-            return shutil.which("vmware") is not None
+        return shutil.which("vmware") is not None
 
     def _check_kvm_support(self) -> bool:
         """Check KVM support (Linux)."""
@@ -2602,7 +2535,7 @@ class SystemScanner:
 
         # Check CPU support
         try:
-            with open("/proc/cpuinfo", "r") as f:
+            with open("/proc/cpuinfo") as f:
                 cpuinfo = f.read()
                 has_vmx = " vmx " in cpuinfo  # Intel
                 has_svm = " svm " in cpuinfo  # AMD
@@ -2636,7 +2569,7 @@ class SystemScanner:
 
     def export_scan_results(
         self, format: str = "json", include_sensitive: bool = False
-    ) -> Union[str, Dict]:
+    ) -> str | dict:
         """Export scan results in various formats."""
         # Filter sensitive information if requested
         data = self.system_info.copy()
@@ -2649,18 +2582,17 @@ class SystemScanner:
                 # Limit package lists
                 for manager in data["installed_packages"]:
                     if len(data["installed_packages"][manager]) > 20:
-                        data["installed_packages"][manager] = data[
-                            "installed_packages"
-                        ][manager][:20]
+                        data["installed_packages"][manager] = data["installed_packages"][manager][
+                            :20
+                        ]
 
         if format == "json":
             return json.dumps(data, indent=2, default=str)
-        elif format == "summary":
+        if format == "summary":
             return self._generate_summary(data)
-        else:
-            return data
+        return data
 
-    def _generate_summary(self, data: Dict) -> str:
+    def _generate_summary(self, data: dict) -> str:
         """Generate human-readable summary."""
         summary = []
         summary.append("=== System Scan Summary ===\n")
@@ -2668,9 +2600,7 @@ class SystemScanner:
         # Platform info
         if "platform" in data:
             platform_info = data["platform"]
-            summary.append(
-                f"OS: {platform_info.get('system')} {platform_info.get('release')}"
-            )
+            summary.append(f"OS: {platform_info.get('system')} {platform_info.get('release')}")
             summary.append(f"Architecture: {platform_info.get('machine')}")
             summary.append(f"Hostname: {platform_info.get('hostname')}")
 

@@ -1,19 +1,21 @@
 """Module docstring."""
-import aiohttp
+
 import asyncio
 import logging
-from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
+from typing import Any
+
+import aiohttp
 
 from backend.settings import (
     CACHE_TTL,
-    USER_AGENTS,
-    RATE_LIMITS,
-    REQUEST_TIMEOUT,
-    MAX_RETRIES,
-    RETRY_BACKOFF_FACTOR,
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     CIRCUIT_BREAKER_OPEN_TIME,
+    MAX_RETRIES,
+    RATE_LIMITS,
+    REQUEST_TIMEOUT,
+    RETRY_BACKOFF_FACTOR,
+    USER_AGENTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,19 +29,17 @@ class BaseDataSourceClient:
         ecosystem: str,
         base_url: str,
         cache_ttl: int = CACHE_TTL,
-        user_agent: Optional[str] = None,
-        rate_limit: Optional[int] = None,
+        user_agent: str | None = None,
+        rate_limit: int | None = None,
         timeout: int = REQUEST_TIMEOUT,
         max_retries: int = MAX_RETRIES,
     ):
         self.ecosystem = ecosystem
         self.base_url = base_url
-        self.session: Optional[aiohttp.ClientSession] = None
-        self._cache: Dict[str, tuple] = {}
+        self.session: aiohttp.ClientSession | None = None
+        self._cache: dict[str, tuple] = {}
         self._cache_ttl = cache_ttl
-        self.user_agent = user_agent or USER_AGENTS.get(
-            ecosystem, USER_AGENTS["default"]
-        )
+        self.user_agent = user_agent or USER_AGENTS.get(ecosystem, USER_AGENTS["default"])
         self.rate_limit = rate_limit or RATE_LIMITS.get(ecosystem, 600)
         self.timeout = timeout
         self.max_retries = max_retries
@@ -48,7 +48,7 @@ class BaseDataSourceClient:
         self._circuit_failure_count = 0
         self._circuit_failure_threshold = CIRCUIT_BREAKER_FAILURE_THRESHOLD
         self._circuit_open_time = CIRCUIT_BREAKER_OPEN_TIME
-        self._circuit_last_open_time: Optional[datetime] = None
+        self._circuit_last_open_time: datetime | None = None
         self._circuit_half_open_successes = 0
         self._circuit_half_open_max_successes = 2
 
@@ -70,7 +70,7 @@ class BaseDataSourceClient:
             self.session = aiohttp.ClientSession()
         return self.session
 
-    def _cache_get(self, key: str) -> Optional[Any]:
+    def _cache_get(self, key: str) -> Any | None:
         if key in self._cache:
             data, timestamp = self._cache[key]
             if (datetime.now() - timestamp).total_seconds() < self._cache_ttl:
@@ -88,13 +88,11 @@ class BaseDataSourceClient:
         if len(self._request_timestamps) >= self.rate_limit:
             sleep_for = (self._request_timestamps[0] - cutoff).total_seconds()
             if sleep_for > 0:
-                logger.debug(
-                    f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s"
-                )
+                logger.debug(f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s")
                 await asyncio.sleep(sleep_for)
         self._request_timestamps.append(now)
 
-    async def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
+    async def _make_request(self, method: str, url: str, **kwargs) -> dict | None:
         """Actual HTTP request without circuit breaker.
         Returns None for 404, raises IOError for network/server errors.
         """
@@ -121,7 +119,7 @@ class BaseDataSourceClient:
                         continue
                     resp.raise_for_status()
                     return await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            except (TimeoutError, aiohttp.ClientError) as e:
                 last_error = e
                 if attempt == self.max_retries - 1:
                     logger.error(
@@ -129,11 +127,9 @@ class BaseDataSourceClient:
                     )
                     break
                 await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
-        raise IOError(f"{self.ecosystem} request failed: {last_error}") from last_error
+        raise OSError(f"{self.ecosystem} request failed: {last_error}") from last_error
 
-    async def _circuit_breaker_call(
-        self, method: str, url: str, **kwargs
-    ) -> Optional[Dict]:
+    async def _circuit_breaker_call(self, method: str, url: str, **kwargs) -> dict | None:
         """Execute request with circuit breaker pattern.
         404s (None results) do NOT count as circuit failures.
         """
@@ -142,21 +138,18 @@ class BaseDataSourceClient:
         if self._circuit_state == "OPEN":
             if (
                 self._circuit_last_open_time
-                and (now - self._circuit_last_open_time).total_seconds()
-                >= self._circuit_open_time
+                and (now - self._circuit_last_open_time).total_seconds() >= self._circuit_open_time
             ):
                 logger.debug(f"Circuit half-opening for {self.ecosystem}")
                 self._circuit_state = "HALF_OPEN"
                 self._circuit_half_open_successes = 0
             else:
-                logger.warning(
-                    f"Circuit OPEN for {self.ecosystem}, skipping request to {url}"
-                )
+                logger.warning(f"Circuit OPEN for {self.ecosystem}, skipping request to {url}")
                 return None
 
         try:
             result = await self._make_request(method, url, **kwargs)
-        except IOError:
+        except OSError:
             self._circuit_failure_count += 1
             logger.debug(
                 f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}"
@@ -164,9 +157,7 @@ class BaseDataSourceClient:
             if self._circuit_state == "HALF_OPEN":
                 self._circuit_state = "OPEN"
                 self._circuit_last_open_time = datetime.now()
-                logger.warning(
-                    f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure"
-                )
+                logger.warning(f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure")
             elif self._circuit_failure_count >= self._circuit_failure_threshold:
                 self._circuit_state = "OPEN"
                 self._circuit_last_open_time = datetime.now()
@@ -177,10 +168,7 @@ class BaseDataSourceClient:
 
         if self._circuit_state == "HALF_OPEN":
             self._circuit_half_open_successes += 1
-            if (
-                self._circuit_half_open_successes
-                >= self._circuit_half_open_max_successes
-            ):
+            if self._circuit_half_open_successes >= self._circuit_half_open_max_successes:
                 self._circuit_state = "CLOSED"
                 self._circuit_failure_count = 0
                 logger.info(
@@ -191,15 +179,13 @@ class BaseDataSourceClient:
 
         return result
 
-    async def _request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
+    async def _request(self, method: str, url: str, **kwargs) -> dict | None:
         return await self._circuit_breaker_call(method, url, **kwargs)
 
-    async def _get(self, url: str, **kwargs) -> Optional[Dict]:
+    async def _get(self, url: str, **kwargs) -> dict | None:
         return await self._request("GET", url, **kwargs)
 
-    async def cached_get(
-        self, cache_key: str, url: str, ttl: Optional[int] = None
-    ) -> Optional[Dict]:
+    async def cached_get(self, cache_key: str, url: str, ttl: int | None = None) -> dict | None:
         import os as _os
 
         cached = self._cache_get(cache_key)

@@ -1,7 +1,7 @@
 """Module docstring."""
-import logging
-from typing import Any, Dict, List, Optional
 
+import logging
+from typing import Any
 
 from backend.api.helpers.compatibility import (
     _check_python_compatibility,
@@ -10,7 +10,7 @@ from backend.api.helpers.compatibility import (
 logger = logging.getLogger(__name__)
 
 
-def _filter_by_python_version(results: List[Dict], python_version: str) -> List[Dict]:
+def _filter_by_python_version(results: list[dict], python_version: str) -> list[dict]:
     """Filter by python version."""
     filtered = []
     for result in results:
@@ -28,30 +28,27 @@ def _filter_by_python_version(results: List[Dict], python_version: str) -> List[
     return filtered
 
 
-def _sort_search_results(results: List[Dict], sort_by: str) -> List[Dict]:
+def _sort_search_results(results: list[dict], sort_by: str) -> list[dict]:
     """Sort search results."""
     if not results:
         return results
     if sort_by == "downloads":
         return sorted(results, key=lambda x: x.get("downloads", 0), reverse=True)
-    elif sort_by == "name":
+    if sort_by == "name":
         return sorted(results, key=lambda x: x.get("name", "").lower())
-    elif sort_by == "updated":
-        return sorted(
-            results, key=lambda x: x.get("last_updated", "1970-01-01"), reverse=True
-        )
-    else:
-        return results
+    if sort_by == "updated":
+        return sorted(results, key=lambda x: x.get("last_updated", "1970-01-01"), reverse=True)
+    return results
 
 
 async def _get_recursive_dependencies(
     source,
     package_name: str,
-    version: Optional[str],
+    version: str | None,
     max_depth: int,
     current_depth: int = 0,
-    visited: Optional[set] = None,
-) -> Dict:
+    visited: set | None = None,
+) -> dict:
     """Get recursive dependencies."""
     if visited is None:
         visited = set()
@@ -69,7 +66,7 @@ async def _get_recursive_dependencies(
     except Exception as e:
         logger.warning(f"Failed to get dependencies for {package_name}: {e}")
         dependencies = {}
-    dep_tree: Dict[str, Any] = {
+    dep_tree: dict[str, Any] = {
         "name": package_name,
         "version": version or "latest",
         "dependencies": {},
@@ -86,7 +83,7 @@ async def _get_recursive_dependencies(
     return dep_tree
 
 
-def _count_dependencies(dep_tree: Dict) -> Dict:
+def _count_dependencies(dep_tree: dict) -> dict:
     """Count dependencies."""
     direct = 0
     transitive = 0
@@ -100,7 +97,7 @@ def _count_dependencies(dep_tree: Dict) -> Dict:
     return {"direct": direct, "transitive": transitive, "total": direct + transitive}
 
 
-def _generate_compatibility_summary(package_info: Dict) -> Dict:
+def _generate_compatibility_summary(package_info: dict) -> dict:
     """Generate compatibility summary."""
     summary = {
         "python_versions": package_info.get("python_requires", "unknown"),
@@ -114,7 +111,7 @@ def _generate_compatibility_summary(package_info: Dict) -> Dict:
     return summary
 
 
-def _extract_version_compatibility(package_info: Dict, version_str: str) -> Dict:
+def _extract_version_compatibility(package_info: dict, version_str: str) -> dict:
     """Extract version compatibility."""
     versions = package_info.get("versions", [])
     for ver in versions:
@@ -128,7 +125,7 @@ def _extract_version_compatibility(package_info: Dict, version_str: str) -> Dict
     return {"compatible": False, "reason": f"Version {version_str} not found"}
 
 
-async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
+async def _get_package_metrics(ecosystem: str, package_name: str) -> dict:
     """Get package metrics."""
     from datetime import datetime
 
@@ -141,14 +138,12 @@ async def _get_package_metrics(ecosystem: str, package_name: str) -> Dict:
     }
 
 
-def _validate_system_info(system_info: Dict) -> bool:
+def _validate_system_info(system_info: dict) -> bool:
     """Validate system info."""
     return "os" in system_info and "python_version" in system_info
 
 
-async def _analyze_compatibility_reports(
-    package_name: str, ecosystem: str, version: str
-):
+async def _analyze_compatibility_reports(package_name: str, ecosystem: str, version: str):
     """Analyze compatibility reports."""
     logger.info(f"Analyzing compatibility reports for {package_name}")
 
@@ -166,7 +161,7 @@ async def _detect_package_ecosystem(package_name: str, aggregator) -> str:
     return "pypi"
 
 
-def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
+def _filter_comparison_aspects(info: dict, aspects: str) -> dict:
     """Filter comparison aspects."""
     aspect_map = {
         "dependencies": ["dependencies", "requirements"],
@@ -188,17 +183,14 @@ def _filter_comparison_aspects(info: Dict, aspects: str) -> Dict:
     return filtered
 
 
-def _generate_comparison_summary(comparison_data: Dict) -> Dict:
+def _generate_comparison_summary(comparison_data: dict) -> dict:
     """Generate comparison summary."""
     common_deps = None
     all_deps = {}
     for pkg_name, info in comparison_data.items():
         deps = set(info.get("dependencies", {}).keys())
         all_deps[pkg_name] = deps
-        if common_deps is None:
-            common_deps = deps
-        else:
-            common_deps = common_deps.intersection(deps)
+        common_deps = deps if common_deps is None else common_deps.intersection(deps)
     return {
         "common_dependencies": list(common_deps) if common_deps else [],
         "conflicts": [],

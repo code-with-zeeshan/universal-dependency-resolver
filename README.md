@@ -213,7 +213,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | 🎛️ CLI commands | **16** |
 | 🌐 API endpoints | **35+** |
 | 📤 Export formats | **12** |
-| 📦 PyPI downloads | [![Downloads](https://img.shields.io/pypi/dm/ud-resolver?color=blue&label=PyPI%20downloads)](https://pypi.org/project/ud-resolver/) |
+| 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
 | 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
 | ⭐ Stars | [![Stars](https://img.shields.io/github/stars/code-with-zeeshan/universal-dependency-resolver?style=social)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
 

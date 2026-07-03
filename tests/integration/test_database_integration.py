@@ -5,13 +5,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from backend.database.models import (
-    Package,
-    PackageVersion,
+    APIKey,
     CompatibilityReport,
     ConflictRule,
+    Package,
+    PackageVersion,
     ResolutionCache,
     User,
-    APIKey,
 )
 
 

@@ -2,18 +2,17 @@
 import json
 import os
 import tempfile
-import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from backend.core.cache import (
-    DictCache,
-    CacheManager,
-    cache_key,
-    cached,
     CacheKeys,
+    CacheManager,
+    DictCache,
+    cache_key,
     cache_manager,
+    cached,
 )
 
 

@@ -1,6 +1,5 @@
-from unittest.mock import patch
 import importlib
-
+from unittest.mock import patch
 
 BASE_TEST_ENV = {
     "SECRET_KEY": "real-secret",

@@ -1,6 +1,8 @@
 """Hex.pm (Elixir) package client."""
-from typing import Dict, List, Optional, Any
+
 import logging
+from typing import Any
+
 from ..core.utils import normalize_package_name
 from ..settings import CACHE_TTL, get_ecosystem_config
 from .base_client import BaseDataSourceClient
@@ -13,9 +15,9 @@ class HexClient(BaseDataSourceClient):
 
     def __init__(
         self,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
     ):
         config = get_ecosystem_config("hex")
         super().__init__(
@@ -26,7 +28,7 @@ class HexClient(BaseDataSourceClient):
 
     async def get_package_info(
         self, package_name: str, include_dependencies: bool = True, include_versions: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         pkg = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/packages/{pkg}")
@@ -49,7 +51,7 @@ class HexClient(BaseDataSourceClient):
             return None
 
     async def get_package_versions(
-        self, package_name: str, filters: Optional[Dict] = None
-    ) -> List[Dict]:
+        self, package_name: str, filters: dict | None = None
+    ) -> list[dict]:
         info = await self.get_package_info(package_name, include_versions=True)
         return info.get("versions", []) if info else []

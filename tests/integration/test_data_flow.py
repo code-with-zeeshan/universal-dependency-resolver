@@ -4,8 +4,9 @@ Tests the full pipeline: HTTP request -> route handler -> service layer ->
 database operations -> response serialization.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from backend.database.models import Package, PackageVersion
 

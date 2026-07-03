@@ -1,10 +1,12 @@
 """Module docstring."""
+
 # data_sources/apk_client.py
-from typing import Dict, List, Optional, Any
 import logging
 import re
 import tarfile
 from io import BytesIO
+from typing import Any
+
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
@@ -16,6 +18,7 @@ from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,7 @@ class APKClient(BaseDataSourceClient):
 
         self.branches = apk_config.get("branches", ["v3.18", "v3.17", "edge"])
         self.repos_types = apk_config.get("repos", ["main", "community", "testing"])
-        self._index_cache: Dict[str, Any] = {}
+        self._index_cache: dict[str, Any] = {}
 
     def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
@@ -52,7 +55,7 @@ class APKClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
         query = normalize_package_name(query)
         results = []
         seen = set()
@@ -63,31 +66,33 @@ class APKClient(BaseDataSourceClient):
                     packages = await self._get_apkindex(branch, repo_type)
 
                     for pkg_name, pkg_info in packages.items():
-                        if query in pkg_name or (
-                            pkg_info.get("description")
-                            and query in pkg_info["description"].lower()
-                        ):
-                            if pkg_name not in seen:
-                                seen.add(pkg_name)
-                                results.append(
-                                    {
-                                        "name": pkg_name,
-                                        "version": pkg_info.get("version", ""),
-                                        "description": pkg_info.get("description", ""),
-                                        "branch": branch,
-                                        "repository": repo_type,
-                                    }
-                                )
+                        if (
+                            query in pkg_name
+                            or (
+                                pkg_info.get("description")
+                                and query in pkg_info["description"].lower()
+                            )
+                        ) and pkg_name not in seen:
+                            seen.add(pkg_name)
+                            results.append(
+                                {
+                                    "name": pkg_name,
+                                    "version": pkg_info.get("version", ""),
+                                    "description": pkg_info.get("description", ""),
+                                    "branch": branch,
+                                    "repository": repo_type,
+                                }
+                            )
 
-                                if len(results) >= limit:
-                                    return results
+                            if len(results) >= limit:
+                                return results
         except Exception:
             pass
 
         return results
 
     @cached(ttl=CACHE_TTL)
-    async def get_package_info_async(self, package_name: str) -> Optional[Dict]:
+    async def get_package_info_async(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -137,11 +142,11 @@ class APKClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Optional[Dict]:
+    def get_package_info(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_versions(self, package_name: str) -> List[Dict]:
+    async def get_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
         versions = []
         seen_versions = set()
@@ -173,9 +178,7 @@ class APKClient(BaseDataSourceClient):
 
         return versions
 
-    async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict:
+    async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -196,7 +199,7 @@ class APKClient(BaseDataSourceClient):
 
         return self._parse_dependencies(package_data)
 
-    async def _get_apkindex(self, branch: str, repository: str) -> Dict[str, Dict]:
+    async def _get_apkindex(self, branch: str, repository: str) -> dict[str, dict]:
         cache_key = f"apkindex:{branch}:{repository}"
 
         if cache_key in self._index_cache:
@@ -209,9 +212,7 @@ class APKClient(BaseDataSourceClient):
             session = self._get_session()
             async with session.get(index_url) as response:
                 if response.status != 200:
-                    logger.error(
-                        f"Failed to fetch APKINDEX from {index_url}: {response.status}"
-                    )
+                    logger.error(f"Failed to fetch APKINDEX from {index_url}: {response.status}")
                     return {}
 
                 content = await response.read()
@@ -221,9 +222,7 @@ class APKClient(BaseDataSourceClient):
                         if member.name == "APKINDEX":
                             f = tar.extractfile(member)
                             if f:
-                                apkindex_content = f.read().decode(
-                                    "utf-8", errors="ignore"
-                                )
+                                apkindex_content = f.read().decode("utf-8", errors="ignore")
                                 packages = self._parse_apkindex(apkindex_content)
                                 self._index_cache[cache_key] = packages
                                 return packages
@@ -234,9 +233,9 @@ class APKClient(BaseDataSourceClient):
             logger.error(f"Error fetching APKINDEX: {e}")
             return {}
 
-    def _parse_apkindex(self, content: str) -> Dict[str, Dict]:
+    def _parse_apkindex(self, content: str) -> dict[str, dict]:
         packages = {}
-        current_package: Dict[str, Any] = {}
+        current_package: dict[str, Any] = {}
 
         for line in content.split("\n"):
             line = line.strip()
@@ -258,7 +257,7 @@ class APKClient(BaseDataSourceClient):
 
         return packages
 
-    def _convert_apkindex_entry(self, entry: Dict[str, str]) -> Dict[str, Any]:
+    def _convert_apkindex_entry(self, entry: dict[str, str]) -> dict[str, Any]:
         field_map = {
             "P": "name",
             "V": "version",
@@ -275,7 +274,7 @@ class APKClient(BaseDataSourceClient):
             "r": "replaces",
         }
 
-        converted: Dict[str, Any] = {}
+        converted: dict[str, Any] = {}
         for apk_field, std_field in field_map.items():
             if apk_field in entry:
                 value: Any = entry[apk_field]
@@ -290,8 +289,8 @@ class APKClient(BaseDataSourceClient):
 
         return converted
 
-    def _parse_dependencies(self, package_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies: Dict[str, List[Any]] = {
+    def _parse_dependencies(self, package_data: dict) -> dict[str, list[dict]]:
+        dependencies: dict[str, list[Any]] = {
             "depends": [],
             "provides": [],
             "replaces": [],
@@ -320,7 +319,7 @@ class APKClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _parse_dependency_spec(self, dep_spec: str) -> Optional[Dict[str, str]]:
+    def _parse_dependency_spec(self, dep_spec: str) -> dict[str, str] | None:
         if dep_spec.startswith("!"):
             return None
 
@@ -337,7 +336,7 @@ class APKClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_alpine_version(self, versions_list: List[Dict]) -> Optional[str]:
+    def _extract_alpine_version(self, versions_list: list[dict]) -> str | None:
         min_version = None
 
         for ver_info in versions_list:
@@ -347,9 +346,7 @@ class APKClient(BaseDataSourceClient):
                 version = match.group(1)
                 parsed_min = parse_version(version)
                 parsed_max = parse_version(min_version) if min_version else None
-                if not min_version or (
-                    parsed_min and parsed_max and parsed_min < parsed_max
-                ):
+                if not min_version or (parsed_min and parsed_max and parsed_min < parsed_max):
                     min_version = version
 
         return min_version

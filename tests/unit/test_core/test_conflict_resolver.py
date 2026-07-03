@@ -1,8 +1,8 @@
 # tests/unit/test_core/test_conflict_resolver.py
 import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock, patch, call
 import z3
 
 from backend.core.cache import cache_manager
@@ -11,7 +11,7 @@ from backend.core.conflict_resolver import ConflictResolver
 
 @pytest.fixture(autouse=True)
 def reset_cache_stats():
-    """Reset cache stats between tests"""
+    """Reset cache stats between tests."""
     original_stats = cache_manager._cache_stats.copy()
     cache_manager._cache_stats = {"hits": 0, "misses": 0, "errors": 0}
     yield
@@ -21,11 +21,11 @@ def reset_cache_stats():
 class TestConflictResolver:
     @pytest.fixture
     def resolver(self):
-        """Create ConflictResolver instance for testing"""
+        """Create ConflictResolver instance for testing."""
         return ConflictResolver()
 
     def test_initialization(self, resolver):
-        """Test ConflictResolver initialization"""
+        """Test ConflictResolver initialization."""
         assert resolver.dependency_graph is not None
         assert resolver.solver is not None
         assert resolver.version_vars == {}
@@ -33,14 +33,14 @@ class TestConflictResolver:
         assert resolver.int_to_version == {}
 
     def test_resolve_empty_packages(self, resolver):
-        """Test error handling for empty packages"""
+        """Test error handling for empty packages."""
         result = resolver.resolve_dependencies([], {})
         assert result["status"] == "error"
         assert "At least one package must be provided" in result["message"]
         assert result["resolved_packages"] == {}
 
     def test_resolve_no_system_info(self, resolver):
-        """Test handling when no system info is provided"""
+        """Test handling when no system info is provided."""
         packages = [{"name": "requests", "version_spec": ">=2.0.0"}]
 
         with patch.object(
@@ -51,7 +51,7 @@ class TestConflictResolver:
         assert result["status"] in ["success", "error"]
 
     def test_solver_timeout_applied_and_reset(self, resolver):
-        """Ensure solver timeout propagates and resets between runs"""
+        """Ensure solver timeout propagates and resets between runs."""
         packages = [{"name": "requests", "available_versions": ["1.0.0"]}]
         system_info = {"os": "linux"}
 
@@ -67,7 +67,7 @@ class TestConflictResolver:
         assert result2 is not None
 
     def test_version_mapping_creation(self, resolver):
-        """Test version mapping creation for Z3 solver"""
+        """Test version mapping creation for Z3 solver."""
         versions = ["1.0.0", "2.0.0", "1.5.0"]
 
         resolver._create_version_mapping("test-package", versions)
@@ -82,7 +82,7 @@ class TestConflictResolver:
         assert resolver.version_to_int["test-package_2.0.0"] == 2
 
     def test_dependency_graph_building(self, resolver):
-        """Test building dependency graph from packages"""
+        """Test building dependency graph from packages."""
         packages = [
             {
                 "name": "package-a",
@@ -107,7 +107,7 @@ class TestConflictResolver:
     @patch("z3.Solver.check")
     @patch("z3.Solver.model")
     def test_solve_constraints_satisfiable(self, mock_model, mock_check, resolver):
-        """Test constraint solving when satisfiable"""
+        """Test constraint solving when satisfiable."""
         mock_check.return_value = z3.sat
         mock_model_instance = MagicMock()
         mock_model.return_value = mock_model_instance
@@ -115,8 +115,6 @@ class TestConflictResolver:
         # Setup some version variables
         resolver.version_vars = {"pkg_1.0.0": z3.Bool("pkg_1.0.0")}
 
-        packages = [{"name": "test-pkg", "available_versions": ["1.0.0"]}]
-        system_info = {}
 
         result = resolver._solve_constraints(
             {"package_versions": {}, "system_requirements": {}, "conflicts": [], "dependencies": []},
@@ -127,7 +125,7 @@ class TestConflictResolver:
 
     @patch("z3.Optimize.check")
     def test_solve_constraints_unsatisfiable(self, mock_check, resolver):
-        """Test constraint solving when unsatisfiable"""
+        """Test constraint solving when unsatisfiable."""
         mock_check.return_value = z3.unsat
 
         result = resolver._solve_constraints({}, False)
@@ -136,7 +134,7 @@ class TestConflictResolver:
 
     @pytest.mark.asyncio
     async def test_batch_resolution(self, resolver):
-        """Test parallel batch resolution"""
+        """Test parallel batch resolution."""
         package_batches = [
             [{"name": "numpy", "version_spec": ">=1.0.0"}],
             [{"name": "pandas", "version_spec": ">=1.0.0"}],
@@ -158,7 +156,7 @@ class TestConflictResolver:
 
     @pytest.mark.asyncio
     async def test_batch_resolution_with_errors(self, resolver):
-        """Test batch resolution error handling"""
+        """Test batch resolution error handling."""
         package_batches = [[{"name": "numpy"}], [{"name": "pandas"}]]
         system_info = {}
 
@@ -181,7 +179,7 @@ class TestConflictResolver:
 
     @pytest.mark.asyncio
     async def test_batch_resolution_runs_batches_concurrently(self, resolver):
-        """Ensure resolve_batch launches batch resolutions concurrently"""
+        """Ensure resolve_batch launches batch resolutions concurrently."""
         package_batches = [[{"name": "batch-a"}], [{"name": "batch-b"}]]
         system_info = {}
 
@@ -213,7 +211,7 @@ class TestConflictResolver:
 
     @pytest.mark.asyncio
     async def test_batch_resolution_concurrent_failure_isolated(self, resolver):
-        """Failures in one batch should not block other concurrent results"""
+        """Failures in one batch should not block other concurrent results."""
         package_batches = [[{"name": "good"}], [{"name": "bad"}]]
         system_info = {}
 
@@ -248,7 +246,7 @@ class TestConflictResolver:
         assert any("occurred" in message for message in error_messages)
 
     def test_format_solution(self, resolver):
-        """Test solution formatting"""
+        """Test solution formatting."""
         solution = {
             "status": "satisfiable",
             "packages": {},
@@ -262,7 +260,7 @@ class TestConflictResolver:
         assert "warnings" in result
 
     def test_default_system_info(self, resolver):
-        """Test default system info generation"""
+        """Test default system info generation."""
         default_info = resolver._get_default_system_info()
 
         assert "os" in default_info
@@ -271,7 +269,7 @@ class TestConflictResolver:
         assert "python" in default_info["runtime_versions"]
 
     def test_cache_key_generation(self, resolver):
-        """Test cache key generation for resolution results"""
+        """Test cache key generation for resolution results."""
         packages = [{"name": "numpy", "version": "1.24.0"}]
         system_info = {"python": "3.9"}
 
@@ -291,7 +289,7 @@ class TestConflictResolver:
         assert key != key3
 
     def test_solver_reset(self, resolver):
-        """Test that solver state is properly reset"""
+        """Test that solver state is properly reset."""
         # Add some state
         resolver.version_vars["test"] = "value"
         resolver.version_to_int["test"] = 1
@@ -306,7 +304,7 @@ class TestConflictResolver:
         assert resolver.int_to_version == {}
 
     def test_error_handling_in_resolution(self, resolver):
-        """Test error handling during resolution process"""
+        """Test error handling during resolution process."""
         # Force an exception during graph building
         with patch.object(
             resolver, "_build_dependency_graph", side_effect=Exception("Graph error")
@@ -321,7 +319,7 @@ class TestConflictResolver:
 
     @pytest.mark.asyncio
     async def test_async_resolution_with_caching(self, resolver):
-        """Test async resolution with caching enabled"""
+        """Test async resolution with caching enabled."""
         packages = [{"name": "requests", "version_spec": ">=2.0.0"}]
         system_info = {"python_version": "3.9"}
 
@@ -337,7 +335,7 @@ class TestConflictResolver:
     async def test_async_resolution_propagates_timeout_and_caches(
         self, resolver, monkeypatch
     ):
-        """Ensure async wrapper forwards solver timeout and caches results"""
+        """Ensure async wrapper forwards solver timeout and caches results."""
         packages = [{"name": "requests", "version_spec": ">=2.0.0"}]
         system_info = {"python_version": "3.9"}
 
@@ -378,7 +376,7 @@ class TestConflictResolver:
         assert fake_set.calls[0][1] == {"status": "success"}
 
     def test_complex_dependency_scenario(self, resolver):
-        """Test resolution with complex dependencies (mocked)"""
+        """Test resolution with complex dependencies (mocked)."""
         packages = [
             {
                 "name": "tensorflow",

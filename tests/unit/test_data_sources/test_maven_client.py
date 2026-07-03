@@ -245,9 +245,8 @@ class TestMavenClient:
             "get_package_versions",
             new_callable=AsyncMock,
             return_value=[{"version": v} for v in ("1.0.0", "2.0.0", "3.0.0")],
-        ):
-            with patch.object(client, "_version_matches_range", side_effect=lambda v, r: True):
-                result = await client.resolve_version_from_range("g", "a", range_info)
+        ), patch.object(client, "_version_matches_range", side_effect=lambda v, r: True):
+            result = await client.resolve_version_from_range("g", "a", range_info)
         assert result == "3.0.0"
 
     @pytest.mark.asyncio
@@ -264,9 +263,8 @@ class TestMavenClient:
             "get_package_versions",
             new_callable=AsyncMock,
             return_value=[{"version": "1.0.0"}, {"version": "2.0.0"}],
-        ):
-            with patch.object(client, "_version_matches_range", return_value=False):
-                result = await client.resolve_version_from_range("g", "a", range_info)
+        ), patch.object(client, "_version_matches_range", return_value=False):
+            result = await client.resolve_version_from_range("g", "a", range_info)
         assert result is None
 
     @pytest.mark.asyncio
@@ -408,7 +406,6 @@ class TestMavenClient:
         assert parsed[1] in (0, 1)
 
     def test_sort_maven_version_unparseable(self, client):
-        from packaging.version import Version
 
         parsed = client._sort_maven_version("abc")
         assert parsed[1] == 2
@@ -558,12 +555,12 @@ class TestMavenClient:
     def test_extract_properties(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <properties>
     <java.version>11</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
   </properties>
-</project>'''
+</project>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         result = client._extract_properties(root, namespaces)
@@ -582,9 +579,9 @@ class TestMavenClient:
     def test_get_element_text_with_namespace(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <packaging>jar</packaging>
-</project>'''
+</project>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         result = client._get_element_text(root, "packaging", namespaces)
@@ -1033,16 +1030,15 @@ class TestMavenClient:
             "_fetch_pom_from_repos",
             new_callable=AsyncMock,
             return_value="<project></project>",
-        ) as mock_fetch:
-            with patch.object(
-                client._pom_parser, "_parse_pom_comprehensive", return_value=mock_pom_data
-            ):
-                result1 = await client.get_transitive_dependencies(
-                    "com.google.guava", "guava", "32.1.3-jre", repositories=repos
-                )
-                result2 = await client.get_transitive_dependencies(
-                    "com.google.guava", "guava", "32.1.3-jre", repositories=repos
-                )
+        ) as mock_fetch, patch.object(
+            client._pom_parser, "_parse_pom_comprehensive", return_value=mock_pom_data
+        ):
+            result1 = await client.get_transitive_dependencies(
+                "com.google.guava", "guava", "32.1.3-jre", repositories=repos
+            )
+            result2 = await client.get_transitive_dependencies(
+                "com.google.guava", "guava", "32.1.3-jre", repositories=repos
+            )
         assert len(result1) == 1
         assert len(result2) == 1
         assert mock_fetch.call_count == 1
@@ -1050,11 +1046,11 @@ class TestMavenClient:
     # === New test: check_compatibility with matching Java version
     @pytest.mark.asyncio
     async def test_check_compatibility_java_match(self, client):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <properties>
     <maven.compiler.source>11</maven.compiler.source>
   </properties>
-</project>'''
+</project>"""
         with patch.object(
             client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
         ):
@@ -1067,11 +1063,11 @@ class TestMavenClient:
     # === New test: check_compatibility with mismatched Java version
     @pytest.mark.asyncio
     async def test_check_compatibility_java_mismatch(self, client):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <properties>
     <maven.compiler.source>17</maven.compiler.source>
   </properties>
-</project>'''
+</project>"""
         with patch.object(
             client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
         ):
@@ -1098,7 +1094,7 @@ class TestMavenClient:
     # === New test: check_compatibility with OS-specific profile
     @pytest.mark.asyncio
     async def test_check_compatibility_os_profile(self, client):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <profiles>
     <profile>
       <id>windows-profile</id>
@@ -1110,7 +1106,7 @@ class TestMavenClient:
       </activation>
     </profile>
   </profiles>
-</project>'''
+</project>"""
         with patch.object(
             client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
         ):
@@ -1124,11 +1120,11 @@ class TestMavenClient:
     # === New test: check_compatibility with no java_version in system_info
     @pytest.mark.asyncio
     async def test_check_compatibility_no_java_version(self, client):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <properties>
     <maven.compiler.source>11</maven.compiler.source>
   </properties>
-</project>'''
+</project>"""
         with patch.object(
             client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
         ):
@@ -1138,7 +1134,7 @@ class TestMavenClient:
     # === New test: check_compatibility with matching OS name (no warning)
     @pytest.mark.asyncio
     async def test_check_compatibility_os_match(self, client):
-        pom_xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        pom_xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <profiles>
     <profile>
       <id>linux-profile</id>
@@ -1149,7 +1145,7 @@ class TestMavenClient:
       </activation>
     </profile>
   </profiles>
-</project>'''
+</project>"""
         with patch.object(
             client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
         ):
@@ -1248,13 +1244,13 @@ class TestMavenClient:
     def test_extract_parent_info(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>2.7.0</version>
   </parent>
-</project>'''
+</project>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         parent_elem = root.find(".//maven:parent", namespaces)
@@ -1269,11 +1265,11 @@ class TestMavenClient:
     def test_extract_parent_info_missing(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <parent>
     <artifactId>some-artifact</artifactId>
   </parent>
-</project>'''
+</project>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         parent_elem = root.find(".//maven:parent", namespaces)
@@ -1284,12 +1280,12 @@ class TestMavenClient:
     def test_extract_parent_info_no_version(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<project xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
   </parent>
-</project>'''
+</project>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         parent_elem = root.find(".//maven:parent", namespaces)
@@ -1301,7 +1297,7 @@ class TestMavenClient:
     def test_parse_dependencies_section(self, client):
         import xml.etree.ElementTree as ET
 
-        xml = '''<dependencies xmlns="http://maven.apache.org/POM/4.0.0">
+        xml = """<dependencies xmlns="http://maven.apache.org/POM/4.0.0">
   <dependency>
     <groupId>com.google.guava</groupId>
     <artifactId>guava</artifactId>
@@ -1314,7 +1310,7 @@ class TestMavenClient:
     <version>4.13.2</version>
     <scope>test</scope>
   </dependency>
-</dependencies>'''
+</dependencies>"""
         root = ET.fromstring(xml)
         namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
         result = client._parse_dependencies_section(root, namespaces, {}, {})
@@ -1606,23 +1602,22 @@ class TestMavenClient:
             "get_package_versions",
             new_callable=AsyncMock,
             return_value=[{"version": "2.0.0"}, {"version": "1.0.0"}],
+        ), patch.object(
+            client,
+            "get_effective_pom",
+            new_callable=AsyncMock,
+            return_value={
+                "dependencies": [
+                    {
+                        "group_id": "g",
+                        "artifact_id": "a",
+                        "version": "1.0",
+                        "scope": "compile",
+                    }
+                ]
+            },
         ):
-            with patch.object(
-                client,
-                "get_effective_pom",
-                new_callable=AsyncMock,
-                return_value={
-                    "dependencies": [
-                        {
-                            "group_id": "g",
-                            "artifact_id": "a",
-                            "version": "1.0",
-                            "scope": "compile",
-                        }
-                    ]
-                },
-            ):
-                result = await client.get_dependencies("g", "a")
+            result = await client.get_dependencies("g", "a")
         assert len(result) == 1
         assert result[0]["artifact_id"] == "a"
 
@@ -1944,7 +1939,7 @@ class TestMavenClient:
 
     def test_delegation_parse_configuration(self, client):
         import xml.etree.ElementTree as ET
-        config = ET.fromstring('<configuration><source>1.8</source></configuration>')
+        config = ET.fromstring("<configuration><source>1.8</source></configuration>")
         result = client._parse_configuration(config, {})
         assert result["source"] == "1.8"
 

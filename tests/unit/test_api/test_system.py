@@ -1,9 +1,9 @@
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.main import app
 from backend.api.dependencies import get_system_scanner
+from backend.api.main import app
 
 
 @pytest.fixture

@@ -144,14 +144,14 @@ def cmd_completion(args):
     opts = " ".join(cmds)
     ecos_str = " ".join(ecos)
 
-    cuda_versions = " ".join(
-        f"12.{i}" for i in range(8, 0, -1)
-    ) + " 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0"
+    cuda_versions = (
+        " ".join(f"12.{i}" for i in range(8, 0, -1)) + " 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0"
+    )
 
     if shell == "bash":
         bash = _BASH_COMPLETION
         bash = bash.replace(
-            '12.8 12.7 12.6 12.5 12.4 12.3 12.2 12.1 12.0 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0',
+            "12.8 12.7 12.6 12.5 12.4 12.3 12.2 12.1 12.0 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0",
             cuda_versions,
         )
         script = bash.format(prog=prog, opts=opts, ecos=ecos_str)
@@ -161,9 +161,7 @@ def cmd_completion(args):
     elif shell == "fish":
         fish_subs = " ".join(cmds)
         fish_ecos = " ".join(ecos)
-        script = _FISH_COMPLETION.format(
-            prog=prog, fish_subs=fish_subs, fish_ecos=fish_ecos
-        )
+        script = _FISH_COMPLETION.format(prog=prog, fish_subs=fish_subs, fish_ecos=fish_ecos)
     else:
         print(f"Unsupported shell: {shell}", file=sys.stderr)
         sys.exit(1)

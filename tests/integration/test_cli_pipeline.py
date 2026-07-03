@@ -3,7 +3,6 @@
 Generates its own test manifests in a temporary directory so it's portable.
 """
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -22,11 +21,11 @@ def _create_manifests(base: Path) -> Path:
         "scipy>=1.11,<2\nrequests>=2.28,<3\nbeautifulsoup4>=4.12,<5\nmatplotlib>=3.7,<4\n"
     )
     (base / "pyproject.toml").write_text(
-        "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\n"
+        '[project]\nname = "test-project"\nversion = "0.1.0"\n'
         "dependencies = [\n"
-        "    \"fastapi>=0.115.0,<0.137\", \"pydantic>=2.5.0,<3\", \"uvicorn>=0.24,<0.50\",\n"
-        "    \"sqlalchemy>=2.0.23,<3\", \"alembic>=1.12,<2\", \"httpx>=0.27,<1\",\n"
-        "    \"pytest>=8.0,<9\", \"ruff>=0.3.0,<1\", \"rich>=13.7,<14\", \"click>=8.1,<9\",\n"
+        '    "fastapi>=0.115.0,<0.137", "pydantic>=2.5.0,<3", "uvicorn>=0.24,<0.50",\n'
+        '    "sqlalchemy>=2.0.23,<3", "alembic>=1.12,<2", "httpx>=0.27,<1",\n'
+        '    "pytest>=8.0,<9", "ruff>=0.3.0,<1", "rich>=13.7,<14", "click>=8.1,<9",\n'
         "]\n"
     )
 
@@ -76,9 +75,9 @@ def _create_manifests(base: Path) -> Path:
 
     (base / "rust").mkdir(exist_ok=True)
     (base / "rust" / "Cargo.toml").write_text(
-        "[package]\nname = \"test-rust\"\nversion = \"0.1.0\"\n"
-        "[dependencies]\nserde = \"1.0\"\ntokio = \"1.35\"\nreqwest = \"0.12\"\n"
-        "clap = \"4.5\"\nanyhow = \"1.0\"\nthiserror = \"1.0\"\n"
+        '[package]\nname = "test-rust"\nversion = "0.1.0"\n'
+        '[dependencies]\nserde = "1.0"\ntokio = "1.35"\nreqwest = "0.12"\n'
+        'clap = "4.5"\nanyhow = "1.0"\nthiserror = "1.0"\n'
     )
 
     return base

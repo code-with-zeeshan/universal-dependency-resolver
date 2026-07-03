@@ -1,9 +1,11 @@
 """Module docstring."""
+
 # data_sources/gomodules_client.py
-from typing import Dict, List, Optional, Any
 import json
 import logging
 import re
+from typing import Any
+
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
@@ -14,6 +16,7 @@ from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -40,24 +43,18 @@ class GoModulesClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def search_packages(
-        self, query: str, limit: int = 20
-    ) -> List[Dict[str, Any]]:
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         query = normalize_package_name(query)
 
         try:
-            logger.warning(
-                "Go package search not fully implemented - requires web scraping"
-            )
+            logger.warning("Go package search not fully implemented - requires web scraping")
             return []
         except Exception as e:
             logger.error(f"Error searching Go packages: {e}")
             return []
 
     @cached(ttl=CACHE_TTL)
-    async def get_package_info_async(
-        self, package_name: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_package_info_async(self, package_name: str) -> dict[str, Any] | None:
         package_name = self._normalize_go_module_path(package_name)
 
         versions_data = await self._get_versions_list(package_name)
@@ -83,21 +80,17 @@ class GoModulesClient(BaseDataSourceClient):
             "repository": f"https://{package_name}",
             "license": "See repository",
             "dependencies": dependencies,
-            "system_requirements": {
-                "go": {"min_version": self._extract_go_version(module_info)}
-            },
+            "system_requirements": {"go": {"min_version": self._extract_go_version(module_info)}},
             "ecosystem": "gomodules",
         }
 
         return info
 
-    def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
+    def get_package_info(self, package_name: str) -> dict[str, Any] | None:
         package_name = self._normalize_go_module_path(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_package_version(
-        self, package_name: str, version: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
         package_name = self._normalize_go_module_path(package_name)
 
         if not version.startswith("v"):
@@ -113,19 +106,17 @@ class GoModulesClient(BaseDataSourceClient):
             "name": package_name,
             "version": version,
             "dependencies": dependencies,
-            "system_requirements": {
-                "go": {"min_version": self._extract_go_version(module_info)}
-            },
+            "system_requirements": {"go": {"min_version": self._extract_go_version(module_info)}},
         }
 
-    async def get_versions(self, package_name: str) -> List[Dict[str, Any]]:
+    async def get_versions(self, package_name: str) -> list[dict[str, Any]]:
         package_name = self._normalize_go_module_path(package_name)
         versions_data = await self._get_versions_list(package_name)
 
         if not versions_data:
             return []
 
-        versions: List[Any] = []
+        versions: list[Any] = []
         for ver in versions_data:
             ver_info = {
                 "version": ver,
@@ -142,8 +133,8 @@ class GoModulesClient(BaseDataSourceClient):
         return versions
 
     async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str | None = None
+    ) -> dict[str, Any]:
         package_name = self._normalize_go_module_path(package_name)
 
         if not version:
@@ -157,7 +148,7 @@ class GoModulesClient(BaseDataSourceClient):
 
         return await self._parse_go_mod(module_info)
 
-    async def _get_versions_list(self, package_name: str) -> Optional[List[str]]:
+    async def _get_versions_list(self, package_name: str) -> list[str] | None:
         url = f"{self.base_url}/{package_name}/@v/list"
         data = await self._make_request(url)
 
@@ -166,7 +157,7 @@ class GoModulesClient(BaseDataSourceClient):
             return versions
         return None
 
-    async def _get_latest_version(self, package_name: str) -> Optional[str]:
+    async def _get_latest_version(self, package_name: str) -> str | None:
         url = f"{self.base_url}/{package_name}/@latest"
         data = await self._make_request(url)
 
@@ -174,9 +165,7 @@ class GoModulesClient(BaseDataSourceClient):
             return data.get("Version")
         return None
 
-    async def _get_module_info(
-        self, package_name: str, version: str
-    ) -> Optional[Dict[str, Any]]:
+    async def _get_module_info(self, package_name: str, version: str) -> dict[str, Any] | None:
         info_url = f"{self.base_url}/{package_name}/@v/{version}.info"
         info_data = await self._make_request(info_url)
 
@@ -185,16 +174,14 @@ class GoModulesClient(BaseDataSourceClient):
 
         if info_data and mod_data:
             return {
-                "info": info_data
-                if isinstance(info_data, dict)
-                else json.loads(info_data),
+                "info": info_data if isinstance(info_data, dict) else json.loads(info_data),
                 "go_mod": mod_data if isinstance(mod_data, str) else "",
             }
         return None
 
     async def _make_request(  # type: ignore[override]
-        self, url: str, params: Optional[Dict[str, Any]] = None
-    ) -> Optional[Any]:
+        self, url: str, params: dict[str, Any] | None = None
+    ) -> Any | None:
         session = self._get_session()
         try:
             async with session.get(url, params=params) as response:
@@ -208,14 +195,13 @@ class GoModulesClient(BaseDataSourceClient):
                 content_type = response.headers.get("Content-Type", "")
                 if "application/json" in content_type:
                     return await response.json()
-                else:
-                    return await response.text()
+                return await response.text()
         except Exception as e:
             logger.error(f"Request error for {url}: {e}")
             return None
 
-    async def _parse_go_mod(self, module_info: Dict[str, Any]) -> Dict[str, Any]:
-        dependencies: Dict[str, Any] = {"required": {}, "indirect": {}, "replace": {}}
+    async def _parse_go_mod(self, module_info: dict[str, Any]) -> dict[str, Any]:
+        dependencies: dict[str, Any] = {"required": {}, "indirect": {}, "replace": {}}
 
         go_mod_content = module_info.get("go_mod", "")
         if not go_mod_content:
@@ -228,14 +214,12 @@ class GoModulesClient(BaseDataSourceClient):
             if line.startswith("require ("):
                 require_block = True
                 continue
-            elif line == ")" and require_block:
+            if line == ")" and require_block:
                 require_block = False
                 continue
 
             if require_block or line.startswith("require "):
-                match = re.match(
-                    r"(?:require\s+)?([^\s]+)\s+([^\s]+)(?:\s+//\s+indirect)?", line
-                )
+                match = re.match(r"(?:require\s+)?([^\s]+)\s+([^\s]+)(?:\s+//\s+indirect)?", line)
                 if match:
                     dep_name = match.group(1)
                     dep_version = match.group(2)
@@ -257,19 +241,17 @@ class GoModulesClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _extract_go_version(self, module_info: Dict[str, Any]) -> Optional[str]:
+    def _extract_go_version(self, module_info: dict[str, Any]) -> str | None:
         go_mod_content = module_info.get("go_mod", "")
 
-        match = re.search(
-            r"^\s*go\s+(\d+\.\d+(?:\.\d+)?)", go_mod_content, re.MULTILINE
-        )
+        match = re.search(r"^\s*go\s+(\d+\.\d+(?:\.\d+)?)", go_mod_content, re.MULTILINE)
         if match:
             return match.group(1)
         return None
 
     def _normalize_go_module_path(self, path: str) -> str:
         path = path.strip()
-        if path.startswith("github.com/") or path.startswith("golang.org/"):
+        if path.startswith(("github.com/", "golang.org/")):
             return path
 
         if "/" not in path:

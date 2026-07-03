@@ -1,12 +1,15 @@
 """Module docstring."""
+
 # utils.py
 import asyncio
 import logging
 import re
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
+
 from packaging import version
 from packaging.version import Version
-from typing import Dict, List, Optional, Any, Coroutine
 
 # Configure logging
 logging.basicConfig(
@@ -34,7 +37,7 @@ def run_async(coro: Coroutine) -> Any:
         return asyncio.run(coro)
 
 
-def parse_version(version_str: str) -> Optional[version.Version]:
+def parse_version(version_str: str) -> version.Version | None:
     """Parse a version string into a packaging.version.Version object."""
     try:
         return version.parse(version_str)
@@ -58,9 +61,7 @@ def is_compatible_version(version_str: str, spec: str) -> bool:
 
         return version.parse(version_str) in SpecifierSet(spec)
     except Exception as e:
-        logger.error(
-            f"Version compatibility check failed for {version_str} against {spec}: {e}"
-        )
+        logger.error(f"Version compatibility check failed for {version_str} against {spec}: {e}")
         return False
 
 
@@ -69,7 +70,7 @@ def normalize_package_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def extract_requirements(content: str, file_type: str) -> List[Dict[str, Any]]:
+def extract_requirements(content: str, file_type: str) -> list[dict[str, Any]]:
     """Extract package requirements from various file formats."""
     requirements = []
     if file_type == "requirements.txt":
@@ -86,19 +87,15 @@ def extract_requirements(content: str, file_type: str) -> List[Dict[str, Any]]:
             data = yaml.safe_load(content)
             for dep in data.get("dependencies", []):
                 if isinstance(dep, str):
-                    match = re.match(
-                        r"^([a-zA-Z0-9][a-zA-Z0-9._-]*)(?:[>=<]=.*)?$", dep
-                    )
+                    match = re.match(r"^([a-zA-Z0-9][a-zA-Z0-9._-]*)(?:[>=<]=.*)?$", dep)
                     if match:
-                        requirements.append(
-                            {"name": match.group(1), "version_spec": dep}
-                        )
+                        requirements.append({"name": match.group(1), "version_spec": dep})
         except Exception as e:
             logger.error(f"Failed to parse environment.yml: {e}")
     return requirements
 
 
-def hash_system_info(system_info: Dict[str, Any]) -> str:
+def hash_system_info(system_info: dict[str, Any]) -> str:
     """Generate a hash of system info for caching."""
     import hashlib
     import json
@@ -218,10 +215,9 @@ def compare_versions(v1: str, v2: str) -> int:
         ver2 = version.parse(v2)
         if ver1 < ver2:
             return -1
-        elif ver1 > ver2:
+        if ver1 > ver2:
             return 1
-        else:
-            return 0
+        return 0
     except Exception as e:
         logger.error(f"Failed to compare versions {v1} and {v2}: {e}")
         return 0

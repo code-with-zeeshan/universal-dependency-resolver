@@ -1,4 +1,5 @@
 """Module docstring."""
+
 import sys
 
 from rich.panel import Panel
@@ -9,20 +10,19 @@ from ..shared import console
 def cmd_serve(args):
     """Cmd serve."""
     try:
-        from backend.api.main import app
         import uvicorn
+
+        from backend.api.main import app
 
         console.print("[bold green]Starting UDR API server...[/bold green]")
         console.print(f"  Mode: [cyan]{args.mode}[/cyan]")
-        console.print(
-            f"  Host: [yellow]{args.host}[/yellow]  Port: [yellow]{args.port}[/yellow]"
-        )
+        console.print(f"  Host: [yellow]{args.host}[/yellow]  Port: [yellow]{args.port}[/yellow]")
         if args.log_level:
             console.print(f"  Log level: [dim]{args.log_level}[/dim]")
         if args.workers:
             console.print(f"  Workers: [dim]{args.workers}[/dim]")
         if args.ssl_keyfile and args.ssl_certfile:
-            console.print(f"  SSL: [dim]enabled[/dim]")
+            console.print("  SSL: [dim]enabled[/dim]")
 
         kwargs = {
             "host": args.host,

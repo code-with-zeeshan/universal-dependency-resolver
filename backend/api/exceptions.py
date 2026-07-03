@@ -1,6 +1,6 @@
 """Custom exception classes for structured error handling."""
 
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 
 class DependencyResolverError(Exception):
@@ -11,7 +11,7 @@ class DependencyResolverError(Exception):
         message: str,
         error_code: str,
         status_code: int = 500,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         """Initialize."""
         self.message = message
@@ -24,7 +24,7 @@ class DependencyResolverError(Exception):
 class ValidationError(DependencyResolverError):
     """Raised when input validation fails."""
 
-    def __init__(self, message: str, field: Optional[str] = None):
+    def __init__(self, message: str, field: str | None = None):
         """Initialize."""
         super().__init__(
             message=message,
@@ -37,7 +37,7 @@ class ValidationError(DependencyResolverError):
 class PackageNotFoundError(DependencyResolverError):
     """Raised when a package cannot be found."""
 
-    def __init__(self, package_name: str, ecosystem: Optional[str] = None):
+    def __init__(self, package_name: str, ecosystem: str | None = None):
         """Initialize."""
         super().__init__(
             message=f"Package '{package_name}' not found",
@@ -63,7 +63,7 @@ class EcosystemNotSupportedError(DependencyResolverError):
 class ConflictResolutionError(DependencyResolverError):
     """Raised when dependency conflicts cannot be resolved."""
 
-    def __init__(self, message: str, conflicts: Optional[List[Dict]] = None):
+    def __init__(self, message: str, conflicts: list[dict] | None = None):
         """Initialize."""
         super().__init__(
             message=message,
@@ -76,7 +76,7 @@ class ConflictResolutionError(DependencyResolverError):
 class RateLimitExceededError(DependencyResolverError):
     """Raised when rate limit is exceeded."""
 
-    def __init__(self, retry_after: Optional[int] = None):
+    def __init__(self, retry_after: int | None = None):
         """Initialize."""
         super().__init__(
             message="Rate limit exceeded",

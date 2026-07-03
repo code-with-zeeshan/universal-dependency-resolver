@@ -1,14 +1,17 @@
 """Module docstring."""
+
 # data_sources/cocoapods_client.py
-from typing import Dict, List, Optional, Any
 import logging
+from typing import Any
 from urllib.parse import quote
+
 from backend.core.cache import cached
 from backend.core.utils import normalize_package_name, parse_version_key, run_async
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
         query = normalize_package_name(query)
 
         url = f"{self.base_url}/pods"
@@ -66,7 +69,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         return results
 
     @cached(ttl=CACHE_TTL)
-    async def get_package_info_async(self, package_name: str) -> Optional[Dict]:
+    async def get_package_info_async(self, package_name: str) -> dict | None:
         package_name = self._normalize_pod_name(package_name)
 
         url = f"{self.base_url}/pods/{quote(package_name)}"
@@ -84,9 +87,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         spec_data = await self._get_podspec(package_name, latest_version)
 
         dependencies = self._parse_dependencies(spec_data) if spec_data else {}
-        system_requirements = (
-            self._extract_system_requirements(spec_data) if spec_data else {}
-        )
+        system_requirements = self._extract_system_requirements(spec_data) if spec_data else {}
 
         info = {
             "name": data.get("name", package_name),
@@ -106,11 +107,11 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Optional[Dict]:
+    def get_package_info(self, package_name: str) -> dict | None:
         package_name = self._normalize_pod_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_versions(self, package_name: str) -> List[Dict]:
+    async def get_versions(self, package_name: str) -> list[dict]:
         package_name = self._normalize_pod_name(package_name)
 
         url = f"{self.base_url}/pods/{quote(package_name)}"
@@ -122,9 +123,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         versions = data.get("versions", [])
         return self._process_versions(versions)
 
-    async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict:
+    async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
         package_name = self._normalize_pod_name(package_name)
 
         if not version:
@@ -139,9 +138,11 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         return self._parse_dependencies(spec_data)
 
-    async def _get_podspec(self, pod_name: str, version: str) -> Optional[Dict]:
+    async def _get_podspec(self, pod_name: str, version: str) -> dict | None:
         name_prefix = pod_name[0].upper()
-        spec_url = f"{self.specs_url}/Specs/{name_prefix}/{pod_name}/{version}/{pod_name}.podspec.json"
+        spec_url = (
+            f"{self.specs_url}/Specs/{name_prefix}/{pod_name}/{version}/{pod_name}.podspec.json"
+        )
 
         spec_data = await self._get(spec_url)
 
@@ -151,16 +152,14 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         return spec_data
 
-    def _process_versions(self, versions: List[str]) -> List[Dict]:
+    def _process_versions(self, versions: list[str]) -> list[dict]:
         processed = []
 
         for ver in versions:
             processed.append(
                 {
                     "version": ver,
-                    "stable": not any(
-                        pre in ver for pre in ["alpha", "beta", "rc", "pre"]
-                    ),
+                    "stable": not any(pre in ver for pre in ["alpha", "beta", "rc", "pre"]),
                     "upload_time": None,
                 }
             )
@@ -172,8 +171,8 @@ class CocoaPodsClient(BaseDataSourceClient):
 
         return processed
 
-    def _parse_dependencies(self, spec_data: Dict) -> Dict[str, List[Dict]]:
-        dependencies: Dict[str, List[Dict]] = {
+    def _parse_dependencies(self, spec_data: dict) -> dict[str, list[dict]]:
+        dependencies: dict[str, list[dict]] = {
             "dependencies": [],
             "development_dependencies": [],
         }
@@ -212,15 +211,14 @@ class CocoaPodsClient(BaseDataSourceClient):
     def _parse_version_spec(self, spec: Any) -> str:
         if isinstance(spec, str):
             return spec
-        elif isinstance(spec, list):
+        if isinstance(spec, list):
             return ", ".join(spec)
-        elif isinstance(spec, dict):
+        if isinstance(spec, dict):
             return str(spec)
-        else:
-            return ""
+        return ""
 
-    def _extract_system_requirements(self, spec_data: Dict) -> Dict[str, Any]:
-        requirements: Dict[str, Any] = {}
+    def _extract_system_requirements(self, spec_data: dict) -> dict[str, Any]:
+        requirements: dict[str, Any] = {}
         if "platforms" in spec_data:
             platforms = spec_data["platforms"]
             if isinstance(platforms, dict):

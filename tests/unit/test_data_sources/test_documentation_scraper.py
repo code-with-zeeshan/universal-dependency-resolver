@@ -234,7 +234,7 @@ class TestDocumentationScraper:
     @pytest.mark.asyncio
     async def test_scrape_installation_requirements_cached(self, scraper):
         scraper.session = MagicMock()
-        from datetime import datetime, timedelta
+        from datetime import datetime
         cached = ({"cuda_versions": ["11.8"]}, datetime.now())
         scraper.compatibility_cache["requirements:tensorflow"] = cached
         with patch.object(
@@ -863,9 +863,9 @@ class TestDocumentationScraper:
             scraper, "_get_github_documentation_url", new_callable=AsyncMock
         ) as mock_gh, patch.object(
             scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists, patch.object(
+        ), patch.object(
             scraper, "_search_documentation_url", new_callable=AsyncMock
-        ) as mock_search:
+        ):
             mock_pypi.return_value = "https://docs.example.com/"
             result = await scraper._find_documentation_url("testpkg")
             assert result == "https://docs.example.com/"
@@ -879,9 +879,9 @@ class TestDocumentationScraper:
             scraper, "_get_github_documentation_url", new_callable=AsyncMock
         ) as mock_gh, patch.object(
             scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists, patch.object(
+        ), patch.object(
             scraper, "_search_documentation_url", new_callable=AsyncMock
-        ) as mock_search:
+        ):
             mock_pypi.return_value = None
             mock_gh.return_value = "https://github.com/testpkg/testpkg"
             result = await scraper._find_documentation_url("testpkg")
@@ -1169,8 +1169,8 @@ class TestDocumentationScraper:
         <p>CUDA .1, GCC .1</p>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._scrape_tensorrt_requirements(soup)
-        assert "cuda_versions" in result or True
+        scraper._scrape_tensorrt_requirements(soup)
+        assert True
 
     # ------------------------------------------------------------------ #
     #  extract_compatibility_matrix — additional paths                    #

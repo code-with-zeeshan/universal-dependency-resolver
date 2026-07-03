@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -46,11 +46,10 @@ class TestCocoaPodsClient:
     ):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_pod_data
-        ) as mock_get:
-            with patch.object(
-                client, "_get_podspec", new_callable=AsyncMock, return_value={}
-            ):
-                await client.get_package_info_async("Alamofire")
+        ) as mock_get, patch.object(
+            client, "_get_podspec", new_callable=AsyncMock, return_value={}
+        ):
+            await client.get_package_info_async("Alamofire")
         mock_get.assert_called()
         url = mock_get.call_args[0][0]
         assert "alamofire" in url.lower()

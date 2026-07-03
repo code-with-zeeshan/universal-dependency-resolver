@@ -1,18 +1,21 @@
 """Module docstring."""
+
 # conflict_resolver.py
 from __future__ import annotations
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
-import networkx as nx
-from packaging import version
-import logging
-import re
+
 import asyncio
+import copy
 import hashlib
 import json
-import copy
-import uuid
-import platform
+import logging
 import os
+import platform
+import re
+import uuid
+from typing import TYPE_CHECKING, Any
+
+import networkx as nx
+from packaging import version
 
 if TYPE_CHECKING:
     import z3
@@ -23,13 +26,14 @@ from backend.utils.errors import (
     ensure_details_context,
     make_internal_error,
 )
+
+from .cache import cached
 from .utils import (
+    compare_versions,
+    is_compatible_version,
     normalize_package_name,
     parse_version,
-    is_compatible_version,
-    compare_versions,
 )
-from .cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +42,16 @@ USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
 
 # Data-driven conflict rules: each rule specifies incompatible version ranges
 # across packages or ecosystems.  Used by _add_conflict_constraints().
-CONFLICT_RULES: List[Dict[str, Any]] = [
+CONFLICT_RULES: list[dict[str, Any]] = [
     {
         "id": "cuda:min_version >=11.0,<12.0 vs cuda:min_version >=12.0,<13.0",
         "type": "cuda",
         "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "11.0"},
         "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "12.0"},
         "mutually_exclusive_with": {
-            "field": "cuda.min_version", "op": ">=", "value": "12.0",
+            "field": "cuda.min_version",
+            "op": ">=",
+            "value": "12.0",
         },
     },
     {
@@ -54,7 +60,9 @@ CONFLICT_RULES: List[Dict[str, Any]] = [
         "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "12.0"},
         "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "13.0"},
         "mutually_exclusive_with": {
-            "field": "cuda.min_version", "op": ">=", "value": "11.0",
+            "field": "cuda.min_version",
+            "op": ">=",
+            "value": "11.0",
         },
     },
     {
@@ -70,12 +78,13 @@ CONFLICT_RULES: List[Dict[str, Any]] = [
 class ConflictResolver:
     """Resolves dependency conflicts using constraint satisfaction and graph algorithms."""
 
-    def __init__(self, use_optimization: Optional[bool] = None):
+    def __init__(self, use_optimization: bool | None = None):
         """Initialize the conflict resolver with Z3 solver and dependency graph.
 
         Args:
             use_optimization: If True, use z3.Optimize() with minimize() objectives
                 to prefer newer versions. If None, falls back to USE_Z3_OPTIMIZE env var.
+
         """
         import z3
 
@@ -99,11 +108,11 @@ class ConflictResolver:
     # Additional error handling enhancements
     def resolve_dependencies(
         self,
-        packages: List[Dict[str, Any]],
-        system_info: Optional[Dict[str, Any]] = None,
+        packages: list[dict[str, Any]],
+        system_info: dict[str, Any] | None = None,
         prefer_compatibility: bool = True,
-        solver_timeout: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        solver_timeout: int | None = None,
+    ) -> dict[str, Any]:
         """Resolve package dependencies and conflicts."""
         # Clear previous solver state
         self.version_vars.clear()
@@ -190,7 +199,7 @@ class ConflictResolver:
                 },
             )
             return exc.to_payload()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             correlation_id = str(uuid.uuid4())
             error = make_internal_error(
                 exc,
@@ -212,8 +221,8 @@ class ConflictResolver:
             return error.to_payload()
 
     async def resolve_batch(
-        self, package_batches: List[List[Dict]], system_info: Dict
-    ) -> List[Dict]:
+        self, package_batches: list[list[dict]], system_info: dict
+    ) -> list[dict]:
         """Resolve multiple independent package batches in parallel using asyncio.
 
         Args:
@@ -242,8 +251,7 @@ class ConflictResolver:
                 system_info = self._get_default_system_info()
 
             tasks = [
-                self.resolve_dependencies_async(batch, system_info)
-                for batch in package_batches
+                self.resolve_dependencies_async(batch, system_info) for batch in package_batches
             ]
 
             logger.info(
@@ -252,7 +260,7 @@ class ConflictResolver:
             )
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            processed_results: List[Any] = []
+            processed_results: list[Any] = []
             for index, result in enumerate(results):
                 if isinstance(result, Exception):
                     correlation_id = str(uuid.uuid4())
@@ -286,7 +294,7 @@ class ConflictResolver:
             )
             return processed_results
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             correlation_id = str(uuid.uuid4())
             error = make_internal_error(
                 exc,
@@ -307,9 +315,7 @@ class ConflictResolver:
             )
             return [error.to_payload() for _ in package_batches]
 
-    def _generate_resolution_cache_key(
-        self, packages: List[Dict], system_info: Dict
-    ) -> str:
+    def _generate_resolution_cache_key(self, packages: list[dict], system_info: dict) -> str:
         """Generate a cache key for resolution results based on packages and system info."""
         # Create a deterministic representation of packages
         package_data = []
@@ -320,25 +326,21 @@ class ConflictResolver:
             package_data.append(sorted_pkg)
 
         # Create system info hash
-        system_hash = hashlib.md5(
-            json.dumps(system_info, sort_keys=True).encode()
-        ).hexdigest()
+        system_hash = hashlib.md5(json.dumps(system_info, sort_keys=True).encode()).hexdigest()
 
         # Create packages hash
-        packages_hash = hashlib.md5(
-            json.dumps(package_data, sort_keys=True).encode()
-        ).hexdigest()
+        packages_hash = hashlib.md5(json.dumps(package_data, sort_keys=True).encode()).hexdigest()
 
         return f"resolution:{packages_hash}:{system_hash}"
 
     @cached(ttl=3600, key_prefix="dependency_resolution")  # 1 hour cache
     async def resolve_dependencies_async(
         self,
-        packages: List[Dict[str, Any]],
-        system_info: Dict[str, Any],
+        packages: list[dict[str, Any]],
+        system_info: dict[str, Any],
         prefer_compatibility: bool = True,
-        solver_timeout: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        solver_timeout: int | None = None,
+    ) -> dict[str, Any]:
         """Async wrapper for resolve_dependencies with caching.
 
         This method provides the same functionality as resolve_dependencies but with
@@ -362,11 +364,11 @@ class ConflictResolver:
 
     def _resolve_dependencies_sync(
         self,
-        packages: List[Dict[str, Any]],
-        system_info: Dict[str, Any],
+        packages: list[dict[str, Any]],
+        system_info: dict[str, Any],
         prefer_compatibility: bool = True,
-        solver_timeout: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        solver_timeout: int | None = None,
+    ) -> dict[str, Any]:
         """Synchronous implementation of dependency resolution (extracted for caching)."""
         try:
             return self.resolve_dependencies(
@@ -377,7 +379,7 @@ class ConflictResolver:
             )
         except ResolverError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             correlation_id = str(uuid.uuid4())
             error = make_internal_error(
                 exc,
@@ -401,8 +403,8 @@ class ConflictResolver:
             return error.to_payload()
 
     def _normalize_packages(
-        self, packages: List[Dict[str, Any]], resolution_context: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, packages: list[dict[str, Any]], resolution_context: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Normalize package structures and names before processing."""
         context = {**resolution_context, "scope": "package_normalization"}
 
@@ -413,8 +415,8 @@ class ConflictResolver:
                 details={"provided_type": type(packages).__name__, **context},
             )
 
-        normalized_packages: List[Dict[str, Any]] = []
-        normalization_failures: List[Dict[str, Any]] = []
+        normalized_packages: list[dict[str, Any]] = []
+        normalization_failures: list[dict[str, Any]] = []
 
         for index, package in enumerate(packages):
             if not isinstance(package, dict):
@@ -444,7 +446,7 @@ class ConflictResolver:
                 )
                 continue
 
-            normalized_dependencies: Dict[str, Dict[str, str]] = {}
+            normalized_dependencies: dict[str, dict[str, str]] = {}
             for ecosystem, deps in dependencies.items():
                 if not isinstance(deps, dict):
                     normalization_failures.append(
@@ -458,9 +460,9 @@ class ConflictResolver:
 
                 normalized_dependencies[ecosystem] = {}
                 for dep_name, constraint in deps.items():
-                    normalized_dependencies[ecosystem][
-                        normalize_package_name(dep_name)
-                    ] = constraint
+                    normalized_dependencies[ecosystem][normalize_package_name(dep_name)] = (
+                        constraint
+                    )
             else:
                 normalized_package["dependencies"] = normalized_dependencies
 
@@ -476,8 +478,8 @@ class ConflictResolver:
         return normalized_packages
 
     def _prepare_system_info(
-        self, system_info: Optional[Dict[str, Any]], resolution_context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, system_info: dict[str, Any] | None, resolution_context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Normalize, validate, and augment system information.
 
         Args:
@@ -556,23 +558,21 @@ class ConflictResolver:
 
         except ResolverError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise self._handle_unexpected_resolution_error(  # type: ignore[misc]
                 exc, context, elevate=True
             ) from exc
 
-    def _get_default_system_info(self) -> Dict:
+    def _get_default_system_info(self) -> dict:
         """Provide default system info when none is provided."""
         return {
             "os": platform.system().lower(),
             "architecture": platform.machine(),
-            "runtime_versions": {
-                "python": {"version": f"{self._get_default_python_version()}"}
-            },
+            "runtime_versions": {"python": {"version": f"{self._get_default_python_version()}"}},
             "gpu": {"available": False, "cuda": None},
         }
 
-    def _reset_solver_state(self, solver_timeout: Optional[int] = None) -> None:
+    def _reset_solver_state(self, solver_timeout: int | None = None) -> None:
         """Reset the solver state and apply timeout if specified."""
         import z3
 
@@ -597,10 +597,10 @@ class ConflictResolver:
     def _handle_unexpected_resolution_error(
         self,
         error: Exception,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
         *,
         elevate: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Convert unexpected errors into structured ResolverError payloads."""
         context = context or {}
         resolution_context = {
@@ -612,9 +612,7 @@ class ConflictResolver:
         correlation_id = str(uuid.uuid4())
         resolution_context["correlation_id"] = correlation_id
 
-        logger.exception(
-            "Unexpected error during dependency resolution", extra=resolution_context
-        )
+        logger.exception("Unexpected error during dependency resolution", extra=resolution_context)
 
         resolver_error = ResolverError(
             message="An unexpected error occurred during dependency resolution.",
@@ -633,7 +631,7 @@ class ConflictResolver:
         return payload
 
     def _validate_package_inputs(
-        self, packages: List[Dict[str, Any]], resolution_context: Dict[str, Any]
+        self, packages: list[dict[str, Any]], resolution_context: dict[str, Any]
     ) -> None:
         """Validate normalized package inputs for resolver consistency."""
         validation_scope = {**resolution_context, "scope": "package_validation"}
@@ -645,7 +643,7 @@ class ConflictResolver:
                 details={**validation_scope, "reason": "empty_package_list"},
             )
 
-        validation_errors: List[Dict[str, Any]] = []
+        validation_errors: list[dict[str, Any]] = []
 
         for index, package in enumerate(packages):
             if not isinstance(package, dict):
@@ -703,25 +701,22 @@ class ConflictResolver:
                         "reason": "available_versions must be a non-empty list of version strings",
                     }
                 )
-            else:
-                if not all(
-                    isinstance(version_str, str) for version_str in available_versions
-                ):
-                    validation_errors.append(
-                        {
-                            **package_context,
-                            "field": "available_versions",
-                            "reason": "available_versions entries must be strings",
-                        }
-                    )
-                elif len(set(available_versions)) != len(available_versions):
-                    validation_errors.append(
-                        {
-                            **package_context,
-                            "field": "available_versions",
-                            "reason": "available_versions contains duplicates",
-                        }
-                    )
+            elif not all(isinstance(version_str, str) for version_str in available_versions):
+                validation_errors.append(
+                    {
+                        **package_context,
+                        "field": "available_versions",
+                        "reason": "available_versions entries must be strings",
+                    }
+                )
+            elif len(set(available_versions)) != len(available_versions):
+                validation_errors.append(
+                    {
+                        **package_context,
+                        "field": "available_versions",
+                        "reason": "available_versions contains duplicates",
+                    }
+                )
 
             dependencies = package.get("dependencies", {})
             if dependencies and not isinstance(dependencies, dict):
@@ -786,7 +781,7 @@ class ConflictResolver:
                 details={**validation_scope, "errors": validation_errors},
             )
 
-    def _build_dependency_graph(self, packages: List[Dict]):
+    def _build_dependency_graph(self, packages: list[dict]):
         """Build a graph of package dependencies, including cross-ecosystem deps."""
         self.dependency_graph.clear()
 
@@ -799,15 +794,11 @@ class ConflictResolver:
             for dep_ecosystem, deps in package.get("dependencies", {}).items():
                 for dep_name, dep_constraint in deps.items():
                     dep_id = f"{dep_name}@{dep_ecosystem}"
-                    self.dependency_graph.add_edge(
-                        pkg_id, dep_id, constraint=dep_constraint
-                    )
+                    self.dependency_graph.add_edge(pkg_id, dep_id, constraint=dep_constraint)
 
             # Add cross-ecosystem dependency edges
             for xdep in package.get("cross_ecosystem_deps", []):
-                target_eco = xdep.get(
-                    "target_ecosystem", package.get("ecosystem", "unknown")
-                )
+                target_eco = xdep.get("target_ecosystem", package.get("ecosystem", "unknown"))
                 dep_name = xdep.get("dependency", "")
                 if dep_name:
                     dep_id = f"{dep_name}@{target_eco}"
@@ -818,7 +809,7 @@ class ConflictResolver:
                         cross_ecosystem=True,
                     )
 
-    def _create_version_mapping(self, package_name: str, versions: List[str]):
+    def _create_version_mapping(self, package_name: str, versions: list[str]):
         """Create integer mapping for versions to use in Z3."""
         # Use parse_version for safer version parsing
         parsed_versions = []
@@ -835,11 +826,11 @@ class ConflictResolver:
             self.version_to_int[key] = idx
             self.int_to_version[key] = ver
 
-    def _create_constraints(self, packages: List[Dict], system_info: Dict) -> Dict:
+    def _create_constraints(self, packages: list[dict], system_info: dict) -> dict:
         """Create constraint system for SAT solver."""
         import z3
 
-        constraints: Dict[str, Any] = {
+        constraints: dict[str, Any] = {
             "package_versions": {},
             "system_requirements": {},
             "conflicts": [],
@@ -923,9 +914,9 @@ class ConflictResolver:
     def _add_system_constraints(
         self,
         version_var: z3.BoolRef,
-        requirements: Dict,
-        system_info: Dict,
-        constraints: Dict,
+        requirements: dict,
+        system_info: dict,
+        constraints: dict,
     ):
         """Add constraints based on system requirements."""
         import z3
@@ -936,32 +927,28 @@ class ConflictResolver:
                     system_cuda = parse_version(system_info["gpu"]["cuda"])
                     required_cuda = parse_version(req_value.get("min_version", "0.0"))
 
-                    if system_cuda and required_cuda:
-                        if (
+                    if (
+                        system_cuda
+                        and required_cuda
+                        and (
                             compare_versions(
                                 system_info["gpu"]["cuda"],
                                 req_value.get("min_version", "0.0"),
                             )
                             < 0
-                        ):
-                            # This version cannot be selected
-                            self.solver.add(z3.Not(version_var))
+                        )
+                    ):
+                        # This version cannot be selected
+                        self.solver.add(z3.Not(version_var))
 
-            elif req_type == "python":
-                if "runtime_versions" in system_info:
-                    system_python_str = system_info["runtime_versions"]["python"][
-                        "version"
-                    ]
-                    if "min_version" in req_value:
-                        if (
-                            compare_versions(
-                                system_python_str, req_value["min_version"]
-                            )
-                            < 0
-                        ):
-                            self.solver.add(z3.Not(version_var))
+            elif req_type == "python" and "runtime_versions" in system_info:
+                system_python_str = system_info["runtime_versions"]["python"]["version"]
+                if "min_version" in req_value and (
+                    compare_versions(system_python_str, req_value["min_version"]) < 0
+                ):
+                    self.solver.add(z3.Not(version_var))
 
-    def _add_dependency_constraints(self, constraints: Dict):
+    def _add_dependency_constraints(self, constraints: dict):
         """Add constraints for package dependencies."""
         import z3
 
@@ -997,10 +984,7 @@ class ConflictResolver:
                         str(pkg_var).split("_")[-1]
                         pkg_var_ref = self.version_vars.get(str(pkg_var))
 
-                        if (
-                            pkg_var_ref is not None
-                            and dep_name in constraints["package_versions"]
-                        ):
+                        if pkg_var_ref is not None and dep_name in constraints["package_versions"]:
                             # Create constraint: if this package version is selected,
                             # then dependency must satisfy version constraint
                             valid_dep_vars = []
@@ -1017,11 +1001,9 @@ class ConflictResolver:
 
                             if valid_dep_vars:
                                 # If package is selected, one of the valid dependency versions must be selected
-                                self.solver.add(
-                                    z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars))
-                                )
+                                self.solver.add(z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars)))
 
-    def _add_conflict_constraints(self, packages: List[Dict], constraints: Dict):
+    def _add_conflict_constraints(self, packages: list[dict], constraints: dict):
         """Add known conflict constraints."""
         import z3
 
@@ -1056,7 +1038,7 @@ class ConflictResolver:
                             if var11_ref is not None and var12_ref is not None:
                                 self.solver.add(z3.Not(z3.And(var11_ref, var12_ref)))
 
-    def _solve_constraints(self, constraints: Dict, prefer_compatibility: bool) -> Dict:
+    def _solve_constraints(self, constraints: dict, prefer_compatibility: bool) -> dict:
         """Solve the constraint system."""
         import z3
 
@@ -1068,7 +1050,7 @@ class ConflictResolver:
 
         if result == z3.sat:
             model = self.solver.model()
-            solution: Dict[str, Any] = {
+            solution: dict[str, Any] = {
                 "status": "satisfiable",
                 "packages": {},
                 "warnings": [],
@@ -1087,21 +1069,18 @@ class ConflictResolver:
                         break
 
             return solution
-        elif result == z3.unknown:
+        if result == z3.unknown:
             logger.warning("Z3 solver returned unknown (likely timeout or incomplete)")
             return {
                 "status": "timeout",
                 "conflicts": [],
                 "message": "Solver timed out or could not determine satisfiability",
             }
-        else:
-            return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
+        return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
 
-    def _resolve_with_alternatives(
-        self, packages: List[Dict], system_info: Dict
-    ) -> Dict:
+    def _resolve_with_alternatives(self, packages: list[dict], system_info: dict) -> dict:
         """Try to resolve conflicts by finding alternative packages or versions."""
-        alternatives: Dict[str, Any] = {
+        alternatives: dict[str, Any] = {
             "status": "partial",
             "packages": {},
             "alternatives": [],
@@ -1124,7 +1103,7 @@ class ConflictResolver:
 
         return alternatives
 
-    def _find_compatible_versions(self, package: Dict, system_info: Dict) -> List[str]:
+    def _find_compatible_versions(self, package: dict, system_info: dict) -> list[str]:
         """Find versions compatible with system requirements."""
         compatible = []
 
@@ -1156,11 +1135,9 @@ class ConflictResolver:
             ):
                 continue
 
-            # Apply package-level system requirements
+                # Apply package-level system requirements
                 sys_python = (
-                    system_info.get("runtime_versions", {})
-                    .get("python", {})
-                    .get("version", "")
+                    system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
                 )
                 if sys_python and compare_versions(sys_python, min_python) < 0:
                     continue
@@ -1178,9 +1155,7 @@ class ConflictResolver:
             reverse=True,
         )
 
-    def _check_version_compatibility(
-        self, version_info: Dict, system_info: Dict
-    ) -> bool:
+    def _check_version_compatibility(self, version_info: dict, system_info: dict) -> bool:
         """Check if a specific version is compatible with system."""
         requirements = version_info.get("system_requirements", {})
 
@@ -1203,21 +1178,19 @@ class ConflictResolver:
 
         return True
 
-    def _format_solution(self, solution: Dict) -> Dict:
+    def _format_solution(self, solution: dict) -> dict:
         """Format the solution for output."""
         formatted = {
             "resolved_packages": solution["packages"],
             "dependency_tree": self._build_dependency_tree(solution["packages"]),
             "warnings": solution.get("warnings", []),
-            "installation_order": self._calculate_installation_order(
-                solution["packages"]
-            ),
+            "installation_order": self._calculate_installation_order(solution["packages"]),
             "status": solution.get("status", "satisfiable"),
         }
 
         return formatted
 
-    def _build_dependency_tree(self, packages: Dict) -> Dict:
+    def _build_dependency_tree(self, packages: dict) -> dict:
         """Build a tree structure of dependencies."""
         tree = {}
 
@@ -1227,7 +1200,7 @@ class ConflictResolver:
 
         return tree
 
-    def _calculate_installation_order(self, packages: Dict) -> List[str]:
+    def _calculate_installation_order(self, packages: dict) -> list[str]:
         """Calculate the order in which packages should be installed."""
         # Topological sort of dependency graph
         subgraph = self.dependency_graph.subgraph(
@@ -1260,9 +1233,9 @@ class ConflictResolver:
                 return node.split("@")[1]
         return "unknown"
 
-    def _get_package_dependencies(self, package_name: str, version_str: str) -> Dict:
+    def _get_package_dependencies(self, package_name: str, version_str: str) -> dict:
         """Get dependencies for a specific package version."""
-        dependencies: Dict[str, Any] = {}
+        dependencies: dict[str, Any] = {}
 
         # Find the node in the graph
         pkg_node = None
@@ -1303,7 +1276,7 @@ class ConflictResolver:
 
         return dependencies
 
-    def _analyze_conflicts(self) -> List[Dict]:
+    def _analyze_conflicts(self) -> list[dict]:
         """Analyze why constraints are unsatisfiable using unsat core."""
         import z3
 
@@ -1367,9 +1340,7 @@ class ConflictResolver:
                     matches = re.findall(package_pattern, constraint_str)
 
                     for match in matches:
-                        packages_involved.append(
-                            {"name": match[0], "version": match[1]}
-                        )
+                        packages_involved.append({"name": match[0], "version": match[1]})
 
                     conflicts.append(
                         {
@@ -1383,7 +1354,7 @@ class ConflictResolver:
 
         return conflicts
 
-    def _format_conflict_description(self, info: Dict, packages: List[Dict]) -> str:
+    def _format_conflict_description(self, info: dict, packages: list[dict]) -> str:
         """Format a human-readable description of the conflict."""
         if info["type"] == "dependency":
             if len(packages) >= 2:

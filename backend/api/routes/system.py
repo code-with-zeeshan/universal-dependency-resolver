@@ -1,17 +1,19 @@
 """Module docstring."""
-# backend/api/routes/system.py
-from fastapi import APIRouter, HTTPException, Depends, Request
-from typing import Optional, Dict, List, Any
-from pydantic import BaseModel, Field
-import json
-import time
-import subprocess
-import re
-import logging
 
-from backend.core.system_scanner import SystemScanner
-from backend.api.dependencies import get_system_scanner, limiter
+# backend/api/routes/system.py
+import json
+import logging
+import re
+import subprocess
+import time
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
 from backend.api.auth import get_current_user
+from backend.api.dependencies import get_system_scanner, limiter
+from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import User
 
 # Configure logging
@@ -28,16 +30,16 @@ class SystemRequirement(BaseModel):
     """System Requirement functionality."""
 
     type: str  # 'gpu', 'cpu', 'os', 'memory', 'disk', 'python', 'compiler'
-    minimum: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    recommended: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    minimum: dict[str, Any] | None = Field(default_factory=dict)
+    recommended: dict[str, Any] | None = Field(default_factory=dict)
     required: bool = True
 
 
 class SystemCheckRequest(BaseModel):
     """System Check Request functionality."""
 
-    requirements: List[SystemRequirement]
-    packages: Optional[List[str]] = None
+    requirements: list[SystemRequirement]
+    packages: list[str] | None = None
 
 
 class EnvironmentAnalysis(BaseModel):
@@ -45,11 +47,11 @@ class EnvironmentAnalysis(BaseModel):
 
     filename: str
     type: str
-    packages: List[Dict[str, Any]]
-    system_requirements: Dict[str, Any]
-    potential_conflicts: List[Dict[str, Any]]
-    estimated_size: Optional[int] = None
-    python_version_required: Optional[str] = None
+    packages: list[dict[str, Any]]
+    system_requirements: dict[str, Any]
+    potential_conflicts: list[dict[str, Any]]
+    estimated_size: int | None = None
+    python_version_required: str | None = None
 
 
 # MOVED FROM main.py - System info endpoint (renamed from /api/system-info)
@@ -104,7 +106,7 @@ async def check_system_compatibility(
     """Check if system meets specified requirements."""
     try:
         system_info = await scanner.scan_all()
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "compatible": True,
             "checks": [],
             "warnings": [],
@@ -126,9 +128,7 @@ async def check_system_compatibility(
                 results["recommendations"].append(check_result["recommendation"])
 
         if check_request.packages:
-            package_checks = await _check_package_requirements(
-                check_request.packages, system_info
-            )
+            package_checks = await _check_package_requirements(check_request.packages, system_info)
             results["package_compatibility"] = package_checks
 
         return {"status": "success", "results": results}
@@ -139,10 +139,10 @@ async def check_system_compatibility(
 
 
 def _check_requirement_comprehensive(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Comprehensively check if system meets a specific requirement."""
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "type": requirement.type,
         "status": "pass",
         "message": "",
@@ -174,10 +174,10 @@ def _check_requirement_comprehensive(
 
 
 def _check_gpu_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check GPU requirements."""
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     if not system_info["gpu"]["available"]:
         if requirement.required:
@@ -202,20 +202,15 @@ def _check_gpu_requirement(
 
             if version.parse(system_cuda) < version.parse(required_cuda):
                 result["status"] = "fail"
-                result["message"] = (
-                    f"CUDA {required_cuda} required, but {system_cuda} found"
-                )
-                result["recommendation"] = (
-                    f"Update CUDA to version {required_cuda} or later"
-                )
+                result["message"] = f"CUDA {required_cuda} required, but {system_cuda} found"
+                result["recommendation"] = f"Update CUDA to version {required_cuda} or later"
 
     # Check GPU memory
     if requirement.minimum and "memory_gb" in requirement.minimum:
         required_memory = requirement.minimum["memory_gb"]
         # Get GPU memory from devices
         min_gpu_memory = min(
-            device.get("memory_mb", 0) / 1024
-            for device in system_info["gpu"].get("devices", [])
+            device.get("memory_mb", 0) / 1024 for device in system_info["gpu"].get("devices", [])
         )
 
         if min_gpu_memory < required_memory:
@@ -234,10 +229,10 @@ def _check_gpu_requirement(
 
 
 def _check_cpu_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check CPU requirements."""
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     cpu_info = system_info["cpu"]
 
@@ -260,9 +255,7 @@ def _check_cpu_requirement(
         missing_features = [f for f in required_features if f not in cpu_flags]
         if missing_features:
             result["status"] = "fail"
-            result["message"] = (
-                f"CPU missing required features: {', '.join(missing_features)}"
-            )
+            result["message"] = f"CPU missing required features: {', '.join(missing_features)}"
 
     # Check architecture
     if requirement.minimum and "architecture" in requirement.minimum:
@@ -279,12 +272,12 @@ def _check_cpu_requirement(
 
 
 def _check_memory_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check memory requirements."""
     import psutil
 
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     memory = psutil.virtual_memory()
     available_gb = memory.total / (1024**3)
@@ -320,12 +313,12 @@ def _check_memory_requirement(
 
 
 def _check_disk_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check disk space requirements."""
     import psutil
 
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     disk = psutil.disk_usage("/")
     available_gb = disk.free / (1024**3)
@@ -349,10 +342,10 @@ def _check_disk_requirement(
 
 
 def _check_os_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check OS requirements."""
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     os_info = system_info["platform"]
 
@@ -378,10 +371,10 @@ def _check_os_requirement(
 
 
 def _check_python_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check Python requirements."""
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     python_info = system_info["runtime_versions"].get("python", {})
 
@@ -391,9 +384,7 @@ def _check_python_requirement(
 
         from packaging import version
 
-        if not system_version or version.parse(system_version) < version.parse(
-            required_version
-        ):
+        if not system_version or version.parse(system_version) < version.parse(required_version):
             result["status"] = "fail"
             result["message"] = (
                 f"Requires Python {required_version}, but system has {system_version}"
@@ -403,10 +394,10 @@ def _check_python_requirement(
 
 
 def _check_compiler_requirement(
-    system_info: Dict[str, Any], requirement: SystemRequirement
-) -> Dict[str, Any]:
+    system_info: dict[str, Any], requirement: SystemRequirement
+) -> dict[str, Any]:
     """Check compiler requirements."""
-    result: Dict[str, Any] = {"details": {}}
+    result: dict[str, Any] = {"details": {}}
 
     if requirement.minimum:
         for compiler, version in requirement.minimum.items():
@@ -418,14 +409,12 @@ def _check_compiler_requirement(
                 result["recommendation"] = f"Install {compiler} {version} or later"
             elif version and not _is_compatible_version(installed_version, version):
                 result["status"] = "fail"
-                result["message"] = (
-                    f"{compiler} {version} required, but {installed_version} found"
-                )
+                result["message"] = f"{compiler} {version} required, but {installed_version} found"
 
     return result
 
 
-def _extract_python_version_requirement(content: str) -> Optional[str]:
+def _extract_python_version_requirement(content: str) -> str | None:
     """Extract Python version requirement from requirements.txt."""
     for line in content.split("\n"):
         line = line.strip()
@@ -488,9 +477,7 @@ async def _analyze_package_requirements(
 
         # Check for memory requirements
         if pkg_name in large_memory_packages:
-            current_mem = analysis.system_requirements.get("memory", {}).get(
-                "minimum_gb", 4
-            )
+            current_mem = analysis.system_requirements.get("memory", {}).get("minimum_gb", 4)
             analysis.system_requirements["memory"] = {
                 "minimum_gb": max(current_mem, 8),
                 "recommended_gb": max(current_mem * 1.5, 16),
@@ -506,7 +493,7 @@ async def _analyze_package_requirements(
     return analysis
 
 
-def _detect_package_conflicts(packages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _detect_package_conflicts(packages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Detect potential package conflicts."""
     conflicts = []
 
@@ -532,7 +519,7 @@ def _detect_package_conflicts(packages: List[Dict[str, Any]]) -> List[Dict[str, 
     return conflicts
 
 
-async def _estimate_installation_size(packages: List[Dict[str, Any]]) -> int:
+async def _estimate_installation_size(packages: list[dict[str, Any]]) -> int:
     """Estimate total installation size in MB."""
     # This would ideally fetch actual package sizes
     # For now, use rough estimates
@@ -566,7 +553,7 @@ async def _estimate_installation_size(packages: List[Dict[str, Any]]) -> int:
     return total_size
 
 
-async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
+async def _get_detailed_gpu_info() -> list[dict[str, Any]]:
     """Get detailed GPU information using nvidia-smi."""
     gpu_details = []
 
@@ -600,24 +587,14 @@ async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
                                 "free_mb": int(float(parts[5])),
                                 "used_mb": int(float(parts[6])),
                             },
-                            "temperature_celsius": int(parts[7])
-                            if parts[7] != "N/A"
-                            else None,
+                            "temperature_celsius": int(parts[7]) if parts[7] != "N/A" else None,
                             "utilization": {
-                                "gpu_percent": int(parts[8])
-                                if parts[8] != "N/A"
-                                else 0,
-                                "memory_percent": int(parts[9])
-                                if parts[9] != "N/A"
-                                else 0,
+                                "gpu_percent": int(parts[8]) if parts[8] != "N/A" else 0,
+                                "memory_percent": int(parts[9]) if parts[9] != "N/A" else 0,
                             },
                             "power": {
-                                "draw_watts": float(parts[10])
-                                if parts[10] != "N/A"
-                                else None,
-                                "limit_watts": float(parts[11])
-                                if parts[11] != "N/A"
-                                else None,
+                                "draw_watts": float(parts[10]) if parts[10] != "N/A" else None,
+                                "limit_watts": float(parts[11]) if parts[11] != "N/A" else None,
                             },
                             "compute_mode": parts[12],
                             "compute_capability": parts[13],
@@ -629,9 +606,9 @@ async def _get_detailed_gpu_info() -> List[Dict[str, Any]]:
     return gpu_details
 
 
-def _check_gpu_compute_capabilities() -> Dict[str, Any]:
+def _check_gpu_compute_capabilities() -> dict[str, Any]:
     """Check GPU compute capabilities for various frameworks."""
-    capabilities: Dict[str, Any] = {}
+    capabilities: dict[str, Any] = {}
 
     try:
         import torch
@@ -660,9 +637,9 @@ def _check_gpu_compute_capabilities() -> Dict[str, Any]:
     return capabilities
 
 
-def _check_gpu_framework_support() -> Dict[str, Any]:
+def _check_gpu_framework_support() -> dict[str, Any]:
     """Check which deep learning frameworks can use the GPU."""
-    support: Dict[str, Any] = {}
+    support: dict[str, Any] = {}
 
     frameworks = {
         "pytorch": "torch",
@@ -682,13 +659,11 @@ def _check_gpu_framework_support() -> Dict[str, Any]:
     return support
 
 
-async def _check_docker() -> Dict[str, Any]:
+async def _check_docker() -> dict[str, Any]:
     """Check Docker installation and version."""
     try:
-        docker_info: Dict[str, Any]
-        result = subprocess.run(
-            ["docker", "--version"], capture_output=True, text=True, timeout=5
-        )
+        docker_info: dict[str, Any]
+        result = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             version_output = result.stdout.strip()
@@ -721,9 +696,9 @@ async def _check_docker() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_rust() -> Dict[str, Any]:
+async def _check_rust() -> dict[str, Any]:
     """Check Rust installation."""
-    rust_info: Dict[str, Any] = {"available": False}
+    rust_info: dict[str, Any] = {"available": False}
 
     try:
         # Check rustc
@@ -757,17 +732,15 @@ async def _check_rust() -> Dict[str, Any]:
     return rust_info
 
 
-async def _check_go() -> Dict[str, Any]:
+async def _check_go() -> dict[str, Any]:
     """Check Go installation."""
     try:
-        result = subprocess.run(
-            ["go", "version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["go", "version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             version_output = result.stdout.strip()
 
-            go_info: Dict[str, Any] = {"version": version_output, "available": True}
+            go_info: dict[str, Any] = {"version": version_output, "available": True}
 
             # Get GOPATH and GOROOT
             env_result = subprocess.run(
@@ -790,12 +763,10 @@ async def _check_go() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_julia() -> Dict[str, Any]:
+async def _check_julia() -> dict[str, Any]:
     """Check Julia installation."""
     try:
-        result = subprocess.run(
-            ["julia", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["julia", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             return {"version": result.stdout.strip(), "available": True}
@@ -805,12 +776,10 @@ async def _check_julia() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_r() -> Dict[str, Any]:
+async def _check_r() -> dict[str, Any]:
     """Check R installation."""
     try:
-        result = subprocess.run(
-            ["R", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["R", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             # Extract version from output
@@ -824,15 +793,13 @@ async def _check_r() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_dotnet() -> Dict[str, Any]:
+async def _check_dotnet() -> dict[str, Any]:
     """Check .NET installation."""
     try:
-        result = subprocess.run(
-            ["dotnet", "--info"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["dotnet", "--info"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
-            info: Dict[str, Any] = {"available": True}
+            info: dict[str, Any] = {"available": True}
 
             # Parse .NET info
             lines = result.stdout.strip().split("\n")
@@ -856,12 +823,10 @@ async def _check_dotnet() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_ruby() -> Dict[str, Any]:
+async def _check_ruby() -> dict[str, Any]:
     """Check Ruby installation."""
     try:
-        result = subprocess.run(
-            ["ruby", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["ruby", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             ruby_info = {"version": result.stdout.strip(), "available": True}
@@ -881,12 +846,10 @@ async def _check_ruby() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_php() -> Dict[str, Any]:
+async def _check_php() -> dict[str, Any]:
     """Check PHP installation."""
     try:
-        result = subprocess.run(
-            ["php", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["php", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             php_info = {
@@ -909,12 +872,10 @@ async def _check_php() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_kotlin() -> Dict[str, Any]:
+async def _check_kotlin() -> dict[str, Any]:
     """Check Kotlin installation."""
     try:
-        result = subprocess.run(
-            ["kotlin", "-version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["kotlin", "-version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             return {"version": result.stdout.strip(), "available": True}
@@ -924,12 +885,10 @@ async def _check_kotlin() -> Dict[str, Any]:
     return {"available": False}
 
 
-async def _check_scala() -> Dict[str, Any]:
+async def _check_scala() -> dict[str, Any]:
     """Check Scala installation."""
     try:
-        result = subprocess.run(
-            ["scala", "-version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["scala", "-version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             return {
@@ -942,12 +901,10 @@ async def _check_scala() -> Dict[str, Any]:
     return {"available": False}
 
 
-def _get_npm_version() -> Optional[str]:
+def _get_npm_version() -> str | None:
     """Get npm version."""
     try:
-        result = subprocess.run(
-            ["npm", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             return result.stdout.strip()
@@ -957,7 +914,7 @@ def _get_npm_version() -> Optional[str]:
     return None
 
 
-async def _get_python_packages() -> List[Dict[str, Any]]:
+async def _get_python_packages() -> list[dict[str, Any]]:
     """Get list of installed Python packages."""
     try:
         result = subprocess.run(
@@ -972,7 +929,7 @@ async def _get_python_packages() -> List[Dict[str, Any]]:
     return []
 
 
-async def _get_npm_global_packages() -> List[str]:
+async def _get_npm_global_packages() -> list[str]:
     """Get list of globally installed npm packages."""
     try:
         result = subprocess.run(
@@ -991,12 +948,12 @@ async def _get_npm_global_packages() -> List[str]:
     return []
 
 
-def _detect_virtual_env() -> Dict[str, Any]:
+def _detect_virtual_env() -> dict[str, Any]:
     """Detect if running in a virtual environment."""
-    import sys
     import os
+    import sys
 
-    venv_info: Dict[str, Any] = {"active": False, "type": None, "path": None}
+    venv_info: dict[str, Any] = {"active": False, "type": None, "path": None}
 
     # Check for virtualenv/venv
     if hasattr(sys, "real_prefix") or (
@@ -1022,14 +979,14 @@ def _detect_virtual_env() -> Dict[str, Any]:
 
 
 async def _check_package_requirements(
-    packages: List[str], system_info: Dict[str, Any]
-) -> Dict[str, Any]:
+    packages: list[str], system_info: dict[str, Any]
+) -> dict[str, Any]:
     """Check system requirements for specific packages."""
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
 
     # This would ideally query package metadata
     # For now, use known requirements
-    package_requirements: Dict[str, Dict[str, Any]] = {
+    package_requirements: dict[str, dict[str, Any]] = {
         "tensorflow": {
             "gpu": {"cuda": "11.2", "cudnn": "8.1"},
             "memory": {"minimum_gb": 8},
@@ -1052,9 +1009,7 @@ async def _check_package_requirements(
                     minimum=req_spec
                     if not isinstance(req_spec, dict) or "optional" not in req_spec
                     else {k: v for k, v in req_spec.items() if k != "optional"},
-                    required=not (
-                        isinstance(req_spec, dict) and req_spec.get("optional", False)
-                    ),
+                    required=not (isinstance(req_spec, dict) and req_spec.get("optional", False)),
                 )
 
                 result = _check_requirement_comprehensive(system_info, requirement)
@@ -1112,9 +1067,7 @@ def _is_compatible_os(system_os: str, required_os: str) -> bool:
     return False
 
 
-def _is_compatible_os_version(
-    os_name: str, system_version: str, required_version: str
-) -> bool:
+def _is_compatible_os_version(os_name: str, system_version: str, required_version: str) -> bool:
     """Check if OS version is compatible."""
     try:
         if os_name.lower() == "darwin":  # macOS
@@ -1125,15 +1078,14 @@ def _is_compatible_os_version(
             for i in range(min(len(sys_parts), len(req_parts))):
                 if int(sys_parts[i]) < int(req_parts[i]):
                     return False
-                elif int(sys_parts[i]) > int(req_parts[i]):
+                if int(sys_parts[i]) > int(req_parts[i]):
                     return True
 
             return True
-        else:
-            # Generic version comparison
-            from packaging import version
+        # Generic version comparison
+        from packaging import version
 
-            return version.parse(system_version) >= version.parse(required_version)
+        return version.parse(system_version) >= version.parse(required_version)
     except Exception:
         return True  # Assume compatible if can't parse
 
@@ -1147,27 +1099,20 @@ def _is_compatible_version(installed: str, required: str) -> bool:
         if any(op in required for op in [">=", "<=", ">", "<", "==", "~="]):
             spec = SpecifierSet(required)
             return version.parse(installed) in spec
-        else:
-            return version.parse(installed) >= version.parse(required)
+        return version.parse(installed) >= version.parse(required)
     except Exception:
         return True
 
 
-def _get_compiler_version(compiler: str) -> Optional[str]:
+def _get_compiler_version(compiler: str) -> str | None:
     """Get compiler version."""
     try:
         if compiler == "gcc":
-            result = subprocess.run(
-                ["gcc", "--version"], capture_output=True, text=True
-            )
+            result = subprocess.run(["gcc", "--version"], capture_output=True, text=True)
         elif compiler == "g++":
-            result = subprocess.run(
-                ["g++", "--version"], capture_output=True, text=True
-            )
+            result = subprocess.run(["g++", "--version"], capture_output=True, text=True)
         elif compiler == "clang":
-            result = subprocess.run(
-                ["clang", "--version"], capture_output=True, text=True
-            )
+            result = subprocess.run(["clang", "--version"], capture_output=True, text=True)
         elif compiler == "msvc":
             result = subprocess.run(["cl"], capture_output=True, text=True)
         else:
@@ -1186,11 +1131,11 @@ def _get_compiler_version(compiler: str) -> Optional[str]:
     return None
 
 
-async def _benchmark_cpu() -> Dict[str, Any]:
+async def _benchmark_cpu() -> dict[str, Any]:
     """Run CPU benchmark."""
     import time
 
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
 
     try:
         import numpy as np
@@ -1229,7 +1174,7 @@ async def _benchmark_cpu() -> Dict[str, Any]:
     return results
 
 
-def _benchmark_memory() -> Dict[str, Any]:
+def _benchmark_memory() -> dict[str, Any]:
     """Run memory benchmark."""
     import psutil
 
@@ -1248,14 +1193,15 @@ def _benchmark_memory() -> Dict[str, Any]:
     }
 
 
-async def _benchmark_disk() -> Dict[str, Any]:
+async def _benchmark_disk() -> dict[str, Any]:
     """Run disk benchmark."""
-    import psutil
+    import os
     import tempfile
     import time
-    import os
 
-    results: Dict[str, Any] = {}
+    import psutil
+
+    results: dict[str, Any] = {}
 
     # Disk usage
     disk = psutil.disk_usage("/")
@@ -1295,9 +1241,9 @@ async def _benchmark_disk() -> Dict[str, Any]:
     return results
 
 
-async def _benchmark_gpu() -> Dict[str, Any]:
+async def _benchmark_gpu() -> dict[str, Any]:
     """Run GPU benchmark."""
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
 
     try:
         import torch
@@ -1351,9 +1297,7 @@ async def _benchmark_gpu() -> Dict[str, Any]:
             torch.cuda.synchronize()
             d2h_time = time.time() - start
 
-            results["memory_transfer"]["device_to_host_gbps"] = round(
-                size_mb / 1024 / d2h_time, 2
-            )
+            results["memory_transfer"]["device_to_host_gbps"] = round(size_mb / 1024 / d2h_time, 2)
 
         else:
             results["error"] = "CUDA not available"
@@ -1366,11 +1310,11 @@ async def _benchmark_gpu() -> Dict[str, Any]:
     return results
 
 
-async def _benchmark_cpu_multicore() -> Dict[str, Any]:
+async def _benchmark_cpu_multicore() -> dict[str, Any]:
     """Run multi-core CPU benchmark."""
     import concurrent.futures
-    import time
     import multiprocessing
+    import time
 
     try:
         import numpy as np
@@ -1384,7 +1328,7 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
         c = np.dot(a, b)
         return c.sum()
 
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
     num_cores = multiprocessing.cpu_count()
 
     # Test scaling with different thread counts
@@ -1400,9 +1344,7 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
         results[f"threads_{num_threads}"] = {
             "time_seconds": round(elapsed, 3),
             "speedup": round(
-                1 / elapsed
-                if num_threads == 1
-                else results["threads_1"]["time_seconds"] / elapsed,
+                1 / elapsed if num_threads == 1 else results["threads_1"]["time_seconds"] / elapsed,
                 2,
             ),
         }
@@ -1410,12 +1352,13 @@ async def _benchmark_cpu_multicore() -> Dict[str, Any]:
     return results
 
 
-async def _benchmark_network() -> Dict[str, Any]:
+async def _benchmark_network() -> dict[str, Any]:
     """Run network benchmark."""
-    import aiohttp
     import time
 
-    results: Dict[str, Any] = {}
+    import aiohttp
+
+    results: dict[str, Any] = {}
 
     # DNS lookup benchmark
     start = time.time()
@@ -1449,11 +1392,11 @@ async def _benchmark_network() -> Dict[str, Any]:
     return results
 
 
-async def _benchmark_python() -> Dict[str, Any]:
+async def _benchmark_python() -> dict[str, Any]:
     """Run Python-specific benchmarks."""
     import time
 
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
 
     # Import time benchmark
     packages = ["numpy", "pandas", "matplotlib"]
@@ -1485,9 +1428,9 @@ async def _benchmark_python() -> Dict[str, Any]:
     return results
 
 
-def _compare_benchmark_results(benchmarks: Dict[str, Any]) -> Dict[str, Any]:
+def _compare_benchmark_results(benchmarks: dict[str, Any]) -> dict[str, Any]:
     """Compare benchmark results with typical values."""
-    typical_values: Dict[str, Any] = {
+    typical_values: dict[str, Any] = {
         "cpu": {
             "matrix_multiply_single": {
                 "gflops": {"poor": 1, "average": 5, "good": 10, "excellent": 20}
@@ -1514,7 +1457,7 @@ def _compare_benchmark_results(benchmarks: Dict[str, Any]) -> Dict[str, Any]:
         },
     }
 
-    comparison: Dict[str, Any] = {}
+    comparison: dict[str, Any] = {}
 
     for category, tests in typical_values.items():
         if category in benchmarks:

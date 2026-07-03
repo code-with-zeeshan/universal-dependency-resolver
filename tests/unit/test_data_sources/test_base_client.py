@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -197,7 +196,7 @@ class TestBaseDataSourceClient:
     @pytest.mark.asyncio
     async def test_timeout_handling(self, client):
         mock_session = MagicMock()
-        mock_session.request.side_effect = asyncio.TimeoutError()
+        mock_session.request.side_effect = TimeoutError()
 
         with patch.object(client, "_get_session", return_value=mock_session):
             result = await client._get("https://api.example.com/data")
@@ -389,7 +388,7 @@ class TestBaseDataSourceClient:
     async def test_circuit_breaker_half_open_failure_reopens(self, client):
         client._circuit_state = "HALF_OPEN"
         with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
-            mock_make.side_effect = IOError("fail")
+            mock_make.side_effect = OSError("fail")
             result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
         assert result is None
         assert client._circuit_state == "OPEN"
@@ -399,7 +398,7 @@ class TestBaseDataSourceClient:
     async def test_circuit_breaker_opens_after_threshold(self, client):
         client._circuit_failure_count = client._circuit_failure_threshold - 1
         with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_make:
-            mock_make.side_effect = IOError("fail")
+            mock_make.side_effect = OSError("fail")
             result = await client._circuit_breaker_call("GET", "https://api.example.com/data")
         assert result is None
         assert client._circuit_state == "OPEN"

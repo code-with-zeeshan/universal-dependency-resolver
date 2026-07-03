@@ -13,7 +13,6 @@ class TestGoModulesClient:
     @pytest.mark.asyncio
     async def test_get_package_info_async_success(self, client):
         versions_list = ["v1.0.0", "v1.1.0", "v1.2.0"]
-        latest = {"Version": "v1.2.0"}
         module_info = {
             "info": {"Version": "v1.2.0", "Time": "2023-01-01T00:00:00Z"},
             "go_mod": (
@@ -167,9 +166,7 @@ class TestGoModulesClient:
         for v in versions:
             if v["version"] == "v1.0.0":
                 assert v["stable"] is True
-            elif v["version"] == "v2.0.0-beta.1":
-                assert v["stable"] is False
-            elif v["version"] == "v1.0.1+incompatible":
+            elif v["version"] == "v2.0.0-beta.1" or v["version"] == "v1.0.1+incompatible":
                 assert v["stable"] is False
 
     @pytest.mark.asyncio

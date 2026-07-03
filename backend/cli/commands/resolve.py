@@ -1,27 +1,26 @@
 """Module docstring."""
+
 import asyncio
 import json
 import sys
 
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from ..shared import (
+    _aggregator_to_resolver_input,
+    _build_resolved_table,
+    _extract_severity,
+    _parse_package_spec,
+    _run_resolution,
     console,
     err_console,
-    _parse_package_spec,
-    _aggregator_to_resolver_input,
-    _apply_cuda_variants,
-    _build_resolved_table,
-    _resolve_transitive,
-    _run_resolution,
-    _extract_severity,
 )
 
 
 def cmd_resolve(args):
     """Cmd resolve."""
-    from backend.core import DataAggregator, ConflictResolver, SystemScanner
+    from backend.core import ConflictResolver, DataAggregator, SystemScanner
 
     async def _resolve():
         """Resolve."""
@@ -79,9 +78,7 @@ def cmd_resolve(args):
             TextColumn("[green]{task.completed}/{task.total}[/green]"),
             console=err_console,
         ) as progress:
-            fetch_task = progress.add_task(
-                "Fetching package metadata...", total=len(specs)
-            )
+            fetch_task = progress.add_task("Fetching package metadata...", total=len(specs))
 
             async def fetch_one(pkg_name, eco):
                 """Fetch one."""
@@ -98,10 +95,7 @@ def cmd_resolve(args):
                     )
                     if data:
                         return (pkg_name, data)
-                    else:
-                        err_console.print(
-                            f"  [yellow]Warning:[/yellow] {pkg_name} not found in {eco}"
-                        )
+                    err_console.print(f"  [yellow]Warning:[/yellow] {pkg_name} not found in {eco}")
                 except Exception as exc:
                     err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")
                 return None
@@ -157,9 +151,7 @@ def cmd_resolve(args):
                         vulns_found.append((pkg_name, v))
             if vulns_found:
                 critical_high = [
-                    v
-                    for v in vulns_found
-                    if _extract_severity(v[1]) in ("CRITICAL", "HIGH")
+                    v for v in vulns_found if _extract_severity(v[1]) in ("CRITICAL", "HIGH")
                 ]
                 others = len(vulns_found) - len(critical_high)
                 console.print(
@@ -172,9 +164,7 @@ def cmd_resolve(args):
                         f"  {pname}: {v.get('id', '?')} ([red]{sev}[/red]) — {v.get('summary', '')[:80]}"
                     )
                 if len(critical_high) > 10:
-                    console.print(
-                        f"  ... and {len(critical_high) - 10} more critical/high"
-                    )
+                    console.print(f"  ... and {len(critical_high) - 10} more critical/high")
 
             warnings = resolved.get("warnings", [])
             for w in warnings:

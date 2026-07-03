@@ -1,9 +1,9 @@
 # backend/__init__.py
 """Universal Dependency Resolver Backend Package."""
 
-from .settings import get_ecosystem_config
-from .core import DataAggregator, ConflictResolver, SystemScanner, ExportGenerator
+from .core import ConflictResolver, DataAggregator, ExportGenerator, SystemScanner
 from .manifest_detector import ManifestDetector
+from .settings import get_ecosystem_config
 
 try:
     from importlib.metadata import version as _v
@@ -13,13 +13,13 @@ except Exception:
     __version__ = "0.0.0"
 
 __all__ = [
-    "get_ecosystem_config",
-    "DataAggregator",
     "ConflictResolver",
-    "SystemScanner",
+    "DataAggregator",
     "ExportGenerator",
     "ManifestDetector",
+    "SystemScanner",
     "__version__",
+    "get_ecosystem_config",
 ]
 
 import logging

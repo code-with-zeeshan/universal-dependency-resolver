@@ -1,6 +1,6 @@
 """Module docstring."""
+
 import re
-from typing import Dict, Optional
 
 from ...core.utils import parse_version
 
@@ -39,7 +39,7 @@ def _compare_java_versions(version1: str, version2: str) -> int:
         return 0
 
 
-def _parse_version_range_syntax(range_str: str) -> Dict:
+def _parse_version_range_syntax(range_str: str) -> dict:
     range_info = {
         "type": "range",
         "raw": range_str,
@@ -89,7 +89,7 @@ def _should_include_transitive_dependency(parent_scope: str, dep_scope: str) -> 
     return dep_scope in allowed_scopes
 
 
-def _get_element_text(parent, tag: str, namespaces: Dict) -> Optional[str]:
+def _get_element_text(parent, tag: str, namespaces: dict) -> str | None:
     elem = parent.find(f".//maven:{tag}", namespaces)
     if elem is not None and elem.text:
         return elem.text.strip()

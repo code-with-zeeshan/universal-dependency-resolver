@@ -1,33 +1,36 @@
 """Module docstring."""
+
 # backend/api/middleware.py
+import gzip
+import json
+import logging
 import os
 import time
 import uuid
-import json
-import gzip
-from typing import Any, Callable, Optional
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
+import structlog
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
-import logging
-import structlog
 
+from backend.core.cache import cache_manager
 from backend.settings import (
-    FEATURES,
-    SLOW_REQUEST_THRESHOLD,
-    ENABLE_REQUEST_LOGGING,
     ENABLE_PERFORMANCE_LOGGING,
+    ENABLE_REQUEST_LOGGING,
+    FEATURES,
     MAX_REQUEST_SIZE,
     PROMETHEUS_ENABLED,
+    SLOW_REQUEST_THRESHOLD,
 )
-from backend.core.cache import cache_manager
 
 logger = logging.getLogger(__name__)
 
 # Prometheus metrics
-_request_duration: Optional[Any] = None
+_request_duration: Any | None = None
 try:
     from prometheus_client import Histogram as _Histogram
 
@@ -247,9 +250,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Add HSTS for HTTPS connections
         if request.url.scheme == "https":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         return response
 
@@ -257,7 +258,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     """Limit request body size."""
 
-    def __init__(self, app: ASGIApp, max_size: Optional[int] = None):
+    def __init__(self, app: ASGIApp, max_size: int | None = None):
         """Initialize."""
         super().__init__(app)
         self.max_size = max_size or MAX_REQUEST_SIZE
@@ -395,15 +396,13 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             # Record response metrics
             duration = time.time() - start_time
-            await cache_manager.increment(
-                f"metrics:responses:status:{response.status_code}"
-            )
+            await cache_manager.increment(f"metrics:responses:status:{response.status_code}")
 
             # Record timing metrics (using Redis sorted sets would be better)
-            timing_key = f"metrics:timing:{request.url.path}:{datetime.utcnow().strftime('%Y%m%d%H')}"
-            await cache_manager.set(
-                timing_key, duration, ttl=86400
-            )  # Keep for 24 hours
+            timing_key = (
+                f"metrics:timing:{request.url.path}:{datetime.utcnow().strftime('%Y%m%d%H')}"
+            )
+            await cache_manager.set(timing_key, duration, ttl=86400)  # Keep for 24 hours
 
             return response
 
@@ -436,9 +435,7 @@ class MaintenanceModeMiddleware(BaseHTTPMiddleware):
                         "message": "The service is currently under maintenance. Please try again later.",
                         "status_code": 503,
                         "timestamp": datetime.utcnow().isoformat(),
-                        "details": maintenance_mode
-                        if isinstance(maintenance_mode, dict)
-                        else {},
+                        "details": maintenance_mode if isinstance(maintenance_mode, dict) else {},
                     }
                 },
                 headers={
@@ -476,7 +473,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             status_code=response.status_code,
             client_host=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
         )
 
         return response
@@ -526,9 +523,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         if origin and any(origin.strip() == o.strip() for o in allowed_origins):
             return await call_next(request)
 
-        if referer and any(
-            ref.strip() in referer for ref in allowed_origins if ref.strip()
-        ):
+        if referer and any(ref.strip() in referer for ref in allowed_origins if ref.strip()):
             return await call_next(request)
 
         return JSONResponse(
@@ -538,7 +533,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                     "type": "csrf_protection",
                     "message": "CSRF validation failed. Include X-CSRF-Token header or use Bearer auth.",
                     "status_code": 403,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
             },
         )

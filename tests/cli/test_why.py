@@ -1,5 +1,4 @@
 """Tests for udr why command."""
-import pytest
 
 from .test_commands import _run
 

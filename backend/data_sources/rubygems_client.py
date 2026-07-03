@@ -1,22 +1,25 @@
 """Module docstring."""
+
 # rubygems_client.py
 import asyncio
-from typing import Dict, List, Optional, Any
 import logging
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
     parse_version,
     parse_version_key,
     run_async,
 )
-import re
-from backend.core.cache import cached
-from enum import Enum
-from dataclasses import dataclass
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -30,33 +33,33 @@ class DependencyType(Enum):
 @dataclass
 class RubyVersionRequirement:
     raw: str
-    operator: Optional[str] = None
-    major: Optional[int] = None
-    minor: Optional[int] = None
-    patch: Optional[int] = None
+    operator: str | None = None
+    major: int | None = None
+    minor: int | None = None
+    patch: int | None = None
 
 
 class RubyGemsClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
-        timeout: Optional[int] = None,
+        api_url: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
+        timeout: int | None = None,
     ):
         rubygems_config = get_ecosystem_config("rubygems")
 
-        api_url = (
-            api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")
-        ).rstrip("/")
+        api_url = (api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")).rstrip(
+            "/"
+        )
         super().__init__(
             ecosystem="rubygems",
             base_url=api_url,
             cache_ttl=cache_ttl or rubygems_config.get("cache_ttl", CACHE_TTL),
         )
 
-        self._version_cache: Dict[str, RubyVersionRequirement] = {}
+        self._version_cache: dict[str, RubyVersionRequirement] = {}
 
     async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
@@ -67,7 +70,7 @@ class RubyGemsClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def search_packages(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
         query = normalize_package_name(query)
 
         url = f"{self.base_url}/search.json"
@@ -104,7 +107,7 @@ class RubyGemsClient(BaseDataSourceClient):
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         url = f"{self.base_url}/gems/{package_name}.json"
@@ -154,13 +157,11 @@ class RubyGemsClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Dict:
+    def get_package_info(self, package_name: str) -> dict:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_package_version(
-        self, package_name: str, version: str
-    ) -> Optional[Dict]:
+    async def get_package_version(self, package_name: str, version: str) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         versions_data = await self._get_all_versions(package_name)
@@ -181,9 +182,7 @@ class RubyGemsClient(BaseDataSourceClient):
                     "description": v.get("description"),
                     "downloads_count": v.get("downloads_count"),
                     "metadata": v.get("metadata", {}),
-                    "dependencies": await self._parse_dependencies(
-                        v.get("dependencies", {})
-                    ),
+                    "dependencies": await self._parse_dependencies(v.get("dependencies", {})),
                     "ruby_version": v.get("ruby_version"),
                     "required_ruby_version": v.get("required_ruby_version"),
                     "required_rubygems_version": v.get("required_rubygems_version"),
@@ -196,7 +195,7 @@ class RubyGemsClient(BaseDataSourceClient):
         package_name: str,
         include_prereleases: bool = True,
         include_yanked: bool = False,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         package_name = normalize_package_name(package_name)
 
         versions_data = await self._get_all_versions(package_name)
@@ -234,24 +233,22 @@ class RubyGemsClient(BaseDataSourceClient):
     async def get_dependencies(
         self,
         package_name: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         include_development: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
 
         if version:
             pkg_data = await self.get_package_version(package_name, version)
         else:
-            pkg_data = await self.get_package_info_async(
-                package_name, include_versions=False
-            )
+            pkg_data = await self.get_package_info_async(package_name, include_versions=False)
 
         if not pkg_data:
             return {}
 
         return pkg_data.get("dependencies", {})
 
-    async def _get_all_versions(self, package_name: str) -> List[Dict]:
+    async def _get_all_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
         url = f"{self.base_url}/gems/{package_name}/versions.json"
         data: Any = await self._get(url)
@@ -261,13 +258,13 @@ class RubyGemsClient(BaseDataSourceClient):
             return data
         return [data]
 
-    async def _get_reverse_dependencies(self, package_name: str) -> List[str]:
+    async def _get_reverse_dependencies(self, package_name: str) -> list[str]:
         package_name = normalize_package_name(package_name)
         url = f"{self.base_url}/gems/{package_name}/reverse_dependencies.json"
         data = await self._get(url)
         return data if isinstance(data, list) else []
 
-    async def _get_download_stats(self, package_name: str) -> Dict[str, int]:
+    async def _get_download_stats(self, package_name: str) -> dict[str, int]:
         package_name = normalize_package_name(package_name)
         try:
             url = f"{self.base_url}/downloads/{package_name}.json"
@@ -281,7 +278,7 @@ class RubyGemsClient(BaseDataSourceClient):
             pass
         return {"total": 0, "version": 0}
 
-    async def _get_dependencies(self, package_name: str, version: str) -> Dict:
+    async def _get_dependencies(self, package_name: str, version: str) -> dict:
         package_name = normalize_package_name(package_name)
         versions_data = await self._get_all_versions(package_name)
 
@@ -291,24 +288,22 @@ class RubyGemsClient(BaseDataSourceClient):
 
         return {}
 
-    async def _parse_dependencies(self, dependencies: Dict) -> Dict:
-        parsed: Dict[str, Dict] = {"runtime": {}, "development": {}}
+    async def _parse_dependencies(self, dependencies: dict) -> dict:
+        parsed: dict[str, dict] = {"runtime": {}, "development": {}}
 
         if "dependencies" in dependencies:
             deps = dependencies["dependencies"]
             for dep in deps:
                 name = dep.get("name")
                 requirements = dep.get("requirements", "")
-                dep_type = (
-                    "development" if dep.get("type") == "development" else "runtime"
-                )
+                dep_type = "development" if dep.get("type") == "development" else "runtime"
 
                 if name:
                     parsed[dep_type][name] = requirements
 
         return parsed
 
-    def _process_versions(self, versions_data: List[Dict]) -> List[Dict]:
+    def _process_versions(self, versions_data: list[dict]) -> list[dict]:
         versions = []
 
         for v in versions_data:
@@ -335,7 +330,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
         return versions
 
-    def _extract_system_requirements(self, data: Dict) -> Dict[str, Any]:
+    def _extract_system_requirements(self, data: dict) -> dict[str, Any]:
         requirements = {
             "ruby": None,
             "rubygems": None,
@@ -357,7 +352,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
         req = RubyVersionRequirement(raw=spec)
 
-        patterns: Dict[str, Any] = {
+        patterns: dict[str, Any] = {
             r"^~>\s*(\d+)\.(\d+)\.(\d+)": lambda m: {
                 "operator": "~>",
                 "major": int(m[1]),
@@ -388,8 +383,8 @@ class RubyGemsClient(BaseDataSourceClient):
         return req
 
     async def check_compatibility(
-        self, package_name: str, version: str, system_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str, system_info: dict[str, Any]
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -405,9 +400,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
         required_ruby = pkg_data.get("required_ruby_version")
         if required_ruby and "ruby_version" in system_info:
-            if not self._check_ruby_compatibility(
-                system_info["ruby_version"], required_ruby
-            ):
+            if not self._check_ruby_compatibility(system_info["ruby_version"], required_ruby):
                 errors.append(
                     f"Requires Ruby {required_ruby}, but system has {system_info['ruby_version']}"
                 )
@@ -423,12 +416,8 @@ class RubyGemsClient(BaseDataSourceClient):
 
         platform = pkg_data.get("platform")
         if platform and platform != "ruby" and "platform" in system_info:
-            if not self._check_platform_compatibility(
-                system_info["platform"], platform
-            ):
-                errors.append(
-                    f"Not compatible with platform: {system_info['platform']}"
-                )
+            if not self._check_platform_compatibility(system_info["platform"], platform):
+                errors.append(f"Not compatible with platform: {system_info['platform']}")
 
         return {
             "compatible": len(errors) == 0,
@@ -458,23 +447,20 @@ class RubyGemsClient(BaseDataSourceClient):
             if min_v is not None and max_v is not None:
                 return min_v <= system_v < max_v
             return True
-        elif req.operator == ">=":
+        if req.operator == ">=":
             min_v = parse_version(f"{major}.{minor}.{patch}")
             if min_v is not None:
                 return system_v >= min_v
             return True
-        else:
-            exact_v = parse_version(f"{major}.{minor}.{patch}")
-            if exact_v is not None:
-                return system_v == exact_v
-            return True
+        exact_v = parse_version(f"{major}.{minor}.{patch}")
+        if exact_v is not None:
+            return system_v == exact_v
+        return True
 
     def _check_rubygems_compatibility(self, system_version: str, required: str) -> bool:
         return self._check_ruby_compatibility(system_version, required)
 
-    def _check_platform_compatibility(
-        self, system_platform: str, required_platform: str
-    ) -> bool:
+    def _check_platform_compatibility(self, system_platform: str, required_platform: str) -> bool:
         if required_platform == "ruby":
             return True
 

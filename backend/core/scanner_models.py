@@ -1,7 +1,8 @@
 """Module docstring."""
+
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 
 class OSType(Enum):
@@ -35,10 +36,10 @@ class GPUInfo:
     memory_free: int
     memory_used: int
     utilization: float
-    temperature: Optional[float] = None
-    driver_version: Optional[str] = None
-    cuda_version: Optional[str] = None
-    compute_capability: Optional[str] = None
+    temperature: float | None = None
+    driver_version: str | None = None
+    cuda_version: str | None = None
+    compute_capability: str | None = None
 
 
 @dataclass
@@ -50,12 +51,12 @@ class CPUInfo:
     bits: int
     count_physical: int
     count_logical: int
-    max_frequency: Optional[float] = None
-    min_frequency: Optional[float] = None
-    current_frequency: Optional[float] = None
-    cache_sizes: Dict[str, int] = field(default_factory=dict)
-    features: List[str] = field(default_factory=list)
-    temperature: Optional[float] = None
+    max_frequency: float | None = None
+    min_frequency: float | None = None
+    current_frequency: float | None = None
+    cache_sizes: dict[str, int] = field(default_factory=dict)
+    features: list[str] = field(default_factory=list)
+    temperature: float | None = None
 
 
 @dataclass
@@ -91,11 +92,11 @@ class NetworkInterface:
     """Network Interface functionality."""
 
     name: str
-    addresses: List[Dict[str, str]]
+    addresses: list[dict[str, str]]
     is_up: bool
-    speed: Optional[int] = None
-    mtu: Optional[int] = None
-    stats: Dict[str, int] = field(default_factory=dict)
+    speed: int | None = None
+    mtu: int | None = None
+    stats: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -104,10 +105,10 @@ class RuntimeInfo:
 
     name: str
     version: str
-    path: Optional[str] = None
-    architecture: Optional[str] = None
-    implementation: Optional[str] = None
-    additional_info: Dict[str, Any] = field(default_factory=dict)
+    path: str | None = None
+    architecture: str | None = None
+    implementation: str | None = None
+    additional_info: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -117,6 +118,6 @@ class PackageInfo:
     name: str
     version: str
     manager: str
-    location: Optional[str] = None
-    dependencies: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    location: str | None = None
+    dependencies: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)

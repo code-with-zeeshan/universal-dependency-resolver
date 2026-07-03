@@ -1,27 +1,28 @@
 # models.py
+import os
+import sys
+from contextlib import contextmanager
+from datetime import datetime
+from typing import Any
+
 from sqlalchemy import (
-    create_engine,
-    Column,
-    Integer,
-    String,
-    DateTime,
     JSON,
     Boolean,
-    ForeignKey,
+    Column,
+    DateTime,
     Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
     Text,
     UniqueConstraint,
-    Index,
+    create_engine,
     event,
 )
 from sqlalchemy.event import listen
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
-from datetime import datetime
-from contextlib import contextmanager
-from typing import Dict, Any
-import os
-import sys
 
 # Add parent directory to path for direct execution
 _sys_path_appended = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,9 +50,7 @@ class Package(Base):
     versions = relationship(
         "PackageVersion", back_populates="package", cascade="all, delete-orphan"
     )
-    compatibility_reports = relationship(
-        "CompatibilityReport", back_populates="package"
-    )
+    compatibility_reports = relationship("CompatibilityReport", back_populates="package")
     conflicts = relationship(
         "ConflictRule",
         foreign_keys="ConflictRule.package1_id",
@@ -169,9 +168,7 @@ class ConflictRule(Base):
     verified = Column(Boolean, default=False)
 
     # Relationships
-    package1 = relationship(
-        "Package", foreign_keys=[package1_id], back_populates="conflicts"
-    )
+    package1 = relationship("Package", foreign_keys=[package1_id], back_populates="conflicts")
     package2 = relationship("Package", foreign_keys=[package2_id])
 
     __table_args__ = (Index("idx_conflict_packages", "package1_id", "package2_id"),)
@@ -282,9 +279,7 @@ class User(Base):
     last_login = Column(DateTime)
 
     # Relationships
-    api_keys = relationship(
-        "APIKey", back_populates="user", cascade="all, delete-orphan"
-    )
+    api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_user_username", "username"),
@@ -345,7 +340,7 @@ def normalize_package_fields(mapper, connection, target):
 # Database connection with connection pooling and health checks
 from pathlib import Path
 
-from backend.settings import DATABASE_URL  # noqa: E402
+from backend.settings import DATABASE_URL
 
 ALEMBIC_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "alembic.ini")
 
@@ -356,7 +351,7 @@ _SessionLocal = None
 def get_engine():
     global _engine
     if _engine is None:
-        kwargs: Dict[str, Any] = {"echo": False}
+        kwargs: dict[str, Any] = {"echo": False}
         if DATABASE_URL.startswith("sqlite"):
             kwargs["connect_args"] = {"check_same_thread": False}
         else:
@@ -383,8 +378,7 @@ def get_session_local():
     global _SessionLocal
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False,
-            expire_on_commit=False, bind=get_engine()
+            autocommit=False, autoflush=False, expire_on_commit=False, bind=get_engine()
         )
     return _SessionLocal
 
@@ -404,8 +398,9 @@ def run_migrations(db_url: str | None = None) -> None:
     Accepts an optional db_url override for testing with
     engine patching.  Defaults to DATABASE_URL from settings.
     """
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     target_url = db_url or DATABASE_URL
 
@@ -419,7 +414,7 @@ def init_db():
     run_migrations()
 
 
-def check_db_health() -> Dict[str, Any]:
+def check_db_health() -> dict[str, Any]:
     """Check database connection health and pool status."""
     try:
         e = get_engine()
@@ -443,7 +438,7 @@ def check_db_health() -> Dict[str, Any]:
         return {
             "status": "unhealthy",
             "error": str(e),
-            "message": f"Database health check failed: {str(e)}",
+            "message": f"Database health check failed: {e!s}",
         }
 
 

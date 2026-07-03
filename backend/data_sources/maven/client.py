@@ -1,28 +1,29 @@
 """Module docstring."""
+
 import asyncio
+import logging
 import xml.etree.ElementTree as ET
-from typing import List, Optional, Dict, Any, Tuple, Set
-from packaging import version as packaging_version
 from datetime import datetime
+from typing import Any
+
 from fastapi import HTTPException
+from packaging import version as packaging_version
+
 from ...core.utils import normalize_package_name, parse_version
 from ...settings import (
     ENABLE_CACHE,
     get_ecosystem_config,
 )
 from ..base_client import BaseDataSourceClient
-
+from .pom_parser import PomParser
 from .version_utils import (
-    _is_maven_version,
-    _sort_maven_version,
     _compare_java_versions,
+    _get_element_text,
+    _is_maven_version,
     _parse_version_range_syntax,
     _should_include_transitive_dependency,
-    _get_element_text,
+    _sort_maven_version,
 )
-from .pom_parser import PomParser
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,7 @@ class MavenClient(BaseDataSourceClient):
 
         super().__init__(
             ecosystem="maven",
-            base_url=maven_config.get(
-                "search_url", "https://search.maven.org/solrsearch/select"
-            ),
+            base_url=maven_config.get("search_url", "https://search.maven.org/solrsearch/select"),
         )
 
         self.artifact_url = "https://search.maven.org/artifact"
@@ -51,10 +50,10 @@ class MavenClient(BaseDataSourceClient):
             return False
         return "search" not in url
 
-    async def _make_request(self, url: str, params: Optional[Dict] = None) -> Any:  # type: ignore[override]
+    async def _make_request(self, url: str, params: dict | None = None) -> Any:  # type: ignore[override]
         session = self._get_session()
 
-        cache_key = f"{url}:{str(params)}"
+        cache_key = f"{url}:{params!s}"
         if self._should_cache(url) and cache_key in self._pom_cache:
             cached_data, cached_time = self._pom_cache[cache_key]
             if (datetime.now() - cached_time).total_seconds() < self._cache_ttl:
@@ -112,9 +111,7 @@ class MavenClient(BaseDataSourceClient):
         for key in expired_keys:
             del self._pom_cache[key]
 
-    def _normalize_maven_coordinates(
-        self, group_id: str, artifact_id: str
-    ) -> Tuple[str, str]:
+    def _normalize_maven_coordinates(self, group_id: str, artifact_id: str) -> tuple[str, str]:
         artifact_id = normalize_package_name(artifact_id)
 
         group_parts = group_id.split(".")
@@ -134,130 +131,112 @@ class MavenClient(BaseDataSourceClient):
     def _compare_java_versions(self, version1: str, version2: str) -> int:
         return _compare_java_versions(version1, version2)
 
-    def _parse_version_range_syntax(self, range_str: str) -> Dict:
+    def _parse_version_range_syntax(self, range_str: str) -> dict:
         return _parse_version_range_syntax(range_str)
 
-    def _should_include_transitive_dependency(
-        self, parent_scope: str, dep_scope: str
-    ) -> bool:
+    def _should_include_transitive_dependency(self, parent_scope: str, dep_scope: str) -> bool:
         return _should_include_transitive_dependency(parent_scope, dep_scope)
 
-    def _get_element_text(self, parent, tag: str, namespaces: Dict) -> Optional[str]:
+    def _get_element_text(self, parent, tag: str, namespaces: dict) -> str | None:
         return _get_element_text(parent, tag, namespaces)
 
     # -- pom_parser wrappers (backward compat) --
 
-    def _merge_poms(self, parent_pom: Dict, child_pom: Dict) -> Dict:
+    def _merge_poms(self, parent_pom: dict, child_pom: dict) -> dict:
         return self._pom_parser._merge_poms(parent_pom, child_pom)
 
-    def _extract_properties(self, root, namespaces) -> Dict[str, str]:
+    def _extract_properties(self, root, namespaces) -> dict[str, str]:
         return self._pom_parser._extract_properties(root, namespaces)
 
-    def _substitute_properties(self, value: str, properties: Dict[str, str]) -> str:
+    def _substitute_properties(self, value: str, properties: dict[str, str]) -> str:
         return self._pom_parser._substitute_properties(value, properties)
 
-    def _extract_parent_info(self, parent_elem, namespaces) -> Optional[Dict]:
+    def _extract_parent_info(self, parent_elem, namespaces) -> dict | None:
         return self._pom_parser._extract_parent_info(parent_elem, namespaces)
 
-    def _parse_repositories(self, root, namespaces, properties) -> List[Dict]:
+    def _parse_repositories(self, root, namespaces, properties) -> list[dict]:
         return self._pom_parser._parse_repositories(root, namespaces, properties)
 
-    def _parse_plugin_repositories(self, root, namespaces, properties) -> List[Dict]:
+    def _parse_plugin_repositories(self, root, namespaces, properties) -> list[dict]:
         return self._pom_parser._parse_plugin_repositories(root, namespaces, properties)
 
     def _parse_dependency_management(
         self, dep_mgmt_elem, namespaces, properties
-    ) -> Dict[str, Dict]:
-        return self._pom_parser._parse_dependency_management(
-            dep_mgmt_elem, namespaces, properties
-        )
+    ) -> dict[str, dict]:
+        return self._pom_parser._parse_dependency_management(dep_mgmt_elem, namespaces, properties)
 
-    def _parse_plugin_management(
-        self, plugin_mgmt_elem, namespaces, properties
-    ) -> Dict[str, Dict]:
-        return self._pom_parser._parse_plugin_management(
-            plugin_mgmt_elem, namespaces, properties
-        )
+    def _parse_plugin_management(self, plugin_mgmt_elem, namespaces, properties) -> dict[str, dict]:
+        return self._pom_parser._parse_plugin_management(plugin_mgmt_elem, namespaces, properties)
 
-    def _parse_profiles(
-        self, profiles_elem, namespaces, parent_properties
-    ) -> Dict[str, Dict]:
-        return self._pom_parser._parse_profiles(
-            profiles_elem, namespaces, parent_properties
-        )
+    def _parse_profiles(self, profiles_elem, namespaces, parent_properties) -> dict[str, dict]:
+        return self._pom_parser._parse_profiles(profiles_elem, namespaces, parent_properties)
 
-    def _parse_activation(self, activation_elem, namespaces) -> Dict:
+    def _parse_activation(self, activation_elem, namespaces) -> dict:
         return self._pom_parser._parse_activation(activation_elem, namespaces)
 
     def _parse_dependencies_section(
         self, deps_elem, namespaces, properties, dep_management
-    ) -> List[Dict]:
+    ) -> list[dict]:
         return self._pom_parser._parse_dependencies_section(
             deps_elem, namespaces, properties, dep_management
         )
 
     def _extract_dependency_info(
         self, dep_elem, namespaces, properties, dep_management
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         return self._pom_parser._extract_dependency_info(
             dep_elem, namespaces, properties, dep_management
         )
 
     def _extract_dependency_info_with_exclusions(
         self, dep_elem, namespaces, properties, dep_management
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         return self._pom_parser._extract_dependency_info_with_exclusions(
             dep_elem, namespaces, properties, dep_management
         )
 
     def _parse_plugins_section(
         self, plugins_elem, namespaces, properties, plugin_management
-    ) -> List[Dict]:
+    ) -> list[dict]:
         return self._pom_parser._parse_plugins_section(
             plugins_elem, namespaces, properties, plugin_management
         )
 
     def _extract_plugin_info(
         self, plugin_elem, namespaces, properties, plugin_management
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         return self._pom_parser._extract_plugin_info(
             plugin_elem, namespaces, properties, plugin_management
         )
 
-    def _parse_configuration(self, config_elem, properties) -> Dict:
+    def _parse_configuration(self, config_elem, properties) -> dict:
         return self._pom_parser._parse_configuration(config_elem, properties)
 
     def _parse_pom_comprehensive(
         self, pom_xml, group_id, artifact_id, version, active_profiles=None
-    ) -> Dict:
+    ) -> dict:
         return self._pom_parser._parse_pom_comprehensive(
             pom_xml, group_id, artifact_id, version, active_profiles
         )
 
-    def _apply_profiles(self, pom_data: Dict, active_profiles: List[str]) -> Dict:
+    def _apply_profiles(self, pom_data: dict, active_profiles: list[str]) -> dict:
         return self._pom_parser._apply_profiles(pom_data, active_profiles)
 
-    def _apply_default_profiles(
-        self, pom_data: Dict, active_profiles: Optional[List[str]]
-    ) -> Dict:
+    def _apply_default_profiles(self, pom_data: dict, active_profiles: list[str] | None) -> dict:
         return self._pom_parser._apply_default_profiles(pom_data, active_profiles)
 
-    def _apply_final_property_substitution(self, pom_data: Dict) -> Dict:
+    def _apply_final_property_substitution(self, pom_data: dict) -> dict:
         return self._pom_parser._apply_final_property_substitution(pom_data)
 
     # -- Public API --
 
-    async def search_packages(
-        self, query: str, limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    async def search_packages(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         try:
             params = {"q": query, "rows": limit, "wt": "json"}
 
             data = await self._make_request(self.base_url, params=params)
             if not data:
-                raise HTTPException(
-                    status_code=500, detail="Failed to search Maven packages"
-                )
+                raise HTTPException(status_code=500, detail="Failed to search Maven packages")
 
             results = []
             for doc in data.get("response", {}).get("docs", []):
@@ -273,24 +252,20 @@ class MavenClient(BaseDataSourceClient):
             return results
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Maven search error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Maven search error: {e!s}")
 
-    async def get_package_info(self, group_id: str, artifact_id: str) -> Dict[str, Any]:
+    async def get_package_info(self, group_id: str, artifact_id: str) -> dict[str, Any]:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             session = self._get_session()
             params = {"q": f"g:{group_id} AND a:{artifact_id}", "rows": 1, "wt": "json"}  # type: ignore[misc]
             async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
-                    raise HTTPException(
-                        status_code=404, detail="Maven package not found"
-                    )
+                    raise HTTPException(status_code=404, detail="Maven package not found")
                 data = await response.json()
                 docs = data.get("response", {}).get("docs", [])
                 if not docs:
-                    raise HTTPException(
-                        status_code=404, detail="Maven package not found"
-                    )
+                    raise HTTPException(status_code=404, detail="Maven package not found")
 
                 doc = docs[0]
                 return {
@@ -300,27 +275,21 @@ class MavenClient(BaseDataSourceClient):
                         "group_id": group_id,
                         "artifact_id": artifact_id,
                         "latest_version": doc.get("latestVersion", "unknown"),
-                        "last_updated": doc.get(
-                            "timestamp", datetime.utcnow().isoformat()
-                        ),
+                        "last_updated": doc.get("timestamp", datetime.utcnow().isoformat()),
                         "repository_count": doc.get("repositoryCount", 0),
                         "available_versions": doc.get("versionCount", 0),
                     },
                     "system_requirements": {"java_versions": ["8+"], "os": ["any"]},
-                    "compatibility_matrix": {
-                        "java": {"minimum": "1.8", "recommended": "11"}
-                    },
+                    "compatibility_matrix": {"java": {"minimum": "1.8", "recommended": "11"}},
                 }
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Maven package info error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Maven package info error: {e!s}")
 
     async def get_package_versions(
-        self, group_id: str, artifact_id: str, filters: Optional[Dict] = None
-    ) -> List[Dict]:
+        self, group_id: str, artifact_id: str, filters: dict | None = None
+    ) -> list[dict]:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             session = self._get_session()
@@ -332,11 +301,9 @@ class MavenClient(BaseDataSourceClient):
             }  # type: ignore[misc]
             async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
-                    raise HTTPException(
-                        status_code=404, detail="Maven package versions not found"
-                    )
+                    raise HTTPException(status_code=404, detail="Maven package versions not found")
                 data = await response.json()
-                versions: List[Any] = []
+                versions: list[Any] = []
                 for doc in data.get("response", {}).get("docs", []):
                     version_str = doc.get("v")
                     if not version_str:
@@ -349,28 +316,25 @@ class MavenClient(BaseDataSourceClient):
 
                     version_info = {
                         "version": version_str,
-                        "release_date": doc.get(
-                            "timestamp", datetime.utcnow().isoformat()
-                        ),
+                        "release_date": doc.get("timestamp", datetime.utcnow().isoformat()),
                         "system_requirements": {"java_versions": ["8+"], "os": ["any"]},
                     }
 
                     if filters:
                         if "version_range" in filters:
-                            range_info = self._parse_version_range(
-                                filters["version_range"]
-                            )
+                            range_info = self._parse_version_range(filters["version_range"])
                             if not self._version_matches_range(version_str, range_info):
                                 continue
 
                         if "release_type" in filters:
-                            if filters["release_type"] == "stable" and (
-                                "SNAPSHOT" in version_str
-                                or "alpha" in version_str.lower()
-                                or "beta" in version_str.lower()
-                            ):
-                                continue
-                            elif (
+                            if (
+                                filters["release_type"] == "stable"
+                                and (
+                                    "SNAPSHOT" in version_str
+                                    or "alpha" in version_str.lower()
+                                    or "beta" in version_str.lower()
+                                )
+                            ) or (
                                 filters["release_type"] == "snapshot"
                                 and "SNAPSHOT" not in version_str
                             ):
@@ -386,18 +350,16 @@ class MavenClient(BaseDataSourceClient):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Maven versions error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Maven versions error: {e!s}")
 
     async def check_compatibility(
-        self, group_id: str, artifact_id: str, version: str, system_info: Dict
-    ) -> Dict:
+        self, group_id: str, artifact_id: str, version: str, system_info: dict
+    ) -> dict:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             pom_xml = await self._fetch_pom(group_id, artifact_id, version)
 
-            compatibility: Dict[str, Any] = {
+            compatibility: dict[str, Any] = {
                 "compatible": True,
                 "details": {},
                 "warnings": [],
@@ -439,17 +401,12 @@ class MavenClient(BaseDataSourceClient):
 
                 compatibility["details"]["os"] = "Compatible with any OS"
 
-                profiles = self._pom_parser._parse_profiles(
-                    root, namespaces, properties
-                )
+                profiles = self._pom_parser._parse_profiles(root, namespaces, properties)
                 for profile_id, profile in profiles.items():
                     if "activation" in profile and "os" in profile["activation"]:
                         os_req = profile["activation"]["os"]
                         if os_req.get("name") and system_info.get("os_name"):
-                            if (
-                                os_req["name"].lower()
-                                not in system_info["os_name"].lower()
-                            ):
+                            if os_req["name"].lower() not in system_info["os_name"].lower():
                                 compatibility["warnings"].append(
                                     f"Profile '{profile_id}' is OS-specific for {os_req['name']}"
                                 )
@@ -463,17 +420,17 @@ class MavenClient(BaseDataSourceClient):
                     "java_version": "Compatible with Java 8+",
                     "os": "Compatible with any OS",
                 },
-                "warnings": [f"Could not verify compatibility: {str(e)}"],
+                "warnings": [f"Could not verify compatibility: {e!s}"],
             }
 
     async def get_dependencies(
         self,
         group_id: str,
         artifact_id: str,
-        version: Optional[str] = None,
-        active_profiles: Optional[List[str]] = None,
-        repositories: Optional[List[Dict]] = None,
-    ) -> List[Dict]:
+        version: str | None = None,
+        active_profiles: list[str] | None = None,
+        repositories: list[dict] | None = None,
+    ) -> list[dict]:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             if not version:
@@ -489,7 +446,7 @@ class MavenClient(BaseDataSourceClient):
             return effective_pom.get("dependencies", [])
 
         except Exception as e:
-            print(f"Error fetching dependencies: {str(e)}")
+            print(f"Error fetching dependencies: {e!s}")
             return []
 
     async def get_effective_pom(
@@ -497,9 +454,9 @@ class MavenClient(BaseDataSourceClient):
         group_id: str,
         artifact_id: str,
         version: str,
-        active_profiles: Optional[List[str]] = None,
-        repositories: Optional[List[Dict]] = None,
-    ) -> Dict:
+        active_profiles: list[str] | None = None,
+        repositories: list[dict] | None = None,
+    ) -> dict:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
 
         if repositories is None:
@@ -515,9 +472,7 @@ class MavenClient(BaseDataSourceClient):
 
         return pom_data
 
-    async def _fetch_pom(
-        self, group_id: str, artifact_id: str, version: str
-    ) -> Optional[str]:
+    async def _fetch_pom(self, group_id: str, artifact_id: str, version: str) -> str | None:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         group_path = group_id.replace(".", "/")
         pom_url = f"{self.maven_repo_url}/{group_path}/{artifact_id}/{version}/{artifact_id}-{version}.pom"
@@ -536,19 +491,17 @@ class MavenClient(BaseDataSourceClient):
         group_id: str,
         artifact_id: str,
         version: str,
-        repositories: List[Dict],
-        active_profiles: Optional[List[str]] = None,
-        child_pom_data: Optional[Dict] = None,
-    ) -> Dict:
+        repositories: list[dict],
+        active_profiles: list[str] | None = None,
+        child_pom_data: dict | None = None,
+    ) -> dict:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
 
         cache_key = f"{group_id}:{artifact_id}:{version}"
         if cache_key in self._pom_cache:
             return self._pom_cache[cache_key].copy()
 
-        pom_xml = await self._fetch_pom_from_repos(
-            group_id, artifact_id, version, repositories
-        )
+        pom_xml = await self._fetch_pom_from_repos(group_id, artifact_id, version, repositories)
         if not pom_xml:
             return child_pom_data or {"dependencies": []}
 
@@ -580,8 +533,8 @@ class MavenClient(BaseDataSourceClient):
         return merged_pom
 
     async def _fetch_pom_from_repos(
-        self, group_id: str, artifact_id: str, version: str, repositories: List[Dict]
-    ) -> Optional[str]:
+        self, group_id: str, artifact_id: str, version: str, repositories: list[dict]
+    ) -> str | None:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         group_path = group_id.replace(".", "/")
         pom_filename = f"{artifact_id}-{version}.pom"
@@ -590,9 +543,7 @@ class MavenClient(BaseDataSourceClient):
         all_repos = repositories.copy()
         for repo_url in self.additional_repos:
             if repo_url:
-                all_repos.append(
-                    {"url": repo_url, "id": f"additional-{len(all_repos)}"}
-                )
+                all_repos.append({"url": repo_url, "id": f"additional-{len(all_repos)}"})
 
         if not any(repo.get("id") == "central" for repo in all_repos):
             all_repos.append({"id": "central", "url": self.maven_repo_url})
@@ -610,7 +561,7 @@ class MavenClient(BaseDataSourceClient):
 
         return None
 
-    async def _fetch_pom_content(self, url: str) -> Optional[str]:
+    async def _fetch_pom_content(self, url: str) -> str | None:
         session = self._get_session()
         try:
             async with session.get(url) as response:
@@ -620,18 +571,17 @@ class MavenClient(BaseDataSourceClient):
         except Exception:
             return None
 
-    def _parse_version_range(self, version_str: str) -> Dict[str, Any]:
+    def _parse_version_range(self, version_str: str) -> dict[str, Any]:
         if not version_str:
             return {"type": "unspecified"}
 
-        if version_str.startswith("[") or version_str.startswith("("):
+        if version_str.startswith(("[", "(")):
             return _parse_version_range_syntax(version_str)
-        else:
-            return {"type": "fixed", "version": version_str}
+        return {"type": "fixed", "version": version_str}
 
     async def resolve_version_from_range(
-        self, group_id: str, artifact_id: str, version_range: Dict
-    ) -> Optional[str]:
+        self, group_id: str, artifact_id: str, version_range: dict
+    ) -> str | None:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if version_range["type"] == "fixed":
             return version_range["version"]
@@ -658,7 +608,7 @@ class MavenClient(BaseDataSourceClient):
 
         return None
 
-    def _version_matches_range(self, version_str: str, range_info: Dict) -> bool:
+    def _version_matches_range(self, version_str: str, range_info: dict) -> bool:
         try:
             v = parse_version(version_str)
             if v is None:
@@ -678,9 +628,8 @@ class MavenClient(BaseDataSourceClient):
                 if range_info["min_inclusive"]:
                     if v < min_v:
                         return False
-                else:
-                    if v <= min_v:
-                        return False
+                elif v <= min_v:
+                    return False
 
             if range_info["max_version"]:
                 max_v = parse_version(range_info["max_version"])
@@ -689,9 +638,8 @@ class MavenClient(BaseDataSourceClient):
                 if range_info["max_inclusive"]:
                     if v > max_v:
                         return False
-                else:
-                    if v >= max_v:
-                        return False
+                elif v >= max_v:
+                    return False
 
             return True
         except Exception:
@@ -703,10 +651,10 @@ class MavenClient(BaseDataSourceClient):
         artifact_id: str,
         version: str,
         scope: str = "compile",
-        repositories: Optional[List[Dict]] = None,
-        visited: Optional[Set[str]] = None,
-        exclusions: Optional[List[Dict]] = None,
-    ) -> List[Dict]:
+        repositories: list[dict] | None = None,
+        visited: set[str] | None = None,
+        exclusions: list[dict] | None = None,
+    ) -> list[dict]:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if visited is None:
             visited = set()
@@ -759,10 +707,10 @@ class MavenClient(BaseDataSourceClient):
         self,
         group_id: str,
         artifact_id: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         max_depth: int = 2,
-        visited: Optional[set] = None,
-    ) -> Dict:
+        visited: set | None = None,
+    ) -> dict:
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if visited is None:
             visited = set()
@@ -779,7 +727,7 @@ class MavenClient(BaseDataSourceClient):
 
         dependencies = await self.get_dependencies(group_id, artifact_id, version)
 
-        tree: Dict[str, Any] = {
+        tree: dict[str, Any] = {
             "name": f"{group_id}:{artifact_id}",
             "version": version or "latest",
             "dependencies": [],

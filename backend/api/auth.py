@@ -1,31 +1,34 @@
 """Module docstring."""
+
 # backend/api/auth.py
+import contextlib
+import logging
+import secrets
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
-from fastapi import Depends, HTTPException, status, Request
+from typing import Any
+
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import (
-    HTTPBearer,
-    HTTPAuthorizationCredentials,
     APIKeyHeader,
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
 )
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
-import secrets
-import logging
 
+from backend.orchestrator.db_service import APIKey, User, db_session
 from backend.settings import (
-    SECRET_KEY,
-    ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKEN_EXPIRE_DAYS,
+    ALGORITHM,
     API_KEY_HEADER,
     ENABLE_API_KEY_AUTH,
     FEATURES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    SECRET_KEY,
 )
-from backend.orchestrator.db_service import User, APIKey, db_session
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +45,7 @@ class Token(BaseModel):
     """Token functionality."""
 
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int = Field(default=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
 
@@ -50,9 +53,9 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     """Token Data functionality."""
 
-    username: Optional[str] = None
-    user_id: Optional[int] = None
-    scopes: List[str] = []
+    username: str | None = None
+    user_id: int | None = None
+    scopes: list[str] = []
 
 
 class UserCreate(BaseModel):
@@ -61,7 +64,7 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=8)
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
 
 class UserLogin(BaseModel):
@@ -75,9 +78,9 @@ class APIKeyCreate(BaseModel):
     """Api Key Create functionality."""
 
     name: str = Field(..., min_length=3, max_length=100)
-    description: Optional[str] = None
-    scopes: List[str] = Field(default_factory=list)
-    expires_at: Optional[datetime] = None
+    description: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
 
 
 # Authentication functions
@@ -91,9 +94,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(
-    data: Dict[str, Any], expires_delta: Optional[timedelta] = None
-) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
@@ -106,7 +107,7 @@ def create_access_token(
     return encoded_jwt
 
 
-def create_refresh_token(data: Dict[str, Any]) -> str:
+def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -120,7 +121,7 @@ def generate_api_key() -> str:
     return f"udr_{secrets.token_urlsafe(32)}"
 
 
-async def get_current_user_from_token(token: str) -> Optional[User]:
+async def get_current_user_from_token(token: str) -> User | None:
     """Extract and validate user from JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -149,16 +150,14 @@ async def get_current_user_from_token(token: str) -> Optional[User]:
         return user
 
 
-async def get_current_user_from_api_key(api_key: str) -> Optional[User]:
+async def get_current_user_from_api_key(api_key: str) -> User | None:
     """Validate API key and return associated user."""
     if not api_key:
         return None
 
     with db_session() as db:
         key_record = (
-            db.query(APIKey)
-            .filter(APIKey.key == api_key, APIKey.is_active is True)
-            .first()
+            db.query(APIKey).filter(APIKey.key == api_key, APIKey.is_active is True).first()
         )
 
         if not key_record:
@@ -179,8 +178,8 @@ async def get_current_user_from_api_key(api_key: str) -> Optional[User]:
 # Dependency functions
 async def get_current_user(
     request: Request,
-    bearer_token: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    api_key: Optional[str] = Depends(api_key_header),
+    bearer_token: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    api_key: str | None = Depends(api_key_header),
 ) -> User:
     """Get current user from either JWT token or API key."""
     if not FEATURES.get("ENABLE_AUTH", False):
@@ -191,10 +190,8 @@ async def get_current_user(
 
     # Try JWT token first
     if bearer_token and bearer_token.credentials:
-        try:
+        with contextlib.suppress(HTTPException):
             user = await get_current_user_from_token(bearer_token.credentials)
-        except HTTPException:
-            pass
 
     # Try API key if enabled and no user from JWT
     if not user and ENABLE_API_KEY_AUTH and api_key:
@@ -209,9 +206,7 @@ async def get_current_user(
 
     # Check if user is active
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
     return user
 
@@ -260,10 +255,7 @@ class AuthService:
             # Check if user exists
             if (
                 db.query(User)
-                .filter(
-                    (User.username == user_data.username)
-                    | (User.email == user_data.email)
-                )
+                .filter((User.username == user_data.username) | (User.email == user_data.email))
                 .first()
             ):
                 raise HTTPException(
@@ -297,7 +289,7 @@ class AuthService:
             }
 
     @staticmethod
-    async def authenticate_user(username: str, password: str) -> Optional[dict]:
+    async def authenticate_user(username: str, password: str) -> dict | None:
         """Authenticate a user with username and password."""
         with db_session() as db:
             user = db.query(User).filter(User.username == username).first()
@@ -323,9 +315,7 @@ class AuthService:
     @staticmethod
     async def login(user_data: UserLogin) -> Token:
         """Login user and return tokens."""
-        user = await AuthService.authenticate_user(
-            user_data.username, user_data.password
-        )
+        user = await AuthService.authenticate_user(user_data.username, user_data.password)
 
         if not user:
             raise HTTPException(
@@ -421,9 +411,7 @@ class AuthService:
         """Revoke an API key."""
         with db_session() as db:
             api_key = (
-                db.query(APIKey)
-                .filter(APIKey.id == key_id, APIKey.user_id == user.id)
-                .first()
+                db.query(APIKey).filter(APIKey.id == key_id, APIKey.user_id == user.id).first()
             )
 
             if not api_key:

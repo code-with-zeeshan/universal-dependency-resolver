@@ -152,7 +152,7 @@ class TestRubyGemsClient:
             client, "_get", new_callable=AsyncMock, return_value=[sample_gem_data]
         ) as mock_get:
             await client.search_packages("rails", limit=5)
-        args, kwargs = mock_get.call_args
+        _args, kwargs = mock_get.call_args
         params = kwargs.get("params", {})
         assert params.get("query") == "rails"
 
@@ -189,9 +189,8 @@ class TestRubyGemsClient:
     async def test_get_package_version_success(self, client, sample_versions_data):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
-        ):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
-                result = await client.get_package_version("rails", "7.1.2")
+        ), patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            result = await client.get_package_version("rails", "7.1.2")
         assert result is not None
         assert result["version"] == "7.1.2"
 
@@ -222,13 +221,12 @@ class TestRubyGemsClient:
     async def test_check_compatibility_returns_result(self, client, sample_versions_data):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
+        ), patch.object(
+            client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
         ):
-            with patch.object(
-                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
-            ):
-                result = await client.check_compatibility(
-                    "rails", "7.1.2", {}
-                )
+            result = await client.check_compatibility(
+                "rails", "7.1.2", {}
+            )
         assert isinstance(result, dict)
 
     # === New test: get_versions filters out prereleases when include_prereleases=False

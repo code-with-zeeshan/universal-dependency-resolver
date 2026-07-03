@@ -1,9 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.api.main import app
 from backend.api.dependencies import get_data_aggregator
+from backend.api.main import app
 
 
 def _mock_aggregator():

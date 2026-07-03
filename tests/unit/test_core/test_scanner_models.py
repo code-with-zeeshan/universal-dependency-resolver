@@ -1,14 +1,14 @@
 # tests/unit/test_core/test_scanner_models.py
 from backend.core.scanner_models import (
-    OSType,
     ContainerType,
-    GPUInfo,
     CPUInfo,
-    MemoryInfo,
     DiskInfo,
+    GPUInfo,
+    MemoryInfo,
     NetworkInterface,
-    RuntimeInfo,
+    OSType,
     PackageInfo,
+    RuntimeInfo,
 )
 
 

@@ -1,17 +1,20 @@
 """Module docstring."""
+
 # nuget_client.py
 import asyncio
-from typing import Dict, List, Optional, Any
 import logging
-from backend.core.utils import parse_version, parse_version_key, run_async
 import re
-from backend.core.cache import cached
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from backend.core.cache import cached
+from backend.core.utils import parse_version, parse_version_key, run_async
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -37,27 +40,26 @@ class TargetFramework(Enum):
 @dataclass
 class NuGetVersionRequirement:
     raw: str
-    operator: Optional[str] = None
-    major: Optional[int] = None
-    minor: Optional[int] = None
-    patch: Optional[int] = None
+    operator: str | None = None
+    major: int | None = None
+    minor: int | None = None
+    patch: int | None = None
     is_floating: bool = False
 
 
 class NuGetClient(BaseDataSourceClient):
     def __init__(
         self,
-        service_index_url: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
-        timeout: Optional[int] = None,
+        service_index_url: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
+        timeout: int | None = None,
     ):
         nuget_config = get_ecosystem_config("nuget")
 
         service_index_url = (
-            service_index_url
-            or nuget_config.get("api_url", "https://api.nuget.org/v3/index.json")
+            service_index_url or nuget_config.get("api_url", "https://api.nuget.org/v3/index.json")
         ).rstrip("/")
         super().__init__(
             ecosystem="nuget",
@@ -70,8 +72,8 @@ class NuGetClient(BaseDataSourceClient):
         self.search_url = None
         self.package_base_url = None
         self.registration_base_url = None
-        self._version_cache: Dict[str, NuGetVersionRequirement] = {}
-        self._service_endpoints: Dict[str, str] = {}
+        self._version_cache: dict[str, NuGetVersionRequirement] = {}
+        self._service_endpoints: dict[str, str] = {}
 
     async def __aenter__(self):
         await self._initialize_service_endpoints()
@@ -128,8 +130,8 @@ class NuGetClient(BaseDataSourceClient):
         query: str,
         limit: int = 20,
         include_prerelease: bool = False,
-        target_framework: Optional[str] = None,
-    ) -> List[Dict]:
+        target_framework: str | None = None,
+    ) -> list[dict]:
         query = query.lower()
 
         if not self.search_url:
@@ -177,7 +179,7 @@ class NuGetClient(BaseDataSourceClient):
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         package_name = package_name.lower()
 
         if not self.registration_base_url:
@@ -258,9 +260,7 @@ class NuGetClient(BaseDataSourceClient):
                     "dependencies": self._extract_dependencies(
                         latest_data.get("dependencyGroups", [])
                     ),
-                    "system_requirements": self._extract_system_requirements(
-                        latest_data
-                    ),
+                    "system_requirements": self._extract_system_requirements(latest_data),
                     "versions": versions_info if include_versions else [],
                     "published": latest_data.get("published"),
                     "created": latest_data.get("created"),
@@ -270,13 +270,11 @@ class NuGetClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Dict:
+    def get_package_info(self, package_name: str) -> dict:
         package_name = package_name.lower()
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_package_version(
-        self, package_name: str, version: str
-    ) -> Optional[Dict]:
+    async def get_package_version(self, package_name: str, version: str) -> dict | None:
         package_name = package_name.lower()
 
         if not self.registration_base_url:
@@ -299,14 +297,14 @@ class NuGetClient(BaseDataSourceClient):
         package_name: str,
         include_prereleases: bool = True,
         include_unlisted: bool = False,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         package_name = package_name.lower()
 
         info = await self.get_package_info_async(package_name, include_versions=True)
         if not info or not info.get("versions"):
             return []
 
-        versions: List[Any] = []
+        versions: list[Any] = []
         for v in info["versions"]:
             if not include_prereleases and v.get("is_prerelease", False):
                 continue
@@ -321,17 +319,15 @@ class NuGetClient(BaseDataSourceClient):
     async def get_dependencies(
         self,
         package_name: str,
-        version: Optional[str] = None,
-        target_framework: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        version: str | None = None,
+        target_framework: str | None = None,
+    ) -> dict[str, Any]:
         package_name = package_name.lower()
 
         if version:
             pkg_data = await self.get_package_version(package_name, version)
         else:
-            pkg_data = await self.get_package_info_async(
-                package_name, include_versions=False
-            )
+            pkg_data = await self.get_package_info_async(package_name, include_versions=False)
 
         if not pkg_data:
             return {}
@@ -343,7 +339,7 @@ class NuGetClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _process_catalog_entry(self, entry: Dict) -> Optional[Dict]:
+    def _process_catalog_entry(self, entry: dict) -> dict | None:
         if not entry:
             return None
 
@@ -356,9 +352,7 @@ class NuGetClient(BaseDataSourceClient):
             "title": entry.get("title"),
             "description": entry.get("description"),
             "summary": entry.get("summary"),
-            "authors": entry.get("authors", "").split(",")
-            if entry.get("authors")
-            else [],
+            "authors": entry.get("authors", "").split(",") if entry.get("authors") else [],
             "tags": entry.get("tags", []),
             "project_url": entry.get("projectUrl"),
             "license_url": entry.get("licenseUrl"),
@@ -367,9 +361,7 @@ class NuGetClient(BaseDataSourceClient):
             "require_license_acceptance": entry.get("requireLicenseAcceptance", False),
             "is_prerelease": self._is_prerelease(version),
             "listed": entry.get("listed", True),
-            "dependencies": self._extract_dependencies(
-                entry.get("dependencyGroups", [])
-            ),
+            "dependencies": self._extract_dependencies(entry.get("dependencyGroups", [])),
             "package_types": entry.get("packageTypes", []),
             "published": entry.get("published"),
             "created": entry.get("created"),
@@ -377,7 +369,7 @@ class NuGetClient(BaseDataSourceClient):
             "system_requirements": self._extract_system_requirements(entry),
         }
 
-    def _extract_version_info(self, versions: List[Dict]) -> List[Dict]:
+    def _extract_version_info(self, versions: list[dict]) -> list[dict]:
         version_info = []
         for v in versions:
             version = v.get("version")
@@ -397,11 +389,11 @@ class NuGetClient(BaseDataSourceClient):
 
         return version_info
 
-    def _extract_dependencies(self, dependency_groups: List[Dict]) -> Dict[str, Dict]:
-        dependencies: Dict[str, Any] = {}
+    def _extract_dependencies(self, dependency_groups: list[dict]) -> dict[str, dict]:
+        dependencies: dict[str, Any] = {}
         for group in dependency_groups:
             target_framework = group.get("targetFramework", "any")
-            deps: Dict[str, Any] = {}
+            deps: dict[str, Any] = {}
             for dep in group.get("dependencies", []):
                 name = dep.get("id")
                 version_range = dep.get("range", "")
@@ -418,8 +410,8 @@ class NuGetClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _extract_system_requirements(self, entry: Dict) -> Dict[str, Any]:
-        requirements: Dict[str, Any] = {
+    def _extract_system_requirements(self, entry: dict) -> dict[str, Any]:
+        requirements: dict[str, Any] = {
             "target_frameworks": [],
             "min_client_version": None,
             "development_dependency": False,
@@ -433,13 +425,11 @@ class NuGetClient(BaseDataSourceClient):
                 requirements["target_frameworks"].append(tf)
 
         requirements["min_client_version"] = entry.get("minClientVersion")
-        requirements["development_dependency"] = entry.get(
-            "developmentDependency", False
-        )
+        requirements["development_dependency"] = entry.get("developmentDependency", False)
 
         return requirements
 
-    def _extract_repository_info(self, entry: Dict) -> Optional[Dict]:
+    def _extract_repository_info(self, entry: dict) -> dict | None:
         repo = entry.get("repository")
         if repo:
             return {
@@ -505,8 +495,8 @@ class NuGetClient(BaseDataSourceClient):
         return req
 
     async def check_compatibility(
-        self, package_name: str, version: str, system_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str, system_info: dict[str, Any]
+    ) -> dict[str, Any]:
         package_name = package_name.lower()
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -520,9 +510,7 @@ class NuGetClient(BaseDataSourceClient):
         errors = []
         warnings = []
 
-        target_frameworks = pkg_data.get("system_requirements", {}).get(
-            "target_frameworks", []
-        )
+        target_frameworks = pkg_data.get("system_requirements", {}).get("target_frameworks", [])
         system_frameworks = system_info.get("target_frameworks", [])
 
         if target_frameworks and system_frameworks:
@@ -557,8 +545,8 @@ class NuGetClient(BaseDataSourceClient):
         }
 
     def _check_framework_compatibility(
-        self, package_frameworks: List[str], system_frameworks: List[str]
-    ) -> List[str]:
+        self, package_frameworks: list[str], system_frameworks: list[str]
+    ) -> list[str]:
         compatible = []
 
         for sys_fw in system_frameworks:
@@ -568,9 +556,7 @@ class NuGetClient(BaseDataSourceClient):
 
         return list(set(compatible))
 
-    def _is_framework_compatible(
-        self, package_framework: str, system_framework: str
-    ) -> bool:
+    def _is_framework_compatible(self, package_framework: str, system_framework: str) -> bool:
         if package_framework == system_framework:
             return True
 
@@ -580,10 +566,7 @@ class NuGetClient(BaseDataSourceClient):
                 and (self._extract_framework_version(system_framework) or 0) >= 461
             ):
                 return True
-            if any(
-                fw in system_framework
-                for fw in ["netcore", "net5", "net6", "net7", "net8"]
-            ):
+            if any(fw in system_framework for fw in ["netcore", "net5", "net6", "net7", "net8"]):
                 return True
 
         if package_framework.startswith("net") and system_framework.startswith("net"):
@@ -595,7 +578,7 @@ class NuGetClient(BaseDataSourceClient):
 
         return False
 
-    def _extract_framework_version(self, framework: str) -> Optional[float]:
+    def _extract_framework_version(self, framework: str) -> float | None:
         match = re.search(r"(\d+)\.?(\d*)", framework)
         if match:
             major = int(match.group(1))
@@ -619,9 +602,7 @@ async def example_usage():
     async with NuGetClient() as client:
         await client.search_packages("Newtonsoft.Json", limit=5)
 
-        info = await client.get_package_info_async(
-            "Newtonsoft.Json", include_versions=True
-        )
+        info = await client.get_package_info_async("Newtonsoft.Json", include_versions=True)
 
         await client.get_package_version("Newtonsoft.Json", "13.0.3")
 

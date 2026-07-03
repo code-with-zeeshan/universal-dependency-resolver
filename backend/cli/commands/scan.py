@@ -1,4 +1,5 @@
 """Module docstring."""
+
 import sys
 
 from rich.panel import Panel

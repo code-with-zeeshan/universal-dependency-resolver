@@ -1,8 +1,5 @@
 """Tests for udr details command."""
-import subprocess
-import sys
 
-import pytest
 
 from .test_commands import _run
 

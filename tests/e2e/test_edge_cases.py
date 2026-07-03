@@ -25,8 +25,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 UDR = [sys.executable, "-m", "backend.cli"]
 
@@ -96,7 +94,7 @@ class TestCUDA:
             data = _lock(d, cuda="12.1", timeout=300)
             pkgs = data.get("packages", {})
             torch_ver = pkgs.get("torch", {}).get("resolved_version", "")
-            torch_cuda = pkgs.get("torch", {}).get("cuda_variant", False)
+            pkgs.get("torch", {}).get("cuda_variant", False)
             assert torch_ver, "torch not resolved"
             # CUDA variant should be selected (torch resolves to a +cu variant)
             # But even if not, nvidia deps are still present on Linux
@@ -149,7 +147,7 @@ class TestCrossEcosystem:
     """Cross-ecosystem resolution."""
 
     def test_05_deep_transitive_pypi(self):
-        """flask → werkzeug → markupsafe chain resolved."""
+        """Flask → werkzeug → markupsafe chain resolved."""
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "requirements.txt").write_text("flask>=2.3\nrequests>=2.28\n")
@@ -294,7 +292,7 @@ class TestCLIWorkflow:
             assert result.returncode == 0, f"export --dry-run failed: {result.stderr[:500]}"
             # Should have pinned versions in output
             lines = result.stdout.splitlines()
-            pinned = [l for l in lines if "==" in l]
+            pinned = [ln for ln in lines if "==" in ln]
             assert len(pinned) >= 1, f"No pinned versions: {result.stdout[:300]}"
 
 
@@ -305,14 +303,14 @@ class TestJSONOutput:
     """JSON output compliance."""
 
     def test_15_resolve_json(self):
-        """resolve --format json produces valid JSON."""
+        """Resolve --format json produces valid JSON."""
         result = _run("resolve", "requests", "--format", "json", timeout=60)
         assert result.returncode == 0, f"resolve json failed: {result.stderr}"
         data = json.loads(result.stdout)
         assert "resolved_packages" in data, "missing resolved_packages"
 
     def test_16_lock_json(self):
-        """lock --json produces valid JSON with packages."""
+        """Lock --json produces valid JSON with packages."""
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "requirements.txt").write_text("requests>=2.28\n")
@@ -326,7 +324,7 @@ class TestJSONOutput:
             assert len(data["packages"]) >= 3, f"Expected >=3 packages, got {len(data['packages'])}"
 
     def test_17_info_json(self):
-        """info --json produces valid JSON with system info."""
+        """Info --json produces valid JSON with system info."""
         result = _run("info", "--json", timeout=60)
         assert result.returncode == 0, f"info json failed: {result.stderr}"
         data = json.loads(result.stdout)
@@ -354,10 +352,10 @@ class TestManifests:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "go.mod").write_text(
-                'module example.com/test\n\ngo 1.21\n\nrequire (\n\t'
-                'github.com/pkg/errors v0.9.1\n\t'
-                'golang.org/x/text v0.14.0\n)\n\n'
-                'replace github.com/pkg/errors => ../local\n'
+                "module example.com/test\n\ngo 1.21\n\nrequire (\n\t"
+                "github.com/pkg/errors v0.9.1\n\t"
+                "golang.org/x/text v0.14.0\n)\n\n"
+                "replace github.com/pkg/errors => ../local\n"
             )
             data = _lock(d, timeout=60)
             assert len(data) >= 0
@@ -407,8 +405,8 @@ class TestManifests:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "mypackage.cabal").write_text(
-                'cabal-version: 3.4\nname: mypackage\nversion: 0.1.0\n'
-                'build-depends: base >=4.16 && <5, containers >=0.6\n'
+                "cabal-version: 3.4\nname: mypackage\nversion: 0.1.0\n"
+                "build-depends: base >=4.16 && <5, containers >=0.6\n"
             )
             data = _lock(d, timeout=60)
             assert len(data) >= 0
@@ -658,7 +656,7 @@ class TestInstallRestore:
             assert "npm" in result.stdout.lower()
 
     def test_44_install_restore_flag(self):
-        """install --restore flag works."""
+        """Install --restore flag works."""
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "requirements.txt").write_text("requests>=2.28\n")

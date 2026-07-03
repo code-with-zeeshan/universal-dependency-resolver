@@ -5,44 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.1] - 2026-06-30
-
-### Added
-
-- **CLI split into 14-module package**: Monolithic `cli.py` → `backend/cli/commands/` with subcommands (check, completion, config, export, info, install, list-ecosystems, lock, reconcile, resolve, scan, serve, uninstall)
-- **Shell completion**: `udr completion bash|zsh|fish` generates context-aware completions for all 13 subcommands
-- **CLI end-to-end tests**: 20 black-box subprocess tests in `tests/cli/`
-- **Desktop CI smoke tests**: Node.js backend-launcher tests run on every push via `desktop-tests` CI job
-- **Desktop smoke tests expanded**: Version consistency, file structure, API health endpoint, dependency resolution endpoint checks
-- **Desktop UI — Install/Restore tabs**: Generate native package manager commands from lock files, with Copy buttons. Direct deps (Install) vs all packages (Restore)
-- **Desktop UI — Lock file download**: "Generate Lock File" button in Scan results produces `udr.lock` download
-- **API endpoints**: `POST /api/v1/generate-lock`, `POST /api/v1/install-commands`, `POST /api/v1/restore-commands`
-- **Desktop usage guide**: New `docs/DESKTOP.md` covers all 15 sidebar tabs, keyboard shortcuts (`Ctrl+K` → Resolve), menu, troubleshooting
-
-### Changed
-
-- **data_sources coverage: 53% → 76%**: 263 new tests across all 7 data sources (maven, npm, conda, crates, rubygems, manifest_detector, documentation_scraper)
-- **Maven split into package**: 1551-line `maven_client.py` → `maven/` package (client.py, pom_parser.py, version_utils.py) with backward-compat shim
-- **Health endpoint hardened**: `external_apis` check now pings `pypi.org/pypi/pip/json` instead of stub
-- **Snyk gating**: Threshold changed to `--severity-threshold=critical` (only critical blocks main branch)
-- **mypy errors**: Reduced from 84 to 0 across all 75 source files
-- **Desktop workflow simplified**: Removed redundant linux arm64 QEMU matrix entry — x64 job cross-compiles both x86_64 and arm64 Linux artifacts via electron-builder
-- **Docs: ecosystem count corrected**: 13 → 14 across all docs (added `pub`/Dart/Flutter)
-- **CLI.md accuracy fixes**: Added `install`/`restore` command sections; added missing `--cuda`, `--device`, `--report`, `--manifest` flags; fixed `resolve -e` ecosystem choices; corrected rate-limiting claim in `--mode` docs
-
-### Fixed
-
-- **`run_async()` crash**: Handles both `asyncio.run()` (no running loop) and `new_event_loop()` (called from existing loop)
-- **cpuinfo lazy-import**: Avoids crash on unsupported CPU arch in PyInstaller bundle
-- **ruff format/mypy type:ignore**: All formatting and type annotation issues resolved
-- **mypy**: `constraint_normalizer.py` type annotations — `-> str` → `Optional[str]` for functions returning `None`
-- **ruff**: Import ordering (`from typing import Optional` placed after `import re`)
-
-### Security
-
-- Trivy + CodeQL gating (no `continue-on-error`)
-- Snyk gating on main only (requires `SNYK_TOKEN`)
-
 ## [1.3.2] - 2026-07-03
 
 ### Added
@@ -97,22 +59,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/diagram/architecture.excalidraw`** — Excalidraw JSON format does not render on GitHub. Replaced with inline Mermaid diagrams.
 - **`tests/fixtures/api_responses/`** — Stale mock JSON fixtures (conda, npm, pypi). Coverage handled by live data source tests.
 
-## [1.2.5] - 2026-06-30
+## [1.3.1] - 2026-06-30
+
+### Added
+
+- **Desktop UI — Install/Restore tabs**: Generate native package manager commands from lock files, with Copy buttons. Direct deps (Install) vs all packages (Restore)
+- **Desktop UI — Lock file download**: "Generate Lock File" button in Scan results produces `udr.lock` download
+- **API endpoints**: `POST /api/v1/generate-lock`, `POST /api/v1/install-commands`, `POST /api/v1/restore-commands`
+- **Desktop usage guide**: New `docs/DESKTOP.md` covers all 15 sidebar tabs, keyboard shortcuts (`Ctrl+K` → Resolve), menu, troubleshooting
+
+### Changed
+
+- **Docs: ecosystem count corrected**: 13 → 14 across all docs (added `pub`/Dart/Flutter)
+- **CLI.md accuracy fixes**: Added `install`/`restore` command sections; added missing `--cuda`, `--device`, `--report`, `--manifest` flags; fixed `resolve -e` ecosystem choices; corrected rate-limiting claim in `--mode` docs
+- **ManifestDetector + ConstraintNormalizer upgraded**: Better cross-ecosystem version handling and manifest parsing
+- **ruff format**: 4 files auto-fixed
 
 ### Fixed
 
-- **scan crash (P0)**: Added missing `--device`/`--cuda`/`--report` args to scan parser
-- **lock --json stdout pollution (P1)**: Rich tables suppressed when `--json` is used
-- **Nested manifest detection (P2)**: Path-based seen set instead of filename-based
-- **resolve --device (P2)**: Added `--device`/`--cuda` to resolve command
-- **Exit code on failure (P2)**: Exit code 1 returned when resolution fails
-- **--manifest relative paths (P2)**: Matches subdirectory manifests via `endswith`
-- **API ecosystem validation (P2)**: Fixed 400 error on versions/dependencies endpoints
-- **udr --version from wheel (P3)**: `importlib.metadata` fallback
-- **CVE noise reduction (P3)**: Only CRITICAL/HIGH shown inline
-- ***-requirements.txt glob (P3)**: Pattern added to manifest detection
-- **Type check**: Fixed `ErrorCategory | None` unwrap in conflict_resolver.py
-- **Desktop bugs (8)**: backendDir path, Python fallback, env passthrough, restart lock, window state atomicity, health check URL, configurable host, onBackendReady IPC
+- **udr check / udr info GPU crash**: CUDA info is a dict, not a string
+- **Desktop install, status, menu**: Several desktop UI and IPC fixes
+- **mypy**: `constraint_normalizer.py` type annotations — `-> str` → `Optional[str]` for functions returning `None`
+- **ruff**: Import ordering (`from typing import Optional` placed after `import re`)
+
+## [1.3.0] - 2026-06-30
+
+### Added
+
+- **CLI split into 14-module package**: Monolithic `cli.py` → `backend/cli/commands/` with subcommands (check, completion, config, export, info, install, list-ecosystems, lock, reconcile, resolve, scan, serve, uninstall)
+- **Shell completion**: `udr completion bash|zsh|fish` generates context-aware completions for all 13 subcommands
+- **CLI end-to-end tests**: 20 black-box subprocess tests in `tests/cli/`
+- **Desktop CI smoke tests**: Node.js backend-launcher tests run on every push via `desktop-tests` CI job
+- **Desktop smoke tests expanded**: Version consistency, file structure, API health endpoint, dependency resolution endpoint checks
+
+### Changed
+
+- **data_sources coverage: 53% → 76%**: 263 new tests across all 7 data sources (maven, npm, conda, crates, rubygems, manifest_detector, documentation_scraper)
+- **Maven split into package**: 1551-line `maven_client.py` → `maven/` package (client.py, pom_parser.py, version_utils.py) with backward-compat shim
+- **Snyk gating**: Threshold changed to `--severity-threshold=critical` (only critical blocks main branch)
+- **mypy errors**: Reduced from 84 to 0 across all 75 source files
+- **Desktop workflow simplified**: Removed redundant linux arm64 QEMU matrix entry — x64 job cross-compiles both x86_64 and arm64 Linux artifacts via electron-builder
+- **Health endpoint hardened**: `external_apis` check now pings `pypi.org/pypi/pip/json` instead of stub
+
+### Fixed
+
+- **`run_async()` crash**: Handles both `asyncio.run()` (no running loop) and `new_event_loop()` (called from existing loop)
+- **cpuinfo lazy-import**: Avoids crash on unsupported CPU arch in PyInstaller bundle
+- **ruff format/mypy type:ignore**: All formatting and type annotation issues resolved
+
+### Security
+
+- Trivy + CodeQL gating (no `continue-on-error`)
+- Snyk gating on main only (requires `SNYK_TOKEN`)
+
+## [1.2.5] - 2026-06-30
 
 ### Added
 
@@ -120,12 +120,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tag-version safety nets in publish and desktop CI workflows
 - TEST_REPORT.md documenting 48/48 tests passing (100%)
 
+### Fixed
+
+- **resolve --device/--cuda (P0)**: Added `--device` and `--cuda` flags to `resolve` command with CUDA/device override handling
+- **lock --json stdout pollution (P1)**: Rich tables suppressed when `--json` is used — `manifest_table`/`pkg_table` gated on `not args.json`
+- **Nested manifest detection (P2)**: Path-based seen set instead of filename-based — prevents false dedup across subdirectories
+- **--manifest relative paths (P2)**: Matches subdirectory manifests via `endswith` on resolved path
+- **Exit code on failure (P2)**: Exit code 1 returned when resolution yields no packages
+- **API ecosystem validation (P2)**: Fixed 400 error on versions/dependencies endpoints — proper ecosystem enum check
+- **udr --version from wheel (P3)**: `importlib.metadata` fallback when `__version__` not available
+- **CVE noise reduction (P3)**: Only CRITICAL/HIGH severities shown inline
+- ***-requirements.txt glob (P3)**: Pattern added to manifest detection
+- **Type check**: Fixed `ErrorCategory | None` unwrap in conflict_resolver.py
+- **Desktop bugs (8)**: backendDir path, Python fallback, env passthrough, restart lock, window state atomicity, health check URL, configurable host, onBackendReady IPC
+- **Desktop workflow**: YAML fixes (heredoc delimiter, multi-line syntax), workflow file rename to force re-index
+
 ## [1.2.4] - 2026-06-29
 
 ### Added
 - CHANGELOG.md content auto-populated as release body on publish
-- CLI report file (`udr-lock-report.txt`) generated alongside lock file
+- CLI report file (`udr-lock-report.txt`) generated alongside lock file (opt-in via `--report` flag)
 - `close()` method on `BaseDataSourceClient` and `DocumentationScraper` for proper aiohttp session cleanup
+- **PyPI/desktop releases decoupled**: Tag prefixes distinguish PyPI releases (`v*`) from desktop builds (`desktop-v*`)
 
 ### Fixed
 - `udr info` / `udr check` KeyError on 'brand'/'arch' in restricted environments (was only fixed in source, now verified)
@@ -141,6 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All 12 resolver edge cases (circular deps, z3.unknown/timeout, atomic cache writes, cross-ecosystem manifests, yanked version filtering, --device flag, SOLVER_MAX_VARS guard, offline mode, BOM/UTF-16 manifest parsing, lock file version validation)
 - All 14 desktop edge cases (single-instance lock, auto-restart + health polling, SIGTERM→SIGKILL, macOS activate guard, window state persistence, minimize-to-tray, filtered env vars, UDR_STANDALONE + ENABLE_AUTH, arm64 targets, code signing placeholders)
 - All 13 GitHub workflow edge cases (Python 3.13, runner.arch detection, npm cache, Z3 glob discovery, UPX scoop+choco, explicit macOS runner labels, trivy-action pin, lint/typecheck gating, publish needs CI, build verification)
+- **`__version__` in backend package**: Added via `importlib.metadata` for reliable version introspection
 
 ### Fixed
 - 62 pre-existing ruff lint errors (unused imports/vars, f-strings, formatting)
@@ -149,6 +166,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flaky NuGet data source test excluded from hard-failing unit test step
 
 ## [1.2.2] - 2026-06-29
+
+### Added
+- **`udr scan github <url>`**: Scan GitHub repositories directly — fetches repo, detects manifests, resolves dependencies
+- **`--cuda` flag**: CUDA version constraint for GPU-accelerated package resolution
+- **CUDA mismatch warnings**: Automatically warns when resolved package requires different CUDA version
+- **Full API reference**: `docs/API.md` — all 33 endpoints documented with request/response examples (1,518 lines)
+- **Full CLI reference rewrite**: `docs/CLI.md` — all commands, flags, and usage examples rewritten (525 lines)
 
 ### Fixed
 - **NuGet returns None for all packages** — `normalize_package_name` was destroying dots in package names (`Newtonsoft.Json` → `newtonsoft-json`, 404 on all API calls). Changed to `package_name.lower()` to preserve dots.
@@ -166,61 +190,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2026-06-28
 
 ### Added
-- Desktop Electron app (`desktop/`) — bundled Python backend via PyInstaller, GUI, system tray, auto-update, notifications
-- CLI tool (`backend/cli.py`) — 9 commands: serve, check, resolve, info, lock, graph, verify, list-ecosystems, update
-- SAT-based conflict resolution via Z3
-- System scanner: OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java detection
-- Export generator: 12 formats (requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat)
-- Manifest detector: auto-detects 20+ manifest formats
-- Lazy client creation in data_aggregator.py — 13 HTTP clients loaded on demand
-- CLI startup optimization: `import z3` moved to inside methods, all data source imports deferred
-- Concurrent package fetching via `asyncio.gather` in API routes, CLI resolve, and CLI lock
-- System info caching with 5-minute TTL on API resolve requests
-- DictCache fallback when Redis is unavailable
-- SQLite as default database, no PostgreSQL required
+- **Desktop Electron app**: Bundled Python backend via PyInstaller, electron-builder config, installer icons (NSIS/dmg/deb), system tray, auto-update, notifications
+- **Self-contained desktop HTML**: Replaced Vue.js SPA with inline `index.html` — 6 tabs (Resolve, Install, Restore, Settings, About, Logs), no build step required
+- **`backend/settings/` package**: Replaced monolithic 831-line `settings.py` with modular package structure
+- **`backend/api/helpers/`**: Extracted shared API utilities from bloated route handlers
+- **Lazy client creation**: `DataAggregator` creates 13 HTTP clients on demand, not at import time
+- **CLI startup optimization**: `import z3` deferred to inside methods, all data source imports lazy
+- **Concurrent package fetching**: `asyncio.gather` in API routes, CLI resolve, and CLI lock
+- **System info caching**: 5-minute TTL on API resolve requests
+- **DictCache fallback**: Automatic fallback when Redis is unavailable
+- **COMPONENTS.md**: New documentation explaining 3-component model (CLI, API, Desktop) and use cases
 
 ### Changed
-- PostgreSQL and Redis are now optional — SQLite + DictCache cover all standalone/desktop use cases
-- All 7 synchronous `package_exists()` methods converted to async aiohttp
-- Registry URL constants inlined from settings into `get_ecosystem_config()` and 9 data source clients
-- Settings trimmed from 595 → ~200 lines: removed Celery, Email, Webhooks, WebSockets, File upload, Prometheus/Sentry/OTEL settings
-- Integration tests default to SQLite — no PostgreSQL needed on the host
-- FastAPI pinned to `>=0.115.0,<0.116` for pydantic 2.x compatibility
+- **Frontend/ directory DELETED**: Entire Vue.js SPA removed (21,563-line `package-lock.json` deleted) — replaced by self-contained desktop `index.html`
+- **PostgreSQL and Redis → optional**: SQLite + DictCache cover all standalone/desktop use cases
+- **All `package_exists()` → async aiohttp**: 7 synchronous methods converted
+- **Registry URL constants inlined**: Moved from settings into `get_ecosystem_config()` and 9 data source clients
+- **Settings trimmed**: 595 → ~200 lines — removed Celery, Email, Webhooks, WebSockets, File upload, Prometheus/Sentry/OTEL
+- **Integration tests → SQLite**: No PostgreSQL needed on the host
+- **FastAPI pinned**: `>=0.115.0,<0.116` for pydantic 2.x compatibility
+- **273 unused imports removed**: Ruff F401 auto-fixed across codebase
 
 ### Removed
-- `monitoring/` directory (Prometheus, Grafana, Loki, Promtail — server infra)
-- `alembic/` directory and `alembic` dependency — `Base.metadata.create_all()` handles schema
-- `scripts/` directory — only `sync-version.py` kept
-- `backend/Dockerfile` and `build-docker` CI job — Docker is not a distribution channel
+- Entire `frontend/` directory (Vue.js SPA, package-lock.json, ESLint config, etc.)
+- `monitoring/` directory (Prometheus, Grafana, Loki, Promtail)
+- `alembic/` directory — `Base.metadata.create_all()` handles schema
+- `scripts/` — only `sync-version.py` kept
+- `backend/Dockerfile` and `build-docker` CI job
 - All docker-compose files, `.dockerignore`, `start_dev.sh`, `sonar-project.properties`
 - Dead test files: `load_test.js`, `TestSystemBenchmark`, `TestVerifiedCombination`, `test_middleware.py`
 - Dead API endpoints: `/compatibility/report`, `/compare`, `/gpu/info`, `/runtime/{runtime}`, `/analyze-environment`, `/benchmarks`
-- `requests` dependency (all usage replaced with `aiohttp`)
+- `requests` dependency — all usage replaced with `aiohttp`
+- **10 intermediate versions**: v1.1.1 through v1.1.20 + v1.2.0 — skipped in final v1.2.1 release
 
 ### Fixed
-- Integration test isolation: `db_session` fixture cleans tables between tests, preventing data leakage from API tests
-- SQLite foreign key enforcement: `PRAGMA foreign_keys=ON` event listener added for SQLite connections
-- All 21 tests updated for async `package_exists()` conversions
-- Settings tests no longer poison other tests (fixed `importlib.reload` + `clear=True` bug)
-- Route path collision: package details moved from `/{ecosystem}/{name}` to `/{ecosystem}/{name}/details`
-- `export_generator.py` uses `PackageLoader` for frozen-packaged compatibility
-- CLI `_parse_package_spec` uses `rsplit("@", 1)` for npm scoped packages
+- **Desktop PyInstaller bundling**: Hidden imports for `jose.jwt`, `passlib.bcrypt`, `z3`, `cpuinfo`; `--collect-all` for critical packages
+- **Desktop SECRET_KEY crash**: Added `auto_generated_secret_key()` fallback
+- **Desktop cwd bug**: Platform-aware working directory detection (macOS `.app` bundle, Linux PyInstaller)
+- **Desktop blank screen**: `extraResources` for frontend dist, correct dev/prod URL switching
+- **Desktop version mismatch**: Auto-version-sync from `package.json`
+- **Desktop NSIS uninstall loop**: Proper `closeApp` handling
+- **Desktop macOS ARM64**: Native ARM runner, `z3-solver<4.15.5` pin for macOS ARM compatibility
+- **Cross-platform hints**: macOS `.app` bundle detection, Linux platform fallback
+- **libz3.dll missing**: Added z3 DLL to PyInstaller bundle
+- **Integration test isolation**: `db_session` fixture cleans tables between tests
+- **SQLite foreign keys**: `PRAGMA foreign_keys=ON` event listener
+- **All 21 tests**: Updated for async `package_exists()` conversions
+- **Settings tests**: Fixed `importlib.reload` + `clear=True` poisoning bug
+- **Route collision**: Package details moved from `/{ecosystem}/{name}` to `/{ecosystem}/{name}/details`
+- **export_generator.py**: Uses `PackageLoader` for frozen-packaged compatibility
+- **CLI `_parse_package_spec`**: Uses `rsplit("@", 1)` for npm scoped packages
 
 ## [1.1.0] - 2026-06-25
 
-### CI & Deploy
-- CI pipeline: all 11 jobs fixed and passing
-- Backend: lazy opentelemetry imports, defensive system info, DataAggregator/CompatibilityDB fixes
-- Integration tests: 5 pre-existing failures fixed
-- Desktop: Electron blank screen fix (extraResources for frontend dist)
-- Removed `deploy.yml` (all jobs disabled)
+### Added
+- **Initial project scaffold**: FastAPI backend, Vue.js frontend, PostgreSQL/SQLite, Docker/k8s, monitoring stack
+- **10+ data source clients**: PyPI, npm, Maven, Crates.io, Conda, RubyGems, NuGet, Pub (Dart), Go, Cargo — with async aiohttp, caching, version parsing
+- **CLI tool**: 9 commands — serve, check, resolve, info, lock, graph, verify, list-ecosystems, update
+- **SAT-based conflict resolution**: Z3 solver integration with binary encoding, version enumeration, constraint propagation
+- **System scanner**: OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java detection
+- **Export generator**: 12 output formats (requirements.txt, package.json, Dockerfile, pyproject.toml, etc.)
+- **Manifest detector**: Auto-detects 20+ manifest formats with per-ecosystem parsers
+- **Frontend dashboard**: Vue.js SPA with Project Scan panel, dependency visualization, Desktop app launcher
+- **Install script**: `install.sh` for non-Python users, auto-detects OS and package manager
+- **Observability**: OpenTelemetry tracing, Prometheus metrics, Sentry error tracking, structured logging
+- **Auth middleware**: JWT-based authentication with bearer token support
+- **CI/CD pipeline**: 11 CI jobs (lint, typecheck, unit tests, integration tests, data-source tests, security, frontend, desktop build, publish, deploy)
+
+### Changed
+- **PostgreSQL and Redis → optional**: SQLite + DictCache cover standalone/desktop use cases — no external services required
+- **All sync `package_exists()` → async aiohttp**: Eliminated blocking calls in async context
+- **Registry URL constants inlined**: Moved from settings/ into `get_ecosystem_config()` and data source clients
+- **Settings trimmed**: 595 → ~200 lines — removed Celery, Email, Webhooks, WebSockets, File upload, Prometheus/Sentry/OTEL settings
+- **Integration tests → SQLite**: No PostgreSQL required on the host
+- **FastAPI pinned**: `>=0.115.0,<0.116` for pydantic 2.x compatibility
+
+### Removed
+- `monitoring/` directory (Prometheus, Grafana, Loki, Promtail — server infra)
+- `alembic/` directory — `Base.metadata.create_all()` handles schema
+- `scripts/` — only `sync-version.py` kept
+- `backend/Dockerfile` and `build-docker` CI job
+- All docker-compose files, `.dockerignore`, `start_dev.sh`, `sonar-project.properties`
+- Dead test files: `load_test.js`, `TestSystemBenchmark`, `TestVerifiedCombination`, `test_middleware.py`
+- Dead API endpoints: `/compatibility/report`, `/compare`, `/gpu/info`, `/runtime/{runtime}`, `/analyze-environment`, `/benchmarks`
+- `requests` dependency — all usage replaced with `aiohttp`/`urllib`
+
+### Fixed
+- **Desktop Electron blank screen**: `extraResources` for frontend dist
+- **Integration test isolation**: `db_session` fixture cleans tables between tests
+- **SQLite foreign keys**: `PRAGMA foreign_keys=ON` event listener
+- **All 21 tests updated**: For async `package_exists()` conversions
+- **Settings test poisoning**: Fixed `importlib.reload` + `clear=True` bug
+- **Route collision**: Package details moved from `/{ecosystem}/{name}` to `/{ecosystem}/{name}/details`
+- **export_generator.py**: Uses `PackageLoader` for PyInstaller/frozen-packaged compatibility
+- **CLI `_parse_package_spec`**: Uses `rsplit("@", 1)` for npm scoped packages
+- **5 integration test failures**: All resolved
+- **CI pipeline**: All 11 jobs fixed and passing
+- **Opentelemetry**: Lazy imports to avoid crash in restricted environments
+- **System info**: Defensive `.get()` with defaults for GPU/CPU fields
 
 ### Publishing
 - Publishes to PyPI (`pip install ud-resolver`) via trusted publishing
 - Uploads `.whl` to release assets on publish
 - Loosened version pins (fastapi, uvicorn, packaging) to avoid Colab conflicts
-
-### Documentation cleanup
-- Removed internal audit docs (CODEREVIEW.md, weaknesses.md)
-- Fixed placeholders, emails, contradictory instructions
-- Removed PyPI defensive note, star-the-repo plea, empty Hall of Fame

@@ -1,17 +1,17 @@
 """Module docstring."""
+
 import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Optional
 
 from packaging.version import parse as parse_version
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.table import Table
 from rich import box
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
-from ..shared import console, err_console, _read_lock_file
+from ..shared import _read_lock_file, console, err_console
 
 
 async def _cmd_verify_async(args):
@@ -39,7 +39,7 @@ async def _cmd_verify_async(args):
     ) as progress:
         verify_task = progress.add_task("Verifying packages...", total=len(packages))
 
-        async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+        async def check_pkg(name: str, info: dict) -> dict | None:
             """Check pkg."""
             eco = info.get("ecosystem", "pypi")
             ver = info.get("resolved_version")
@@ -58,23 +58,17 @@ async def _cmd_verify_async(args):
                 if data:
                     versions = data.get("versions", {}).get(eco, [])
                     version_strings = [
-                        v.get("version", "") if isinstance(v, dict) else str(v)
-                        for v in versions
+                        v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
                     ]
                     try:
                         target_ver = parse_version(ver)
-                        found = any(
-                            parse_version(vs) == target_ver
-                            for vs in version_strings
-                            if vs
-                        )
-                        if not found:
-                            if ver not in version_strings:
-                                return {
-                                    "name": name,
-                                    "issue": f"Version {ver} no longer available",
-                                    "severity": "error",
-                                }
+                        found = any(parse_version(vs) == target_ver for vs in version_strings if vs)
+                        if not found and ver not in version_strings:
+                            return {
+                                "name": name,
+                                "issue": f"Version {ver} no longer available",
+                                "severity": "error",
+                            }
                     except Exception:
                         if ver not in version_strings:
                             return {
@@ -97,9 +91,7 @@ async def _cmd_verify_async(args):
         for result in results:
             if result:
                 issues.append(result)
-                progress.update(
-                    verify_task, description=f"[red]Issue: {result['name']}[/red]"
-                )
+                progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
             else:
                 ok_count += 1
             progress.advance(verify_task)
@@ -129,11 +121,7 @@ async def _cmd_verify_async(args):
         issue_table.add_column("Package")
         issue_table.add_column("Issue")
         for iss in issues:
-            sev_icon = (
-                "[red]ERROR[/red]"
-                if iss["severity"] == "error"
-                else "[yellow]WARN[/yellow]"
-            )
+            sev_icon = "[red]ERROR[/red]" if iss["severity"] == "error" else "[yellow]WARN[/yellow]"
             issue_table.add_row(sev_icon, iss["name"], iss["issue"])
         console.print(issue_table)
 

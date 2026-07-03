@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.database.compatibility_db import CompatibilityDB
 
-
 SAMPLE_PACKAGES = [
     # (name, ecosystem, version, description)
     ("numpy", "pypi", "1.26.2", "Scientific computing with Python"),

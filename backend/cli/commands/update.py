@@ -1,4 +1,5 @@
 """Module docstring."""
+
 import asyncio
 import json
 import sys
@@ -8,19 +9,20 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..shared import (
+    _fetch_package_data_async,
+    _read_lock_file,
+    _run_resolution,
     console,
     err_console,
-    _read_lock_file,
-    _fetch_package_data_async,
-    _run_resolution,
 )
 
 
 def cmd_update(args):
     """Cmd update."""
+
     async def _update():
         """Update."""
-        from backend.core import DataAggregator, ConflictResolver, SystemScanner
+        from backend.core import ConflictResolver, DataAggregator, SystemScanner
 
         lock_path = Path(args.directory) / "udr.lock"
         lock_data = _read_lock_file(lock_path)
@@ -37,9 +39,7 @@ def cmd_update(args):
 
         pkg_info = packages_in_lock[package_name]
         ecosystem = pkg_info.get("ecosystem", "pypi")
-        console.print(
-            f"Re-resolving [cyan]{package_name}[/cyan] ([yellow]{ecosystem}[/yellow])..."
-        )
+        console.print(f"Re-resolving [cyan]{package_name}[/cyan] ([yellow]{ecosystem}[/yellow])...")
 
         with Progress(
             SpinnerColumn(),
@@ -74,9 +74,7 @@ def cmd_update(args):
                 system_info["gpu"]["type"] = "cuda"
 
         specs = [(package_name, ecosystem, None)]
-        resolver_inputs, package_details = await _fetch_package_data_async(
-            aggregator, specs
-        )
+        resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:
             console.print(f"[red]Could not fetch metadata for {package_name}[/red]")
@@ -115,12 +113,12 @@ def cmd_update(args):
 
         # Re-resolve all affected transitive deps by updating the lock
         lock_data["packages"][package_name]["resolved_version"] = new_version
-        lock_data["packages"][package_name]["cuda_variant"] = rp.get(
-            package_name, {}
-        ).get("cuda_variant", False)
-        lock_data["packages"][package_name]["cuda_version"] = rp.get(
-            package_name, {}
-        ).get("cuda_version")
+        lock_data["packages"][package_name]["cuda_variant"] = rp.get(package_name, {}).get(
+            "cuda_variant", False
+        )
+        lock_data["packages"][package_name]["cuda_version"] = rp.get(package_name, {}).get(
+            "cuda_version"
+        )
         lock_data["generated_at"] = __import__("datetime").datetime.now().isoformat()
 
         # Update transitive deps for the updated package
@@ -143,11 +141,10 @@ def cmd_update(args):
             return 0
 
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
-        console.print(
-            f"[green]Updated lock file:[/green] {lock_path}"
-        )
+        console.print(f"[green]Updated lock file:[/green] {lock_path}")
         transitive_count = sum(
-            1 for p in lock_data["packages"].values()
+            1
+            for p in lock_data["packages"].values()
             if not p.get("direct", True) and p.get("resolved_version")
         )
         console.print(

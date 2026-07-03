@@ -1,22 +1,24 @@
 """Module docstring."""
+
 # backend/api/routes/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from typing import Any, List, Optional
-from pydantic import BaseModel
 from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 
 from backend.api.auth import (
+    APIKeyCreate,
     AuthService,
-    get_current_user,
+    OAuth2PasswordRequestForm,
+    Token,
     UserCreate,
     UserLogin,
-    APIKeyCreate,
-    Token,
+    get_current_user,
     login_for_access_token,
-    OAuth2PasswordRequestForm,
 )
-from backend.orchestrator.db_service import User
 from backend.api.dependencies import limiter
+from backend.orchestrator.db_service import User
 
 router = APIRouter()
 
@@ -28,9 +30,9 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
-    full_name: Optional[str]
+    full_name: str | None
     is_active: bool
-    scopes: List[str] = []
+    scopes: list[str] = []
 
 
 class APIKeyResponse(BaseModel):
@@ -39,17 +41,17 @@ class APIKeyResponse(BaseModel):
     id: int
     name: str
     key: str  # Only returned on creation
-    description: Optional[str]
-    scopes: List[str]
+    description: str | None
+    scopes: list[str]
     created_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
 
 
 class ProfileUpdateRequest(BaseModel):
     """Profile Update Request functionality."""
 
-    full_name: Optional[str] = None
-    email: Optional[str] = None
+    full_name: str | None = None
+    email: str | None = None
 
 
 class PasswordChangeRequest(BaseModel):
@@ -84,9 +86,7 @@ async def login(request: Request, user_data: UserLogin) -> Token:
 
 @router.post("/token", response_model=Token)
 @limiter.limit("10/minute")
-async def token(
-    request: Request, form_data: OAuth2PasswordRequestForm = Depends()
-) -> Token:
+async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
     """OAuth2 compatible token endpoint."""
     return await login_for_access_token(form_data)
 
@@ -100,9 +100,7 @@ async def refresh_token(request: Request, refresh_token: str) -> Token:
 
 @router.post("/logout")
 @limiter.limit("30/minute")
-async def logout(
-    request: Request, current_user: User = Depends(get_current_user)
-) -> dict:
+async def logout(request: Request, current_user: User = Depends(get_current_user)) -> dict:
     """Logout user (client should discard tokens)."""
     # In a more complex system, you might want to blacklist the token
     return {"message": "Successfully logged out"}
@@ -178,8 +176,8 @@ async def change_password(
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Change user password."""
+    from backend.api.auth import get_password_hash, verify_password
     from backend.orchestrator.db_service import db_session
-    from backend.api.auth import verify_password, get_password_hash
 
     with db_session() as db:
         user = db.query(User).filter(User.id == current_user.id).first()
@@ -198,20 +196,16 @@ async def change_password(
         return {"message": "Password changed successfully"}
 
 
-@router.get("/api-keys", response_model=List[APIKeyResponse])
+@router.get("/api-keys", response_model=list[APIKeyResponse])
 @limiter.limit("30/minute")
 async def get_api_keys(
     request: Request, current_user: User = Depends(get_current_user)
-) -> List[APIKeyResponse]:
+) -> list[APIKeyResponse]:
     """Get user's API keys."""
-    from backend.orchestrator.db_service import db_session, APIKey
+    from backend.orchestrator.db_service import APIKey, db_session
 
     with db_session() as db:
-        keys = (
-            db.query(APIKey)
-            .filter(APIKey.user_id == current_user.id, APIKey.is_active)
-            .all()
-        )
+        keys = db.query(APIKey).filter(APIKey.user_id == current_user.id, APIKey.is_active).all()
 
         return [
             APIKeyResponse(
@@ -258,9 +252,7 @@ async def revoke_api_key(
     success = await AuthService.revoke_api_key(current_user, key_id)
 
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="API key not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
 
     return {"message": "API key revoked successfully"}
 
@@ -270,9 +262,7 @@ async def revoke_api_key(
 
 @router.get("/verify")
 @limiter.limit("60/minute")
-async def verify_token(
-    request: Request, current_user: User = Depends(get_current_user)
-) -> dict:
+async def verify_token(request: Request, current_user: User = Depends(get_current_user)) -> dict:
     """Verify if current token is valid."""
     return {
         "valid": True,

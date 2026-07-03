@@ -5,9 +5,8 @@ services (Grafana Cloud, Datadog, Honeycomb, New Relic, etc.)
 via standard OTEL environment variables.
 """
 
-import os
 import logging
-from typing import Dict
+import os
 
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() == "true"
 OTEL_EXPORTER_OTLP_PROTOCOL = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
@@ -26,15 +25,6 @@ logger = logging.getLogger(__name__)
 
 try:
     from opentelemetry import trace as _trace
-    from opentelemetry.sdk.resources import Resource as _Resource
-    from opentelemetry.sdk.trace import (
-        TracerProvider as _TracerProvider,
-        sampling as _sampling,
-    )
-    from opentelemetry.sdk.trace.export import (
-        BatchSpanProcessor as _BatchSpanProcessor,
-        SimpleSpanProcessor as _SimpleSpanProcessor,
-    )
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
         OTLPSpanExporter as _OTLPHttpExporter,
     )
@@ -43,6 +33,19 @@ try:
     )
     from opentelemetry.instrumentation.httpx import (
         HTTPXClientInstrumentor as _HTTPXClientInstrumentor,
+    )
+    from opentelemetry.sdk.resources import Resource as _Resource
+    from opentelemetry.sdk.trace import (
+        TracerProvider as _TracerProvider,
+    )
+    from opentelemetry.sdk.trace import (
+        sampling as _sampling,
+    )
+    from opentelemetry.sdk.trace.export import (
+        BatchSpanProcessor as _BatchSpanProcessor,
+    )
+    from opentelemetry.sdk.trace.export import (
+        SimpleSpanProcessor as _SimpleSpanProcessor,
     )
 
     _OTEL_AVAILABLE = True
@@ -66,9 +69,9 @@ except ImportError:
     OTLPGrpcExporter = None
 
 
-def _parse_resource_attributes(raw: str) -> Dict[str, str]:
+def _parse_resource_attributes(raw: str) -> dict[str, str]:
     """Parse OTEL_RESOURCE_ATTRIBUTES (key1=val1,key2=val2) into a dict."""
-    attrs: Dict[str, str] = {}
+    attrs: dict[str, str] = {}
     if not raw:
         return attrs
     for pair in raw.split(","):
@@ -89,16 +92,12 @@ def _create_sampler():
         "always_on": _sampling.ALWAYS_ON,
         "always_off": _sampling.ALWAYS_OFF,
         "traceidratio": _sampling.TraceIdRatioBased(sampler_arg),
-        "parentbased_traceidratio": _sampling.ParentBased(
-            _sampling.TraceIdRatioBased(sampler_arg)
-        ),
+        "parentbased_traceidratio": _sampling.ParentBased(_sampling.TraceIdRatioBased(sampler_arg)),
         "parentbased_always_on": _sampling.ParentBased(_sampling.ALWAYS_ON),
         "parentbased_always_off": _sampling.ParentBased(_sampling.ALWAYS_OFF),
     }
 
-    return samplers.get(
-        sampler_type, _sampling.ParentBased(_sampling.TraceIdRatioBased(0.1))
-    )
+    return samplers.get(sampler_type, _sampling.ParentBased(_sampling.TraceIdRatioBased(0.1)))
 
 
 def _create_otlp_exporter():

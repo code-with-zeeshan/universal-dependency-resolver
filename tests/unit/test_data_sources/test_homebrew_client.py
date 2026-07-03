@@ -2,8 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.data_sources.homebrew_client import HomebrewClient
-from backend.data_sources.homebrew_client import PackageType
+from backend.data_sources.homebrew_client import HomebrewClient, PackageType
 
 
 class TestHomebrewClient:

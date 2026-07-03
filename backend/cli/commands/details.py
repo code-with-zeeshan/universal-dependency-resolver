@@ -1,11 +1,12 @@
 """Show detailed package info — versions, dependencies, metadata."""
+
 import asyncio
 import json
 import sys
 
+from rich import box
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 from ..shared import console, err_console
 
@@ -52,10 +53,10 @@ async def _cmd_details_async(args):
     ver_list = data.get("versions", {}).get(ecosystem, [])
     if ver_list:
         version_strings = [
-            v.get("version", "") if isinstance(v, dict) else str(v)
-            for v in ver_list
+            v.get("version", "") if isinstance(v, dict) else str(v) for v in ver_list
         ]
         from packaging.version import parse as parse_version
+
         sorted_vers = sorted(
             [v for v in version_strings if v],
             key=lambda x: parse_version(x),

@@ -1,32 +1,33 @@
 """Module docstring."""
+
 import asyncio
 import json
 import sys
 from pathlib import Path
 
+from rich import box
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from rich.table import Table
-from rich import box
 
 from ..shared import (
-    console,
-    err_console,
-    _run_resolution,
     _aggregator_to_resolver_input,
     _extract_severity,
-    _validate_manifest_update_line,
-    _select_manifests_interactive,
     _output_json,
+    _run_resolution,
+    _select_manifests_interactive,
+    _validate_manifest_update_line,
+    console,
+    err_console,
 )
 
 
 def cmd_lock(args):
     """Cmd lock."""
-    from backend.manifest_detector import ManifestDetector
-    from backend.core import DataAggregator, ConflictResolver, SystemScanner
+    from backend.core import ConflictResolver, DataAggregator, SystemScanner
     from backend.core.export_generator import ExportGenerator
+    from backend.manifest_detector import ManifestDetector
 
     async def _lock():
         """Lock."""
@@ -55,9 +56,7 @@ def cmd_lock(args):
             console.print(
                 "Checked for: requirements.txt, package.json, Cargo.toml, pyproject.toml,"
             )
-            console.print(
-                "             Pipfile, environment.yml, Gemfile, go.mod, composer.json"
-            )
+            console.print("             Pipfile, environment.yml, Gemfile, go.mod, composer.json")
             return 1
 
         if args.manifest:
@@ -65,22 +64,17 @@ def cmd_lock(args):
             manifests = [
                 m
                 for m in manifests
-                if m["filename"] == target
-                or m["path"].replace("\\", "/").endswith("/" + target)
+                if m["filename"] == target or m["path"].replace("\\", "/").endswith("/" + target)
             ]
             if not manifests:
-                console.print(
-                    f"[red]Manifest '{args.manifest}' not found in {directory}[/red]"
-                )
+                console.print(f"[red]Manifest '{args.manifest}' not found in {directory}[/red]")
                 return 1
 
         if args.interactive:
             manifests = _select_manifests_interactive(manifests)
 
         if not getattr(args, "json", False):
-            manifest_table = Table(
-                title=f"Selected {len(manifests)} manifest(s)", box=box.SIMPLE
-            )
+            manifest_table = Table(title=f"Selected {len(manifests)} manifest(s)", box=box.SIMPLE)
             manifest_table.add_column("Ecosystem", style="cyan")
             manifest_table.add_column("Filename")
             for m in manifests:
@@ -99,9 +93,7 @@ def cmd_lock(args):
             pkg_table.add_column("Constraint")
             pkg_table.add_column("Source")
             for pkg in packages:
-                pkg_table.add_row(
-                    pkg["ecosystem"], pkg["name"], pkg["constraint"], pkg["source"]
-                )
+                pkg_table.add_row(pkg["ecosystem"], pkg["name"], pkg["constraint"], pkg["source"])
             console.print(pkg_table)
 
         seen = set()
@@ -115,9 +107,7 @@ def cmd_lock(args):
             TextColumn("[green]{task.completed}/{task.total}[/green]"),
             console=err_console,
         ) as progress:
-            fetch_task = progress.add_task(
-                "Fetching package metadata...", total=len(packages)
-            )
+            fetch_task = progress.add_task("Fetching package metadata...", total=len(packages))
 
             async def fetch_one(pkg):
                 """Fetch one."""
@@ -125,9 +115,7 @@ def cmd_lock(args):
                 if key in seen:
                     return None
                 seen.add(key)
-                progress.update(
-                    fetch_task, description=f"Fetching [cyan]{pkg['name']}[/cyan]..."
-                )
+                progress.update(fetch_task, description=f"Fetching [cyan]{pkg['name']}[/cyan]...")
                 try:
                     data = await aggregator.get_package_info(
                         pkg["name"],
@@ -138,9 +126,7 @@ def cmd_lock(args):
                     if data:
                         return (pkg, data)
                 except Exception as exc:
-                    err_console.print(
-                        f"  [red]Error fetching {pkg['name']}:[/red] {exc}"
-                    )
+                    err_console.print(f"  [red]Error fetching {pkg['name']}:[/red] {exc}")
                 return None
 
             results = await asyncio.gather(*[fetch_one(p) for p in packages])
@@ -274,9 +260,7 @@ def cmd_lock(args):
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
         console.print(f"[green]Lock file saved:[/green] {lock_path}")
 
-        rp_count = len(
-            [p for p in lock_data["packages"].values() if p["resolved_version"]]
-        )
+        rp_count = len([p for p in lock_data["packages"].values() if p["resolved_version"]])
         total_pkgs = len(lock_data["packages"])
         summary_table = Table(
             title=f"Resolved {rp_count}/{total_pkgs} packages — {lock_path.name}",
@@ -291,9 +275,7 @@ def cmd_lock(args):
         total_vulns = 0
         for pname, pinfo in lock_data["packages"].items():
             if pinfo["resolved_version"]:
-                cuda_str = (
-                    f"(+cu{pinfo['cuda_version']})" if pinfo.get("cuda_variant") else ""
-                )
+                cuda_str = f"(+cu{pinfo['cuda_version']})" if pinfo.get("cuda_variant") else ""
                 ptype = "direct" if pinfo.get("direct") else "transitive"
                 vuln_count = len(pinfo.get("vulnerabilities", []))
                 vuln_str = f"[red]{vuln_count} CVE[/red]" if vuln_count else ""
@@ -303,9 +285,7 @@ def cmd_lock(args):
                     pname, pinfo["ecosystem"], pinfo["resolved_version"], ptype, notes
                 )
             else:
-                summary_table.add_row(
-                    pname, pinfo["ecosystem"], "[red]unresolved[/red]", "", ""
-                )
+                summary_table.add_row(pname, pinfo["ecosystem"], "[red]unresolved[/red]", "", "")
 
         if total_vulns > 0:
             vuln_table = Table(
@@ -323,9 +303,7 @@ def cmd_lock(args):
                         if sev in ("CRITICAL", "HIGH")
                         else f"[yellow]{sev}[/yellow]"
                     )
-                    vuln_table.add_row(
-                        pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80]
-                    )
+                    vuln_table.add_row(pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80])
             console.print(vuln_table)
 
         console.print(summary_table)
@@ -372,9 +350,7 @@ def cmd_lock(args):
                         format=export_format,
                         system_info=system_info,
                     )
-                    export_path = (
-                        directory / f"udr-output.{export_format.replace('.', '-')}"
-                    )
+                    export_path = directory / f"udr-output.{export_format.replace('.', '-')}"
                     export_path.write_text(export_content)
                     console.print(f"[green]Exported:[/green] {export_path}")
                 except Exception as e:
@@ -394,9 +370,7 @@ def cmd_lock(args):
             console.print(
                 "[yellow]Non-interactive mode detected — skipping manifest update.[/yellow]"
             )
-            console.print(
-                "[yellow]Use --yes to update manifests without prompting.[/yellow]"
-            )
+            console.print("[yellow]Use --yes to update manifests without prompting.[/yellow]")
 
         updated_count = 0
         updated_manifests = {}
@@ -416,9 +390,7 @@ def cmd_lock(args):
                 new_lines = []
                 replaced = False
                 for line in content.split("\n"):
-                    result = _validate_manifest_update_line(
-                        line, pkg["name"], resolved_ver
-                    )
+                    result = _validate_manifest_update_line(line, pkg["name"], resolved_ver)
                     if result is not None and not replaced:
                         new_lines.append(result)
                         replaced = True

@@ -1,14 +1,17 @@
 """Module docstring."""
+
 # conda_client.py
-import aiohttp
-from typing import Dict, List, Optional, Tuple, Any
+import io
 import json
 import logging
-from datetime import datetime
 import re
-import yaml  # type: ignore[import-untyped]
 import tarfile
-import io
+from datetime import datetime
+from typing import Any
+
+import aiohttp
+import yaml  # type: ignore[import-untyped]
+
 from ..core.utils import (
     normalize_package_name,
     parse_version,
@@ -37,8 +40,7 @@ class CondaClient(BaseDataSourceClient):
         }
         self.channels = channels.copy()
         self.repodata_urls = {
-            channel: f"{url}/{{platform}}/repodata.json"
-            for channel, url in channels.items()
+            channel: f"{url}/{{platform}}/repodata.json" for channel, url in channels.items()
         }
         self._repodata_cache = {}
         self._dependency_cache = {}
@@ -54,7 +56,7 @@ class CondaClient(BaseDataSourceClient):
         except Exception:
             return False
 
-    async def get_package_info_async(self, package_name: str) -> Optional[Dict]:
+    async def get_package_info_async(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
         try:
             package_info = None
@@ -76,13 +78,11 @@ class CondaClient(BaseDataSourceClient):
             logger.error(f"Error fetching Conda package {package_name}: {e}")
             return None
 
-    def get_package_info(self, package_name: str) -> Optional[Dict]:
+    def get_package_info(self, package_name: str) -> dict | None:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def _fetch_from_anaconda_api(
-        self, package_name: str, channel: str
-    ) -> Optional[Dict]:
+    async def _fetch_from_anaconda_api(self, package_name: str, channel: str) -> dict | None:
         package_name = normalize_package_name(package_name)
         try:
             api_url = f"https://api.anaconda.org/package/{channel}/{package_name}"
@@ -106,7 +106,7 @@ class CondaClient(BaseDataSourceClient):
             logger.debug(f"Package {package_name} not found in {channel}: {e}")
             return None
 
-    async def _process_package_data_enhanced(self, data: Dict) -> Dict:
+    async def _process_package_data_enhanced(self, data: dict) -> dict:
         latest_version = data.get("latest_version")
         files = data.get("files", [])
         if not latest_version and files:
@@ -132,7 +132,7 @@ class CondaClient(BaseDataSourceClient):
             if version_str not in version_map:
                 attrs = file_info.get("attrs", {})
                 depends = attrs.get("depends", [])
-                deps: Dict[str, Any] = {}
+                deps: dict[str, Any] = {}
                 for dep_str in depends:
                     dep_name, constraint = self._parse_conda_dependency(dep_str)
                     if dep_name:
@@ -201,8 +201,8 @@ class CondaClient(BaseDataSourceClient):
             "platforms": list(set(f["attrs"].get("subdir", "noarch") for f in files)),
         }
 
-    def _extract_deps_from_files(self, files: List) -> Dict:
-        deps: Dict[str, Any] = {
+    def _extract_deps_from_files(self, files: list) -> dict:
+        deps: dict[str, Any] = {
             "required": {},
             "build": {},
             "run": {},
@@ -220,7 +220,7 @@ class CondaClient(BaseDataSourceClient):
 
     async def _extract_dependencies_from_repodata(
         self, package_name: str, version: str, channel: str
-    ) -> Dict:
+    ) -> dict:
         package_name = normalize_package_name(package_name)
         cache_key = f"{channel}:{package_name}:{version}"
 
@@ -239,7 +239,7 @@ class CondaClient(BaseDataSourceClient):
         )
         return dependencies
 
-    async def _fetch_repodata(self, channel: str, platform: str) -> Optional[Dict]:
+    async def _fetch_repodata(self, channel: str, platform: str) -> dict | None:
         cache_key = f"{channel}:{platform}"
 
         if cache_key in self._repodata_cache:
@@ -251,17 +251,13 @@ class CondaClient(BaseDataSourceClient):
             if channel in self.repodata_urls:
                 url = self.repodata_urls[channel].format(platform=platform)
             else:
-                base_url = self.channels.get(
-                    channel, f"https://conda.anaconda.org/{channel}"
-                )
+                base_url = self.channels.get(channel, f"https://conda.anaconda.org/{channel}")
                 url = f"{base_url}/{platform}/repodata.json"
 
             logger.debug(f"Fetching repodata from: {url}")
 
             session = self._get_session()
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status == 200:
                     data = await response.json()
                     self._repodata_cache[cache_key] = (data, datetime.now())
@@ -274,8 +270,8 @@ class CondaClient(BaseDataSourceClient):
 
     async def _extract_dependencies_from_package_metadata(
         self, package_name: str, version: str, channel: str
-    ) -> Dict:
-        dependencies: Dict[str, Any] = {
+    ) -> dict:
+        dependencies: dict[str, Any] = {
             "required": {},
             "build": {},
             "run": {},
@@ -311,7 +307,7 @@ class CondaClient(BaseDataSourceClient):
 
         return dependencies
 
-    async def _download_and_extract_metadata(self, url: str) -> Optional[Dict]:
+    async def _download_and_extract_metadata(self, url: str) -> dict | None:
         try:
             headers = {"Range": "bytes=0-1048576"}
 
@@ -338,9 +334,7 @@ class CondaClient(BaseDataSourceClient):
                                     member = tar.getmember("info/recipe/meta.yaml")
                                     f = tar.extractfile(member)
                                     if f:
-                                        metadata = yaml.safe_load(
-                                            f.read().decode("utf-8")
-                                        )
+                                        metadata = yaml.safe_load(f.read().decode("utf-8"))
                                         return self._parse_recipe_metadata(metadata)
                                 except KeyError:
                                     pass
@@ -352,7 +346,7 @@ class CondaClient(BaseDataSourceClient):
 
         return None
 
-    def _parse_recipe_metadata(self, recipe: Dict) -> Dict:
+    def _parse_recipe_metadata(self, recipe: dict) -> dict:
         metadata = {}
 
         requirements = recipe.get("requirements", {})
@@ -379,7 +373,7 @@ class CondaClient(BaseDataSourceClient):
 
         return metadata
 
-    def _parse_conda_dependency(self, dep_string: str) -> Tuple[Optional[str], str]:
+    def _parse_conda_dependency(self, dep_string: str) -> tuple[str | None, str]:
         if not dep_string or not isinstance(dep_string, str):
             return None, ""
 
@@ -412,13 +406,11 @@ class CondaClient(BaseDataSourceClient):
 
         return dep_string, "*"
 
-    def _extract_system_requirements(self, data: Dict, files: List[Dict]) -> Dict:
-        requirements: Dict[str, Any] = {}
+    def _extract_system_requirements(self, data: dict, files: list[dict]) -> dict:
+        requirements: dict[str, Any] = {}
         package_name = data.get("name", "").lower()
         package_name = data.get("name", "").lower()
-        description = (
-            data.get("description", "") + " " + data.get("summary", "")
-        ).lower()
+        description = (data.get("description", "") + " " + data.get("summary", "")).lower()
 
         cuda_indicators = [
             "cudatoolkit",
@@ -495,9 +487,7 @@ class CondaClient(BaseDataSourceClient):
                             python_versions.add(version_match.group(1))
 
         if python_versions:
-            requirements["python"] = {
-                "supported_versions": sorted(list(python_versions))
-            }
+            requirements["python"] = {"supported_versions": sorted(list(python_versions))}
 
         if "mkl" in package_name or any(
             "mkl" in f.get("attrs", {}).get("build", "") for f in files
@@ -515,7 +505,7 @@ class CondaClient(BaseDataSourceClient):
 
         return requirements
 
-    async def search(self, query: str, limit: int = 20) -> List[Dict]:
+    async def search(self, query: str, limit: int = 20) -> list[dict]:
         query = normalize_package_name(query)
 
         try:
@@ -548,7 +538,7 @@ class CondaClient(BaseDataSourceClient):
             logger.error(f"Error searching Conda: {e}")
             return []
 
-    async def get_versions(self, package_name: str) -> List[Dict]:
+    async def get_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info_async(package_name)
         if not info:
@@ -556,9 +546,7 @@ class CondaClient(BaseDataSourceClient):
 
         return info.get("versions", [])
 
-    async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict:
+    async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
         package_name = normalize_package_name(package_name)
         if not version:
             info = await self.get_package_info_async(package_name)

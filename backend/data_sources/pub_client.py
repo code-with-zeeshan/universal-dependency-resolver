@@ -1,7 +1,9 @@
 """Module docstring."""
-from typing import Dict, List, Optional, Any
+
 import logging
+from typing import Any
 from urllib.parse import quote
+
 from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
@@ -15,9 +17,9 @@ logger = logging.getLogger(__name__)
 class PubClient(BaseDataSourceClient):
     def __init__(
         self,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
     ):
         pub_config = get_ecosystem_config("pub")
         super().__init__(
@@ -27,20 +29,18 @@ class PubClient(BaseDataSourceClient):
         )
         self.download_url = "https://pub.dev/api"
 
-    async def get_package_info(self, package_name: str) -> Optional[Dict[str, Any]]:
+    async def get_package_info(self, package_name: str) -> dict[str, Any] | None:
         package_name = normalize_package_name(package_name)
         try:
-            data = await self._get(
-                f"{self.download_url}/packages/{quote(package_name)}"
-            )
+            data = await self._get(f"{self.download_url}/packages/{quote(package_name)}")
             if not data:
                 return None
 
-            latest_version = data.get("latest", {}).get("version") or data.get(
-                "versions", [{}]
-            )[0].get("version")
+            latest_version = data.get("latest", {}).get("version") or data.get("versions", [{}])[
+                0
+            ].get("version")
 
-            versions: List[Any] = []
+            versions: list[Any] = []
             deps_map = {}
             for v in data.get("versions", []):
                 version_str = v.get("version", "")
@@ -59,7 +59,7 @@ class PubClient(BaseDataSourceClient):
                 )
 
             # Build aggregated dependencies (latest version's deps)
-            deps: Dict[str, Any] = {"dependencies": {}}
+            deps: dict[str, Any] = {"dependencies": {}}
             latest_pubspec = None
             if data.get("latest", {}).get("pubspec"):
                 latest_pubspec = data["latest"]["pubspec"]
@@ -71,9 +71,7 @@ class PubClient(BaseDataSourceClient):
                         continue
                     dep_str = str(dep_ver) if not isinstance(dep_ver, str) else dep_ver
                     deps["dependencies"][dep_name] = dep_str
-                for dep_name, dep_ver in latest_pubspec.get(
-                    "dev_dependencies", {}
-                ).items():
+                for dep_name, dep_ver in latest_pubspec.get("dev_dependencies", {}).items():
                     dep_str = str(dep_ver) if not isinstance(dep_ver, str) else dep_ver
                     deps.setdefault("dev_dependencies", {})[dep_name] = dep_str
 
@@ -93,17 +91,15 @@ class PubClient(BaseDataSourceClient):
             return None
 
     async def get_package_versions(
-        self, package_name: str, filters: Optional[Dict] = None
-    ) -> List[Dict]:
+        self, package_name: str, filters: dict | None = None
+    ) -> list[dict]:
         package_name = normalize_package_name(package_name)
         try:
-            data = await self._get(
-                f"{self.download_url}/packages/{quote(package_name)}"
-            )
+            data = await self._get(f"{self.download_url}/packages/{quote(package_name)}")
             if not data:
                 return []
 
-            versions: List[Any] = []
+            versions: list[Any] = []
             for v in data.get("versions", []):
                 version_str = v.get("version", "")
                 if parse_version(version_str) is None:

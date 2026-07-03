@@ -4,10 +4,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
-from pathlib import Path
-
-import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

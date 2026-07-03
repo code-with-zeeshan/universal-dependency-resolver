@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from enum import Enum, StrEnum
+from typing import Any
 
 
-class ErrorCategory(str, Enum):
+class ErrorCategory(StrEnum):
     """High-level error categories used across the resolver service."""
 
     VALIDATION = "validation_error"
@@ -21,7 +21,7 @@ class ErrorCategory(str, Enum):
     DATA_SOURCE = "data_source_error"
 
 
-class ResolverErrorCode(str, Enum):
+class ResolverErrorCode(StrEnum):
     """Granular error codes for the conflict resolver. Maps to ErrorCategory."""
 
     VALIDATION_ERROR = "validation_error"
@@ -40,10 +40,10 @@ class ResolverBaseError(Exception):
     """Base exception carrying structured payload information."""
 
     message: str
-    category: Optional[ErrorCategory] = None
-    code: Optional[Union[ErrorCategory, ResolverErrorCode, str]] = None
-    details: Optional[Dict[str, Any]] = None
-    warnings: Optional[List[str]] = None
+    category: ErrorCategory | None = None
+    code: ErrorCategory | ResolverErrorCode | str | None = None
+    details: dict[str, Any] | None = None
+    warnings: list[str] | None = None
     status_code: int = 500
 
     def __post_init__(self):
@@ -57,9 +57,9 @@ class ResolverBaseError(Exception):
         elif self.category is None:
             self.category = ErrorCategory.INTERNAL
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         """Render the error in a standard API payload structure."""
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "status": "error",
             "code": self.category.value if self.category else "unknown",
             "message": self.message,
@@ -79,7 +79,7 @@ class ResolverError(ResolverBaseError):
 class ErrorFactory:
     """Helper methods for constructing domain-specific errors consistently."""
 
-    default_messages: Dict[ErrorCategory, str] = {
+    default_messages: dict[ErrorCategory, str] = {
         ErrorCategory.VALIDATION: "Input validation failed.",
         ErrorCategory.SYSTEM_INFO: "System information validation failed.",
         ErrorCategory.SOLVER: "Solver encountered an error while resolving dependencies.",
@@ -91,7 +91,7 @@ class ErrorFactory:
         ErrorCategory.DATA_SOURCE: "Data source returned an invalid response.",
     }
 
-    default_status_codes: Dict[ErrorCategory, int] = {
+    default_status_codes: dict[ErrorCategory, int] = {
         ErrorCategory.VALIDATION: 400,
         ErrorCategory.SYSTEM_INFO: 400,
         ErrorCategory.SOLVER: 500,
@@ -108,18 +108,16 @@ class ErrorFactory:
         cls,
         category: ErrorCategory,
         *,
-        message: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-        warnings: Optional[List[str]] = None,
-        status_code: Optional[int] = None,
+        message: str | None = None,
+        details: dict[str, Any] | None = None,
+        warnings: list[str] | None = None,
+        status_code: int | None = None,
     ) -> ResolverError:
         """Create a `ResolverError` using defaults when message is omitted."""
         resolved_message = message or cls.default_messages.get(
             category, "An unexpected error occurred."
         )
-        resolved_status_code = status_code or cls.default_status_codes.get(
-            category, 500
-        )
+        resolved_status_code = status_code or cls.default_status_codes.get(category, 500)
         return ResolverError(
             message=resolved_message,
             category=category,
@@ -129,20 +127,18 @@ class ErrorFactory:
         )
 
 
-def ensure_details_context(
-    details: Optional[Dict[str, Any]], **context: Any
-) -> Dict[str, Any]:
+def ensure_details_context(details: dict[str, Any] | None, **context: Any) -> dict[str, Any]:
     """Merge context data with existing details in a safe, copy-on-write way."""
-    effective_details: Dict[str, Any] = {"context": context} if context else {}
+    effective_details: dict[str, Any] = {"context": context} if context else {}
     if details:
         effective_details.update(details)
     return effective_details
 
 
-def serialize_exception_chain(error: BaseException) -> List[Dict[str, Any]]:
+def serialize_exception_chain(error: BaseException) -> list[dict[str, Any]]:
     """Capture the exception chain for diagnostics and telemetry."""
-    chain: List[Dict[str, Any]] = []
-    current: Optional[BaseException] = error  # type: ignore[assignment]
+    chain: list[dict[str, Any]] = []
+    current: BaseException | None = error  # type: ignore[assignment]
     while current:
         chain.append(
             {
@@ -158,9 +154,9 @@ def serialize_exception_chain(error: BaseException) -> List[Dict[str, Any]]:
 def make_internal_error(
     error: BaseException,
     *,
-    context: Optional[Dict[str, Any]] = None,
-    warnings: Optional[List[str]] = None,
-    correlation_id: Optional[str] = None,
+    context: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
+    correlation_id: str | None = None,
 ) -> ResolverError:
     """Create a standard internal error payload derived from an exception."""
     detail_context = context.copy() if context else {}

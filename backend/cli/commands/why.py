@@ -1,12 +1,10 @@
 """Explain why a package version was selected — show dependency chain."""
+
 import json
 import sys
 from pathlib import Path
 
-from rich.panel import Panel
-from rich.tree import Tree
-
-from ..shared import console, _read_lock_file
+from ..shared import _read_lock_file, console
 
 
 def _find_dep_chain(
@@ -29,9 +27,9 @@ def _find_dep_chain(
         eco = pinfo.get("ecosystem", "pypi")
         deps = pinfo.get("dependencies", {}).get(eco, {})
         if target in deps:
-            result = chain + [(pkg_name, ver, deps.get(target, "?"))]
+            result = [*chain, (pkg_name, ver, deps.get(target, "?"))]
             return result
-        sub = _find_dep_chain(packages, target, chain + [(pkg_name, ver, "?")], visited)
+        sub = _find_dep_chain(packages, target, [*chain, (pkg_name, ver, "?")], visited)
         if sub is not None:
             return sub
     return None
@@ -84,9 +82,11 @@ def cmd_why(args):
     console.print(f"[bold]Why {target} {ver} ({eco})[/bold]")
 
     if direct:
-        console.print(f"\n  [green]Direct dependency[/green] — specified in manifest as [cyan]{constraint}[/cyan]")
+        console.print(
+            f"\n  [green]Direct dependency[/green] — specified in manifest as [cyan]{constraint}[/cyan]"
+        )
     else:
-        console.print(f"\n  [yellow]Transitive dependency[/yellow] — pulled in by another package")
+        console.print("\n  [yellow]Transitive dependency[/yellow] — pulled in by another package")
         console.print(f"  [dim]Run 'udr graph {target}' to see the full dependency tree[/dim]")
 
     source = info.get("source", "unknown")

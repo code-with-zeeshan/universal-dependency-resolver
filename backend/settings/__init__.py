@@ -1,8 +1,9 @@
 """Module docstring."""
+
 # settings/__init__.py
-import os
 import logging
-from typing import Dict, Any
+import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,7 @@ ENABLE_API_KEY_AUTH = os.getenv("ENABLE_API_KEY_AUTH", "false").lower() == "true
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))
 RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", 2.0))
 RETRY_MAX_DELAY = float(os.getenv("RETRY_MAX_DELAY", 60.0))
-CIRCUIT_BREAKER_FAILURE_THRESHOLD = int(
-    os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5")
-)
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = int(os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
 CIRCUIT_BREAKER_OPEN_TIME = int(os.getenv("CIRCUIT_BREAKER_OPEN_TIME", "30"))
 
 RATE_LIMITS = {
@@ -40,13 +39,9 @@ REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 30))
 
 USER_AGENTS = {
     "default": os.getenv("DEFAULT_USER_AGENT", "UniversalDependencyResolver/1.0"),
-    "pypi": os.getenv(
-        "PYPI_USER_AGENT", "UniversalDependencyResolver/1.0 (PyPI Client)"
-    ),
+    "pypi": os.getenv("PYPI_USER_AGENT", "UniversalDependencyResolver/1.0 (PyPI Client)"),
     "npm": os.getenv("NPM_USER_AGENT", "UniversalDependencyResolver/1.0 (NPM Client)"),
-    "documentation": os.getenv(
-        "DOC_USER_AGENT", "Mozilla/5.0 (compatible; DocScraper/1.0)"
-    ),
+    "documentation": os.getenv("DOC_USER_AGENT", "Mozilla/5.0 (compatible; DocScraper/1.0)"),
 }
 
 # =============================================================================
@@ -54,9 +49,7 @@ USER_AGENTS = {
 # =============================================================================
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 ENABLE_REQUEST_LOGGING = os.getenv("ENABLE_REQUEST_LOGGING", "false").lower() == "true"
-ENABLE_PERFORMANCE_LOGGING = (
-    os.getenv("ENABLE_PERFORMANCE_LOGGING", "true").lower() == "true"
-)
+ENABLE_PERFORMANCE_LOGGING = os.getenv("ENABLE_PERFORMANCE_LOGGING", "true").lower() == "true"
 SLOW_REQUEST_THRESHOLD = float(os.getenv("SLOW_REQUEST_THRESHOLD", 5.0))
 
 # =============================================================================
@@ -158,9 +151,7 @@ FEATURES = {
     "ENABLE_CACHE": ENABLE_CACHE,
     "ENABLE_METRICS": os.getenv("ENABLE_METRICS", "true").lower() == "true",
     "ENABLE_AUTH": os.getenv("ENABLE_AUTH", "false").lower() == "true",
-    "ENABLE_RESPONSE_COMPRESSION": os.getenv(
-        "ENABLE_RESPONSE_COMPRESSION", "true"
-    ).lower()
+    "ENABLE_RESPONSE_COMPRESSION": os.getenv("ENABLE_RESPONSE_COMPRESSION", "true").lower()
     == "true",
     "ENABLE_CSRF": os.getenv("ENABLE_CSRF", "true").lower() == "true",
 }
@@ -186,21 +177,17 @@ def validate_settings() -> list[str]:
         )
 
     if ENV == "production" and not FEATURES.get("ENABLE_AUTH"):
-        warnings.append(
-            "ENABLE_AUTH is false in production — authentication is disabled"
-        )
+        warnings.append("ENABLE_AUTH is false in production — authentication is disabled")
 
     if DATABASE_URL.startswith("sqlite"):
-        warnings.append(
-            f"Using SQLite ({DATABASE_URL}) — not suitable for production workloads"
-        )
+        warnings.append(f"Using SQLite ({DATABASE_URL}) — not suitable for production workloads")
 
     for w in warnings:
         logger.warning(f"Config: {w}")
     return warnings
 
 
-def get_ecosystem_config(ecosystem: str) -> Dict[str, Any]:
+def get_ecosystem_config(ecosystem: str) -> dict[str, Any]:
     """Get ecosystem config."""
     configs = {
         "pypi": {
@@ -266,18 +253,14 @@ def get_ecosystem_config(ecosystem: str) -> Dict[str, Any]:
             "rate_limit": 600,
         },
         "apt": {
-            "repositories": "http://deb.debian.org/debian,http://archive.ubuntu.com/ubuntu".split(
-                ","
-            ),
-            "distributions": "stable,testing,unstable".split(","),
+            "repositories": ["http://deb.debian.org/debian", "http://archive.ubuntu.com/ubuntu"],
+            "distributions": ["stable", "testing", "unstable"],
             "cache_ttl": CACHE_TTL * 2,
             "rate_limit": 300,
         },
         "apk": {
-            "repositories": "https://dl-cdn.alpinelinux.org/alpine/v3.18/main".split(
-                ","
-            ),
-            "branches": "v3.18,v3.17,edge".split(","),
+            "repositories": ["https://dl-cdn.alpinelinux.org/alpine/v3.18/main"],
+            "branches": ["v3.18", "v3.17", "edge"],
             "cache_ttl": CACHE_TTL * 2,
             "rate_limit": 300,
         },

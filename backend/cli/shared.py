@@ -4,27 +4,23 @@ import asyncio
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
-from backend.core.constraint_normalizer import normalize_constraint
 from backend.orchestrator import (
     _aggregator_to_resolver_input,
-    _apply_cuda_variants as _orchestrator_apply_cuda_variants,
-    _extract_system_requirements,
-    _generate_install_command as _orchestrator_generate_install_command,
-    _normalize_cuda,
-    _parse_package_spec,
+    _extract_cuda_variants,
     _resolve_transitive,
     _select_best_cuda_variant,
-    _extract_cuda_variants,
+)
+from backend.orchestrator import (
+    _generate_install_command as _orchestrator_generate_install_command,
 )
 
 console = Console()
@@ -49,7 +45,7 @@ LOCK_FILE_VERSION = "2.0"
 LOCK_SUPPORTED_VERSIONS = {"1.0", "2.0"}
 
 
-def _extract_severity(vuln: Dict) -> str:
+def _extract_severity(vuln: dict) -> str:
     """Extract severity."""
     sev = vuln.get("severity", [])
     if isinstance(sev, list) and sev:
@@ -66,7 +62,7 @@ async def _run_resolution(
     system_info,
     package_details,
     interactive: bool = False,
-) -> Dict:
+) -> dict:
     """Run resolution."""
     timeout = int(os.environ.get("SOLVER_TIMEOUT", 30))
     try:
@@ -74,7 +70,7 @@ async def _run_resolution(
             _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
             timeout=timeout,
         )
-    except (asyncio.TimeoutError, Exception) as exc:
+    except (TimeoutError, Exception) as exc:
         logger.warning("Transitive resolution %s: falling back to alternatives", exc)
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
         resolved["resolved_packages"] = resolved.pop("packages", {})
@@ -97,8 +93,8 @@ async def _run_resolution(
 
 
 def _apply_cuda_variants(
-    resolved: Dict, package_details: Dict[str, Dict], system_info: Dict
-) -> Dict:
+    resolved: dict, package_details: dict[str, dict], system_info: dict
+) -> dict:
     """Apply cuda variants."""
     resolved_pkgs = resolved.get("resolved_packages", {})
     system_cuda = None
@@ -116,9 +112,7 @@ def _apply_cuda_variants(
         details = package_details.get(pkg_name, {})
         raw_versions = details.get("versions", {}).get("pypi", [])
         if not raw_versions:
-            raw_versions = details.get("versions", {}).get(
-                pkg_info.get("ecosystem", ""), []
-            )
+            raw_versions = details.get("versions", {}).get(pkg_info.get("ecosystem", ""), [])
 
         cuda_variants = _extract_cuda_variants(raw_versions, base_version)
         if cuda_variants:
@@ -127,9 +121,7 @@ def _apply_cuda_variants(
                 err_console.print(
                     f"  [yellow]⚠ CUDA variant available for {pkg_name} but no GPU detected[/yellow]"
                 )
-                err_console.print(
-                    "     Use --cuda <version> to target a specific CUDA version"
-                )
+                err_console.print("     Use --cuda <version> to target a specific CUDA version")
                 continue
             best = _select_best_cuda_variant(cuda_variants, system_cuda)
             if best and best != base_version:
@@ -151,20 +143,22 @@ def _apply_cuda_variants(
 
 
 def _fetch_package_data(
-    aggregator, specs: List[Tuple[str, str]]
-) -> Tuple[List[Dict], Dict[str, Dict]]:
+    aggregator, specs: list[tuple[str, str]]
+) -> tuple[list[dict], dict[str, dict]]:
     """Fetch package data."""
     return asyncio.run(_fetch_package_data_async(aggregator, specs))
 
 
 async def _fetch_package_data_async(
-    aggregator, specs: List[Tuple[str, str, Optional[str]]]
-) -> Tuple[List[Dict], Dict[str, Dict]]:
+    aggregator, specs: list[tuple[str, str, str | None]]
+) -> tuple[list[dict], dict[str, dict]]:
     """Fetch package data async."""
     resolver_inputs = []
     package_details = {}
 
-    async def fetch_one(pkg_name: str, eco: str, constraint: Optional[str]) -> Optional[Tuple[Dict, Dict]]:
+    async def fetch_one(
+        pkg_name: str, eco: str, constraint: str | None
+    ) -> tuple[dict, dict] | None:
         """Fetch one."""
         try:
             data = await aggregator.get_package_info(
@@ -194,9 +188,7 @@ async def _fetch_package_data_async(
     return resolver_inputs, package_details
 
 
-def _build_resolved_table(
-    resolved: Dict, title: Optional[str] = None
-) -> Optional[Table]:
+def _build_resolved_table(resolved: dict, title: str | None = None) -> Table | None:
     """Build resolved table."""
     rp = resolved.get("resolved_packages", {})
     if not rp:
@@ -222,7 +214,7 @@ def _output_json(data: Any, args) -> None:
     sys.exit(0)
 
 
-def _read_lock_file(lock_path: Path) -> Dict:
+def _read_lock_file(lock_path: Path) -> dict:
     """Read lock file."""
     if not lock_path.is_file():
         console.print(f"[red]Lock file not found:[/red] {lock_path}")
@@ -241,12 +233,10 @@ def _read_lock_file(lock_path: Path) -> Dict:
     return data
 
 
-def _validate_manifest_update_line(
-    line: str, pkg_name: str, resolved_ver: str
-) -> Optional[str]:
+def _validate_manifest_update_line(line: str, pkg_name: str, resolved_ver: str) -> str | None:
     """Validate manifest update line."""
     stripped = line.strip()
-    if not stripped or stripped.startswith("#") or stripped.startswith("-"):
+    if not stripped or stripped.startswith(("#", "-")):
         return None
 
     quote = ""
@@ -281,7 +271,7 @@ def _validate_manifest_update_line(
     return None
 
 
-def _select_manifests_interactive(manifests: List[Dict]) -> List[Dict]:
+def _select_manifests_interactive(manifests: list[dict]) -> list[dict]:
     """Select manifests interactive."""
     console.print("\n[bold]Detected manifests:[/bold]")
     for i, m in enumerate(manifests, 1):
@@ -303,8 +293,6 @@ def _select_manifests_interactive(manifests: List[Dict]) -> List[Dict]:
         return manifests
 
 
-def _generate_install_command(
-    ecosystem: str, packages: List[Tuple[str, str]]
-) -> Optional[str]:
+def _generate_install_command(ecosystem: str, packages: list[tuple[str, str]]) -> str | None:
     """Generate install command (delegates to orchestrator)."""
     return _orchestrator_generate_install_command(ecosystem, packages)

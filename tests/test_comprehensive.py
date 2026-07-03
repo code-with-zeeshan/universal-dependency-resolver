@@ -10,7 +10,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -29,7 +29,7 @@ pytestmark = [
 # Mock system info presets — realistic hardware configurations
 # ---------------------------------------------------------------------------
 
-MOCK_GPU_NVIDIA_CUDA12: Dict[str, Any] = {
+MOCK_GPU_NVIDIA_CUDA12: dict[str, Any] = {
     "id": 0,
     "vendor": "NVIDIA",
     "name": "NVIDIA GeForce RTX 4090",
@@ -41,7 +41,7 @@ MOCK_GPU_NVIDIA_CUDA12: Dict[str, Any] = {
     "temperature": 42.0,
 }
 
-MOCK_GPU_NVIDIA_CUDA11: Dict[str, Any] = {
+MOCK_GPU_NVIDIA_CUDA11: dict[str, Any] = {
     "id": 0,
     "vendor": "NVIDIA",
     "name": "NVIDIA Tesla T4",
@@ -53,7 +53,7 @@ MOCK_GPU_NVIDIA_CUDA11: Dict[str, Any] = {
     "temperature": 38.0,
 }
 
-MOCK_GPU_AMD: Dict[str, Any] = {
+MOCK_GPU_AMD: dict[str, Any] = {
     "id": 0,
     "vendor": "AMD",
     "name": "AMD Radeon RX 7900 XTX",
@@ -65,27 +65,27 @@ MOCK_GPU_AMD: Dict[str, Any] = {
     "temperature": 45.0,
 }
 
-MOCK_NO_GPU: Dict[str, Any] = {}
+MOCK_NO_GPU: dict[str, Any] = {}
 
-MOCK_ACCELERATORS_NONE: Dict[str, Any] = {
+MOCK_ACCELERATORS_NONE: dict[str, Any] = {
     "tpu": {"available": False},
     "npu": {"available": False},
     "ane": {"available": False},
 }
 
-MOCK_ACCELERATORS_TPU: Dict[str, Any] = {
+MOCK_ACCELERATORS_TPU: dict[str, Any] = {
     "tpu": {"available": True, "type": "Edge TPU", "count": 1},
     "npu": {"available": False},
     "ane": {"available": False},
 }
 
-MOCK_ACCELERATORS_NPU: Dict[str, Any] = {
+MOCK_ACCELERATORS_NPU: dict[str, Any] = {
     "tpu": {"available": False},
     "npu": {"available": True, "type": "Intel Myriad X", "count": 1},
     "ane": {"available": False},
 }
 
-MOCK_ACCELERATORS_ANE: Dict[str, Any] = {
+MOCK_ACCELERATORS_ANE: dict[str, Any] = {
     "tpu": {"available": False},
     "npu": {"available": False},
     "ane": {"available": True, "type": "Apple Neural Engine", "count": 16},
@@ -93,17 +93,17 @@ MOCK_ACCELERATORS_ANE: Dict[str, Any] = {
 
 
 def _build_system_info(
-    gpu: Optional[Dict] = None,
-    accelerators: Optional[Dict] = None,
-    cpu: Optional[Dict] = None,
-    memory: Optional[Dict] = None,
-    runtime: Optional[Dict] = None,
-    disk: Optional[Dict] = None,
-    network: Optional[Dict] = None,
-    platform: Optional[Dict] = None,
-) -> Dict[str, Any]:
+    gpu: dict | None = None,
+    accelerators: dict | None = None,
+    cpu: dict | None = None,
+    memory: dict | None = None,
+    runtime: dict | None = None,
+    disk: dict | None = None,
+    network: dict | None = None,
+    platform: dict | None = None,
+) -> dict[str, Any]:
     """Build a realistic system_info dict with defaults + overrides."""
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "platform": platform or {
             "os": "linux",
             "os_version": "Ubuntu 24.04 LTS",
@@ -180,14 +180,14 @@ def _write_manifest(path: Path, filename: str, content: str):
 async def _run_resolution(
     aggregator: DataAggregator,
     resolver: ConflictResolver,
-    system_info: Dict[str, Any],
-    specs: List[tuple],
-) -> Dict[str, Any]:
+    system_info: dict[str, Any],
+    specs: list[tuple],
+) -> dict[str, Any]:
     """Run the full resolution pipeline: fetch + resolve."""
     from backend.cli.shared import _aggregator_to_resolver_input, _resolve_transitive
 
-    inputs: List[Dict] = []
-    details: Dict[str, Dict] = {}
+    inputs: list[dict] = []
+    details: dict[str, dict] = {}
 
     for name, eco, constraint in specs:
         data = await aggregator.get_package_info(
@@ -204,13 +204,13 @@ async def _run_resolution(
     return result
 
 
-def _resolution_ok(result: Dict, min_pkgs: int = 1) -> bool:
+def _resolution_ok(result: dict, min_pkgs: int = 1) -> bool:
     """Check if resolution succeeded with at least min_pkgs packages."""
     pkgs = result.get("resolved_packages", {}) or result.get("packages", {})
     return len(pkgs) >= min_pkgs
 
 
-def _get_resolved(result: Dict) -> Dict:
+def _get_resolved(result: dict) -> dict:
     return result.get("resolved_packages", {}) or result.get("packages", {})
 
 
@@ -273,7 +273,8 @@ class TestManifestParsing:
     def test_requirements_txt(self, temp_project):
         _write_manifest(temp_project, "requirements.txt", "requests>=2.28\nflask>=2.0")
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "pypi" in ecosystems
 
@@ -281,7 +282,8 @@ class TestManifestParsing:
         pkg = {"dependencies": {"express": "^4.18", "lodash": "^4.17"}}
         _write_manifest(temp_project, "package.json", json.dumps(pkg))
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "npm" in ecosystems
 
@@ -290,28 +292,31 @@ class TestManifestParsing:
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             '[dependencies]\nserde = "1.0"\ntokio = "1.0"\n')
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "crates" in ecosystems
 
     def test_go_mod(self, temp_project):
         self._write_manifest_bytes(temp_project, "go.mod",
-            'module example.com/test\ngo 1.21\nrequire (\n'
-            '\tgithub.com/pkg/errors v0.9.1\n'
-            '\tgolang.org/x/text v0.14.0\n)\n')
+            "module example.com/test\ngo 1.21\nrequire (\n"
+            "\tgithub.com/pkg/errors v0.9.1\n"
+            "\tgolang.org/x/text v0.14.0\n)\n")
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "gomodules" in ecosystems
 
     def test_build_gradle(self, temp_project):
         self._write_manifest_bytes(temp_project, "build.gradle",
-            'dependencies {\n'
+            "dependencies {\n"
             "    implementation 'com.google.guava:guava:32.1.3-jre'\n"
             "    implementation 'org.apache.commons:commons-lang3:3.13.0'\n"
-            '}\n')
+            "}\n")
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "gradle" in ecosystems
 
@@ -325,7 +330,8 @@ class TestManifestParsing:
             '    ],\n'
             ')\n')
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "swift" in ecosystems
 
@@ -336,16 +342,18 @@ class TestManifestParsing:
             '    {:ecto_sql, "~> 3.10"},\n'
             '  ]\nend\n')
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "hex" in ecosystems
 
     def test_cabal_file(self, temp_project):
         self._write_manifest_bytes(temp_project, "mypackage.cabal",
-            'cabal-version: 3.4\nname: mypackage\nversion: 0.1.0\n'
-            'build-depends: base >=4.16 && <5, containers >=0.6\n')
+            "cabal-version: 3.4\nname: mypackage\nversion: 0.1.0\n"
+            "build-depends: base >=4.16 && <5, containers >=0.6\n")
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 1
+        assert isinstance(result, list)
+        assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
         assert "haskell" in ecosystems
 
@@ -357,7 +365,8 @@ class TestManifestParsing:
             '[package]\nname = "test"\nversion = "0.1.0"\n'
             '[dependencies]\nserde = "1.0"\n')
         result = self._detect(temp_project)
-        assert isinstance(result, list) and len(result) >= 3
+        assert isinstance(result, list)
+        assert len(result) >= 3
 
 
 # ===================================================================
@@ -439,7 +448,7 @@ class TestCrossEcosystem:
     async def test_pypi_npm_crates(self, aggregator, resolver):
         """Resolve packages from PyPI, npm, and crates.io simultaneously."""
         system_info = _build_system_info(gpu=MOCK_GPU_NVIDIA_CUDA12)
-        specs: List[tuple] = [
+        specs: list[tuple] = [
             ("requests", "pypi", ">=2.28"),
             ("torch", "pypi", ">=2.0"),
         ]

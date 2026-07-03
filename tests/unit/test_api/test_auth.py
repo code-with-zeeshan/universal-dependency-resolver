@@ -1,18 +1,16 @@
-"""
-Tests for backend.api.auth module
-"""
+"""Tests for backend.api.auth module."""
 
 import pytest
 from jose import jwt
 
-from backend.settings import SECRET_KEY, ALGORITHM
 from backend.api.auth import (
     AuthService,
-    verify_password,
-    get_password_hash,
     create_access_token,
     create_refresh_token,
+    get_password_hash,
+    verify_password,
 )
+from backend.settings import ALGORITHM, SECRET_KEY
 
 
 class TestAuthService:

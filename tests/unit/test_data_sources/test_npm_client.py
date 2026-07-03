@@ -141,7 +141,7 @@ class TestNPMClient:
             return_value=sample_search_response,
         ) as mock_request:
             await client.search_packages("react", limit=5)
-        url, params = mock_request.call_args[0][0], mock_request.call_args[1].get(
+        _url, params = mock_request.call_args[0][0], mock_request.call_args[1].get(
             "params", {}
         )
         assert params.get("text") == "react"
@@ -1372,7 +1372,7 @@ class TestNPMClient:
             "downloads": {"weekly": 50},
         }
         score = client._calculate_quality_score(info, {})
-        assert 0 < score
+        assert score > 0
 
     # === _calculate_quality_score: weekly > 10000 (line 706)
     def test_calculate_quality_score_weekly_gt_10000(self, client):
@@ -1382,7 +1382,7 @@ class TestNPMClient:
             "downloads": {"weekly": 50000},
         }
         score = client._calculate_quality_score(info, {})
-        assert 0 < score
+        assert score > 0
 
     # === _calculate_quality_score: weekly > 1000 (line 708)
     def test_calculate_quality_score_weekly_gt_1000(self, client):
@@ -1392,7 +1392,7 @@ class TestNPMClient:
             "downloads": {"weekly": 5000},
         }
         score = client._calculate_quality_score(info, {})
-        assert 0 < score
+        assert score > 0
 
     # === _calculate_quality_score: weekly > 100 (line 710)
     def test_calculate_quality_score_weekly_gt_100(self, client):
@@ -1402,7 +1402,7 @@ class TestNPMClient:
             "downloads": {"weekly": 500},
         }
         score = client._calculate_quality_score(info, {})
-        assert 0 < score
+        assert score > 0
 
     # === _version_matches_requirement: ^ with req_v parse fail (line 886)
     def test_version_matches_requirement_caret_parse_fail(self, client):

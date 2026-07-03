@@ -1,16 +1,19 @@
 """Module docstring."""
+
 # homebrew_client.py
 import asyncio
-from typing import Dict, List, Optional, Any, Union
 import logging
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
 from backend.core.cache import cached
 from backend.core.utils import normalize_package_name, run_async
-from enum import Enum
-from dataclasses import dataclass
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -38,11 +41,11 @@ class BrewDependency:
 class HomebrewClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
-        timeout: Optional[int] = None,
+        api_url: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
+        timeout: int | None = None,
     ):
         homebrew_config = get_ecosystem_config("homebrew")
 
@@ -75,20 +78,16 @@ class HomebrewClient(BaseDataSourceClient):
             return False
 
     async def search_packages(
-        self, query: str, limit: int = 20, package_type: Optional[PackageType] = None
-    ) -> List[Dict]:
+        self, query: str, limit: int = 20, package_type: PackageType | None = None
+    ) -> list[dict]:
         query = normalize_package_name(query)
         results = []
 
-        search_types = (
-            [package_type] if package_type else [PackageType.FORMULA, PackageType.CASK]
-        )
+        search_types = [package_type] if package_type else [PackageType.FORMULA, PackageType.CASK]
 
         for search_type in search_types:
             if search_type == PackageType.FORMULA:
-                formulas = await self._search_formulas(
-                    query, limit // len(search_types)
-                )
+                formulas = await self._search_formulas(query, limit // len(search_types))
                 results.extend(formulas)
             else:
                 casks = await self._search_casks(query, limit // len(search_types))
@@ -101,7 +100,7 @@ class HomebrewClient(BaseDataSourceClient):
 
         return results[:limit]
 
-    async def _search_formulas(self, query: str, limit: int) -> List[Dict]:
+    async def _search_formulas(self, query: str, limit: int) -> list[dict]:
         try:
             data = await self._get(f"{self.formula_api}.json")
         except Exception:
@@ -127,12 +126,8 @@ class HomebrewClient(BaseDataSourceClient):
                         "versions": formula.get("versions", {}),
                         "dependencies": formula.get("dependencies", []),
                         "build_dependencies": formula.get("build_dependencies", []),
-                        "optional_dependencies": formula.get(
-                            "optional_dependencies", []
-                        ),
-                        "recommended_dependencies": formula.get(
-                            "recommended_dependencies", []
-                        ),
+                        "optional_dependencies": formula.get("optional_dependencies", []),
+                        "recommended_dependencies": formula.get("recommended_dependencies", []),
                         "conflicts_with": formula.get("conflicts_with", []),
                         "caveats": formula.get("caveats"),
                         "installed": formula.get("installed", []),
@@ -144,7 +139,7 @@ class HomebrewClient(BaseDataSourceClient):
 
         return matches[:limit]
 
-    async def _search_casks(self, query: str, limit: int) -> List[Dict]:
+    async def _search_casks(self, query: str, limit: int) -> list[dict]:
         try:
             data = await self._get(f"{self.cask_api}.json")
         except Exception:
@@ -203,21 +198,20 @@ class HomebrewClient(BaseDataSourceClient):
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         if package_type == PackageType.FORMULA:
             return await self._get_formula_info(package_name)
-        else:
-            return await self._get_cask_info(package_name)
+        return await self._get_cask_info(package_name)
 
     def get_package_info(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
-    ) -> Dict:
+    ) -> dict:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name, package_type))
 
-    async def _get_formula_info(self, formula_name: str) -> Optional[Dict]:
+    async def _get_formula_info(self, formula_name: str) -> dict | None:
         url = f"{self.formula_api}/{formula_name}.json"
         data = await self._get(url)
 
@@ -268,7 +262,7 @@ class HomebrewClient(BaseDataSourceClient):
             "system_requirements": self._extract_formula_system_requirements(data),
         }
 
-    async def _get_cask_info(self, cask_name: str) -> Optional[Dict]:
+    async def _get_cask_info(self, cask_name: str) -> dict | None:
         url = f"{self.cask_api}/{cask_name}.json"
         data = await self._get(url)
 
@@ -310,7 +304,7 @@ class HomebrewClient(BaseDataSourceClient):
         package_type: PackageType = PackageType.FORMULA,
         include_optional: bool = True,
         include_build: bool = True,
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         package_name = normalize_package_name(package_name)
 
         info = await self.get_package_info_async(package_name, package_type)
@@ -320,9 +314,7 @@ class HomebrewClient(BaseDataSourceClient):
         dependencies = {
             "runtime": info.get("dependencies", []),
             "build": info.get("build_dependencies", []) if include_build else [],
-            "optional": info.get("optional_dependencies", [])
-            if include_optional
-            else [],
+            "optional": info.get("optional_dependencies", []) if include_optional else [],
             "recommended": info.get("recommended_dependencies", []),
             "test": info.get("test_dependencies", []),
         }
@@ -339,7 +331,7 @@ class HomebrewClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _extract_formula_system_requirements(self, data: Dict) -> Dict[str, Any]:
+    def _extract_formula_system_requirements(self, data: dict) -> dict[str, Any]:
         requirements = {
             "macos_version": None,
             "arch": [],
@@ -351,27 +343,22 @@ class HomebrewClient(BaseDataSourceClient):
         }
 
         for req in data.get("requirements", []):
-            if isinstance(req, dict):
-                if "name" in req:
-                    name = req["name"]
-                    if name == "xcode":
-                        requirements["xcode"] = req.get("version")
-                    elif name == "java":
-                        requirements["java"] = req.get("version")
-                    elif name == "arch":
-                        requirements["arch"] = req.get("specs", [])
+            if isinstance(req, dict) and "name" in req:
+                name = req["name"]
+                if name == "xcode":
+                    requirements["xcode"] = req.get("version")
+                elif name == "java":
+                    requirements["java"] = req.get("version")
+                elif name == "arch":
+                    requirements["arch"] = req.get("specs", [])
 
         bottle = data.get("bottle", {})
         if bottle and "stable" in bottle:
             stable = bottle["stable"]
             if "files" in stable:
                 macos_versions = []
-                for file_key in stable["files"].keys():
-                    if (
-                        file_key.startswith("monterey")
-                        or file_key.startswith("big_sur")
-                        or file_key.startswith("catalina")
-                    ):
+                for file_key in stable["files"]:
+                    if file_key.startswith(("monterey", "big_sur", "catalina")):
                         macos_versions.append(file_key)
 
                 if macos_versions:
@@ -379,7 +366,7 @@ class HomebrewClient(BaseDataSourceClient):
 
         return requirements
 
-    def _extract_cask_system_requirements(self, data: Dict) -> Dict[str, Any]:
+    def _extract_cask_system_requirements(self, data: dict) -> dict[str, Any]:
         requirements = {"macos_version": None, "arch": None}
 
         depends_on = data.get("depends_on", {})
@@ -400,8 +387,8 @@ class HomebrewClient(BaseDataSourceClient):
         self,
         package_name: str,
         package_type: PackageType = PackageType.FORMULA,
-        system_info: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        system_info: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_info_async(package_name, package_type)
@@ -422,18 +409,15 @@ class HomebrewClient(BaseDataSourceClient):
 
             if required_macos and system_macos:
                 if not self._check_macos_compatibility(system_macos, required_macos):
-                    errors.append(
-                        f"Requires macOS {required_macos}, but system has {system_macos}"
-                    )
+                    errors.append(f"Requires macOS {required_macos}, but system has {system_macos}")
 
             required_arch = sys_reqs.get("arch")
             system_arch = system_info.get("arch")
 
-            if required_arch and system_arch:
-                if system_arch not in required_arch:
-                    errors.append(
-                        f"Requires architecture {required_arch}, but system has {system_arch}"
-                    )
+            if required_arch and system_arch and system_arch not in required_arch:
+                errors.append(
+                    f"Requires architecture {required_arch}, but system has {system_arch}"
+                )
 
         if pkg_data.get("deprecated"):
             reason = pkg_data.get("deprecation_reason", "No reason provided")
@@ -460,22 +444,17 @@ class HomebrewClient(BaseDataSourceClient):
             "caveats": pkg_data.get("caveats"),
         }
 
-    def _check_macos_compatibility(
-        self, system_version: str, required: Union[str, Dict, List]
-    ) -> bool:
+    def _check_macos_compatibility(self, system_version: str, required: str | dict | list) -> bool:
         if isinstance(required, str):
             return system_version >= required
-        elif isinstance(required, dict):
+        if isinstance(required, dict):
             min_version = required.get("min")
             max_version = required.get("max")
 
             if min_version and system_version < min_version:
                 return False
-            if max_version and system_version > max_version:
-                return False
-
-            return True
-        elif isinstance(required, list):
+            return not (max_version and system_version > max_version)
+        if isinstance(required, list):
             return system_version in required
 
         return True
@@ -485,13 +464,9 @@ async def example_usage():
     async with HomebrewClient() as client:
         await client.search_packages("python", limit=5)
 
-        formula_info = await client.get_package_info_async(
-            "python@3.11", PackageType.FORMULA
-        )
+        formula_info = await client.get_package_info_async("python@3.11", PackageType.FORMULA)
 
-        cask_info = await client.get_package_info_async(
-            "visual-studio-code", PackageType.CASK
-        )
+        cask_info = await client.get_package_info_async("visual-studio-code", PackageType.CASK)
 
         compat = await client.check_compatibility(
             "python@3.11",

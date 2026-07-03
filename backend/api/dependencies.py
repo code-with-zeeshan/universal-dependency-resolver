@@ -1,14 +1,15 @@
 """Module docstring."""
-import os
+
 import logging
+import os
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from backend.core.system_scanner import SystemScanner
-from backend.core.data_aggregator import DataAggregator
 from backend.core.conflict_resolver import ConflictResolver
+from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
+from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import CompatibilityDB
 
 logger = logging.getLogger(__name__)

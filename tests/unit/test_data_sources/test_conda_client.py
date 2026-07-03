@@ -47,14 +47,13 @@ class TestCondaClient:
             "_fetch_from_anaconda_api",
             new_callable=AsyncMock,
             return_value=sample_package_data,
+        ), patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={},
         ):
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={},
-            ):
-                result = await client.get_package_info_async("numpy")
+            result = await client.get_package_info_async("numpy")
         assert result is not None
         assert result["name"] == "numpy"
         assert result["version"] == "1.24.3"
@@ -68,16 +67,15 @@ class TestCondaClient:
             "_fetch_from_anaconda_api",
             new_callable=AsyncMock,
             return_value=sample_package_data,
-        ) as mock_fetch:
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={},
-            ):
-                await client.get_package_info_async("numpy")
+        ) as mock_fetch, patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            await client.get_package_info_async("numpy")
         mock_fetch.assert_called_once()
-        pkg_name, channel = mock_fetch.call_args[0]
+        pkg_name, _channel = mock_fetch.call_args[0]
         assert "numpy" in pkg_name
 
     @pytest.mark.asyncio
@@ -173,14 +171,13 @@ class TestCondaClient:
             "_fetch_from_anaconda_api",
             new_callable=AsyncMock,
             return_value=sample_package_data,
+        ), patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={},
         ):
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={},
-            ):
-                versions = await client.get_versions("numpy")
+            versions = await client.get_versions("numpy")
         assert len(versions) == 1
         assert all("version" in v for v in versions)
 
@@ -211,14 +208,13 @@ class TestCondaClient:
                     }
                 ],
             },
+        ), patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={"run": {"python": ">=3.8"}},
         ):
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={"run": {"python": ">=3.8"}},
-            ):
-                deps = await client.get_dependencies("numpy", "1.24.3")
+            deps = await client.get_dependencies("numpy", "1.24.3")
         assert "run" in deps
         assert deps["run"].get("python") == ">=3.8"
 
@@ -533,20 +529,19 @@ class TestCondaClient:
         }
         with patch.object(
             client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
-        ):
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={"run": {"python": ">=3.8"}},
-            ) as mock_extract:
-                deps1 = await client.get_dependencies("numpy", "1.24.3")
-                assert deps1 == {"run": {"python": ">=3.8"}}
-                mock_extract.assert_called_once()
+        ), patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={"run": {"python": ">=3.8"}},
+        ) as mock_extract:
+            deps1 = await client.get_dependencies("numpy", "1.24.3")
+            assert deps1 == {"run": {"python": ">=3.8"}}
+            mock_extract.assert_called_once()
 
-                deps2 = await client.get_dependencies("numpy", "1.24.3")
-                assert deps2 == {"run": {"python": ">=3.8"}}
-                mock_extract.assert_called_once()
+            deps2 = await client.get_dependencies("numpy", "1.24.3")
+            assert deps2 == {"run": {"python": ">=3.8"}}
+            mock_extract.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_dependencies_without_version(self, client):
@@ -565,14 +560,13 @@ class TestCondaClient:
         }
         with patch.object(
             client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
+        ), patch.object(
+            client,
+            "_extract_dependencies_from_repodata",
+            new_callable=AsyncMock,
+            return_value={"run": {"python": ">=3.8"}},
         ):
-            with patch.object(
-                client,
-                "_extract_dependencies_from_repodata",
-                new_callable=AsyncMock,
-                return_value={"run": {"python": ">=3.8"}},
-            ):
-                deps = await client.get_dependencies("numpy")
+            deps = await client.get_dependencies("numpy")
 
         assert deps == {"run": {"python": ">=3.8"}}
 
@@ -635,7 +629,7 @@ class TestCondaClient:
         assert "openmp" in result
 
     def test_parse_conda_dependency_unrecognized(self, client):
-        name, constraint = client._parse_conda_dependency("@#$invalid")
+        _name, constraint = client._parse_conda_dependency("@#$invalid")
         assert constraint == "*"
 
     def test_parse_conda_dependency_wildcard_parse_fail(self, client):

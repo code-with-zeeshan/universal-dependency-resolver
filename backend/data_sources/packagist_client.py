@@ -1,22 +1,25 @@
 """Module docstring."""
+
 # packagist_client.py
 import asyncio
-from typing import Dict, List, Optional, Any
 import logging
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
     parse_version,
     parse_version_key,
     run_async,
 )
-import re
-from backend.core.cache import cached
-from enum import Enum
-from dataclasses import dataclass
 from backend.settings import (
     CACHE_TTL,
     get_ecosystem_config,
 )
+
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -34,20 +37,20 @@ class DependencyType(Enum):
 @dataclass
 class ComposerVersionRequirement:
     raw: str
-    operator: Optional[str] = None
-    major: Optional[int] = None
-    minor: Optional[int] = None
-    patch: Optional[int] = None
+    operator: str | None = None
+    major: int | None = None
+    minor: int | None = None
+    patch: int | None = None
 
 
 class PackagistClient(BaseDataSourceClient):
     def __init__(
         self,
-        api_url: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
-        timeout: Optional[int] = None,
+        api_url: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
+        timeout: int | None = None,
     ):
         packagist_config = get_ecosystem_config("packagist")
 
@@ -62,15 +65,13 @@ class PackagistClient(BaseDataSourceClient):
 
         self.base_url = "https://packagist.org"
         self.search_url = "https://packagist.org/search.json"
-        self._version_cache: Dict[str, ComposerVersionRequirement] = {}
+        self._version_cache: dict[str, ComposerVersionRequirement] = {}
 
     async def package_exists(self, package_name: str) -> bool:
         package_name = normalize_package_name(package_name)
         try:
             session = self._get_session()
-            response = await session.head(
-                f"{self.base_url}/packages/{package_name}.json"
-            )
+            response = await session.head(f"{self.base_url}/packages/{package_name}.json")
             return response.status == 200
         except Exception:
             return False
@@ -79,9 +80,9 @@ class PackagistClient(BaseDataSourceClient):
         self,
         query: str,
         limit: int = 20,
-        package_type: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-    ) -> List[Dict]:
+        package_type: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[dict]:
         query = normalize_package_name(query)
 
         params = {"q": query, "per_page": min(limit, 100)}
@@ -115,7 +116,7 @@ class PackagistClient(BaseDataSourceClient):
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         url = f"{self.base_url}/packages/{package_name}.json"
@@ -134,9 +135,7 @@ class PackagistClient(BaseDataSourceClient):
                 version_info = self._process_version_data(version_data)
                 if version_info:
                     versions_info.append(version_info)
-                    if not latest_version or self._is_newer_version(
-                        version, latest_version
-                    ):
+                    if not latest_version or self._is_newer_version(version, latest_version):
                         latest_version = version
                         latest_data = version_data
 
@@ -177,9 +176,7 @@ class PackagistClient(BaseDataSourceClient):
                     "support": latest_data.get("support", {}),
                     "funding": latest_data.get("funding", []),
                     "dependencies": self._extract_dependencies(latest_data),
-                    "system_requirements": self._extract_system_requirements(
-                        latest_data
-                    ),
+                    "system_requirements": self._extract_system_requirements(latest_data),
                     "autoload": latest_data.get("autoload", {}),
                     "bin": latest_data.get("bin", []),
                     "scripts": latest_data.get("scripts", {}),
@@ -189,13 +186,11 @@ class PackagistClient(BaseDataSourceClient):
 
         return info
 
-    def get_package_info(self, package_name: str) -> Dict:
+    def get_package_info(self, package_name: str) -> dict:
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
-    async def get_package_version(
-        self, package_name: str, version: str
-    ) -> Optional[Dict]:
+    async def get_package_version(self, package_name: str, version: str) -> dict | None:
         package_name = normalize_package_name(package_name)
 
         info = await self.get_package_info_async(package_name, include_versions=True)
@@ -213,14 +208,14 @@ class PackagistClient(BaseDataSourceClient):
         package_name: str,
         include_dev: bool = True,
         include_abandoned: bool = False,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         package_name = normalize_package_name(package_name)
 
         info = await self.get_package_info_async(package_name, include_versions=True)
         if not info or not info.get("versions"):
             return []
 
-        versions: List[Any] = []
+        versions: list[Any] = []
         for v in info["versions"]:
             if not include_dev and self._is_dev_version(v.get("version", "")):
                 continue
@@ -230,16 +225,14 @@ class PackagistClient(BaseDataSourceClient):
         return versions
 
     async def get_dependencies(
-        self, package_name: str, version: Optional[str] = None, include_dev: bool = True
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str | None = None, include_dev: bool = True
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
 
         if version:
             pkg_data = await self.get_package_version(package_name, version)
         else:
-            pkg_data = await self.get_package_info_async(
-                package_name, include_versions=False
-            )
+            pkg_data = await self.get_package_info_async(package_name, include_versions=False)
 
         if not pkg_data:
             return {}
@@ -251,7 +244,7 @@ class PackagistClient(BaseDataSourceClient):
 
         return dependencies
 
-    async def _get_download_stats(self, package_name: str) -> Dict[str, int]:
+    async def _get_download_stats(self, package_name: str) -> dict[str, int]:
         package_name = normalize_package_name(package_name)
         try:
             url = f"{self.base_url}/downloads/{package_name}.json"
@@ -262,7 +255,7 @@ class PackagistClient(BaseDataSourceClient):
             pass
         return {"daily": 0, "monthly": 0, "total": 0}
 
-    def _process_version_data(self, version_data: Dict) -> Optional[Dict]:
+    def _process_version_data(self, version_data: dict) -> dict | None:
         version = version_data.get("version")
         if not version or not self._is_valid_version(version):
             return None
@@ -287,8 +280,8 @@ class PackagistClient(BaseDataSourceClient):
             "dist": version_data.get("dist", {}),
         }
 
-    def _extract_dependencies(self, version_data: Dict) -> Dict[str, Dict]:
-        dependencies: Dict[str, Any] = {}
+    def _extract_dependencies(self, version_data: dict) -> dict[str, dict]:
+        dependencies: dict[str, Any] = {}
         dep_types = [
             "require",
             "require-dev",
@@ -304,8 +297,8 @@ class PackagistClient(BaseDataSourceClient):
 
         return dependencies
 
-    def _extract_system_requirements(self, version_data: Dict) -> Dict[str, Any]:
-        requirements: Dict[str, Any] = {
+    def _extract_system_requirements(self, version_data: dict) -> dict[str, Any]:
+        requirements: dict[str, Any] = {
             "php": None,
             "extensions": [],
             "platform": {},
@@ -362,9 +355,7 @@ class PackagistClient(BaseDataSourceClient):
 
         return False
 
-    def _parse_composer_version_requirement(
-        self, spec: str
-    ) -> ComposerVersionRequirement:
+    def _parse_composer_version_requirement(self, spec: str) -> ComposerVersionRequirement:
         if spec in self._version_cache:
             return self._version_cache[spec]
 
@@ -409,8 +400,8 @@ class PackagistClient(BaseDataSourceClient):
         return req
 
     async def check_compatibility(
-        self, package_name: str, version: str, system_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str, system_info: dict[str, Any]
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -426,16 +417,12 @@ class PackagistClient(BaseDataSourceClient):
 
         php_requirement = pkg_data.get("system_requirements", {}).get("php")
         if php_requirement and "php_version" in system_info:
-            if not self._check_php_compatibility(
-                system_info["php_version"], php_requirement
-            ):
+            if not self._check_php_compatibility(system_info["php_version"], php_requirement):
                 errors.append(
                     f"Requires PHP {php_requirement}, but system has {system_info['php_version']}"
                 )
 
-        required_extensions = pkg_data.get("system_requirements", {}).get(
-            "extensions", []
-        )
+        required_extensions = pkg_data.get("system_requirements", {}).get("extensions", [])
         system_extensions = system_info.get("php_extensions", [])
 
         for ext in required_extensions:
@@ -453,13 +440,9 @@ class PackagistClient(BaseDataSourceClient):
         if pkg_data.get("abandoned", False):
             replacement = pkg_data.get("replacement")
             if replacement:
-                warnings.append(
-                    f"Package is abandoned. Consider using {replacement} instead."
-                )
+                warnings.append(f"Package is abandoned. Consider using {replacement} instead.")
             else:
-                warnings.append(
-                    "Package is abandoned and has no recommended replacement."
-                )
+                warnings.append("Package is abandoned and has no recommended replacement.")
 
         return {
             "compatible": len(errors) == 0,
@@ -477,13 +460,11 @@ class PackagistClient(BaseDataSourceClient):
 
         if req.operator == "^":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            max_v = (
-                parse_version(f"{req.major + 1}.0.0") if req.major is not None else None
-            )
+            max_v = parse_version(f"{req.major + 1}.0.0") if req.major is not None else None
             if min_v is None or max_v is None:
                 return True
             return min_v <= system_v < max_v
-        elif req.operator == "~":
+        if req.operator == "~":
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
             max_v = (
                 parse_version(f"{req.major}.{req.minor + 1}.0")
@@ -493,20 +474,19 @@ class PackagistClient(BaseDataSourceClient):
             if min_v is None or max_v is None:
                 return True
             return min_v <= system_v < max_v
-        elif req.operator == ">=":
+        if req.operator == ">=":
             if req.major is None or req.minor is None or req.patch is None:
                 return True
             min_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
             if min_v is None:
                 return True
             return system_v >= min_v
-        else:
-            if req.major is None or req.minor is None or req.patch is None:
-                return True
-            exact_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
-            if exact_v is None:
-                return True
-            return system_v == exact_v
+        if req.major is None or req.minor is None or req.patch is None:
+            return True
+        exact_v = parse_version(f"{req.major}.{req.minor}.{req.patch}")
+        if exact_v is None:
+            return True
+        return system_v == exact_v
 
     def _check_composer_compatibility(self, system_version: str, required: str) -> bool:
         return self._check_php_compatibility(system_version, required)
@@ -516,9 +496,7 @@ async def example_usage():
     async with PackagistClient() as client:
         await client.search_packages("symfony", limit=5)
 
-        info = await client.get_package_info_async(
-            "symfony/console", include_versions=True
-        )
+        info = await client.get_package_info_async("symfony/console", include_versions=True)
 
         await client.get_package_version("symfony/console", "v6.0.0")
 

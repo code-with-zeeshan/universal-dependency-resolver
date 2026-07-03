@@ -1,12 +1,12 @@
 """Module docstring."""
+
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 from rich.prompt import Confirm
 
-from ..shared import console, _read_lock_file, _generate_install_command
+from ..shared import _generate_install_command, _read_lock_file, console
 
 
 def cmd_install(args):
@@ -22,7 +22,7 @@ def cmd_install(args):
         console.print("[red]No packages in lock file[/red]")
         return 1
 
-    eco_groups: Dict[str, List[Tuple[str, str]]] = {}
+    eco_groups: dict[str, list[tuple[str, str]]] = {}
     for pkg_name, pinfo in packages.items():
         eco = pinfo.get("ecosystem", "pypi")
         ver = pinfo.get("resolved_version")
@@ -36,8 +36,8 @@ def cmd_install(args):
         console.print("[red]No resolved packages to install[/red]")
         return 1
 
-    install_commands: List[Tuple[str, str]] = []
-    install_pkg_list: Dict[str, List[Tuple[str, str]]] = {}
+    install_commands: list[tuple[str, str]] = []
+    install_pkg_list: dict[str, list[tuple[str, str]]] = {}
     for eco, pkgs in eco_groups.items():
         if getattr(args, "ecosystem", None) and eco != args.ecosystem:
             continue
@@ -55,9 +55,7 @@ def cmd_install(args):
     label = "Restore" if getattr(args, "restore", False) else "Install"
     console.print(f"[bold]{label} Plan[/bold]")
     for eco, cmd in install_commands:
-        console.print(
-            f"  [cyan]{eco}[/cyan] ({len(install_pkg_list[eco])} pkgs): [dim]{cmd}[/dim]"
-        )
+        console.print(f"  [cyan]{eco}[/cyan] ({len(install_pkg_list[eco])} pkgs): [dim]{cmd}[/dim]")
 
     if getattr(args, "dry_run", False):
         console.print("[yellow]── dry run — no installations performed ──[/yellow]")

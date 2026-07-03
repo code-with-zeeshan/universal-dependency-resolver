@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -107,7 +107,7 @@ class TestPackagistClient:
             "_get",
             new_callable=AsyncMock,
             return_value={"results": [sample_package_data]},
-        ) as mock_get:
+        ):
             results = await client.search_packages("laravel", limit=10)
         assert len(results) >= 1
 
@@ -141,7 +141,7 @@ class TestPackagistClient:
             "_get",
             new_callable=AsyncMock,
             return_value={"results": [sample_package_data]},
-        ) as mock_get:
+        ):
             results = await client.search_packages("laravel", tags=["framework"])
         assert len(results) >= 1
 
@@ -152,14 +152,13 @@ class TestPackagistClient:
             "_get",
             new_callable=AsyncMock,
             return_value={"package": sample_package_data},
+        ), patch.object(
+            client,
+            "_get_download_stats",
+            new_callable=AsyncMock,
+            return_value={"daily": 0, "monthly": 0, "total": 0},
         ):
-            with patch.object(
-                client,
-                "_get_download_stats",
-                new_callable=AsyncMock,
-                return_value={"daily": 0, "monthly": 0, "total": 0},
-            ):
-                result = await client.get_versions("laravel/laravel")
+            result = await client.get_versions("laravel/laravel")
         assert len(result) >= 1
         assert all("version" in v for v in result)
 
@@ -178,14 +177,13 @@ class TestPackagistClient:
             "_get",
             new_callable=AsyncMock,
             return_value={"package": sample_package_data},
+        ), patch.object(
+            client,
+            "_get_download_stats",
+            new_callable=AsyncMock,
+            return_value={"daily": 0, "monthly": 0, "total": 0},
         ):
-            with patch.object(
-                client,
-                "_get_download_stats",
-                new_callable=AsyncMock,
-                return_value={"daily": 0, "monthly": 0, "total": 0},
-            ):
-                result = await client.get_package_version("laravel/laravel", "11.0.0")
+            result = await client.get_package_version("laravel/laravel", "11.0.0")
         assert result is not None
 
     @pytest.mark.asyncio

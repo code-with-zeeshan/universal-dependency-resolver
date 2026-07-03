@@ -648,7 +648,7 @@ class TestPyPIClient:
 
     @pytest.mark.asyncio
     async def test_search_cache_hit(self, client):
-        from datetime import datetime, timedelta
+        from datetime import datetime
         client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now())
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock) as mock_xml:
             results = await client.search("flask")
@@ -659,7 +659,6 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_cache_expired(self, client):
         from datetime import datetime, timedelta
-        import time
         client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now() - timedelta(seconds=9999))
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[{"name": "new"}]):
             results = await client.search("flask")
@@ -670,18 +669,17 @@ class TestPyPIClient:
         results = [
             MagicMock(**{"get.side_effect": lambda k, d=None: {"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}.get(k, d)})
         ]
-        with patch.object(client, "_search_xmlrpc", wraps=client._search_xmlrpc) as mock:
+        with patch.object(client, "_search_xmlrpc", wraps=client._search_xmlrpc):
             with patch("xmlrpc.client.ServerProxy") as mock_proxy:
                 mock_proxy.return_value.search.return_value = results
                 with patch("asyncio.get_event_loop") as mock_loop:
                     mock_loop.return_value.run_in_executor = AsyncMock(return_value=results)
                     # Need to call through search which calls _search_xmlrpc
-                    pass
         # Actually let me test _search_xmlrpc directly
         xmlrpc_results = [{"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}]
-        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=xmlrpc_results) as mock:
-            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock) as mock_web:
-                with patch.object(client, "_search_fallback", new_callable=AsyncMock) as mock_fb:
+        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=xmlrpc_results):
+            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock):
+                with patch.object(client, "_search_fallback", new_callable=AsyncMock):
                     results = await client.search("flask")
         assert len(results) == 1
         assert results[0]["name"] == "flask"
@@ -851,7 +849,7 @@ class TestPyPIClient:
 
     @pytest.mark.asyncio
     async def test_search_web_scraping_direct(self, client):
-        html = '''
+        html = """
         <a class="package-snippet" href="/project/flask/">
             <span class="package-snippet__name">Flask</span>
             <span class="package-snippet__version">2.3.3</span>
@@ -862,7 +860,7 @@ class TestPyPIClient:
             <span class="package-snippet__version">4.2</span>
             <p class="package-snippet__description">Web framework</p>
         </a>
-        '''
+        """
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.text = AsyncMock(return_value=html)

@@ -1,47 +1,47 @@
 """Module docstring."""
+
 # backend/api/routes/packages.py
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
-from typing import List, Optional
-from pydantic import BaseModel
 import asyncio
 import logging
-from packaging import version
 
-from backend.core.data_aggregator import DataAggregator, Ecosystem
-from backend.core.conflict_resolver import ConflictResolver
-from backend.core.export_generator import ExportGenerator
-from backend.orchestrator.db_service import CompatibilityDB
-from backend.core.system_scanner import SystemScanner
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from packaging import version
+from pydantic import BaseModel
+
+from backend.api.auth import get_current_user
 from backend.api.dependencies import (
-    get_data_aggregator,
-    get_conflict_resolver,
-    get_export_generator,
     get_compatibility_db,
+    get_conflict_resolver,
+    get_data_aggregator,
+    get_export_generator,
     get_system_scanner,
     limiter,
 )
-from backend.api.schemas import (
-    ResolveRequest,
-    ExportRequest,
-)
-from backend.api.auth import get_current_user
-from backend.settings import EXPORT_FORMAT_METADATA
-from backend.core.cache import cache_manager
-from backend.api.helpers.packages import (
-    _filter_by_python_version,
-    _sort_search_results,
-    _get_recursive_dependencies,
-    _count_dependencies,
-    _generate_compatibility_summary,
-    _extract_version_compatibility,
-    _get_package_metrics,
-)
 from backend.api.helpers.compatibility import (
+    SystemSpec,
     _check_version_compatibility_detailed,
     _is_prerelease,
-    SystemSpec,
 )
-from backend.orchestrator.db_service import User
+from backend.api.helpers.packages import (
+    _count_dependencies,
+    _extract_version_compatibility,
+    _filter_by_python_version,
+    _generate_compatibility_summary,
+    _get_package_metrics,
+    _get_recursive_dependencies,
+    _sort_search_results,
+)
+from backend.api.schemas import (
+    ExportRequest,
+    ResolveRequest,
+)
+from backend.core.cache import cache_manager
+from backend.core.conflict_resolver import ConflictResolver
+from backend.core.data_aggregator import DataAggregator, Ecosystem
+from backend.core.export_generator import ExportGenerator
+from backend.core.system_scanner import SystemScanner
+from backend.orchestrator.db_service import CompatibilityDB, User
+from backend.settings import EXPORT_FORMAT_METADATA
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class PackageSearchRequest(BaseModel):
     """Package Search Request functionality."""
 
     query: str
-    ecosystems: Optional[List[str]] = None
+    ecosystems: list[str] | None = None
     limit: int = 20
 
 
@@ -139,9 +139,7 @@ async def export_configuration(
 
 @router.get("/export-formats")
 @limiter.limit("60/minute")
-async def get_export_formats(
-    request: Request, current_user: User = Depends(get_current_user)
-):
+async def get_export_formats(request: Request, current_user: User = Depends(get_current_user)):
     """Get available export formats."""
     try:
         formats = [
@@ -164,16 +162,10 @@ async def get_export_formats(
 async def search_packages(
     request: Request,
     q: str = Query(...),
-    ecosystems: Optional[str] = Query(
-        None, description="Comma-separated list of ecosystems"
-    ),
+    ecosystems: str | None = Query(None, description="Comma-separated list of ecosystems"),
     limit: int = Query(20, ge=1, le=100),
-    sort_by: str = Query(
-        "relevance", description="Sort by: relevance, downloads, name, updated"
-    ),
-    python_version: Optional[str] = Query(
-        None, description="Filter by Python version compatibility"
-    ),
+    sort_by: str = Query("relevance", description="Sort by: relevance, downloads, name, updated"),
+    python_version: str | None = Query(None, description="Filter by Python version compatibility"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
@@ -197,9 +189,7 @@ async def search_packages(
                 and ecosystem in ["pypi", "conda"]
                 and isinstance(ecosystem_results, list)
             ):
-                ecosystem_results = _filter_by_python_version(
-                    ecosystem_results, python_version
-                )
+                ecosystem_results = _filter_by_python_version(ecosystem_results, python_version)
 
             # Sort results
             if isinstance(ecosystem_results, list):
@@ -207,9 +197,7 @@ async def search_packages(
                 results[ecosystem] = ecosystem_results
 
         # Calculate total count
-        total_count = sum(
-            len(r) if isinstance(r, list) else 0 for r in results.values()
-        )
+        total_count = sum(len(r) if isinstance(r, list) else 0 for r in results.values())
 
         return {
             "status": "success",
@@ -236,9 +224,7 @@ async def get_package_details(
     request: Request,
     ecosystem: str,
     package_name: str,
-    include_metrics: bool = Query(
-        False, description="Include download and usage metrics"
-    ),
+    include_metrics: bool = Query(False, description="Include download and usage metrics"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
 ):
@@ -293,13 +279,11 @@ async def get_package_versions(
     request: Request,
     ecosystem: str,
     package_name: str,
-    compatible_with: Optional[str] = Query(
+    compatible_with: str | None = Query(
         None,
         description="Filter versions compatible with system (e.g., 'os=linux,python=3.9,cuda=11.2')",
     ),
-    include_yanked: bool = Query(
-        False, description="Include yanked/deprecated versions"
-    ),
+    include_yanked: bool = Query(False, description="Include yanked/deprecated versions"),
     include_prerelease: bool = Query(False, description="Include pre-release versions"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
@@ -312,9 +296,7 @@ async def get_package_versions(
             eco_enum = Ecosystem(ecosystem)
             source = aggregator._get_client(eco_enum)
         except (ValueError, KeyError):
-            raise HTTPException(
-                status_code=400, detail=f"Unknown ecosystem: {ecosystem}"
-            )
+            raise HTTPException(status_code=400, detail=f"Unknown ecosystem: {ecosystem}")
 
         versions = await source.get_versions(package_name)
 
@@ -337,9 +319,7 @@ async def get_package_versions(
 
             # Check compatibility if system spec provided
             if system_spec:
-                is_compatible, notes = _check_version_compatibility_detailed(
-                    v, system_spec
-                )
+                is_compatible, notes = _check_version_compatibility_detailed(v, system_spec)
                 v["compatible"] = is_compatible
                 v["compatibility_notes"] = notes
 
@@ -350,13 +330,9 @@ async def get_package_versions(
             filtered_versions.append(v)
 
         # Sort versions (newest first)
-        filtered_versions.sort(
-            key=lambda x: version.parse(x.get("version", "0.0.0")), reverse=True
-        )
+        filtered_versions.sort(key=lambda x: version.parse(x.get("version", "0.0.0")), reverse=True)
 
-        logger.info(
-            f"Found {len(filtered_versions)}/{len(versions)} versions after filtering"
-        )
+        logger.info(f"Found {len(filtered_versions)}/{len(versions)} versions after filtering")
 
         return {
             "status": "success",
@@ -387,7 +363,7 @@ async def get_package_dependencies(
     request: Request,
     ecosystem: str,
     package_name: str,
-    version: Optional[str] = Query(None, description="Specific version to check"),
+    version: str | None = Query(None, description="Specific version to check"),
     recursive: bool = Query(False, description="Get dependencies recursively"),
     max_depth: int = Query(3, ge=1, le=5, description="Maximum recursion depth"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
@@ -395,24 +371,18 @@ async def get_package_dependencies(
 ):
     """Get dependencies for a specific package version."""
     try:
-        logger.info(
-            f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}"
-        )
+        logger.info(f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}")
 
         try:
             eco_enum = Ecosystem(ecosystem)
             source = aggregator._get_client(eco_enum)
         except (ValueError, KeyError):
-            raise HTTPException(
-                status_code=400, detail=f"Unknown ecosystem: {ecosystem}"
-            )
+            raise HTTPException(status_code=400, detail=f"Unknown ecosystem: {ecosystem}")
 
         if recursive:
             logger.debug(f"Getting recursive dependencies with max_depth={max_depth}")
             # Get recursive dependencies
-            dep_tree = await _get_recursive_dependencies(
-                source, package_name, version, max_depth
-            )
+            dep_tree = await _get_recursive_dependencies(source, package_name, version, max_depth)
             return {
                 "status": "success",
                 "package": package_name,
@@ -420,16 +390,15 @@ async def get_package_dependencies(
                 "dependency_tree": dep_tree,
                 "total_dependencies": _count_dependencies(dep_tree),
             }
-        else:
-            # Get direct dependencies only
-            dependencies = await source.get_dependencies(package_name, version)
+        # Get direct dependencies only
+        dependencies = await source.get_dependencies(package_name, version)
 
-            return {
-                "status": "success",
-                "package": package_name,
-                "version": version or "latest",
-                "dependencies": dependencies,
-            }
+        return {
+            "status": "success",
+            "package": package_name,
+            "version": version or "latest",
+            "dependencies": dependencies,
+        }
     except HTTPException:
         raise
     except ValueError as e:
@@ -446,7 +415,7 @@ async def get_package_compatibility(
     request: Request,
     ecosystem: str,
     package_name: str,
-    version: Optional[str] = Query(None, description="Specific version to check"),
+    version: str | None = Query(None, description="Specific version to check"),
     compatibility_db: CompatibilityDB = Depends(get_compatibility_db),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
@@ -466,9 +435,7 @@ async def get_package_compatibility(
         # Get version-specific compatibility if version specified
         version_compatibility = {}
         if version and package_info:
-            version_compatibility = _extract_version_compatibility(
-                package_info, version
-            )
+            version_compatibility = _extract_version_compatibility(package_info, version)
 
         # Get community statistics
         community_stats = compatibility_db.get_compatibility_statistics(
@@ -482,9 +449,7 @@ async def get_package_compatibility(
             "version": version,
             "compatibility": {
                 "known_conflicts": db_compatibility.get("known_conflicts", []),
-                "verified_combinations": db_compatibility.get(
-                    "verified_combinations", []
-                ),
+                "verified_combinations": db_compatibility.get("verified_combinations", []),
                 "system_requirements": package_info.get("system_requirements", {}),
                 "version_specific": version_compatibility,
                 "community_reports": db_compatibility.get("community_reports", []),

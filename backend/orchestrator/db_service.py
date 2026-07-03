@@ -5,24 +5,24 @@ the database layer, enforcing the import architecture rule that
 api/ must not import from database/ directly.
 """
 
-from typing import Dict, Any
+from typing import Any
 
+from backend.database.compatibility_db import CompatibilityDB
 from backend.database.models import (
-    User,
     APIKey,
-    get_engine,
+    User,
     check_db_health,
     db_session,
+    get_engine,
 )
-from backend.database.compatibility_db import CompatibilityDB
 
 __all__ = [
-    "User",
     "APIKey",
     "CompatibilityDB",
+    "User",
+    "check_health",
     "db_session",
     "get_db_engine",
-    "check_health",
 ]
 
 
@@ -31,6 +31,6 @@ def get_db_engine():
     return get_engine()
 
 
-def check_health() -> Dict[str, Any]:
+def check_health() -> dict[str, Any]:
     """Check database health."""
     return check_db_health()

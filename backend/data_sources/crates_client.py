@@ -1,13 +1,16 @@
 """Module docstring."""
+
 # crates_client.py
-from typing import List, Optional, Dict, Any, Set
-from datetime import datetime
-from fastapi import HTTPException
-import re
 import asyncio
-from urllib.parse import quote
 import logging
+import re
+from datetime import datetime
 from enum import Enum
+from typing import Any
+from urllib.parse import quote
+
+from fastapi import HTTPException
+
 from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
@@ -28,10 +31,10 @@ class DependencyKind(Enum):
 class CratesClient(BaseDataSourceClient):
     def __init__(
         self,
-        user_agent: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
+        user_agent: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
     ):
         crates_config = get_ecosystem_config("crates")
 
@@ -46,7 +49,7 @@ class CratesClient(BaseDataSourceClient):
 
     async def search_packages(
         self, query: str, limit: int = 10, page: int = 1, sort: str = "relevance"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         query = normalize_package_name(query)
         try:
             params = {
@@ -91,11 +94,9 @@ class CratesClient(BaseDataSourceClient):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Crates search error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Crates search error: {e!s}")
 
-    async def get_package_info(self, package_name: str) -> Dict[str, Any]:
+    async def get_package_info(self, package_name: str) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}")
@@ -114,7 +115,7 @@ class CratesClient(BaseDataSourceClient):
             msrv = self._extract_msrv(crate)
 
             # Build lightweight version list from the versions payload already returned
-            versions: List[Any] = []
+            versions: list[Any] = []
             seen = set()
             for v in versions_data:
                 ver = v["num"]
@@ -148,9 +149,7 @@ class CratesClient(BaseDataSourceClient):
                     "created_at": crate.get("created_at"),
                     "updated_at": crate.get("updated_at"),
                     "owners": await self._get_crate_owners(package_name),
-                    "reverse_dependencies": await self._get_reverse_dependencies(
-                        package_name
-                    ),
+                    "reverse_dependencies": await self._get_reverse_dependencies(package_name),
                 },
                 "system_requirements": {
                     "rust_versions": [msrv or "1.60+"],
@@ -164,24 +163,18 @@ class CratesClient(BaseDataSourceClient):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Crates package info error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Crates package info error: {e!s}")
 
     async def get_package_versions(
-        self, package_name: str, filters: Optional[Dict] = None
-    ) -> List[Dict]:
+        self, package_name: str, filters: dict | None = None
+    ) -> list[dict]:
         package_name = normalize_package_name(package_name)
         try:
-            data = await self._get(
-                f"{self.base_url}/crates/{quote(package_name)}/versions"
-            )
+            data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/versions")
             if not data:
-                raise HTTPException(
-                    status_code=404, detail="Crates package versions not found"
-                )
+                raise HTTPException(status_code=404, detail="Crates package versions not found")
 
-            versions: List[Any] = []
+            versions: list[Any] = []
             for version_data in data["versions"]:
                 version_str = version_data["num"]
 
@@ -191,46 +184,33 @@ class CratesClient(BaseDataSourceClient):
                     continue
 
                 if filters:
-                    if filters.get("exclude_yanked", True) and version_data.get(
-                        "yanked", False
-                    ):
+                    if filters.get("exclude_yanked", True) and version_data.get("yanked", False):
                         continue
 
-                    if (
-                        filters.get("exclude_prerelease", False)
-                        and parsed_version.is_prerelease
-                    ):
+                    if filters.get("exclude_prerelease", False) and parsed_version.is_prerelease:
                         continue
 
                     if "version_range" in filters:
-                        if not self._version_matches_range(
-                            version_str, filters["version_range"]
-                        ):
+                        if not self._version_matches_range(version_str, filters["version_range"]):
                             continue
 
                     if "min_rust_version" in filters:
-                        crate_msrv = await self._get_version_msrv(
-                            package_name, version_str
-                        )
+                        crate_msrv = await self._get_version_msrv(package_name, version_str)
                         if crate_msrv and not self._rust_version_compatible(
                             filters["min_rust_version"], crate_msrv
                         ):
                             continue
 
                 # Only fetch features/msrv for the first 50 versions when no filters
-                features: Dict[str, Any] = {}
+                features: dict[str, Any] = {}
                 rust_version = None
                 if not filters or len(versions) < 50:
                     try:
-                        features = await self._get_version_features(
-                            package_name, version_str
-                        )
+                        features = await self._get_version_features(package_name, version_str)
                     except Exception:
                         features = {}
                     try:
-                        rust_version = await self._get_version_msrv(
-                            package_name, version_str
-                        )
+                        rust_version = await self._get_version_msrv(package_name, version_str)
                     except Exception:
                         rust_version = None
 
@@ -261,18 +241,16 @@ class CratesClient(BaseDataSourceClient):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Crates versions error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Crates versions error: {e!s}")
 
     async def get_dependencies(
         self,
         package_name: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         include_optional: bool = True,
         include_dev: bool = False,
         include_build: bool = False,
-    ) -> Dict[str, List[Dict]]:
+    ) -> dict[str, list[dict]]:
         package_name = normalize_package_name(package_name)
         try:
             if not version:
@@ -285,7 +263,7 @@ class CratesClient(BaseDataSourceClient):
             if not data:
                 return {"normal": [], "dev": [], "build": []}
 
-            dependencies: Dict[str, List[Dict]] = {"normal": [], "dev": [], "build": []}
+            dependencies: dict[str, list[dict]] = {"normal": [], "dev": [], "build": []}
 
             for dep in data.get("dependencies", []):
                 dep_kind = dep.get("kind", "normal")
@@ -323,17 +301,15 @@ class CratesClient(BaseDataSourceClient):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Crates dependencies error: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Crates dependencies error: {e!s}")
 
     async def get_dependency_tree(
         self,
         package_name: str,
-        version: Optional[str] = None,
+        version: str | None = None,
         max_depth: int = 3,
-        visited: Optional[Set[str]] = None,
-    ) -> Dict:
+        visited: set[str] | None = None,
+    ) -> dict:
         package_name = normalize_package_name(package_name)
         if visited is None:
             visited = set()
@@ -352,7 +328,7 @@ class CratesClient(BaseDataSourceClient):
             package_name, version, include_dev=False, include_build=False
         )
 
-        tree: Dict[str, Any] = {
+        tree: dict[str, Any] = {
             "name": package_name,
             "version": version,
             "dependencies": {"normal": [], "build": []},
@@ -372,15 +348,13 @@ class CratesClient(BaseDataSourceClient):
 
         return tree
 
-    async def check_compatibility(
-        self, package_name: str, version: str, system_info: Dict
-    ) -> Dict:
+    async def check_compatibility(self, package_name: str, version: str, system_info: dict) -> dict:
         package_name = normalize_package_name(package_name)
         try:
             await self._get_version_metadata(package_name, version)
             dependencies = await self.get_dependencies(package_name, version)
 
-            compatibility: Dict[str, Any] = {
+            compatibility: dict[str, Any] = {
                 "compatible": True,
                 "details": {},
                 "warnings": [],
@@ -396,9 +370,7 @@ class CratesClient(BaseDataSourceClient):
                         f"Requires Rust {msrv} or newer, but system has {system_rust}"
                     )
                 else:
-                    compatibility["details"]["rust_version"] = (
-                        f"Compatible (requires Rust {msrv}+)"
-                    )
+                    compatibility["details"]["rust_version"] = f"Compatible (requires Rust {msrv}+)"
             else:
                 compatibility["details"]["rust_version"] = "Compatible with Rust 1.60+"
 
@@ -417,14 +389,10 @@ class CratesClient(BaseDataSourceClient):
                         )
 
             if "enabled_features" in system_info:
-                available_features = await self._get_version_features(
-                    package_name, version
-                )
+                available_features = await self._get_version_features(package_name, version)
                 for feature in system_info["enabled_features"]:
                     if feature not in available_features:
-                        compatibility["errors"].append(
-                            f"Feature '{feature}' not available"
-                        )
+                        compatibility["errors"].append(f"Feature '{feature}' not available")
                         compatibility["compatible"] = False
 
             system_deps = self._extract_system_dependencies(dependencies)
@@ -440,19 +408,17 @@ class CratesClient(BaseDataSourceClient):
             return compatibility
 
         except Exception as e:
-            logger.error(f"Compatibility check error: {str(e)}")
+            logger.error(f"Compatibility check error: {e!s}")
             return {
                 "compatible": True,
                 "details": {"error": "Could not verify compatibility"},
-                "warnings": [f"Compatibility check failed: {str(e)}"],
+                "warnings": [f"Compatibility check failed: {e!s}"],
             }
 
-    async def _get_crate_owners(self, package_name: str) -> List[Dict[str, str]]:
+    async def _get_crate_owners(self, package_name: str) -> list[dict[str, str]]:
         package_name = normalize_package_name(package_name)
         try:
-            data = await self._get(
-                f"{self.base_url}/crates/{quote(package_name)}/owners"
-            )
+            data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/owners")
             if not data:
                 return []
 
@@ -479,7 +445,7 @@ class CratesClient(BaseDataSourceClient):
         except Exception:
             return 0
 
-    async def _get_version_metadata(self, package_name: str, version: str) -> Dict:
+    async def _get_version_metadata(self, package_name: str, version: str) -> dict:
         package_name = normalize_package_name(package_name)
         try:
             f"https://crates.io/api/v1/crates/{quote(package_name)}/{quote(version)}/download"
@@ -487,43 +453,34 @@ class CratesClient(BaseDataSourceClient):
         except Exception:
             return {}
 
-    async def _get_version_msrv(self, package_name: str, version: str) -> Optional[str]:
+    async def _get_version_msrv(self, package_name: str, version: str) -> str | None:
         package_name = normalize_package_name(package_name)
         try:
             versions = await self.get_package_versions(package_name)
             for v in versions:
                 if v["version"] == version:
-                    release_date = datetime.fromisoformat(
-                        v["release_date"].replace("Z", "+00:00")
-                    )
+                    release_date = datetime.fromisoformat(v["release_date"].replace("Z", "+00:00"))
                     if release_date.year < 2018:
                         return "1.0"
-                    elif release_date.year < 2019:
+                    if release_date.year < 2019:
                         return "1.31"
-                    elif release_date.year < 2021:
+                    if release_date.year < 2021:
                         return "1.45"
-                    elif release_date.year < 2022:
+                    if release_date.year < 2022:
                         return "1.56"
-                    else:
-                        return "1.60"
+                    return "1.60"
             return None
         except Exception:
             return None
 
-    async def _get_version_features(
-        self, package_name: str, version: str
-    ) -> Dict[str, Any]:
+    async def _get_version_features(self, package_name: str, version: str) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         return {"default": True}
 
-    async def _resolve_version_requirement(
-        self, package_name: str, requirement: str
-    ) -> Optional[str]:
+    async def _resolve_version_requirement(self, package_name: str, requirement: str) -> str | None:
         package_name = normalize_package_name(package_name)
         try:
-            versions = await self.get_package_versions(
-                package_name, {"exclude_yanked": True}
-            )
+            versions = await self.get_package_versions(package_name, {"exclude_yanked": True})
 
             for v in versions:
                 if self._version_matches_requirement(v["version"], requirement):
@@ -565,10 +522,9 @@ class CratesClient(BaseDataSourceClient):
 
             if r.major > 0:
                 return v.major == r.major and v >= r
-            elif r.minor > 0:
+            if r.minor > 0:
                 return v.major == 0 and v.minor == r.minor and v >= r
-            else:
-                return v.major == 0 and v.minor == 0 and v.micro == r.micro
+            return v.major == 0 and v.minor == 0 and v.micro == r.micro
         except Exception:
             return False
 
@@ -600,13 +556,13 @@ class CratesClient(BaseDataSourceClient):
 
             if operator == ">=":
                 return v >= r
-            elif operator == "<=":
+            if operator == "<=":
                 return v <= r
-            elif operator == ">":
+            if operator == ">":
                 return v > r
-            elif operator == "<":
+            if operator == "<":
                 return v < r
-            elif operator == "=":
+            if operator == "=":
                 return v == r
 
         except Exception:
@@ -621,9 +577,7 @@ class CratesClient(BaseDataSourceClient):
                 return False
         return True
 
-    def _rust_version_compatible(
-        self, system_version: str, required_version: str
-    ) -> bool:
+    def _rust_version_compatible(self, system_version: str, required_version: str) -> bool:
         try:
             sys_parts = system_version.split(".")
             req_parts = required_version.split(".")
@@ -655,7 +609,7 @@ class CratesClient(BaseDataSourceClient):
 
         return True
 
-    def _extract_msrv(self, crate_data: Dict) -> Optional[str]:
+    def _extract_msrv(self, crate_data: dict) -> str | None:
         keywords = crate_data.get("keywords", [])
         for keyword in keywords:
             if keyword.startswith("rust-"):
@@ -672,7 +626,7 @@ class CratesClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_supported_os(self, crate_data: Dict) -> List[str]:
+    def _extract_supported_os(self, crate_data: dict) -> list[str]:
         supported_os = []
 
         keywords = crate_data.get("keywords", [])
@@ -688,9 +642,7 @@ class CratesClient(BaseDataSourceClient):
 
         return list(set(supported_os))
 
-    def _extract_system_dependencies(
-        self, dependencies: Dict[str, List[Dict]]
-    ) -> List[str]:
+    def _extract_system_dependencies(self, dependencies: dict[str, list[dict]]) -> list[str]:
         system_deps = []
 
         sys_crate_mapping = {

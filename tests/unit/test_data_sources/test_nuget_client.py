@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -64,14 +64,13 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value=mock_registration,
         ):
-            with patch.object(
-                client,
-                "_get",
-                new_callable=AsyncMock,
-                return_value=mock_registration,
-            ):
-                result = await client.get_package_info_async("Newtonsoft.Json")
+            result = await client.get_package_info_async("Newtonsoft.Json")
         assert result is not None
         assert result["name"] == "newtonsoft.json"
         assert result["version"] == "13.0.3"
@@ -97,14 +96,13 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
-        ):
-            with patch.object(
-                client,
-                "_get",
-                new_callable=AsyncMock,
-                return_value=mock_registration,
-            ) as mock_get:
-                await client.get_package_info_async("Newtonsoft.Json")
+        ), patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value=mock_registration,
+        ) as mock_get:
+            await client.get_package_info_async("Newtonsoft.Json")
         mock_get.assert_called_once()
         url = mock_get.call_args[0][0]
         assert "newtonsoft.json" in url.lower()
@@ -116,11 +114,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=None
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=None
-            ):
-                result = await client.get_package_info_async("Nonexistent.Package")
+            result = await client.get_package_info_async("Nonexistent.Package")
         assert result is None
 
     def test_get_package_info_sync_success(self, client, sample_package_data):
@@ -166,11 +163,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
-            ):
-                results = await client.search_packages("json", limit=10)
+            results = await client.search_packages("json", limit=10)
         assert len(results) == 1
         assert results[0]["name"] == "Newtonsoft.Json"
 
@@ -183,12 +179,11 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
-        ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
-            ) as mock_get:
-                await client.search_packages("json", limit=5)
-        args, kwargs = mock_get.call_args
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+        ) as mock_get:
+            await client.search_packages("json", limit=5)
+        _args, kwargs = mock_get.call_args
         params = kwargs.get("params", {})
         assert params.get("q") == "json"
         assert params.get("take") == 5
@@ -200,11 +195,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"data": []}
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value={"data": []}
-            ):
-                results = await client.search_packages("nonexistent")
+            results = await client.search_packages("nonexistent")
         assert results == []
 
     @pytest.mark.asyncio
@@ -214,11 +208,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
-            ):
-                results = await client.search_packages("json")
+            results = await client.search_packages("json")
         assert results == []
 
     @pytest.mark.asyncio
@@ -230,12 +223,11 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
-        ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=sample_search_results
-            ) as mock_get:
-                await client.search_packages("json", include_prerelease=True)
-        args, kwargs = mock_get.call_args
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=sample_search_results
+        ) as mock_get:
+            await client.search_packages("json", include_prerelease=True)
+        _args, kwargs = mock_get.call_args
         params = kwargs.get("params", {})
         assert params.get("prerelease") == "true"
 
@@ -269,11 +261,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=mock_registration
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=mock_registration
-            ):
-                versions = await client.get_versions("Newtonsoft.Json")
+            versions = await client.get_versions("Newtonsoft.Json")
         assert len(versions) >= 1
         assert all("version" in v for v in versions)
 
@@ -284,9 +275,8 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
-        ):
-            with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-                versions = await client.get_versions("Nonexistent.Package")
+        ), patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+            versions = await client.get_versions("Nonexistent.Package")
         assert versions == []
 
     @pytest.mark.asyncio
@@ -299,14 +289,13 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value=mock_version_data,
         ):
-            with patch.object(
-                client,
-                "_get",
-                new_callable=AsyncMock,
-                return_value=mock_version_data,
-            ):
-                result = await client.get_package_version("Newtonsoft.Json", "13.0.3")
+            result = await client.get_package_version("Newtonsoft.Json", "13.0.3")
         assert result is not None
         assert result["version"] == "13.0.3"
 
@@ -320,14 +309,13 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value=mock_version_data,
         ):
-            with patch.object(
-                client,
-                "_get",
-                new_callable=AsyncMock,
-                return_value=mock_version_data,
-            ):
-                deps = await client.get_dependencies("Newtonsoft.Json", "13.0.3")
+            deps = await client.get_dependencies("Newtonsoft.Json", "13.0.3")
         assert isinstance(deps, dict)
 
     @pytest.mark.asyncio
@@ -337,11 +325,10 @@ class TestNuGetClient:
             client,
             "_initialize_service_endpoints",
             new_callable=AsyncMock,
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=None
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=None
-            ):
-                deps = await client.get_dependencies("Nonexistent.Package", "1.0")
+            deps = await client.get_dependencies("Nonexistent.Package", "1.0")
         assert deps == {}
 
     @pytest.mark.asyncio
@@ -417,11 +404,10 @@ class TestNuGetClient:
         client.search_url = None
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
-        ) as mock_init:
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value={"data": []}
-            ):
-                await client.search_packages("json")
+        ) as mock_init, patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"data": []}
+        ):
+            await client.search_packages("json")
         mock_init.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -430,11 +416,10 @@ class TestNuGetClient:
         client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
-        ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value={"data": []}
-            ) as mock_get:
-                await client.search_packages("json", target_framework="net6.0")
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"data": []}
+        ) as mock_get:
+            await client.search_packages("json", target_framework="net6.0")
         params = mock_get.call_args[1]["params"]
         assert params["supportedFramework"] == "net6.0"
 
@@ -444,11 +429,10 @@ class TestNuGetClient:
         client.search_url = "https://azuresearch-usnc.nuget.org/query"
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"nope": "x"}
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value={"nope": "x"}
-            ):
-                results = await client.search_packages("json")
+            results = await client.search_packages("json")
         assert results == []
 
     # ─── get_package_info_async ────────────────────────────────────────────────
@@ -459,9 +443,8 @@ class TestNuGetClient:
         client.registration_base_url = None
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
-        ) as mock_init:
-            with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-                await client.get_package_info_async("Newtonsoft.Json")
+        ) as mock_init, patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+            await client.get_package_info_async("Newtonsoft.Json")
         mock_init.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -492,11 +475,10 @@ class TestNuGetClient:
         }
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=[mock_registration, mock_page]
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, side_effect=[mock_registration, mock_page]
-            ):
-                result = await client.get_package_info_async("Newtonsoft.Json")
+            result = await client.get_package_info_async("Newtonsoft.Json")
         assert result is not None
         assert result["version"] == "13.0.3"
 
@@ -519,11 +501,10 @@ class TestNuGetClient:
         }
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=mock_registration
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=mock_registration
-            ):
-                versions = await client.get_versions("Newtonsoft.Json", include_prereleases=False)
+            versions = await client.get_versions("Newtonsoft.Json", include_prereleases=False)
         versions_str = [v["version"] for v in versions]
         assert "14.0.0-beta1" not in versions_str
         assert "13.0.3" in versions_str
@@ -551,11 +532,10 @@ class TestNuGetClient:
         }
         with patch.object(
             client, "_initialize_service_endpoints", new_callable=AsyncMock
+        ), patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=mock_registration
         ):
-            with patch.object(
-                client, "_get", new_callable=AsyncMock, return_value=mock_registration
-            ):
-                versions = await client.get_versions("Newtonsoft.Json", include_unlisted=False)
+            versions = await client.get_versions("Newtonsoft.Json", include_unlisted=False)
         versions_str = [v["version"] for v in versions]
         assert "13.0.2" not in versions_str
 

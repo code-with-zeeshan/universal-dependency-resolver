@@ -1,6 +1,7 @@
 """Tests for the CLI pipeline functions in backend/cli.py."""
 
 import argparse
+import contextlib
 import io
 import json
 import sys
@@ -9,11 +10,11 @@ from unittest.mock import patch
 import pytest
 
 from backend.cli import (
-    _parse_package_spec,
-    _extract_cuda_variants,
-    _select_best_cuda_variant,
     _aggregator_to_resolver_input,
+    _extract_cuda_variants,
     _output_json,
+    _parse_package_spec,
+    _select_best_cuda_variant,
 )
 
 
@@ -49,7 +50,7 @@ class TestParsePackageSpec:
         assert constraint is None
 
     def test_empty_string(self):
-        name, eco, constraint = _parse_package_spec("")
+        name, _eco, constraint = _parse_package_spec("")
         assert name == ""
         assert constraint is None
 
@@ -245,7 +246,7 @@ class TestOutputJson:
 
     def test_output_json_exits_zero(self):
         data = {"key": "value"}
-        with patch.object(sys, 'stdout') as mock_stdout:
+        with patch.object(sys, "stdout"):
             with pytest.raises(SystemExit) as exc:
                 _output_json(data, argparse.Namespace())
             assert exc.value.code == 0
@@ -253,21 +254,15 @@ class TestOutputJson:
     def test_output_json_writes_valid_json(self):
         data = {"packages": ["a", "b"], "count": 2}
         string_out = io.StringIO()
-        with patch.object(sys, 'stdout', string_out):
-            try:
-                _output_json(data, argparse.Namespace())
-            except SystemExit:
-                pass
+        with patch.object(sys, "stdout", string_out), contextlib.suppress(SystemExit):
+            _output_json(data, argparse.Namespace())
         parsed = json.loads(string_out.getvalue())
         assert parsed == data
 
     def test_output_json_with_nested_data(self):
         data = {"resolved": {"pkg": {"version": "1.0", "ecosystem": "pypi"}}}
         string_out = io.StringIO()
-        with patch.object(sys, 'stdout', string_out):
-            try:
-                _output_json(data, argparse.Namespace())
-            except SystemExit:
-                pass
+        with patch.object(sys, "stdout", string_out), contextlib.suppress(SystemExit):
+            _output_json(data, argparse.Namespace())
         parsed = json.loads(string_out.getvalue())
         assert parsed["resolved"]["pkg"]["version"] == "1.0"

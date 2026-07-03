@@ -1,14 +1,16 @@
 """Module docstring."""
+
 # npm_client.py
 import asyncio
-from typing import Dict, List, Optional, Set, Any, Union
 import logging
-from datetime import datetime
-from urllib.parse import quote
-from ..core.utils import normalize_package_name, parse_version, parse_version_key
 import re
-from enum import Enum
 from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from typing import Any
+from urllib.parse import quote
+
+from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
     get_ecosystem_config,
@@ -29,26 +31,26 @@ class DependencyType(Enum):
 @dataclass
 class VersionRequirement:
     raw: str
-    operator: Optional[str] = None
-    major: Optional[int] = None
-    minor: Optional[int] = None
-    patch: Optional[int] = None
-    prerelease: Optional[str] = None
+    operator: str | None = None
+    major: int | None = None
+    minor: int | None = None
+    patch: int | None = None
+    prerelease: str | None = None
 
 
 class NPMClient(BaseDataSourceClient):
     def __init__(
         self,
-        registry_url: Optional[str] = None,
-        cache_ttl: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        rate_limit_delay: Optional[float] = None,
-        timeout: Optional[int] = None,
+        registry_url: str | None = None,
+        cache_ttl: int | None = None,
+        max_retries: int | None = None,
+        rate_limit_delay: float | None = None,
+        timeout: int | None = None,
     ):
         npm_config = get_ecosystem_config("npm")
-        registry_url = (
-            registry_url or npm_config.get("url", "https://registry.npmjs.org")
-        ).rstrip("/")
+        registry_url = (registry_url or npm_config.get("url", "https://registry.npmjs.org")).rstrip(
+            "/"
+        )
         self.registry_url = registry_url
         super().__init__(
             ecosystem="npm",
@@ -58,15 +60,15 @@ class NPMClient(BaseDataSourceClient):
 
         self.search_url = "https://registry.npmjs.org/-/v1/search"
         self.downloads_url = "https://api.npmjs.org/downloads"
-        self.mirror_urls: List[str] = []
-        self._semver_cache: Dict[str, VersionRequirement] = {}
+        self.mirror_urls: list[str] = []
+        self._semver_cache: dict[str, VersionRequirement] = {}
 
     async def _make_request(
         self,
         method: str,
         url: str,
         **kwargs,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         urls_to_try = [url]
         if self.mirror_urls and "registry.npmjs.org" in url:
             for mirror in self.mirror_urls:
@@ -83,10 +85,10 @@ class NPMClient(BaseDataSourceClient):
         self,
         query: str,
         limit: int = 20,
-        quality: Optional[float] = None,
-        popularity: Optional[float] = None,
-        maintenance: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        quality: float | None = None,
+        popularity: float | None = None,
+        maintenance: float | None = None,
+    ) -> list[dict[str, Any]]:
         query = normalize_package_name(query)
         params = {"text": query, "size": min(limit, 250)}
 
@@ -139,7 +141,7 @@ class NPMClient(BaseDataSourceClient):
         package_name: str,
         include_readme: bool = True,
         include_versions: bool = True,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
@@ -158,15 +160,11 @@ class NPMClient(BaseDataSourceClient):
 
         types_info = await self._check_typescript_support(package_name, latest_data)
 
-        vulnerabilities = await self._check_vulnerabilities(
-            package_name, latest_version
-        )
+        vulnerabilities = await self._check_vulnerabilities(package_name, latest_version)
 
         versions_info = []
         if include_versions:
-            versions_info = self._process_versions(
-                data.get("versions", {}), data.get("time", {})
-            )
+            versions_info = self._process_versions(data.get("versions", {}), data.get("time", {}))
 
         categorized_deps = self._categorize_dependencies(latest_data)
         info = {
@@ -178,9 +176,7 @@ class NPMClient(BaseDataSourceClient):
             "bugs": data.get("bugs"),
             "license": data.get("license"),
             "author": self._format_person(data.get("author")),  # type: ignore[arg-type]
-            "maintainers": [
-                self._format_person(m) for m in data.get("maintainers", [])
-            ],
+            "maintainers": [self._format_person(m) for m in data.get("maintainers", [])],
             "repository": self._extract_repository_info(data.get("repository")),  # type: ignore[arg-type]
             "readme": data.get("readme") if include_readme else None,
             "readmeFilename": data.get("readmeFilename"),
@@ -220,9 +216,7 @@ class NPMClient(BaseDataSourceClient):
 
         return info
 
-    async def get_package_version(
-        self, package_name: str, version: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}/{version}"
@@ -253,7 +247,7 @@ class NPMClient(BaseDataSourceClient):
         package_name: str,
         include_prereleases: bool = True,
         include_deprecated: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(
             package_name, include_readme=False, include_versions=True
@@ -261,7 +255,7 @@ class NPMClient(BaseDataSourceClient):
         if not info:
             return []
 
-        versions: List[Any] = []
+        versions: list[Any] = []
         for version_info in info.get("versions", []):
             if not include_prereleases and self._is_prerelease(version_info["version"]):
                 continue
@@ -273,9 +267,7 @@ class NPMClient(BaseDataSourceClient):
 
         return versions
 
-    async def resolve_version(
-        self, package_name: str, version_spec: str
-    ) -> Optional[str]:
+    async def resolve_version(self, package_name: str, version_spec: str) -> str | None:
         package_name = normalize_package_name(package_name)
         versions = await self.get_versions(package_name, include_deprecated=False)
         if not versions:
@@ -299,11 +291,11 @@ class NPMClient(BaseDataSourceClient):
     async def get_dependencies(
         self,
         package_name: str,
-        version: Optional[str] = None,
-        types: Optional[List[DependencyType]] = None,
+        version: str | None = None,
+        types: list[DependencyType] | None = None,
         include_transitive: bool = False,
         max_depth: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         if version:
             pkg_data = await self.get_package_version(package_name, version)
@@ -327,7 +319,7 @@ class NPMClient(BaseDataSourceClient):
         result = {"direct": deps, "transitive": {}}
 
         if include_transitive:
-            visited: Set[str] = set()
+            visited: set[str] = set()
             result["transitive"] = await self._resolve_transitive_dependencies(
                 deps.get("dependencies", {}), visited, max_depth
             )
@@ -336,11 +328,11 @@ class NPMClient(BaseDataSourceClient):
 
     async def _resolve_transitive_dependencies(
         self,
-        dependencies: Dict[str, str],
-        visited: Set[str],
+        dependencies: dict[str, str],
+        visited: set[str],
         max_depth: int,
         current_depth: int = 0,
-    ) -> Dict[str, Dict]:
+    ) -> dict[str, dict]:
         if current_depth >= max_depth:
             return {}
 
@@ -353,15 +345,11 @@ class NPMClient(BaseDataSourceClient):
 
             visited.add(normalized_dep_name)
 
-            resolved_version = await self.resolve_version(
-                normalized_dep_name, version_spec
-            )
+            resolved_version = await self.resolve_version(normalized_dep_name, version_spec)
             if not resolved_version:
                 continue
 
-            dep_info = await self.get_package_version(
-                normalized_dep_name, resolved_version
-            )
+            dep_info = await self.get_package_version(normalized_dep_name, resolved_version)
             if not dep_info:
                 continue
 
@@ -381,8 +369,8 @@ class NPMClient(BaseDataSourceClient):
         return transitive
 
     async def check_compatibility(
-        self, package_name: str, version: str, system_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str, system_info: dict[str, Any]
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         pkg_data = await self.get_package_version(package_name, version)
         if not pkg_data:
@@ -397,17 +385,13 @@ class NPMClient(BaseDataSourceClient):
 
         engines = pkg_data.get("engines", {})
         if "node" in engines and "node_version" in system_info:
-            if not self._check_node_compatibility(
-                system_info["node_version"], engines["node"]
-            ):
+            if not self._check_node_compatibility(system_info["node_version"], engines["node"]):
                 errors.append(
                     f"Requires Node.js {engines['node']}, but system has {system_info['node_version']}"
                 )
 
         if "npm" in engines and "npm_version" in system_info:
-            if not self._check_npm_compatibility(
-                system_info["npm_version"], engines["npm"]
-            ):
+            if not self._check_npm_compatibility(system_info["npm_version"], engines["npm"]):
                 warnings.append(
                     f"Recommends npm {engines['npm']}, but system has {system_info['npm_version']}"
                 )
@@ -420,23 +404,17 @@ class NPMClient(BaseDataSourceClient):
         supported_cpu = pkg_data.get("cpu", [])
         if supported_cpu and "cpu" in system_info:
             if not self._check_cpu_compatibility(system_info["cpu"], supported_cpu):
-                errors.append(
-                    f"Not compatible with CPU architecture: {system_info['cpu']}"
-                )
+                errors.append(f"Not compatible with CPU architecture: {system_info['cpu']}")
 
         if self._has_native_dependencies(pkg_data):
             if not system_info.get("has_build_tools", False):
-                warnings.append(
-                    "Package contains native dependencies requiring C++ build tools"
-                )
+                warnings.append("Package contains native dependencies requiring C++ build tools")
 
         peer_deps = pkg_data.get("dependencies", {}).get("peerDependencies", {})
         if peer_deps and "installed_packages" in system_info:
             for peer_name, peer_version in peer_deps.items():
                 if peer_name not in system_info["installed_packages"]:
-                    warnings.append(
-                        f"Peer dependency missing: {peer_name}@{peer_version}"
-                    )
+                    warnings.append(f"Peer dependency missing: {peer_name}@{peer_version}")
                 else:
                     installed_version = system_info["installed_packages"][peer_name]
                     if not self._version_satisfies(installed_version, peer_version):
@@ -452,8 +430,8 @@ class NPMClient(BaseDataSourceClient):
         }
 
     async def get_dependency_tree(
-        self, package_name: str, version: Optional[str] = None, max_depth: int = 3
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str | None = None, max_depth: int = 3
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         tree = {
             "name": package_name,
@@ -470,7 +448,7 @@ class NPMClient(BaseDataSourceClient):
             version = info["version"]
             tree["version"] = version
 
-        visited: Set[str] = set()
+        visited: set[str] = set()
         tree["dependencies"] = await self._build_dependency_tree(
             package_name, version, visited, max_depth
         )
@@ -481,10 +459,10 @@ class NPMClient(BaseDataSourceClient):
         self,
         package_name: str,
         version: str,
-        visited: Set[str],
+        visited: set[str],
         max_depth: int,
         current_depth: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         if current_depth >= max_depth:
             return {}
@@ -499,14 +477,12 @@ class NPMClient(BaseDataSourceClient):
         if not pkg_data:
             return {}
 
-        tree: Dict[str, Any] = {}
+        tree: dict[str, Any] = {}
         deps = pkg_data.get("dependencies", {}).get("dependencies", {})
 
         for dep_name, version_spec in deps.items():
             normalized_dep_name = normalize_package_name(dep_name)
-            resolved_version = await self.resolve_version(
-                normalized_dep_name, version_spec
-            )
+            resolved_version = await self.resolve_version(normalized_dep_name, version_spec)
             if not resolved_version:
                 tree[dep_name] = {"version": version_spec, "resolved": False}
                 continue
@@ -526,8 +502,8 @@ class NPMClient(BaseDataSourceClient):
         return tree
 
     async def analyze_package(
-        self, package_name: str, version: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, package_name: str, version: str | None = None
+    ) -> dict[str, Any]:
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(package_name)
         if not info:
@@ -565,15 +541,9 @@ class NPMClient(BaseDataSourceClient):
                 "weekly_downloads": info.get("downloads", {}).get("weekly", 0),
             },
             "dependencies_analysis": {
-                "direct_count": len(
-                    pkg_data.get("dependencies", {}).get("dependencies", {})
-                ),
-                "dev_count": len(
-                    pkg_data.get("dependencies", {}).get("devDependencies", {})
-                ),
-                "peer_count": len(
-                    pkg_data.get("dependencies", {}).get("peerDependencies", {})
-                ),
+                "direct_count": len(pkg_data.get("dependencies", {}).get("dependencies", {})),
+                "dev_count": len(pkg_data.get("dependencies", {}).get("devDependencies", {})),
+                "peer_count": len(pkg_data.get("dependencies", {}).get("peerDependencies", {})),
                 "optional_count": len(
                     pkg_data.get("dependencies", {}).get("optionalDependencies", {})
                 ),
@@ -597,7 +567,7 @@ class NPMClient(BaseDataSourceClient):
 
         return analysis
 
-    async def _get_download_stats(self, package_name: str) -> Dict[str, int]:
+    async def _get_download_stats(self, package_name: str) -> dict[str, int]:
         package_name = normalize_package_name(package_name)
         try:
             endpoints = {
@@ -621,8 +591,8 @@ class NPMClient(BaseDataSourceClient):
             return {"daily": 0, "weekly": 0, "monthly": 0, "yearly": 0}
 
     async def _check_typescript_support(
-        self, package_name: str, latest_data: Dict
-    ) -> Dict[str, Any]:
+        self, package_name: str, latest_data: dict
+    ) -> dict[str, Any]:
         types_info = {"has_types": False, "types_package": None, "included": False}
 
         if latest_data.get("types") or latest_data.get("typings"):
@@ -631,9 +601,7 @@ class NPMClient(BaseDataSourceClient):
             return types_info
 
         normalized_name = normalize_package_name(package_name)
-        types_package_name = (
-            f"@types/{normalized_name.replace('@', '').replace('/', '__')}"
-        )
+        types_package_name = f"@types/{normalized_name.replace('@', '').replace('/', '__')}"
         types_exists = await self._package_exists(types_package_name)
 
         if types_exists:
@@ -649,13 +617,11 @@ class NPMClient(BaseDataSourceClient):
         )
         return info is not None
 
-    async def _check_vulnerabilities(
-        self, package_name: str, version: str
-    ) -> List[Dict[str, Any]]:
+    async def _check_vulnerabilities(self, package_name: str, version: str) -> list[dict[str, Any]]:
         package_name = normalize_package_name(package_name)
         return []
 
-    async def _has_deprecated_dependencies(self, pkg_data: Dict[str, Any]) -> bool:
+    async def _has_deprecated_dependencies(self, pkg_data: dict[str, Any]) -> bool:
         deps = pkg_data.get("dependencies", {}).get("dependencies", {})
 
         for dep_name, version_spec in deps.items():
@@ -667,9 +633,7 @@ class NPMClient(BaseDataSourceClient):
 
         return False
 
-    def _calculate_quality_score(
-        self, info: Dict[str, Any], pkg_data: Dict[str, Any]
-    ) -> float:
+    def _calculate_quality_score(self, info: dict[str, Any], pkg_data: dict[str, Any]) -> float:
         score = 0.0
         max_score = 10.0
 
@@ -690,12 +654,8 @@ class NPMClient(BaseDataSourceClient):
             score += 1.0
 
         if info.get("time", {}).get("modified"):
-            last_modified = datetime.fromisoformat(
-                info["time"]["modified"].replace("Z", "+00:00")
-            )
-            days_since_update = (
-                datetime.now(last_modified.tzinfo) - last_modified
-            ).days
+            last_modified = datetime.fromisoformat(info["time"]["modified"].replace("Z", "+00:00"))
+            days_since_update = (datetime.now(last_modified.tzinfo) - last_modified).days
             if days_since_update < 365:
                 score += 1.0
             elif days_since_update < 730:
@@ -717,9 +677,9 @@ class NPMClient(BaseDataSourceClient):
         return min(score / max_score, 1.0)
 
     def _process_versions(
-        self, versions_data: Dict[str, Any], time_data: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        versions: List[Any] = []
+        self, versions_data: dict[str, Any], time_data: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        versions: list[Any] = []
         for version, data in versions_data.items():
             if parse_version(version) is None:
                 logger.warning(f"Skipping invalid npm version: {version}")
@@ -753,7 +713,7 @@ class NPMClient(BaseDataSourceClient):
 
         return versions
 
-    def _categorize_dependencies(self, version_data: Dict[str, Any]) -> Dict[str, Dict]:
+    def _categorize_dependencies(self, version_data: dict[str, Any]) -> dict[str, dict]:
         return {
             "dependencies": version_data.get("dependencies", {}),
             "devDependencies": version_data.get("devDependencies", {}),
@@ -762,10 +722,8 @@ class NPMClient(BaseDataSourceClient):
             "bundledDependencies": version_data.get("bundledDependencies", []),
         }
 
-    def _extract_detailed_requirements(
-        self, version_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        requirements: Dict[str, Any] = {
+    def _extract_detailed_requirements(self, version_data: dict[str, Any]) -> dict[str, Any]:
+        requirements: dict[str, Any] = {
             "node": None,
             "npm": None,
             "os": [],
@@ -810,9 +768,7 @@ class NPMClient(BaseDataSourceClient):
             requirements["python_required"] = True
 
         scripts = version_data.get("scripts", {})
-        if any(
-            "node-gyp" in script or "prebuild" in script for script in scripts.values()
-        ):
+        if any("node-gyp" in script or "prebuild" in script for script in scripts.values()):
             requirements["build_tools_required"] = True
 
         return requirements
@@ -868,9 +824,7 @@ class NPMClient(BaseDataSourceClient):
         self._semver_cache[spec] = req
         return req
 
-    def _version_matches_requirement(
-        self, version: str, requirement: VersionRequirement
-    ) -> bool:
+    def _version_matches_requirement(self, version: str, requirement: VersionRequirement) -> bool:
         try:
             v = parse_version(version)
             if v is None:
@@ -880,24 +834,19 @@ class NPMClient(BaseDataSourceClient):
                 return True
 
             if requirement.operator == "^":
-                req_v_str = (
-                    f"{requirement.major}.{requirement.minor}.{requirement.patch}"
-                )
+                req_v_str = f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 req_v = parse_version(req_v_str)
                 if req_v is None:
                     return False
 
                 if requirement.major is not None and requirement.major > 0:
                     return v >= req_v and v.major == requirement.major
-                elif requirement.minor is not None and requirement.minor > 0:
+                if requirement.minor is not None and requirement.minor > 0:
                     return v >= req_v and v.major == 0 and v.minor == requirement.minor
-                else:
-                    return v == req_v
+                return v == req_v
 
-            elif requirement.operator == "~":
-                req_v_str = (
-                    f"{requirement.major}.{requirement.minor}.{requirement.patch}"
-                )
+            if requirement.operator == "~":
+                req_v_str = f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 req_v = parse_version(req_v_str)
                 next_minor_str = (
                     f"{requirement.major}.{requirement.minor + 1}.0"
@@ -911,32 +860,25 @@ class NPMClient(BaseDataSourceClient):
 
                 return v >= req_v and v < next_minor
 
-            elif requirement.operator == ">=":
-                req_v_str = (
-                    f"{requirement.major}.{requirement.minor}.{requirement.patch}"
-                )
+            if requirement.operator == ">=":
+                req_v_str = f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 req_v = parse_version(req_v_str)
                 if req_v is None:
                     return False
                 return v >= req_v
 
-            elif requirement.operator == "<=":
-                req_v_str = (
-                    f"{requirement.major}.{requirement.minor}.{requirement.patch}"
-                )
+            if requirement.operator == "<=":
+                req_v_str = f"{requirement.major}.{requirement.minor}.{requirement.patch}"
                 req_v = parse_version(req_v_str)
                 if req_v is None:
                     return False
                 return v <= req_v
 
-            else:
-                req_v_str = (
-                    f"{requirement.major}.{requirement.minor}.{requirement.patch}"
-                )
-                req_v = parse_version(req_v_str)
-                if req_v is None:
-                    return False
-                return v == req_v
+            req_v_str = f"{requirement.major}.{requirement.minor}.{requirement.patch}"
+            req_v = parse_version(req_v_str)
+            if req_v is None:
+                return False
+            return v == req_v
 
         except Exception:
             return False
@@ -951,7 +893,7 @@ class NPMClient(BaseDataSourceClient):
     def _check_npm_compatibility(self, system_version: str, required: str) -> bool:
         return self._version_satisfies(system_version, required)
 
-    def _check_os_compatibility(self, system_os: str, supported: List[str]) -> bool:
+    def _check_os_compatibility(self, system_os: str, supported: list[str]) -> bool:
         if not supported or "any" in supported:
             return True
 
@@ -961,12 +903,9 @@ class NPMClient(BaseDataSourceClient):
         if system_os in blocked:
             return False
 
-        if allowed and system_os not in allowed:
-            return False
+        return not (allowed and system_os not in allowed)
 
-        return True
-
-    def _check_cpu_compatibility(self, system_cpu: str, supported: List[str]) -> bool:
+    def _check_cpu_compatibility(self, system_cpu: str, supported: list[str]) -> bool:
         if not supported or "any" in supported:
             return True
 
@@ -976,18 +915,15 @@ class NPMClient(BaseDataSourceClient):
         if system_cpu in blocked:
             return False
 
-        if allowed and system_cpu not in allowed:
-            return False
+        return not (allowed and system_cpu not in allowed)
 
-        return True
-
-    def _extract_min_version(self, version_spec: str) -> Optional[str]:
+    def _extract_min_version(self, version_spec: str) -> str | None:
         match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", version_spec)
         if match:
             return match.group(0)
         return None
 
-    def _has_native_dependencies(self, version_data: Dict[str, Any]) -> bool:
+    def _has_native_dependencies(self, version_data: dict[str, Any]) -> bool:
         if version_data.get("gypfile"):
             return True
 
@@ -1007,7 +943,7 @@ class NPMClient(BaseDataSourceClient):
     def _is_prerelease(self, version: str) -> bool:
         return bool(re.search(r"-(alpha|beta|rc|pre|dev|canary|next)", version))
 
-    def _format_person(self, person: Union[str, Dict[str, Any]]) -> Dict[str, str]:
+    def _format_person(self, person: str | dict[str, Any]) -> dict[str, str]:
         if isinstance(person, str):
             match = re.match(r"^([^<]+?)(?:\s*<([^>]+)>)?(?:\s*\(([^)]+)\))?$", person)
             if match:
@@ -1017,7 +953,7 @@ class NPMClient(BaseDataSourceClient):
                     "url": match.group(3),
                 }
             return {"name": person}
-        elif isinstance(person, dict):
+        if isinstance(person, dict):
             return {
                 "name": person.get("name", ""),
                 "email": person.get("email"),
@@ -1025,9 +961,7 @@ class NPMClient(BaseDataSourceClient):
             }
         return {}
 
-    def _extract_publisher(
-        self, publisher: Union[str, Dict[str, Any]]
-    ) -> Dict[str, str]:
+    def _extract_publisher(self, publisher: str | dict[str, Any]) -> dict[str, str]:
         if isinstance(publisher, dict):
             return {
                 "username": publisher.get("username", ""),
@@ -1035,7 +969,7 @@ class NPMClient(BaseDataSourceClient):
             }
         return {"username": str(publisher) if publisher else ""}
 
-    def _extract_repository(self, links: Dict[str, Any]) -> Optional[str]:
+    def _extract_repository(self, links: dict[str, Any]) -> str | None:
         repo = links.get("repository")
         if repo:
             return repo
@@ -1049,12 +983,10 @@ class NPMClient(BaseDataSourceClient):
 
         return None
 
-    def _extract_repository_info(
-        self, repository: Union[str, Dict[str, Any]]
-    ) -> Dict[str, str]:
+    def _extract_repository_info(self, repository: str | dict[str, Any]) -> dict[str, str]:
         if isinstance(repository, str):
             return {"type": "git", "url": repository}
-        elif isinstance(repository, dict):
+        if isinstance(repository, dict):
             return {
                 "type": repository.get("type", "git"),
                 "url": repository.get("url", ""),

@@ -1,15 +1,16 @@
 """Module docstring."""
-from typing import List, Dict, Optional
-from pydantic import BaseModel, field_validator
+
 import re
+
+from pydantic import BaseModel, field_validator
 
 
 class PackageRequest(BaseModel):
     """Package Request functionality."""
 
     name: str
-    ecosystem: Optional[str] = None
-    version: Optional[str] = None
+    ecosystem: str | None = None
+    version: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -23,17 +24,17 @@ class PackageRequest(BaseModel):
 class SystemInfo(BaseModel):
     """System Info functionality."""
 
-    gpu: Optional[Dict] = None
-    os: Optional[Dict] = None
-    cpu: Optional[Dict] = None
-    runtime_versions: Optional[Dict] = None
+    gpu: dict | None = None
+    os: dict | None = None
+    cpu: dict | None = None
+    runtime_versions: dict | None = None
 
 
 class ResolveRequest(BaseModel):
     """Resolve Request functionality."""
 
-    packages: List[PackageRequest]
-    system_info: Optional[SystemInfo] = None
+    packages: list[PackageRequest]
+    system_info: SystemInfo | None = None
     auto_detect_system: bool = True
     prefer_compatibility: bool = True
 
@@ -41,7 +42,7 @@ class ResolveRequest(BaseModel):
 class ExportRequest(BaseModel):
     """Export Request functionality."""
 
-    resolved_packages: Dict
+    resolved_packages: dict
     format: str
-    system_info: Optional[Dict] = None
-    options: Optional[Dict] = None
+    system_info: dict | None = None
+    options: dict | None = None

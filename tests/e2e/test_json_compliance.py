@@ -83,7 +83,7 @@ class TestJSONOutputCompliance:
                 pytest.skip(f"Lock failed (real network): {result.stderr[:200]}")
             data = json.loads(result.stdout)
             assert isinstance(data, dict)
-            assert "version" in data, f"Missing 'version' key"
-            assert "packages" in data, f"Missing 'packages' key"
-            assert "system" in data, f"Missing 'system' key"
+            assert "version" in data, "Missing 'version' key"
+            assert "packages" in data, "Missing 'packages' key"
+            assert "system" in data, "Missing 'system' key"
             assert isinstance(data["packages"], dict)

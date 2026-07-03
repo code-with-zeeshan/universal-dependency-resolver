@@ -91,7 +91,7 @@ class TestCratesClient:
             client, "_get", new_callable=AsyncMock, return_value=sample_search_results
         ) as mock_get:
             await client.search_packages("serde", limit=5)
-        args, kwargs = mock_get.call_args
+        _args, kwargs = mock_get.call_args
         params = kwargs.get("params", {})
         assert params.get("q") == "serde"
         assert params.get("per_page") == 5
@@ -147,9 +147,8 @@ class TestCratesClient:
     async def test_get_package_info_handles_missing_crate_key(self, client):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value={"versions": []}
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await client.get_package_info("bad-data")
+        ), pytest.raises(HTTPException) as exc_info:
+            await client.get_package_info("bad-data")
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
@@ -201,11 +200,10 @@ class TestCratesClient:
             "_get",
             new_callable=AsyncMock,
             return_value=sample_crate_data.__class__({"crate": {"id": "serde"}}),
-        ):
-            with patch.object(client, "check_compatibility") as mock_check:
-                mock_check.return_value = {"compatible": True}
-                result = await client.check_compatibility("serde", "1.0.188", {})
-                assert isinstance(result, dict)
+        ), patch.object(client, "check_compatibility") as mock_check:
+            mock_check.return_value = {"compatible": True}
+            result = await client.check_compatibility("serde", "1.0.188", {})
+            assert isinstance(result, dict)
 
     # === New test: get_package_versions filters out yanked ===
     @pytest.mark.asyncio

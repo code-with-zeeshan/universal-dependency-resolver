@@ -1,11 +1,11 @@
 """Compare two lock files and show version differences."""
+
 import json
 import sys
 from pathlib import Path
 
-from rich.panel import Panel
-from rich.table import Table
 from rich import box
+from rich.table import Table
 
 from ..shared import console
 
@@ -54,12 +54,14 @@ def cmd_diff(args):
         elif ver_a and not ver_b:
             removed.append((name, info_a.get("ecosystem", "?"), ver_a))
         elif ver_a != ver_b:
-            changed.append((
-                name,
-                info_a.get("ecosystem", info_b.get("ecosystem", "?")),
-                ver_a or "?",
-                ver_b or "?",
-            ))
+            changed.append(
+                (
+                    name,
+                    info_a.get("ecosystem", info_b.get("ecosystem", "?")),
+                    ver_a or "?",
+                    ver_b or "?",
+                )
+            )
         elif ver_a == ver_b:
             unchanged.append(name)
 
@@ -69,7 +71,9 @@ def cmd_diff(args):
             "file_b": args.lock_file_b,
             "added": [{"name": n, "ecosystem": e, "version": v} for n, e, v in added],
             "removed": [{"name": n, "ecosystem": e, "version": v} for n, e, v in removed],
-            "changed": [{"name": n, "ecosystem": e, "from": o, "to": nv} for n, e, o, nv in changed],
+            "changed": [
+                {"name": n, "ecosystem": e, "from": o, "to": nv} for n, e, o, nv in changed
+            ],
             "unchanged_count": len(unchanged),
         }
         json.dump(data, sys.stdout, indent=2, default=str)

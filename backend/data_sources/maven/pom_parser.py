@@ -1,7 +1,8 @@
 """Module docstring."""
-import xml.etree.ElementTree as ET
+
 import re
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+import xml.etree.ElementTree as ET
+from typing import TYPE_CHECKING, Any
 
 from .version_utils import _get_element_text
 
@@ -13,8 +14,8 @@ class PomParser:
     def __init__(self, client: "MavenClient"):
         self.client = client
 
-    def _merge_poms(self, parent_pom: Dict, child_pom: Dict) -> Dict:
-        merged: Dict[str, Any] = {
+    def _merge_poms(self, parent_pom: dict, child_pom: dict) -> dict:
+        merged: dict[str, Any] = {
             "properties": {},
             "dependency_management": {},
             "dependencies": [],
@@ -38,12 +39,10 @@ class PomParser:
         }
 
         parent_deps = {
-            f"{d['group_id']}:{d['artifact_id']}": d
-            for d in parent_pom.get("dependencies", [])
+            f"{d['group_id']}:{d['artifact_id']}": d for d in parent_pom.get("dependencies", [])
         }
         child_deps = {
-            f"{d['group_id']}:{d['artifact_id']}": d
-            for d in child_pom.get("dependencies", [])
+            f"{d['group_id']}:{d['artifact_id']}": d for d in child_pom.get("dependencies", [])
         }
 
         for key, dep in parent_deps.items():
@@ -62,9 +61,7 @@ class PomParser:
                         break
 
         repo_ids = set()
-        for repo in parent_pom.get("repositories", []) + child_pom.get(
-            "repositories", []
-        ):
+        for repo in parent_pom.get("repositories", []) + child_pom.get("repositories", []):
             if repo.get("id") not in repo_ids:
                 merged["repositories"].append(repo)
                 repo_ids.add(repo.get("id"))
@@ -83,12 +80,10 @@ class PomParser:
         }
 
         parent_plugins = {
-            f"{p['group_id']}:{p['artifact_id']}": p
-            for p in parent_pom.get("plugins", [])
+            f"{p['group_id']}:{p['artifact_id']}": p for p in parent_pom.get("plugins", [])
         }
         child_plugins = {
-            f"{p['group_id']}:{p['artifact_id']}": p
-            for p in child_pom.get("plugins", [])
+            f"{p['group_id']}:{p['artifact_id']}": p for p in child_pom.get("plugins", [])
         }
 
         for key, plugin in parent_plugins.items():
@@ -99,10 +94,7 @@ class PomParser:
                 merged["plugins"].append(plugin)
             else:
                 for i, merged_plugin in enumerate(merged["plugins"]):
-                    if (
-                        f"{merged_plugin['group_id']}:{merged_plugin['artifact_id']}"
-                        == key
-                    ):
+                    if f"{merged_plugin['group_id']}:{merged_plugin['artifact_id']}" == key:
                         merged["plugins"][i] = plugin
                         break
 
@@ -118,11 +110,9 @@ class PomParser:
 
         return merged
 
-    def _extract_properties(self, root, namespaces) -> Dict[str, str]:
-        properties: Dict[str, str] = {}
-        props_elem = root.find(".//maven:properties", namespaces) or root.find(
-            ".//properties"
-        )
+    def _extract_properties(self, root, namespaces) -> dict[str, str]:
+        properties: dict[str, str] = {}
+        props_elem = root.find(".//maven:properties", namespaces) or root.find(".//properties")
 
         if props_elem is not None:
             for prop in props_elem:
@@ -132,7 +122,7 @@ class PomParser:
 
         return properties
 
-    def _substitute_properties(self, value: str, properties: Dict[str, str]) -> str:
+    def _substitute_properties(self, value: str, properties: dict[str, str]) -> str:
         if not value or "${" not in value:
             return value
 
@@ -153,7 +143,7 @@ class PomParser:
 
         return value
 
-    def _extract_parent_info(self, parent_elem, namespaces) -> Optional[Dict]:
+    def _extract_parent_info(self, parent_elem, namespaces) -> dict | None:
         try:
             group_id = _get_element_text(parent_elem, "groupId", namespaces)
             artifact_id = _get_element_text(parent_elem, "artifactId", namespaces)
@@ -173,17 +163,15 @@ class PomParser:
             pass
         return None
 
-    def _parse_repositories(self, root, namespaces, properties) -> List[Dict]:
-        repositories: List[Dict] = []
+    def _parse_repositories(self, root, namespaces, properties) -> list[dict]:
+        repositories: list[dict] = []
 
-        repos_elem = root.find(".//maven:repositories", namespaces) or root.find(
-            ".//repositories"
-        )
+        repos_elem = root.find(".//maven:repositories", namespaces) or root.find(".//repositories")
         if repos_elem is not None:
-            for repo in repos_elem.findall(
-                ".//maven:repository", namespaces
-            ) or repos_elem.findall(".//repository"):
-                repo_info: Dict[str, Any] = {
+            for repo in repos_elem.findall(".//maven:repository", namespaces) or repos_elem.findall(
+                ".//repository"
+            ):
+                repo_info: dict[str, Any] = {
                     "id": self._substitute_properties(
                         _get_element_text(repo, "id", namespaces) or "", properties
                     ),
@@ -191,8 +179,7 @@ class PomParser:
                         _get_element_text(repo, "url", namespaces) or "",
                         properties,
                     ),
-                    "layout": _get_element_text(repo, "layout", namespaces)
-                    or "default",
+                    "layout": _get_element_text(repo, "layout", namespaces) or "default",
                 }
 
                 releases_elem = repo.find(".//maven:releases", namespaces) or repo.find(
@@ -200,13 +187,9 @@ class PomParser:
                 )
                 if releases_elem is not None:
                     repo_info["releases"] = {
-                        "enabled": _get_element_text(
-                            releases_elem, "enabled", namespaces
-                        )
+                        "enabled": _get_element_text(releases_elem, "enabled", namespaces)
                         != "false",
-                        "updatePolicy": _get_element_text(
-                            releases_elem, "updatePolicy", namespaces
-                        )
+                        "updatePolicy": _get_element_text(releases_elem, "updatePolicy", namespaces)
                         or "daily",
                         "checksumPolicy": _get_element_text(
                             releases_elem, "checksumPolicy", namespaces
@@ -214,14 +197,12 @@ class PomParser:
                         or "warn",
                     }
 
-                snapshots_elem = repo.find(
-                    ".//maven:snapshots", namespaces
-                ) or repo.find(".//snapshots")
+                snapshots_elem = repo.find(".//maven:snapshots", namespaces) or repo.find(
+                    ".//snapshots"
+                )
                 if snapshots_elem is not None:
                     repo_info["snapshots"] = {
-                        "enabled": _get_element_text(
-                            snapshots_elem, "enabled", namespaces
-                        )
+                        "enabled": _get_element_text(snapshots_elem, "enabled", namespaces)
                         == "true",
                         "updatePolicy": _get_element_text(
                             snapshots_elem, "updatePolicy", namespaces
@@ -237,8 +218,8 @@ class PomParser:
 
         return repositories
 
-    def _parse_plugin_repositories(self, root, namespaces, properties) -> List[Dict]:
-        repositories: List[Dict] = []
+    def _parse_plugin_repositories(self, root, namespaces, properties) -> list[dict]:
+        repositories: list[dict] = []
 
         repos_elem = root.find(".//maven:pluginRepositories", namespaces) or root.find(
             ".//pluginRepositories"
@@ -247,7 +228,7 @@ class PomParser:
             for repo in repos_elem.findall(
                 ".//maven:pluginRepository", namespaces
             ) or repos_elem.findall(".//pluginRepository"):
-                repo_info: Dict[str, Any] = {
+                repo_info: dict[str, Any] = {
                     "id": self._substitute_properties(
                         _get_element_text(repo, "id", namespaces) or "", properties
                     ),
@@ -255,8 +236,7 @@ class PomParser:
                         _get_element_text(repo, "url", namespaces) or "",
                         properties,
                     ),
-                    "layout": _get_element_text(repo, "layout", namespaces)
-                    or "default",
+                    "layout": _get_element_text(repo, "layout", namespaces) or "default",
                 }
                 repositories.append(repo_info)
 
@@ -264,29 +244,25 @@ class PomParser:
 
     def _parse_dependency_management(
         self, dep_mgmt_elem, namespaces, properties
-    ) -> Dict[str, Dict]:
-        dep_management: Dict[str, Dict] = {}
+    ) -> dict[str, dict]:
+        dep_management: dict[str, dict] = {}
 
-        deps_elem = dep_mgmt_elem.find(
-            ".//maven:dependencies", namespaces
-        ) or dep_mgmt_elem.find(".//dependencies")
+        deps_elem = dep_mgmt_elem.find(".//maven:dependencies", namespaces) or dep_mgmt_elem.find(
+            ".//dependencies"
+        )
         if deps_elem is not None:
-            for dep in deps_elem.findall(
-                ".//maven:dependency", namespaces
-            ) or deps_elem.findall(".//dependency"):
-                dep_info = self._extract_dependency_info(
-                    dep, namespaces, properties, {}
-                )
+            for dep in deps_elem.findall(".//maven:dependency", namespaces) or deps_elem.findall(
+                ".//dependency"
+            ):
+                dep_info = self._extract_dependency_info(dep, namespaces, properties, {})
                 if dep_info:
                     key = f"{dep_info['group_id']}:{dep_info['artifact_id']}"
                     dep_management[key] = dep_info
 
         return dep_management
 
-    def _parse_plugin_management(
-        self, plugin_mgmt_elem, namespaces, properties
-    ) -> Dict[str, Dict]:
-        plugin_management: Dict[str, Dict] = {}
+    def _parse_plugin_management(self, plugin_mgmt_elem, namespaces, properties) -> dict[str, dict]:
+        plugin_management: dict[str, dict] = {}
 
         plugins_elem = plugin_mgmt_elem.find(
             ".//maven:plugins", namespaces
@@ -295,19 +271,15 @@ class PomParser:
             for plugin in plugins_elem.findall(
                 ".//maven:plugin", namespaces
             ) or plugins_elem.findall(".//plugin"):
-                plugin_info = self._extract_plugin_info(
-                    plugin, namespaces, properties, {}
-                )
+                plugin_info = self._extract_plugin_info(plugin, namespaces, properties, {})
                 if plugin_info:
                     key = f"{plugin_info['group_id']}:{plugin_info['artifact_id']}"
                     plugin_management[key] = plugin_info
 
         return plugin_management
 
-    def _parse_profiles(
-        self, profiles_elem, namespaces, parent_properties
-    ) -> Dict[str, Dict]:
-        profiles: Dict[str, Dict] = {}
+    def _parse_profiles(self, profiles_elem, namespaces, parent_properties) -> dict[str, dict]:
+        profiles: dict[str, dict] = {}
 
         for profile in profiles_elem.findall(
             ".//maven:profile", namespaces
@@ -316,7 +288,7 @@ class PomParser:
             if not profile_id:
                 continue
 
-            profile_data: Dict[str, Any] = {
+            profile_data: dict[str, Any] = {
                 "id": profile_id,
                 "properties": {},
                 "dependencies": [],
@@ -325,32 +297,28 @@ class PomParser:
                 "activation": {},
             }
 
-            activation_elem = profile.find(
-                ".//maven:activation", namespaces
-            ) or profile.find(".//activation")
+            activation_elem = profile.find(".//maven:activation", namespaces) or profile.find(
+                ".//activation"
+            )
             if activation_elem is not None:
                 active_by_default = _get_element_text(
                     activation_elem, "activeByDefault", namespaces
                 )
                 profile_data["activeByDefault"] = active_by_default == "true"
-                profile_data["activation"] = self._parse_activation(
-                    activation_elem, namespaces
-                )
+                profile_data["activation"] = self._parse_activation(activation_elem, namespaces)
 
-            props_elem = profile.find(
-                ".//maven:properties", namespaces
-            ) or profile.find(".//properties")
+            props_elem = profile.find(".//maven:properties", namespaces) or profile.find(
+                ".//properties"
+            )
             if props_elem is not None:
                 profile_props = self._extract_properties(profile, namespaces)
                 all_props = {**parent_properties, **profile_props}
                 for key, value in profile_props.items():
-                    profile_data["properties"][key] = self._substitute_properties(
-                        value, all_props
-                    )
+                    profile_data["properties"][key] = self._substitute_properties(value, all_props)
 
-            deps_elem = profile.find(
-                ".//maven:dependencies", namespaces
-            ) or profile.find(".//dependencies")
+            deps_elem = profile.find(".//maven:dependencies", namespaces) or profile.find(
+                ".//dependencies"
+            )
             if deps_elem is not None:
                 all_props = {**parent_properties, **profile_data["properties"]}
                 profile_data["dependencies"] = self._parse_dependencies_section(
@@ -362,26 +330,22 @@ class PomParser:
             ) or profile.find(".//dependencyManagement")
             if dep_mgmt_elem is not None:
                 all_props = {**parent_properties, **profile_data["properties"]}
-                profile_data["dependency_management"] = (
-                    self._parse_dependency_management(
-                        dep_mgmt_elem, namespaces, all_props
-                    )
+                profile_data["dependency_management"] = self._parse_dependency_management(
+                    dep_mgmt_elem, namespaces, all_props
                 )
 
             profiles[profile_id] = profile_data
 
         return profiles
 
-    def _parse_activation(self, activation_elem, namespaces) -> Dict:
-        activation: Dict[str, Any] = {}
+    def _parse_activation(self, activation_elem, namespaces) -> dict:
+        activation: dict[str, Any] = {}
 
         jdk = _get_element_text(activation_elem, "jdk", namespaces)
         if jdk:
             activation["jdk"] = jdk
 
-        os_elem = activation_elem.find(
-            ".//maven:os", namespaces
-        ) or activation_elem.find(".//os")
+        os_elem = activation_elem.find(".//maven:os", namespaces) or activation_elem.find(".//os")
         if os_elem is not None:
             activation["os"] = {
                 "name": _get_element_text(os_elem, "name", namespaces),
@@ -390,9 +354,9 @@ class PomParser:
                 "version": _get_element_text(os_elem, "version", namespaces),
             }
 
-        prop_elem = activation_elem.find(
-            ".//maven:property", namespaces
-        ) or activation_elem.find(".//property")
+        prop_elem = activation_elem.find(".//maven:property", namespaces) or activation_elem.find(
+            ".//property"
+        )
         if prop_elem is not None:
             activation["property"] = {
                 "name": _get_element_text(prop_elem, "name", namespaces),
@@ -403,11 +367,11 @@ class PomParser:
 
     def _parse_dependencies_section(
         self, deps_elem, namespaces, properties, dep_management
-    ) -> List[Dict]:
-        dependencies: List[Dict] = []
-        for dep in deps_elem.findall(
-            ".//maven:dependency", namespaces
-        ) or deps_elem.findall(".//dependency"):
+    ) -> list[dict]:
+        dependencies: list[dict] = []
+        for dep in deps_elem.findall(".//maven:dependency", namespaces) or deps_elem.findall(
+            ".//dependency"
+        ):
             dep_info = self._extract_dependency_info_with_exclusions(
                 dep, namespaces, properties, dep_management
             )
@@ -418,7 +382,7 @@ class PomParser:
 
     def _extract_dependency_info(
         self, dep_elem, namespaces, properties, dep_management
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         try:
             group_id = _get_element_text(dep_elem, "groupId", namespaces)
             artifact_id = _get_element_text(dep_elem, "artifactId", namespaces)
@@ -428,17 +392,11 @@ class PomParser:
             dep_type = _get_element_text(dep_elem, "type", namespaces) or "jar"
             classifier = _get_element_text(dep_elem, "classifier", namespaces)
 
-            group_id = (
-                self._substitute_properties(group_id, properties) if group_id else None
-            )
+            group_id = self._substitute_properties(group_id, properties) if group_id else None
             artifact_id = (
-                self._substitute_properties(artifact_id, properties)
-                if artifact_id
-                else None
+                self._substitute_properties(artifact_id, properties) if artifact_id else None
             )
-            version = (
-                self._substitute_properties(version, properties) if version else None
-            )
+            version = self._substitute_properties(version, properties) if version else None
 
             if group_id and artifact_id:
                 group_id, artifact_id = self.client._normalize_maven_coordinates(
@@ -452,9 +410,7 @@ class PomParser:
                     version = managed_dep.get("version", version)
                     scope = scope or managed_dep.get("scope", "compile")
 
-                version_info = (
-                    self.client._parse_version_range(version) if version else None
-                )
+                version_info = self.client._parse_version_range(version) if version else None
 
                 return {
                     "name": f"{group_id}:{artifact_id}",
@@ -469,37 +425,31 @@ class PomParser:
                     "packaging": dep_type,
                 }
         except Exception as e:
-            print(f"Error extracting dependency: {str(e)}")
+            print(f"Error extracting dependency: {e!s}")
         return None
 
     def _extract_dependency_info_with_exclusions(
         self, dep_elem, namespaces, properties, dep_management
-    ) -> Optional[Dict]:
-        dep_info = self._extract_dependency_info(
-            dep_elem, namespaces, properties, dep_management
-        )
+    ) -> dict | None:
+        dep_info = self._extract_dependency_info(dep_elem, namespaces, properties, dep_management)
 
         if dep_info:
             exclusions = []
-            exclusions_elem = dep_elem.find(
-                ".//maven:exclusions", namespaces
-            ) or dep_elem.find(".//exclusions")
+            exclusions_elem = dep_elem.find(".//maven:exclusions", namespaces) or dep_elem.find(
+                ".//exclusions"
+            )
 
             if exclusions_elem is not None:
                 for exclusion in exclusions_elem.findall(
                     ".//maven:exclusion", namespaces
                 ) or exclusions_elem.findall(".//exclusion"):
                     exc_group_id = _get_element_text(exclusion, "groupId", namespaces)
-                    exc_artifact_id = _get_element_text(
-                        exclusion, "artifactId", namespaces
-                    )
+                    exc_artifact_id = _get_element_text(exclusion, "artifactId", namespaces)
 
                     if exc_group_id or exc_artifact_id:
                         exclusions.append(
                             {
-                                "group_id": self._substitute_properties(
-                                    exc_group_id, properties
-                                )
+                                "group_id": self._substitute_properties(exc_group_id, properties)
                                 if exc_group_id
                                 else "*",
                                 "artifact_id": self._substitute_properties(
@@ -517,12 +467,12 @@ class PomParser:
 
     def _parse_plugins_section(
         self, plugins_elem, namespaces, properties, plugin_management
-    ) -> List[Dict]:
+    ) -> list[dict]:
         plugins = []
 
-        for plugin in plugins_elem.findall(
-            ".//maven:plugin", namespaces
-        ) or plugins_elem.findall(".//plugin"):
+        for plugin in plugins_elem.findall(".//maven:plugin", namespaces) or plugins_elem.findall(
+            ".//plugin"
+        ):
             plugin_info = self._extract_plugin_info(
                 plugin, namespaces, properties, plugin_management
             )
@@ -533,24 +483,19 @@ class PomParser:
 
     def _extract_plugin_info(
         self, plugin_elem, namespaces, properties, plugin_management
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         try:
             group_id = (
-                _get_element_text(plugin_elem, "groupId", namespaces)
-                or "org.apache.maven.plugins"
+                _get_element_text(plugin_elem, "groupId", namespaces) or "org.apache.maven.plugins"
             )
             artifact_id = _get_element_text(plugin_elem, "artifactId", namespaces)
             version = _get_element_text(plugin_elem, "version", namespaces)
 
             group_id = self._substitute_properties(group_id, properties)
             artifact_id = (
-                self._substitute_properties(artifact_id, properties)
-                if artifact_id
-                else None
+                self._substitute_properties(artifact_id, properties) if artifact_id else None
             )
-            version = (
-                self._substitute_properties(version, properties) if version else None
-            )
+            version = self._substitute_properties(version, properties) if version else None
 
             if group_id and artifact_id:
                 plugin_key = f"{group_id}:{artifact_id}"
@@ -558,7 +503,7 @@ class PomParser:
                     managed_plugin = plugin_management[plugin_key]
                     version = managed_plugin.get("version", version)
 
-                plugin_info: Dict[str, Any] = {
+                plugin_info: dict[str, Any] = {
                     "name": f"{group_id}:{artifact_id}",
                     "group_id": group_id,
                     "artifact_id": artifact_id,
@@ -588,8 +533,7 @@ class PomParser:
                     ".//maven:execution", namespaces
                 ) or plugin_elem.findall(".//execution"):
                     execution = {
-                        "id": _get_element_text(exec_elem, "id", namespaces)
-                        or "default",
+                        "id": _get_element_text(exec_elem, "id", namespaces) or "default",
                         "phase": _get_element_text(exec_elem, "phase", namespaces),
                         "goals": [
                             g.text.strip()
@@ -608,19 +552,17 @@ class PomParser:
                 return plugin_info
 
         except Exception as e:
-            print(f"Error extracting plugin: {str(e)}")
+            print(f"Error extracting plugin: {e!s}")
         return None
 
-    def _parse_configuration(self, config_elem, properties) -> Dict:
-        config: Dict[str, Any] = {}
+    def _parse_configuration(self, config_elem, properties) -> dict:
+        config: dict[str, Any] = {}
 
         for child in config_elem:
             tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if len(child) == 0:
                 if child.text:
-                    config[tag] = self._substitute_properties(
-                        child.text.strip(), properties
-                    )
+                    config[tag] = self._substitute_properties(child.text.strip(), properties)
             else:
                 config[tag] = self._parse_configuration(child, properties)
 
@@ -632,13 +574,13 @@ class PomParser:
         group_id: str,
         artifact_id: str,
         version: str,
-        active_profiles: Optional[List[str]] = None,
-    ) -> Dict:
+        active_profiles: list[str] | None = None,
+    ) -> dict:
         try:
             root = ET.fromstring(pom_xml)
             namespaces = {"maven": "http://maven.apache.org/POM/4.0.0"}
 
-            pom_data: Dict[str, Any] = {
+            pom_data: dict[str, Any] = {
                 "properties": {},
                 "dependency_management": {},
                 "dependencies": [],
@@ -658,19 +600,14 @@ class PomParser:
                     "project.groupId": group_id,
                     "project.artifactId": artifact_id,
                     "project.version": version,
-                    "project.packaging": _get_element_text(
-                        root, "packaging", namespaces
-                    )
-                    or "jar",
+                    "project.packaging": _get_element_text(root, "packaging", namespaces) or "jar",
                     "pom.groupId": group_id,
                     "pom.artifactId": artifact_id,
                     "pom.version": version,
                 }
             )
 
-            parent_elem = root.find(".//maven:parent", namespaces) or root.find(
-                ".//parent"
-            )
+            parent_elem = root.find(".//maven:parent", namespaces) or root.find(".//parent")
             if parent_elem is not None:
                 pom_data["parent"] = self._extract_parent_info(parent_elem, namespaces)
 
@@ -681,9 +618,9 @@ class PomParser:
                 root, namespaces, pom_data["properties"]
             )
 
-            dep_mgmt_elem = root.find(
-                ".//maven:dependencyManagement", namespaces
-            ) or root.find(".//dependencyManagement")
+            dep_mgmt_elem = root.find(".//maven:dependencyManagement", namespaces) or root.find(
+                ".//dependencyManagement"
+            )
             if dep_mgmt_elem is not None:
                 pom_data["dependency_management"] = self._parse_dependency_management(
                     dep_mgmt_elem, namespaces, pom_data["properties"]
@@ -697,9 +634,7 @@ class PomParser:
                     plugin_mgmt_elem, namespaces, pom_data["properties"]
                 )
 
-            profiles_elem = root.find(".//maven:profiles", namespaces) or root.find(
-                ".//profiles"
-            )
+            profiles_elem = root.find(".//maven:profiles", namespaces) or root.find(".//profiles")
             if profiles_elem is not None:
                 pom_data["profiles"] = self._parse_profiles(
                     profiles_elem, namespaces, pom_data["properties"]
@@ -717,9 +652,9 @@ class PomParser:
                 )
                 pom_data["dependencies"].extend(main_deps)
 
-            plugins_elem = root.find(
-                ".//maven:build/maven:plugins", namespaces
-            ) or root.find(".//build/plugins")
+            plugins_elem = root.find(".//maven:build/maven:plugins", namespaces) or root.find(
+                ".//build/plugins"
+            )
             if plugins_elem is not None:
                 pom_data["plugins"] = self._parse_plugins_section(
                     plugins_elem,
@@ -728,9 +663,7 @@ class PomParser:
                     pom_data["plugin_management"],
                 )
 
-            modules = root.findall(".//maven:module", namespaces) or root.findall(
-                ".//module"
-            )
+            modules = root.findall(".//maven:module", namespaces) or root.findall(".//module")
             pom_data["modules"] = [
                 self._substitute_properties(m.text.strip(), pom_data["properties"])
                 for m in modules
@@ -745,10 +678,10 @@ class PomParser:
             return pom_data
 
         except ET.ParseError as e:
-            print(f"XML Parse error: {str(e)}")
+            print(f"XML Parse error: {e!s}")
             return {"dependencies": []}
 
-    def _apply_profiles(self, pom_data: Dict, active_profiles: List[str]) -> Dict:
+    def _apply_profiles(self, pom_data: dict, active_profiles: list[str]) -> dict:
         for profile_id in active_profiles:
             if profile_id in pom_data.get("profiles", {}):
                 profile = pom_data["profiles"][profile_id]
@@ -758,9 +691,7 @@ class PomParser:
                 pom_data["dependencies"].extend(profile.get("dependencies", []))
 
                 if "dependency_management" in profile:
-                    pom_data["dependency_management"].update(
-                        profile["dependency_management"]
-                    )
+                    pom_data["dependency_management"].update(profile["dependency_management"])
 
                 pom_data["repositories"].extend(profile.get("repositories", []))
 
@@ -771,9 +702,7 @@ class PomParser:
 
         return pom_data
 
-    def _apply_default_profiles(
-        self, pom_data: Dict, active_profiles: Optional[List[str]]
-    ) -> Dict:
+    def _apply_default_profiles(self, pom_data: dict, active_profiles: list[str] | None) -> dict:
         if active_profiles:
             return pom_data
 
@@ -782,9 +711,7 @@ class PomParser:
                 pom_data["properties"].update(profile.get("properties", {}))
                 pom_data["dependencies"].extend(profile.get("dependencies", []))
                 if "dependency_management" in profile:
-                    pom_data["dependency_management"].update(
-                        profile["dependency_management"]
-                    )
+                    pom_data["dependency_management"].update(profile["dependency_management"])
                 pom_data["repositories"].extend(profile.get("repositories", []))
                 pom_data["plugins"].extend(profile.get("plugins", []))
                 if "plugin_management" in profile:
@@ -792,19 +719,15 @@ class PomParser:
 
         return pom_data
 
-    def _apply_final_property_substitution(self, pom_data: Dict) -> Dict:
+    def _apply_final_property_substitution(self, pom_data: dict) -> dict:
         for dep in pom_data.get("dependencies", []):
             for key in ["group_id", "artifact_id", "version"]:
-                if key in dep and dep[key]:
-                    dep[key] = self._substitute_properties(
-                        dep[key], pom_data["properties"]
-                    )
+                if dep.get(key):
+                    dep[key] = self._substitute_properties(dep[key], pom_data["properties"])
 
         for plugin in pom_data.get("plugins", []):
             for key in ["group_id", "artifact_id", "version"]:
-                if key in plugin and plugin[key]:
-                    plugin[key] = self._substitute_properties(
-                        plugin[key], pom_data["properties"]
-                    )
+                if plugin.get(key):
+                    plugin[key] = self._substitute_properties(plugin[key], pom_data["properties"])
 
         return pom_data

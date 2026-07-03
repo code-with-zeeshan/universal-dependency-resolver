@@ -1,13 +1,14 @@
 """Module docstring."""
+
 import asyncio
 import sys
 
+from rich import box
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich import box
 
-from ..shared import console, err_console, _output_json, PROJECT_ROOT
+from ..shared import PROJECT_ROOT, _output_json, console, err_console
 
 
 def cmd_check(args):
@@ -56,9 +57,7 @@ def cmd_check(args):
         table.add_column("Status", style="bold")
 
         plat = info.get("platform", {})
-        table.add_row(
-            "OS", f"{plat.get('system', '?')} {plat.get('release', '?')}", "✅"
-        )
+        table.add_row("OS", f"{plat.get('system', '?')} {plat.get('release', '?')}", "✅")
         arch = plat.get("machine", info.get("cpu", {}).get("arch", "unknown"))
         table.add_row("Architecture", arch, "✅")
         cpu_cores = (
@@ -78,9 +77,7 @@ def cmd_check(args):
             avail = mem.get("available", 0) / (1024**3)
             pct = mem.get("percent", 0)
             mem_status = "⚠" if pct > 90 else "✅"
-            table.add_row(
-                "Memory", f"{total:.1f} GB total, {avail:.1f} GB free", mem_status
-            )
+            table.add_row("Memory", f"{total:.1f} GB total, {avail:.1f} GB free", mem_status)
 
         gpu_info = info.get("gpu", {})
         if gpu_info.get("available"):
@@ -98,9 +95,7 @@ def cmd_check(args):
                     f"{gpu.get('name', '?')} ({gpu.get('memory_total', '?')} MB)",
                     "✅",
                 )
-                table.add_row(
-                    "CUDA", cuda, "✅" if cuda and cuda != "not found" else "⚠"
-                )
+                table.add_row("CUDA", cuda, "✅" if cuda and cuda != "not found" else "⚠")
             else:
                 table.add_row("GPU", "No GPU devices", "ℹ")
         else:
@@ -132,9 +127,7 @@ def cmd_check(args):
                 with open(pyproject, "rb") as f:
                     data = tomllib.load(f)
                 deps = data.get("project", {}).get("dependencies", [])
-                dep_table = Table(
-                    title=f"Core Dependencies ({len(deps)} packages)", box=box.SIMPLE
-                )
+                dep_table = Table(title=f"Core Dependencies ({len(deps)} packages)", box=box.SIMPLE)
                 dep_table.add_column("Dependency", style="cyan")
                 for d in deps:
                     dep_table.add_row(d)

@@ -1,27 +1,27 @@
 """Module docstring."""
+
 # backend/api/routes/lock.py
 import asyncio
-import json
 import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.manifest_detector import ManifestDetector
-from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
-from backend.core.system_scanner import SystemScanner
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_data_aggregator
+from backend.core.conflict_resolver import ConflictResolver
+from backend.core.data_aggregator import DataAggregator
+from backend.core.system_scanner import SystemScanner
+from backend.manifest_detector import ManifestDetector
 from backend.orchestrator import (
     _aggregator_to_resolver_input,
-    _resolve_transitive,
     _apply_cuda_variants,
     _parse_package_spec,
+    _resolve_transitive,
 )
 from backend.orchestrator.install import _generate_install_command
 
@@ -34,22 +34,22 @@ router = APIRouter()
 class VerifyRequest(BaseModel):
     """Verify Request functionality."""
 
-    lock_data: Dict[str, Any]
+    lock_data: dict[str, Any]
 
 
 class GraphRequest(BaseModel):
     """Graph Request functionality."""
 
-    packages: List[str]
+    packages: list[str]
     ecosystem: str = "pypi"
 
 
 class UpdateRequest(BaseModel):
     """Update Request functionality."""
 
-    lock_data: Dict[str, Any]
+    lock_data: dict[str, Any]
     package: str
-    ecosystem: Optional[str] = None
+    ecosystem: str | None = None
 
 
 class GenerateLockRequest(BaseModel):
@@ -62,45 +62,45 @@ class GenerateLockRequest(BaseModel):
        Optionally set `system` to override auto-detected system info.
     """
 
-    packages: List[Dict[str, Any]] = []
-    manifests: List[Dict[str, Any]] = []
-    system: Optional[Dict[str, Any]] = None
-    resolution: Optional[Dict[str, Any]] = None
-    manifest_contents: Optional[Dict[str, str]] = None
-    manifest_filter: Optional[str] = None
+    packages: list[dict[str, Any]] = []
+    manifests: list[dict[str, Any]] = []
+    system: dict[str, Any] | None = None
+    resolution: dict[str, Any] | None = None
+    manifest_contents: dict[str, str] | None = None
+    manifest_filter: str | None = None
 
 
 class WhyRequest(BaseModel):
     """Why Request — explain why a package version was selected."""
 
-    lock_data: Dict[str, Any]
+    lock_data: dict[str, Any]
     package: str
 
 
 class OutdatedRequest(BaseModel):
     """Outdated Request — check for newer versions in registries."""
 
-    lock_data: Dict[str, Any]
-    ecosystem: Optional[str] = None
+    lock_data: dict[str, Any]
+    ecosystem: str | None = None
 
 
 class DiffRequest(BaseModel):
     """Diff Request — compare two lock files."""
 
-    lock_a: Dict[str, Any]
-    lock_b: Dict[str, Any]
+    lock_a: dict[str, Any]
+    lock_b: dict[str, Any]
 
 
 class InstallCommandsRequest(BaseModel):
     """Install Commands Request functionality."""
 
-    lock_data: Dict[str, Any]
+    lock_data: dict[str, Any]
 
 
 class RestoreRequest(BaseModel):
     """Restore Request functionality."""
 
-    lock_data: Dict[str, Any]
+    lock_data: dict[str, Any]
 
 
 @router.post("/verify")
@@ -121,21 +121,18 @@ async def verify_lock(
     issues = []
     ok_count = 0
 
-    async def check_pkg(name: str, info: Dict) -> Optional[Dict]:
+    async def check_pkg(name: str, info: dict) -> dict | None:
         """Check pkg."""
         eco = info.get("ecosystem", "pypi")
         ver = info.get("resolved_version")
         if not ver:
             return {"name": name, "issue": "No resolved version", "severity": "warning"}
         try:
-            data = await aggregator.get_package_info(
-                name, ecosystem=eco, include_versions=True
-            )
+            data = await aggregator.get_package_info(name, ecosystem=eco, include_versions=True)
             if data:
                 versions = data.get("versions", {}).get(eco, [])
                 version_strings = [
-                    v.get("version", "") if isinstance(v, dict) else str(v)
-                    for v in versions
+                    v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
                 ]
                 if ver not in version_strings:
                     return {
@@ -161,9 +158,7 @@ async def verify_lock(
             ok_count += 1
 
     return {
-        "status": "ok"
-        if not any(i["severity"] == "error" for i in issues)
-        else "issues",
+        "status": "ok" if not any(i["severity"] == "error" for i in issues) else "issues",
         "total": len(packages),
         "ok": ok_count,
         "issues": issues,
@@ -208,12 +203,12 @@ async def dependency_graph(
             _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
             timeout=SOLVER_API_TIMEOUT,
         )
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
     rp = resolved.get("resolved_packages", {})
 
-    def _build_tree(name: str, info: Dict) -> Dict:
+    def _build_tree(name: str, info: dict) -> dict:
         """Build tree."""
         eco = info.get("ecosystem", "?")
         ver = info.get("version", "?")
@@ -281,9 +276,7 @@ async def update_package(
             package_details[package_name] = data
             resolver_inputs.append(_aggregator_to_resolver_input(data, ecosystem))
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch {package_name}: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch {package_name}: {e}")
 
     if not resolver_inputs:
         raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
@@ -293,7 +286,7 @@ async def update_package(
             _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
             timeout=SOLVER_API_TIMEOUT,
         )
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
 
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
@@ -324,9 +317,9 @@ async def update_package(
 
 
 async def _run_lock_pipeline(
-    manifest_contents: Dict[str, str],
-    manifest_filter: Optional[str] = None,
-    system_override: Optional[Dict[str, Any]] = None,
+    manifest_contents: dict[str, str],
+    manifest_filter: str | None = None,
+    system_override: dict[str, Any] | None = None,
 ) -> dict:
     """Full pipeline: write manifests to temp dir, detect, parse, fetch, resolve, build lock data.
     Mirrors ``udr lock --json`` internally.
@@ -352,8 +345,7 @@ async def _run_lock_pipeline(
             manifests = [
                 m
                 for m in manifests
-                if m["filename"] == target
-                or m["path"].replace("\\", "/").endswith("/" + target)
+                if m["filename"] == target or m["path"].replace("\\", "/").endswith("/" + target)
             ]
             if not manifests:
                 return {"status": "manifest_filter_no_match", "lock_data": None}
@@ -395,7 +387,7 @@ async def _run_lock_pipeline(
                 _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
                 timeout=SOLVER_API_TIMEOUT,
             )
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
 
         resolved = _apply_cuda_variants(resolved, package_details, system_info)
@@ -469,10 +461,10 @@ async def _run_lock_pipeline(
 
 
 def _build_lock_from_synthesis(
-    packages_in: List[Dict[str, Any]],
-    manifests: List[Dict[str, Any]],
-    system: Dict[str, Any],
-    resolution: Dict[str, Any],
+    packages_in: list[dict[str, Any]],
+    manifests: list[dict[str, Any]],
+    system: dict[str, Any],
+    resolution: dict[str, Any],
 ) -> dict:
     """Build lock data dict from pre-parsed inputs (original mode)."""
     resolved_pkgs = resolution.get("resolved_packages", {})
@@ -520,9 +512,7 @@ def _build_lock_from_synthesis(
         "resolver": "sat",
         "system": {
             "os": f"{plat.get('system', '?')} {plat.get('release', '?')}",
-            "python": system.get("runtime_versions", {})
-            .get("python", {})
-            .get("version", "?"),
+            "python": system.get("runtime_versions", {}).get("python", {}).get("version", "?"),
             "cpu": system.get("cpu", {}).get("brand", "Unknown"),
             "gpu": gpu_name,
             "cuda": gpu_info.get("cuda") if gpu_info.get("available") else None,
@@ -588,7 +578,7 @@ async def install_commands(
     """
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
-    ecosystem_groups: Dict[str, List[tuple]] = {}
+    ecosystem_groups: dict[str, list[tuple]] = {}
 
     for name, info in packages.items():
         if not info.get("direct", True):
@@ -602,9 +592,7 @@ async def install_commands(
     for eco, pkgs in sorted(ecosystem_groups.items()):
         cmd = _generate_install_command(eco, pkgs)
         if cmd:
-            commands.append(
-                {"ecosystem": eco, "command": cmd, "package_count": len(pkgs)}
-            )
+            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
 
     return {
         "status": "success",
@@ -633,8 +621,8 @@ def _find_dep_chain(
         eco = pinfo.get("ecosystem", "pypi")
         deps = pinfo.get("dependencies", {}).get(eco, {})
         if target in deps:
-            return chain + [(pkg_name, ver, deps.get(target, "?"))]
-        sub = _find_dep_chain(packages, target, chain + [(pkg_name, ver, "?")], visited)
+            return [*chain, (pkg_name, ver, deps.get(target, "?"))]
+        sub = _find_dep_chain(packages, target, [*chain, (pkg_name, ver, "?")], visited)
         if sub is not None:
             return sub
     return None
@@ -665,10 +653,7 @@ async def why_package(
     if not direct:
         found = _find_dep_chain(packages, target)
         if found:
-            chain = [
-                {"package": p, "version": v, "required_as": r}
-                for p, v, r in found
-            ]
+            chain = [{"package": p, "version": v, "required_as": r} for p, v, r in found]
 
     return {
         "status": "success",
@@ -694,7 +679,7 @@ async def outdated_packages(
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
     ecosystem_filter = req.ecosystem
-    outdated_list: List[Dict] = []
+    outdated_list: list[dict] = []
 
     async def check_pkg(name: str, info: dict) -> None:
         eco = info.get("ecosystem", "pypi")
@@ -704,14 +689,11 @@ async def outdated_packages(
         if not ver:
             return
         try:
-            data = await aggregator.get_package_info(
-                name, ecosystem=eco, include_versions=True
-            )
+            data = await aggregator.get_package_info(name, ecosystem=eco, include_versions=True)
             if data:
                 versions = data.get("versions", {}).get(eco, [])
                 version_strings = [
-                    v.get("version", "") if isinstance(v, dict) else str(v)
-                    for v in versions
+                    v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
                 ]
                 sorted_vers = sorted(
                     [v for v in version_strings if v],
@@ -720,13 +702,15 @@ async def outdated_packages(
                 )
                 latest_str = sorted_vers[0] if sorted_vers else ver
                 if latest_str != ver:
-                    outdated_list.append({
-                        "name": name,
-                        "ecosystem": eco,
-                        "current": ver,
-                        "latest": latest_str,
-                        "type": "direct" if info.get("direct") else "transitive",
-                    })
+                    outdated_list.append(
+                        {
+                            "name": name,
+                            "ecosystem": eco,
+                            "current": ver,
+                            "latest": latest_str,
+                            "type": "direct" if info.get("direct") else "transitive",
+                        }
+                    )
         except Exception:
             pass
 
@@ -766,16 +750,22 @@ async def diff_lock_files(
         ver_b = info_b.get("resolved_version")
 
         if not ver_a and ver_b:
-            added.append({"name": name, "ecosystem": info_b.get("ecosystem", "?"), "version": ver_b})
+            added.append(
+                {"name": name, "ecosystem": info_b.get("ecosystem", "?"), "version": ver_b}
+            )
         elif ver_a and not ver_b:
-            removed.append({"name": name, "ecosystem": info_a.get("ecosystem", "?"), "version": ver_a})
+            removed.append(
+                {"name": name, "ecosystem": info_a.get("ecosystem", "?"), "version": ver_a}
+            )
         elif ver_a != ver_b:
-            changed.append({
-                "name": name,
-                "ecosystem": info_a.get("ecosystem", info_b.get("ecosystem", "?")),
-                "from": ver_a or "?",
-                "to": ver_b or "?",
-            })
+            changed.append(
+                {
+                    "name": name,
+                    "ecosystem": info_a.get("ecosystem", info_b.get("ecosystem", "?")),
+                    "from": ver_a or "?",
+                    "to": ver_b or "?",
+                }
+            )
         elif ver_a == ver_b:
             unchanged += 1
 
@@ -798,7 +788,7 @@ async def restore_commands(
     """
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
-    ecosystem_groups: Dict[str, List[tuple]] = {}
+    ecosystem_groups: dict[str, list[tuple]] = {}
 
     for name, info in packages.items():
         eco = info.get("ecosystem", "pypi")
@@ -810,9 +800,7 @@ async def restore_commands(
     for eco, pkgs in sorted(ecosystem_groups.items()):
         cmd = _generate_install_command(eco, pkgs)
         if cmd:
-            commands.append(
-                {"ecosystem": eco, "command": cmd, "package_count": len(pkgs)}
-            )
+            commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
 
     return {
         "status": "success",

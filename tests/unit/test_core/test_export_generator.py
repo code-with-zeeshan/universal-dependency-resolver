@@ -1,5 +1,6 @@
 # tests/unit/test_core/test_export_generator.py
 import pytest
+
 from backend.core.export_generator import (
     ExportGenerator,
 )
@@ -8,12 +9,12 @@ from backend.core.export_generator import (
 class TestExportGenerator:
     @pytest.fixture
     def generator(self):
-        """Create ExportGenerator instance for testing"""
+        """Create ExportGenerator instance for testing."""
         return ExportGenerator()
 
     @pytest.fixture
     def sample_packages(self):
-        """Sample resolved packages for testing"""
+        """Sample resolved packages for testing."""
         return {
             "numpy": {"version": "1.24.3", "ecosystem": "pypi"},
             "pandas": {"version": "2.0.1", "ecosystem": "pypi"},
@@ -22,7 +23,7 @@ class TestExportGenerator:
 
     @pytest.fixture
     def sample_system_info(self):
-        """Sample system info for testing"""
+        """Sample system info for testing."""
         return {
             "os": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
             "runtime_versions": {
@@ -33,7 +34,7 @@ class TestExportGenerator:
         }
 
     def test_initialization(self, generator):
-        """Test ExportGenerator initialization"""
+        """Test ExportGenerator initialization."""
         assert isinstance(generator.formats, dict)
         assert generator.formats == {}
         assert "requirements.txt" in generator.template_map
@@ -43,7 +44,7 @@ class TestExportGenerator:
     def test_generate_requirements_txt(
         self, generator, sample_packages, sample_system_info
     ):
-        """Test requirements.txt generation"""
+        """Test requirements.txt generation."""
         result = generator.generate(
             sample_packages, "requirements.txt", sample_system_info
         )
@@ -56,7 +57,7 @@ class TestExportGenerator:
     def test_generate_package_json(
         self, generator, sample_packages, sample_system_info
     ):
-        """Test package.json generation"""
+        """Test package.json generation."""
         result = generator.generate(sample_packages, "package.json", sample_system_info)
 
         assert isinstance(result, str)
@@ -65,19 +66,19 @@ class TestExportGenerator:
         assert "pandas" not in result
 
     def test_generate_empty_packages_raises_error(self, generator):
-        """Test that empty packages raise ValueError"""
+        """Test that empty packages raise ValueError."""
         with pytest.raises(ValueError, match="No packages provided"):
             generator.generate({}, "requirements.txt")
 
     def test_generate_unsupported_format_raises_error(self, generator, sample_packages):
-        """Test that unsupported format raises ValueError"""
+        """Test that unsupported format raises ValueError."""
         with pytest.raises(ValueError, match="Unsupported format"):
             generator.generate(sample_packages, "unsupported.format")
 
     def test_generate_multiple_formats(
         self, generator, sample_packages, sample_system_info
     ):
-        """Test generating multiple formats at once"""
+        """Test generating multiple formats at once."""
         formats = ["requirements.txt", "package.json"]
         result = generator.generate_multiple(
             sample_packages, formats, sample_system_info
@@ -90,7 +91,7 @@ class TestExportGenerator:
         assert '"react": "18.2.0"' in result["package.json"]
 
     def test_register_custom_format(self, generator):
-        """Test registering a custom export format"""
+        """Test registering a custom export format."""
 
         class CustomFormat:
             def generate(self, packages, system_info, options):
@@ -102,7 +103,7 @@ class TestExportGenerator:
         assert result == "custom output"
 
     def test_parse_packages(self, generator, sample_packages):
-        """Test internal package parsing"""
+        """Test internal package parsing."""
         parsed = generator._parse_packages(sample_packages)
 
         assert len(parsed) == 3
@@ -112,7 +113,7 @@ class TestExportGenerator:
     def test_generate_with_options(
         self, generator, sample_packages, sample_system_info
     ):
-        """Test generation with custom options"""
+        """Test generation with custom options."""
         options = {"include_comments": False, "pin_versions": False}
         result = generator.generate(
             sample_packages, "requirements.txt", sample_system_info, options
@@ -122,7 +123,7 @@ class TestExportGenerator:
         assert "numpy>=1.24.3" in result  # unpinned with pin_versions=False
 
     def test_save_to_file_basic(self, generator, tmp_path):
-        """Test basic file saving functionality"""
+        """Test basic file saving functionality."""
         content = "test content"
         filepath = tmp_path / "test.txt"
 
@@ -132,7 +133,7 @@ class TestExportGenerator:
         assert filepath.read_text() == content
 
     def test_save_to_file_creates_directories(self, generator, tmp_path):
-        """Test that save_to_file creates parent directories"""
+        """Test that save_to_file creates parent directories."""
         content = "test content"
         filepath = tmp_path / "subdir" / "nested" / "test.txt"
 

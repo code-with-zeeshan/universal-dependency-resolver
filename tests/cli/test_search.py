@@ -1,5 +1,4 @@
 """Tests for udr search command."""
-import pytest
 
 from .test_commands import _run
 

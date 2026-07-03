@@ -1,29 +1,30 @@
 """Module docstring."""
+
 # database/ __init__.py
+from .compatibility_db import CompatibilityDB
 from .models import (
     Base,
-    Package,
-    PackageVersion,
     CompatibilityReport,
     ConflictRule,
-    VerifiedCombination,
-    SystemBenchmark,
+    Package,
+    PackageVersion,
     ResolutionCache,
-    init_db,
+    SystemBenchmark,
+    VerifiedCombination,
     get_db,
+    init_db,
 )
-from .compatibility_db import CompatibilityDB
 
 __all__ = [
     "Base",
-    "Package",
-    "PackageVersion",
+    "CompatibilityDB",
     "CompatibilityReport",
     "ConflictRule",
-    "VerifiedCombination",
-    "SystemBenchmark",
+    "Package",
+    "PackageVersion",
     "ResolutionCache",
-    "init_db",
+    "SystemBenchmark",
+    "VerifiedCombination",
     "get_db",
-    "CompatibilityDB",
+    "init_db",
 ]
