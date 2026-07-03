@@ -61,7 +61,7 @@ dependencies = [
     "sqlalchemy>=2.0.23,<3",
     "alembic>=1.13,<2",
     # CLI & Formatting
-    "rich>=13.7,<14",
+    "rich>=13.7,<16",
     "slowapi>=0.1.9,<1",
 
     "python-multipart>=0.0.6,<1",
