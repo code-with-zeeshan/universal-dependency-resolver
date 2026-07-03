@@ -59,13 +59,13 @@ graph TB
     S1 -.->|"single-user"| SQLITE
     API -.->|"async HTTP"| External
 
-    style DEV fill:#e8f5e9
-    style CI fill:#e8f5e9
-    style APP fill:#e3f2fd
-    style DESKTOP fill:#fff3e0
-    style PG fill:#e0f2f1,stroke:#00695c
-    style REDIS fill:#fce4ec,stroke:#c62828
-    style SQLITE fill:#f5f5f5,stroke:#616161
+    style DEV fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style CI fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style APP fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style DESKTOP fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
+    style PG fill:#00695c,color:#fff,stroke:#004d40,stroke-width:2px
+    style REDIS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style SQLITE fill:#424242,color:#fff,stroke:#212121,stroke-width:2px
 ```
 
 **Key deployment paths:**

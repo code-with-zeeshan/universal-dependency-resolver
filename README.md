@@ -181,32 +181,23 @@ Full reference in [docs/API.md](docs/API.md).
 
 ## 🔄 How It Works
 
-```
-          ┌─────────────┐
-          │ Your Request│
-          └──────┬──────┘
-                 ▼
-     ┌──────────────────────┐
-     │  🌐 Fetch metadata   │
-     │  from registry APIs  │
-     └──────────┬───────────┘
-                ▼
-     ┌──────────────────────┐
-     │  🔍 Scan system      │
-     │  OS · GPU · CUDA ·   │
-     │  Python · Node · GCC │
-     └──────────┬───────────┘
-                ▼
-     ┌──────────────────────┐
-     │  🧠 Resolve with Z3  │
-     │  SAT solver          │
-     │  (conflict-free!)    │
-     └──────────┬───────────┘
-                ▼
-     ┌───────────────────────┐
-     │  📤 Export / Lock     │
-     │  12 formats · udr.lock│
-     └───────────────────────┘
+```mermaid
+flowchart LR
+    A["👤 Your Request<br/><code>udr resolve flask react</code>"] --> B
+    B["🌐 Fetch metadata<br/>from registry APIs"] --> C
+    C["🔍 Scan system<br/>OS · GPU · CUDA · Python"] --> D
+    D["🧠 Z3 SAT solver<br/>Find compatible versions"] --> E
+    E["📤 Export / Lock<br/>12 formats · udr.lock"]
+
+    B -->|"aiohttp"| F["📦 PyPI · npm · Crates · Maven<br/>+ 14 more registries"]
+    C -->|"pynvml"| G["🖥️ NVIDIA · AMD · Apple Silicon<br/>TPU · NPU · ANE"]
+    D -->|"z3.Optimize()"| H["⚡ Prefer newer versions<br/>Resolve CUDA variants<br/>Detect cross-eco conflicts"]
+
+    style A fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style C fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
+    style D fill:#6a1b9a,color:#fff,stroke:#4a148c,stroke-width:2px
+    style E fill:#00695c,color:#fff,stroke:#004d40,stroke-width:2px
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-dive.

@@ -62,9 +62,9 @@ flowchart TB
     TIMEOUT --> PARTIAL
     PARTIAL --> ERROR
 
-    style SAT fill:#c8e6c9,stroke:#2e7d32
-    style UNSAT fill:#ffcdd2,stroke:#c62828
-    style TIMEOUT fill:#fff9c4,stroke:#f57f17
+    style SAT fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style UNSAT fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style TIMEOUT fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
 ```
 
 **Key implementation details:**

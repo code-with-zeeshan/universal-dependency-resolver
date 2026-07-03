@@ -54,12 +54,12 @@ graph TB
     MODELS --> SQLITE
     MODELS -.->|"optional"| PG
 
-    classDef cli fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef desktop fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef api fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef core fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef data fill:#fce4ec,stroke:#c62828,stroke-width:2px
-    classDef db fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef cli fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    classDef desktop fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
+    classDef api fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    classDef core fill:#6a1b9a,color:#fff,stroke:#4a148c,stroke-width:2px
+    classDef data fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    classDef db fill:#00695c,color:#fff,stroke:#004d40,stroke-width:2px
 ```
 
 ## Layer breakdown
@@ -186,13 +186,13 @@ graph LR
     CLI -.->|"❌ NO"| DB
     API -.->|"❌ NO"| DS
 
-    classDef cliLayer fill:#e8f5e9,stroke:#2e7d32
-    classDef apiLayer fill:#e3f2fd,stroke:#1565c0
-    classDef orchLayer fill:#fff8e1,stroke:#f57f17
-    classDef coreLayer fill:#f3e5f5,stroke:#7b1fa2
-    classDef dsLayer fill:#fce4ec,stroke:#c62828
-    classDef dbLayer fill:#e0f2f1,stroke:#00695c
-    classDef infra fill:#f5f5f5,stroke:#616161
+    classDef cliLayer fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    classDef apiLayer fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    classDef orchLayer fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
+    classDef coreLayer fill:#6a1b9a,color:#fff,stroke:#4a148c,stroke-width:2px
+    classDef dsLayer fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    classDef dbLayer fill:#00695c,color:#fff,stroke:#004d40,stroke-width:2px
+    classDef infra fill:#424242,color:#fff,stroke:#212121,stroke-width:2px
 ```
 
 | Violation | Count | Status |

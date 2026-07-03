@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trivy + CodeQL gating (no `continue-on-error`)
 - Snyk gating on main only (requires `SNYK_TOKEN`)
 
-## [1.3.2] - 2026-07-01
+## [1.3.2] - 2026-07-03
 
 ### Added
 
@@ -54,22 +54,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`requires-python` from pyproject.toml**: Reads `[project].requires-python` and injects as a `python` package entry. Ecosystem configurable via `UDR_PYTHON_ECOSYSTEM` env var.
 - **Non-PEP-440 version normalization**: New `normalize_version()` + `strip_numeric_suffix()` in `constraint_normalizer.py` — strips Maven qualifiers (`-jre`, `-android`) and Conda build strings (`_cp314t`). Used for proper cross-ecosystem version sorting.
 - **Cross-ecosystem constraint propagation in SAT fallback**: `_resolve_with_alternatives` now builds a dependency graph, topo-sorts packages, and backtracks respecting cross-ecosystem dependency edges instead of greedy per-package picking.
+- **Mermaid architecture diagrams**: Architecture overview, import rules, deployment topology, SAT solver internals, and ER data model — all render natively on GitHub with rich colors and white text
+- **Comprehensive user guide**: `docs/USER_GUIDE.md` — 15 sections covering prerequisites, installation, walkthrough, components, CLI/API/library usage, desktop app, feature deep-dive, deployment, troubleshooting, and performance
+- **New CLI commands**: `details`, `diff`, `outdated`, `search`, `why` — 5 new subcommands for package inspection and lock file comparison
+- **New data source clients**: Gradle (`gradle_client.py`), Swift (`swift_client.py`), Hex/Elixir (`hex_client.py`), Haskell/Cabal (`haskell_client.py`) — 4 more ecosystems now supported (total 18)
+- **Orchestrator package**: `backend/orchestrator/` — shared resolution layer used by both CLI and API, breaking the `cli→api` import cycle
+- **GitHub workflow enhancements**: New `benchmark.yml` (weekly SAT-solver performance); `security-audit.yml` enhanced with `pip-audit --fix` + license compliance; `ci.yml` data-source parallel job extracted; new `dependabot.yml`, `scorecards.yml`
+- **Desktop app improvements**: New `app-utils.js` + `app.js` modules; expanded smoke tests (version consistency, file structure, API health, resolution endpoint); render tests
+- **Infrastructure**: Dockerfile + docker-compose.yml for container deployment; `.pre-commit-config.yaml`; `.dockerignore`; `alembic/` migration infrastructure (Alembic config + initial migration + env.py)
+- **Test scaffolding**: 6 e2e test files (`test_cli_realworld.py`, `test_edge_cases.py`, `test_json_compliance.py`, `test_problem_statement.py`); 6 new CLI black-box test files (details, diff, outdated, scan, search, why); 4 new data source test files (gradle, haskell, hex, swift); database tests (`test_compatibility_db.py`); `test_api_realworld.sh`, `test_cli_realworld.sh`, `test_problem_statement.sh`; `test_comprehensive.py` integration tests; `scripts/run_checks.sh`, `scripts/seed_db.py`
 
 ### Changed
 
 - **`parse_version` warning → debug**: Non-PEP-440 versions (Maven `*-jre`, Conda `*_cp*`) no longer flood stderr.
 - **npm version skip warning → debug**: Canary/experimental npm versions logged at debug level instead of warning.
 - **APK client fallback fetch error → debug**: 404 from fallback APKINDEX mirrors and transient fetch errors logged at debug level.
+- **README.md fully redesigned**: Emoji badges with varied shield colors, old-vs-new comparison table, grouped ecosystem categories, numbered 5-step quick start, "By the Numbers" stats section, call-to-action footer
+- **docs/ARCHITECTURE.md**: ASCII architecture art replaced with Mermaid graph + import rules + ER diagrams; deeper saturated backgrounds with white text for readability
+- **docs/PERFORMANCE.md**: Added Mermaid SAT solver internals flowchart showing the 5-step Z3 pipeline (normalize → variables → constraints → solve → output)
+- **docs/DEPLOYMENT.md**: Added Mermaid deployment topology diagram covering 5 deployment scenarios (dev, CI, single-server, multi-worker, desktop)
+- **Root config cleanup**: `install.sh` — dynamic version reading from `pyproject.toml` or `udr --version` (removed hardcoded `VERSION`); `Makefile` — added `.DEFAULT_GOAL=help`, `--cov-fail-under=70` (consistent with pyproject.toml), removed stale `--timeout=120`; `.env.example` — added `ENABLE_CSRF` + 5 missing ecosystem rate limits; `MANIFEST.in` — added `README_PYPI.md` + `alembic/` include rules; `pytest.ini` — removed blanket `DeprecationWarning` suppression
+- **Desktop**: Removed DMG background image to fix transient arm64 build failures; `electron-updater` moved to `dependencies` in `package.json` (runtime dep)
 
 ### Fixed
 
 - **`@angular/core` edge case**: `_parse_package_spec` now handles scoped npm packages without ecosystem suffix (leading `@`). Unknown ecosystems log a warning instead of silently creating invalid specs.
 - **NPM dependency key location**: Now reads `dependencies` from top-level `info["latest_version_info"]["dependencies"]` in `_aggregator_to_resolver_input`.
 - **`_find_compatible_versions` indentation bug**: `sys_python` check was accidentally nested inside the `version_constraint` block — now always evaluated.
+- **Critical: `email-validator` missing from core deps** — Imported at top level in `backend/run.py:12` but only in `[system]`/`[dev]` optional groups. `pip install ud-resolver` (bare, no extras) crashed on `udr serve`. Moved to `[project.dependencies]`.
+- **High: `httpx` missing from core deps** — Used in `backend/api/main.py:319` health endpoint but only in `[dev]`/`[all]`. Health check silently failed when extras not installed. Added to `[project.dependencies]`.
+- **High: `starlette` not declared** — Imported directly in `api/main.py` and `api/middleware.py` but never declared in `pyproject.toml` (relied on transitive dep through FastAPI). Explicitly added to `[project.dependencies]`.
+- **`prometheus-fastapi-instrumentator` moved to `[monitoring]`** — Was in core deps but only imported conditionally inside a function. Belongs in optional monitoring group.
+- **`opentelemetry-exporter-otlp-proto-grpc` missing** — Imported in `backend/tracing_config.py:62` but only `-http` exporter was declared. Both gRPC and HTTP exporters now in `[monitoring]`.
+- **`electron-updater` in wrong dependency group** — Was in `devDependencies` in `desktop/package.json` but imported and used at runtime in `main.js`. Moved to `dependencies`.
 
 ### Security
 
 - All 14 ecosystems tested with real APIs in a 43-package megaproject scenario (frontend + backend + AI/ML + inference + system specification with CUDA)
+
+### Removed
+
+- **`docs/diagram/architecture.excalidraw`** — Excalidraw JSON format does not render on GitHub. Replaced with inline Mermaid diagrams.
+- **`tests/fixtures/api_responses/`** — Stale mock JSON fixtures (conda, npm, pypi). Coverage handled by live data source tests.
 
 ## [1.2.5] - 2026-06-30
 
