@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -353,6 +354,296 @@ def _update_pubspec_yaml(content: str, pkg_name: str, resolved_ver: str) -> str 
         else:
             new_lines.append(line)
     return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_go_mod(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    in_require_block = False
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if stripped.startswith("require (") and stripped.endswith(")"):
+            parts = stripped[len("require ("):-len(")")].strip().split()
+            if len(parts) >= 2 and parts[0] == pkg_name:
+                new_lines.append(f"{indent}require ({pkg_name} {resolved_ver})")
+                updated = True
+                continue
+            new_lines.append(line)
+        elif stripped == "require (":
+            in_require_block = True
+            new_lines.append(line)
+        elif in_require_block and stripped == ")":
+            in_require_block = False
+            new_lines.append(line)
+        elif in_require_block:
+            parts = stripped.split()
+            if len(parts) >= 2 and parts[0] == pkg_name:
+                trail = " ".join(parts[2:]) if len(parts) > 2 else ""
+                comment = " " + trail if trail else ""
+                new_lines.append(f"{indent}{pkg_name} {resolved_ver}{comment}")
+                updated = True
+            else:
+                new_lines.append(line)
+        elif stripped.startswith("require " + pkg_name + " "):
+            trail = stripped[len("require " + pkg_name + " "):]
+            comment = ""
+            if "//" in trail:
+                comment = " //" + trail.split("//", 1)[1]
+            new_lines.append(f"{indent}require {pkg_name} {resolved_ver}{comment}")
+            updated = True
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_cargo_toml(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    in_deps = False
+    in_sub_dep = False
+    sub_dep_name = ""
+    dep_sections = {
+        "[dependencies]", "[build-dependencies]", "[dev-dependencies]",
+        "[workspace.dependencies]",
+    }
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        # Check for [dependencies.pkg_name] sub-table format
+        sub_match = re.match(r'^\[(dependencies|build-dependencies|dev-dependencies|workspace\.dependencies)\.(.+)\]$', stripped)
+        if stripped in dep_sections:
+            in_deps = True
+            in_sub_dep = False
+            sub_dep_name = ""
+            new_lines.append(line)
+        elif sub_match:
+            in_deps = False
+            in_sub_dep = True
+            sub_dep_name = sub_match.group(2)
+            new_lines.append(line)
+        elif stripped.startswith("[") and stripped.endswith("]"):
+            in_deps = False
+            in_sub_dep = False
+            sub_dep_name = ""
+            new_lines.append(line)
+        elif in_sub_dep and sub_dep_name == pkg_name and stripped.startswith("version"):
+            eq_pos = stripped.find("=")
+            if eq_pos > 0:
+                comment = ""
+                after = stripped[eq_pos + 1:].strip()
+                if "#" in after:
+                    comment = " #" + after.split("#", 1)[1]
+                new_lines.append(f"{indent}version = \"{resolved_ver}\"{comment}")
+                updated = True
+                continue
+            new_lines.append(line)
+        elif in_deps and stripped.startswith(pkg_name):
+            eq_pos = stripped.find("=")
+            if eq_pos > 0:
+                before = stripped[:eq_pos].strip()
+                if before == pkg_name:
+                    after = stripped[eq_pos + 1:].strip()
+                    after_no_comment = after.split("#")[0].strip() if "#" in after else after
+                    has_braces = after_no_comment.startswith("{")
+                    comment = ""
+                    if "#" in after:
+                        comment = " #" + after.split("#", 1)[1]
+                    if has_braces:
+                        new_lines.append(f"{indent}{pkg_name} = {{ version = \"{resolved_ver}\" }}{comment}")
+                    else:
+                        outer_q = ""
+                        for q in ['"', "'"]:
+                            if after_no_comment.startswith(q):
+                                outer_q = q
+                                break
+                        if outer_q:
+                            new_lines.append(f"{indent}{pkg_name} = {outer_q}{resolved_ver}{outer_q}{comment}")
+                        else:
+                            new_lines.append(f"{indent}{pkg_name} = \"{resolved_ver}\"{comment}")
+                    updated = True
+                    continue
+            new_lines.append(line)
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_gemfile(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if stripped.startswith("gem "):
+            for q in ['"', "'"]:
+                gem_prefix = f"gem {q}{pkg_name}{q}"
+                if stripped.startswith(gem_prefix):
+                    rest = stripped[len(gem_prefix):].strip()
+                    if rest.startswith(","):
+                        rest = rest[1:].strip()
+                    if rest.startswith(","):
+                        rest = rest[1:].strip()
+                    comment = ""
+                    if "#" in rest:
+                        comment = " #" + rest.split("#", 1)[1]
+                    new_lines.append(f"{indent}gem {q}{pkg_name}{q}, \"{resolved_ver}\"{comment}")
+                    updated = True
+                    break
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_composer_json(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return None
+    updated = False
+    for section in ("require", "require-dev"):
+        if section in data and pkg_name in data[section]:
+            data[section][pkg_name] = resolved_ver
+            updated = True
+    if not updated:
+        return None
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _update_pyproject_toml(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    try:
+        import tomllib
+        data = tomllib.loads(content)
+    except Exception:
+        return None
+
+    # Check if pkg_name exists in either [tool.poetry.dependencies] or [project] dependencies
+    found_poetry = False
+    found_project = False
+
+    if "tool" in data and "poetry" in data["tool"]:
+        for section in ("dependencies", "dev-dependencies"):
+            if section in data["tool"]["poetry"] and pkg_name in data["tool"]["poetry"][section]:
+                found_poetry = True
+                break
+
+    if "project" in data and "dependencies" in data["project"]:
+        for dep_str in data["project"]["dependencies"]:
+            try:
+                from packaging.requirements import Requirement
+                req = Requirement(dep_str)
+                if req.name == pkg_name:
+                    found_project = True
+                    break
+            except Exception:
+                if dep_str.startswith(pkg_name) and any(c in dep_str for c in "=<>~!"):
+                    found_project = True
+                    break
+
+    if not found_poetry and not found_project:
+        return None
+
+    # Now do string-level replacement
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    in_poetry_deps = False
+    in_poetry_dev = False
+    in_project_deps = False
+
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+
+        if stripped == "[tool.poetry.dependencies]":
+            in_poetry_deps = True
+            in_poetry_dev = False
+            in_project_deps = False
+            new_lines.append(line)
+        elif stripped == "[tool.poetry.dev-dependencies]":
+            in_poetry_deps = False
+            in_poetry_dev = True
+            in_project_deps = False
+            new_lines.append(line)
+        elif stripped.startswith("[tool.poetry"):
+            in_poetry_deps = False
+            in_poetry_dev = False
+            in_project_deps = False
+            new_lines.append(line)
+        elif stripped in ("[project]",):
+            in_poetry_deps = False
+            in_poetry_dev = False
+            in_project_deps = False
+            new_lines.append(line)
+        elif stripped == "dependencies = [":
+            in_project_deps = True
+            in_poetry_deps = False
+            in_poetry_dev = False
+            new_lines.append(line)
+        elif stripped.startswith("dependencies = "):
+            new_lines.append(line)
+        elif stripped == "]":
+            in_project_deps = False
+            new_lines.append(line)
+        elif in_poetry_deps or in_poetry_dev:
+            eq_pos = stripped.find("=")
+            if eq_pos > 0 and stripped[:eq_pos].strip() == pkg_name:
+                comment = ""
+                after = stripped[eq_pos + 1:].strip()
+                if "#" in after:
+                    comment = " #" + after.split("#", 1)[1]
+                for q in ['"', "'"]:
+                    if after.startswith(q):
+                        outer_q = q
+                        break
+                else:
+                    outer_q = '"'
+                new_lines.append(f"{indent}{pkg_name} = {outer_q}{resolved_ver}{outer_q}{comment}")
+                updated = True
+            else:
+                new_lines.append(line)
+        elif in_project_deps:
+            str_stripped = stripped.strip(",").strip()
+            if str_stripped.startswith('"') or str_stripped.startswith("'"):
+                raw = str_stripped.strip(",").strip("\"'")
+                try:
+                    from packaging.requirements import Requirement
+                    req = Requirement(raw)
+                    match_name = req.name == pkg_name
+                except Exception:
+                    match_name = raw.startswith(pkg_name) and any(c in raw for c in "=<>~!")
+                if match_name:
+                    comment = ""
+                    if "#" in stripped:
+                        comment = " #" + stripped.split("#", 1)[1]
+                    trailing_comma = "," if stripped.rstrip().endswith(",") else ""
+                    new_lines.append(f"{indent}\"{pkg_name}=={resolved_ver}\"{trailing_comma}{comment}")
+                    updated = True
+                else:
+                    new_lines.append(line)
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _get_manifest_updater(filename: str):
+    _updaters = {
+        "package.json": _update_package_json,
+        "pubspec.yaml": _update_pubspec_yaml,
+        "go.mod": _update_go_mod,
+        "Cargo.toml": _update_cargo_toml,
+        "Gemfile": _update_gemfile,
+        "composer.json": _update_composer_json,
+        "pyproject.toml": _update_pyproject_toml,
+    }
+    return _updaters.get(filename)
 
 
 def _generate_install_command(ecosystem: str, packages: list[tuple[str, str]]) -> str | None:

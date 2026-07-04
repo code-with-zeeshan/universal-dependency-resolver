@@ -14,11 +14,10 @@ from rich.table import Table
 from ..shared import (
     _aggregator_to_resolver_input,
     _extract_severity,
+    _get_manifest_updater,
     _output_json,
     _run_resolution,
     _select_manifests_interactive,
-    _update_package_json,
-    _update_pubspec_yaml,
     _validate_manifest_update_line,
     console,
     err_console,
@@ -391,16 +390,9 @@ def cmd_lock(args):
                 continue
             filename = manifest_path.name
             content = manifest_path.read_text(encoding="utf-8", errors="replace")
-            if filename == "package.json":
-                new_content = _update_package_json(content, pkg["name"], resolved_ver)
-                if new_content and new_content != content:
-                    manifest_path.write_text(new_content)
-                    updated_count += 1
-                    updated_manifests.setdefault(str(manifest_path), []).append(
-                        f"{pkg['name']} → {resolved_ver}"
-                    )
-            elif filename == "pubspec.yaml":
-                new_content = _update_pubspec_yaml(content, pkg["name"], resolved_ver)
+            updater = _get_manifest_updater(filename)
+            if updater:
+                new_content = updater(content, pkg["name"], resolved_ver)
                 if new_content and new_content != content:
                     manifest_path.write_text(new_content)
                     updated_count += 1
