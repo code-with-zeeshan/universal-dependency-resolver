@@ -636,3 +636,614 @@ class TestParseEncoding:
         result = d.parse({"path": str(p), "parser": "requirements"})
         assert len(result) == 1
         assert "numpy" in result[0]["name"]
+
+
+class TestParseGradle:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "build.gradle"
+        p.write_text(
+            "dependencies {\n"
+            "    implementation 'com.google.guava:guava:30.1-jre'\n"
+            '    api "org.slf4j:slf4j-api:1.7.30"\n'
+            "    compile 'org.apache.commons:commons-lang3:3.12.0'\n"
+            "    runtimeOnly 'mysql:mysql-connector-java:8.0.25'\n"
+            "}\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "gradle"})
+        assert len(result) == 4
+        assert {"name": "com.google.guava:guava", "version": "30.1-jre"} in result
+        assert {"name": "org.slf4j:slf4j-api", "version": "1.7.30"} in result
+        assert {"name": "org.apache.commons:commons-lang3", "version": "3.12.0"} in result
+        assert {"name": "mysql:mysql-connector-java", "version": "8.0.25"} in result
+
+    def test_skips_other_lines(self, tmp_path):
+        p = tmp_path / "build.gradle"
+        p.write_text(
+            "plugins {\n"
+            "    id 'java'\n"
+            "}\n"
+            "repositories {\n"
+            "    mavenCentral()\n"
+            "}\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "gradle"})
+        assert result == []
+
+
+class TestParseSwift:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "Package.swift"
+        p.write_text(
+            '// swift-tools-version:5.5\n'
+            'import PackageDescription\n'
+            'let package = Package(\n'
+            '    name: "MyPackage",\n'
+            '    dependencies: [\n'
+            '        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.0.0"),\n'
+            "        .package(url: 'https://github.com/apple/swift-argument-parser.git', from: '1.0.0'),\n"
+            '    ]\n'
+            ')\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "swift"})
+        assert len(result) == 2
+        assert {"name": "Alamofire", "version": "*"} in result
+        assert {"name": "swift-argument-parser", "version": "*"} in result
+
+    def test_skips_lines_without_package_url(self, tmp_path):
+        p = tmp_path / "Package.swift"
+        p.write_text(
+            'let package = Package(\n'
+            '    name: "MyPackage",\n'
+            '    targets: []\n'
+            ')\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "swift"})
+        assert result == []
+
+
+class TestParseHex:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "mix.exs"
+        p.write_text(
+            'defp deps do\n'
+            '  [\n'
+            '    {:phoenix, "~> 1.6.0"},\n'
+            '    {:ecto_sql, "~> 3.7"},\n'
+            '    {:jason, "1.2"},\n'
+            '  ]\n'
+            'end\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "hex"})
+        assert len(result) == 3
+        assert {"name": "phoenix", "version": "~> 1.6.0"} in result
+        assert {"name": "ecto_sql", "version": "~> 3.7"} in result
+        assert {"name": "jason", "version": "1.2"} in result
+
+    def test_skips_non_match_lines(self, tmp_path):
+        p = tmp_path / "mix.exs"
+        p.write_text(
+            "defp deps do\n"
+            "  []\n"
+            "end\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "hex"})
+        assert result == []
+
+
+class TestParseMaven:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "pom.xml"
+        p.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+            '  <dependencies>\n'
+            '    <dependency>\n'
+            '      <groupId>com.google.guava</groupId>\n'
+            '      <artifactId>guava</artifactId>\n'
+            '      <version>31.0.1-jre</version>\n'
+            '    </dependency>\n'
+            '    <dependency>\n'
+            '      <groupId>org.apache.commons</groupId>\n'
+            '      <artifactId>commons-lang3</artifactId>\n'
+            '      <version>3.12.0</version>\n'
+            '    </dependency>\n'
+            '  </dependencies>\n'
+            '</project>\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "maven"})
+        assert len(result) == 2
+        assert {"name": "com.google.guava:guava", "version": "31.0.1-jre"} in result
+        assert {"name": "org.apache.commons:commons-lang3", "version": "3.12.0"} in result
+
+    def test_empty_dependencies(self, tmp_path):
+        p = tmp_path / "pom.xml"
+        p.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+            '  <dependencies>\n'
+            '  </dependencies>\n'
+            '</project>\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "maven"})
+        assert result == []
+
+
+class TestParseCocoapods:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "Podfile"
+        p.write_text(
+            "platform :ios, '15.0'\n"
+            "pod 'Alamofire', '~> 5.0'\n"
+            "pod 'SnapKit', '~> 5.6'\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cocoapods"})
+        assert len(result) == 2
+        assert {"name": "Alamofire", "version": "~> 5.0"} in result
+        assert {"name": "SnapKit", "version": "~> 5.6"} in result
+
+    def test_without_version(self, tmp_path):
+        p = tmp_path / "Podfile"
+        p.write_text("pod 'FirebaseCrashlytics'\n")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cocoapods"})
+        assert result == [{"name": "FirebaseCrashlytics", "version": "*"}]
+
+    def test_skips_non_pod_lines(self, tmp_path):
+        p = tmp_path / "Podfile"
+        p.write_text(
+            "platform :ios, '15.0'\n"
+            "inhibit_all_warnings!\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cocoapods"})
+        assert result == []
+
+
+class TestParseNuget:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "packages.config"
+        p.write_text(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<packages>\n'
+            '  <package id="Newtonsoft.Json" version="13.0.1" />\n'
+            '  <package id="Microsoft.Extensions.Logging" version="6.0.0" />\n'
+            '</packages>\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "nuget"})
+        assert len(result) == 2
+        assert {"name": "Newtonsoft.Json", "version": "13.0.1"} in result
+        assert {"name": "Microsoft.Extensions.Logging", "version": "6.0.0"} in result
+
+    def test_empty_packages(self, tmp_path):
+        p = tmp_path / "packages.config"
+        p.write_text(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<packages>\n'
+            '</packages>\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "nuget"})
+        assert result == []
+
+
+class TestParseSimple:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "apt-packages.txt"
+        p.write_text(
+            "curl\n"
+            "git>=2.30\n"
+            "build-essential==12.9\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "simple"})
+        assert len(result) == 3
+        assert {"name": "curl", "version": "*"} in result
+        assert {"name": "git", "version": ">=2.30"} in result
+        assert {"name": "build-essential", "version": "==12.9"} in result
+
+    def test_skips_comments_and_blanks(self, tmp_path):
+        p = tmp_path / "apk-packages.txt"
+        p.write_text(
+            "# comment\n"
+            "\n"
+            "alpine-base\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "simple"})
+        assert len(result) == 1
+        assert result[0]["name"] == "alpine-base"
+
+
+class TestParseHomebrew:
+    def test_brewfile_text(self, tmp_path):
+        p = tmp_path / "Brewfile"
+        p.write_text(
+            '# Brewfile\n'
+            "brew 'curl'\n"
+            'cask "firefox"\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "homebrew"})
+        assert len(result) == 2
+        assert {"name": "curl", "version": "*"} in result
+        assert {"name": "firefox", "version": "*"} in result
+
+    def test_brewfile_lock_json(self, tmp_path):
+        p = tmp_path / "Brewfile.lock.json"
+        p.write_text(
+            json.dumps({
+                "entries": [
+                    {"name": "curl", "version": "7.79.1"},
+                    {"name": "wget", "version": "1.21.2"},
+                ]
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "homebrew"})
+        assert len(result) == 2
+        assert {"name": "curl", "version": "7.79.1"} in result
+        assert {"name": "wget", "version": "1.21.2"} in result
+
+    def test_skips_comments_and_empty_lines(self, tmp_path):
+        p = tmp_path / "Brewfile"
+        p.write_text(
+            "# comment\n"
+            "\n"
+            "tap 'homebrew/core'\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "homebrew"})
+        assert result == []
+
+
+class TestParseCabal:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "package.cabal"
+        p.write_text(
+            "name:            my-package\n"
+            "version:         1.0.0\n"
+            "build-depends:   base >=4.14 && <4.16, mtl >= 2.2, text\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cabal"})
+        assert len(result) == 3
+        assert {"name": "base", "version": ">=4.14 && <4.16"} in result
+        assert {"name": "mtl", "version": ">= 2.2"} in result
+        assert {"name": "text", "version": "*"} in result
+
+    def test_no_build_depends(self, tmp_path):
+        p = tmp_path / "package.cabal"
+        p.write_text(
+            "name:    my-package\n"
+            "version: 1.0.0\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cabal"})
+        assert result == []
+
+
+class TestParsePnpmLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "pnpm-lock.yaml"
+        p.write_text(
+            "lockfileVersion: 5.4\n"
+            "packages:\n"
+            "  /express@4.17.1:\n"
+            "    version: 4.17.1\n"
+            "  /lodash@4.17.21:\n"
+            "    version: 4.17.21\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "pnpm_lock"})
+        assert len(result) == 2
+        assert {"name": "express@4.17.1", "version": "4.17.1"} in result
+        assert {"name": "lodash@4.17.21", "version": "4.17.21"} in result
+
+    def test_malformed_yaml_returns_empty(self, tmp_path):
+        p = tmp_path / "pnpm-lock.yaml"
+        p.write_text(": bad yaml :")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "pnpm_lock"})
+        assert result == []
+
+
+class TestParsePubspec:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "pubspec.yaml"
+        p.write_text(
+            yaml.dump({
+                "name": "my_app",
+                "dependencies": {
+                    "flutter": "sdk",
+                    "http": "^0.13.0",
+                    "provider": "^6.0.0",
+                },
+                "dev_dependencies": {
+                    "mockito": "^5.0.0",
+                },
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "pubspec"})
+        assert len(result) == 3
+        assert {"name": "http", "version": "^0.13.0"} in result
+        assert {"name": "provider", "version": "^6.0.0"} in result
+        assert {"name": "mockito", "version": "^5.0.0"} in result
+
+    def test_dict_spec(self, tmp_path):
+        p = tmp_path / "pubspec.yaml"
+        p.write_text(
+            yaml.dump({
+                "dependencies": {
+                    "my_pkg": {"version": "^1.0.0"},
+                },
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "pubspec"})
+        assert result == [{"name": "my_pkg", "version": "^1.0.0"}]
+
+    def test_malformed_yaml_returns_empty(self, tmp_path):
+        p = tmp_path / "pubspec.yaml"
+        p.write_text(": bad yaml :")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "pubspec"})
+        assert result == []
+
+
+class TestParsePoetryLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "poetry.lock"
+        p.write_text(
+            '[[package]]\n'
+            'name = "numpy"\n'
+            'version = "1.21.0"\n'
+            '\n'
+            '[[package]]\n'
+            'name = "requests"\n'
+            'version = "2.25.1"\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "poetry_lock"})
+        assert len(result) == 2
+        assert {"name": "numpy", "version": "1.21.0"} in result
+        assert {"name": "requests", "version": "2.25.1"} in result
+
+    def test_empty_package_list(self, tmp_path):
+        p = tmp_path / "poetry.lock"
+        p.write_text("# empty lock\n")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "poetry_lock"})
+        assert result == []
+
+
+class TestParseUvLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "uv.lock"
+        p.write_text(
+            '[[package]]\n'
+            'name = "numpy"\n'
+            'source = { version = "1.21.0" }\n'
+            '\n'
+            '[[package]]\n'
+            'name = "requests"\n'
+            'source = { version = "2.25.1" }\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "uv_lock"})
+        assert len(result) == 2
+        assert {"name": "numpy", "version": "1.21.0"} in result
+        assert {"name": "requests", "version": "2.25.1"} in result
+
+    def test_empty_package_list(self, tmp_path):
+        p = tmp_path / "uv.lock"
+        p.write_text("# empty\n")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "uv_lock"})
+        assert result == []
+
+
+class TestParseGoSum:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text(
+            "github.com/pkg/errors v0.9.1 h1:...\n"
+            "golang.org/x/text v0.3.7 h1:...\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert len(result) == 2
+        assert {"name": "github.com/pkg/errors", "version": "v0.9.1"} in result
+        assert {"name": "golang.org/x/text", "version": "v0.3.7"} in result
+
+    def test_skips_go_mod_lines(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text(
+            "go.mod golang.org/x/text v0.3.7 h1:...\n"
+            "github.com/pkg/errors v0.9.1 h1:...\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert len(result) == 1
+        assert result[0]["name"] == "github.com/pkg/errors"
+
+    def test_deduplicates_entries(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text(
+            "github.com/pkg/errors v0.9.1 h1:...\n"
+            "github.com/pkg/errors v0.9.1/go.mod h1:...\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert len(result) == 1
+        assert result[0]["name"] == "github.com/pkg/errors"
+
+
+class TestParseComposerLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "composer.lock"
+        p.write_text(
+            json.dumps({
+                "packages": [
+                    {"name": "monolog/monolog", "version": "2.3.5"},
+                    {"name": "guzzlehttp/guzzle", "version": "7.4.0"},
+                ],
+                "packages-dev": [
+                    {"name": "phpunit/phpunit", "version": "9.5.10"},
+                ],
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "composer_lock"})
+        assert len(result) == 3
+        assert {"name": "monolog/monolog", "version": "2.3.5"} in result
+        assert {"name": "guzzlehttp/guzzle", "version": "7.4.0"} in result
+        assert {"name": "phpunit/phpunit", "version": "9.5.10"} in result
+
+    def test_empty_sections(self, tmp_path):
+        p = tmp_path / "composer.lock"
+        p.write_text(json.dumps({}))
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "composer_lock"})
+        assert result == []
+
+
+class TestParseGemfileLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "Gemfile.lock"
+        p.write_text(
+            "GEM\n"
+            "  remote: https://rubygems.org/\n"
+            "  specs:\n"
+            "    actionpack (6.1.4)\n"
+            "      activesupport (= 6.1.4)\n"
+            "    rack (2.2.3)\n"
+            "\n"
+            "PLATFORMS\n"
+            "  x86_64-linux\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "gemfile_lock"})
+        assert len(result) == 3
+        assert {"name": "actionpack", "version": "6.1.4"} in result
+        assert {"name": "activesupport", "version": "= 6.1.4"} in result
+        assert {"name": "rack", "version": "2.2.3"} in result
+
+    def test_skips_before_specs(self, tmp_path):
+        p = tmp_path / "Gemfile.lock"
+        p.write_text(
+            "GEM\n"
+            "  remote: https://rubygems.org/\n"
+            "  specs:\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "gemfile_lock"})
+        assert result == []
+
+
+class TestParseMixLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "mix.lock"
+        p.write_text(
+            '{\n'
+            '  "phoenix": {:hex, :phoenix, "1.6.6", [...], "hexpm"}, \n'
+            '  "jason": {:hex, :jason, "1.3.0", [...], "hexpm"}, \n'
+            '}\n'
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "mix_lock"})
+        assert len(result) == 2
+        assert {"name": "phoenix", "version": "1.6.6"} in result
+        assert {"name": "jason", "version": "1.3.0"} in result
+
+    def test_empty(self, tmp_path):
+        p = tmp_path / "mix.lock"
+        p.write_text("%{}\n")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "mix_lock"})
+        assert result == []
+
+
+class TestParsePackageResolved:
+    def test_v1_format(self, tmp_path):
+        p = tmp_path / "Package.resolved"
+        p.write_text(
+            json.dumps({
+                "object": {
+                    "pins": [
+                        {"package": "Alamofire", "state": {"version": "5.4.3"}},
+                        {"package": "SwiftyJSON", "state": {"version": "5.0.0"}},
+                    ]
+                }
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "package_resolved"})
+        assert len(result) == 2
+        assert {"name": "Alamofire", "version": "5.4.3"} in result
+        assert {"name": "SwiftyJSON", "version": "5.0.0"} in result
+
+    def test_v2_format(self, tmp_path):
+        p = tmp_path / "Package.resolved"
+        p.write_text(
+            json.dumps({
+                "pins": [
+                    {"identity": "alamofire", "version": "5.4.3"},
+                    {"identity": "swifty-json", "version": "5.0.0"},
+                ]
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "package_resolved"})
+        assert len(result) == 2
+        assert {"name": "alamofire", "version": "5.4.3"} in result
+        assert {"name": "swifty-json", "version": "5.0.0"} in result
+
+    def test_malformed_json_returns_empty(self, tmp_path):
+        p = tmp_path / "Package.resolved"
+        p.write_text("not json")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "package_resolved"})
+        assert result == []
+
+
+class TestParseUdrLock:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "udr.lock"
+        p.write_text(
+            json.dumps({
+                "packages": [
+                    {"name": "numpy", "version": "1.21.0"},
+                    {"name": "requests", "version": "2.25.1"},
+                ]
+            })
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "udr_lock"})
+        assert len(result) == 2
+        assert {"name": "numpy", "version": "1.21.0"} in result
+        assert {"name": "requests", "version": "2.25.1"} in result
+
+    def test_empty_packages(self, tmp_path):
+        p = tmp_path / "udr.lock"
+        p.write_text(json.dumps({}))
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "udr_lock"})
+        assert result == []
+
+    def test_malformed_json_returns_empty(self, tmp_path):
+        p = tmp_path / "udr.lock"
+        p.write_text("not json")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "udr_lock"})
+        assert result == []

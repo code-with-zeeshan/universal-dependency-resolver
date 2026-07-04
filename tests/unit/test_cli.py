@@ -5,9 +5,11 @@ import contextlib
 import io
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from rich.table import Table
 
 from backend.cli import (
     _aggregator_to_resolver_input,
@@ -15,6 +17,14 @@ from backend.cli import (
     _output_json,
     _parse_package_spec,
     _select_best_cuda_variant,
+)
+from backend.cli.shared import (
+    _apply_cuda_variants,
+    _build_resolved_table,
+    _extract_severity,
+    _generate_install_command,
+    _read_lock_file,
+    _validate_manifest_update_line,
 )
 
 
@@ -266,3 +276,171 @@ class TestOutputJson:
             _output_json(data, argparse.Namespace())
         parsed = json.loads(string_out.getvalue())
         assert parsed["resolved"]["pkg"]["version"] == "1.0"
+
+
+class TestExtractSeverity:
+    def test_list_severity_with_score(self):
+        assert _extract_severity({"severity": [{"score": "HIGH"}]}) == "HIGH"
+
+    def test_list_severity_with_type(self):
+        assert _extract_severity({"severity": [{"type": "MEDIUM"}]}) == "MEDIUM"
+
+    def test_string_severity(self):
+        assert _extract_severity({"severity": "CRITICAL"}) == "CRITICAL"
+
+    def test_empty_severity_list(self):
+        assert _extract_severity({"severity": []}) == "UNKNOWN"
+
+    def test_missing_severity(self):
+        assert _extract_severity({}) == "UNKNOWN"
+
+
+class TestBuildResolvedTable:
+    def test_returns_table_with_packages(self):
+        resolved = {
+            "resolved_packages": {
+                "requests": {"version": "2.31.0", "ecosystem": "pypi"},
+                "express": {"version": "4.18.0", "ecosystem": "npm"},
+            }
+        }
+        table = _build_resolved_table(resolved)
+        assert isinstance(table, Table)
+        assert table.row_count == 2
+
+    def test_returns_none_for_empty(self):
+        assert _build_resolved_table({}) is None
+
+    def test_cuda_notes_column(self):
+        resolved = {
+            "resolved_packages": {
+                "torch": {"version": "2.1.0+cu121", "ecosystem": "pypi", "cuda_version": "121"},
+            }
+        }
+        table = _build_resolved_table(resolved)
+        assert table is not None
+        assert table.row_count == 1
+
+
+class TestReadLockFile:
+    def test_reads_valid_lock_file(self, tmp_path):
+        lock = tmp_path / "udr.lock"
+        lock.write_text(json.dumps({"version": "2.0", "packages": {}}))
+        data = _read_lock_file(Path(str(lock)))
+        assert data["version"] == "2.0"
+
+    def test_exits_on_missing_file(self, tmp_path):
+        missing = tmp_path / "nonexistent.lock"
+        with pytest.raises(SystemExit):
+            _read_lock_file(Path(str(missing)))
+
+    def test_exits_on_invalid_json(self, tmp_path):
+        bad = tmp_path / "bad.lock"
+        bad.write_text("not json")
+        with pytest.raises(SystemExit):
+            _read_lock_file(Path(str(bad)))
+
+    def test_exits_on_unsupported_version(self, tmp_path):
+        lock = tmp_path / "udr.lock"
+        lock.write_text(json.dumps({"version": "9.9", "packages": {}}))
+        with pytest.raises(SystemExit):
+            _read_lock_file(Path(str(lock)))
+
+
+class TestValidateManifestUpdateLine:
+    def test_empty_line(self):
+        assert _validate_manifest_update_line("", "numpy", "1.0") is None
+
+    def test_comment_line(self):
+        assert _validate_manifest_update_line("# numpy==1.0", "numpy", "1.0") is None
+
+    def test_flag_line(self):
+        assert _validate_manifest_update_line("-r base.txt", "numpy", "1.0") is None
+
+    def test_updates_double_quoted(self):
+        result = _validate_manifest_update_line('"numpy"==1.0', "numpy", "2.0")
+        assert result == '"numpy==2.0"'
+
+    def test_updates_single_quoted(self):
+        result = _validate_manifest_update_line("'numpy'>=1.0", "numpy", "2.0")
+        assert result == "'numpy==2.0'"
+
+    def test_updates_unquoted(self):
+        result = _validate_manifest_update_line("numpy==1.0", "numpy", "2.0")
+        assert result == "numpy==2.0"
+
+    def test_no_match_different_package(self):
+        result = _validate_manifest_update_line("pandas==1.0", "numpy", "2.0")
+        assert result is None
+
+    def test_updates_with_trailing_comment(self):
+        result = _validate_manifest_update_line("numpy==1.0 # pinned", "numpy", "2.0")
+        assert "# pinned" in result
+
+    def test_updates_spaced_format(self):
+        result = _validate_manifest_update_line("numpy 1.0", "numpy", "2.0")
+        assert result == "numpy==2.0"
+
+    def test_updates_with_operator(self):
+        result = _validate_manifest_update_line("numpy >=1.0", "numpy", "2.0")
+        assert result == "numpy==2.0"
+
+
+class TestGenerateInstallCommand:
+    def test_pypi(self):
+        cmd = _generate_install_command("pypi", [("requests", "2.31.0")])
+        assert cmd is not None
+        assert "pip install" in cmd
+        assert "requests==2.31.0" in cmd
+
+    def test_npm(self):
+        cmd = _generate_install_command("npm", [("express", "4.18.0")])
+        assert cmd is not None
+        assert "npm install" in cmd
+
+    def test_unknown_ecosystem(self):
+        cmd = _generate_install_command("unknown", [("pkg", "1.0")])
+        assert cmd is None
+
+    def test_multi_package(self):
+        cmd = _generate_install_command("pypi", [("a", "1.0"), ("b", "2.0")])
+        assert cmd is not None
+        assert "a==1.0" in cmd
+        assert "b==2.0" in cmd
+
+
+class TestApplyCudaVariants:
+    def test_no_gpu_no_cuda_skipped(self):
+        resolved = {"resolved_packages": {"numpy": {"version": "1.0", "ecosystem": "pypi"}}}
+        result = _apply_cuda_variants(resolved, {}, {})
+        assert result["resolved_packages"]["numpy"]["version"] == "1.0"
+
+    def test_non_pypi_ecosystem_skipped(self):
+        resolved = {"resolved_packages": {"express": {"version": "4.0", "ecosystem": "npm"}}}
+        result = _apply_cuda_variants(resolved, {}, {})
+        assert result["resolved_packages"]["express"]["version"] == "4.0"
+
+    def test_no_cuda_variants_available(self):
+        resolved = {"resolved_packages": {"torch": {"version": "2.1.0", "ecosystem": "pypi"}}}
+        details = {"torch": {"versions": {"pypi": [{"version": "2.1.0"}]}}}
+        system = {"gpu": {"cuda": "12.1"}}
+        result = _apply_cuda_variants(resolved, details, system)
+        assert result["resolved_packages"]["torch"]["version"] == "2.1.0"
+
+    def test_selects_cuda_variant(self):
+        resolved = {"resolved_packages": {"torch": {"version": "2.1.0", "ecosystem": "pypi"}}}
+        details = {
+            "torch": {
+                "versions": {
+                    "pypi": [
+                        {"version": "2.1.0"},
+                        {"version": "2.1.0+cu118"},
+                        {"version": "2.1.0+cu121"},
+                    ]
+                }
+            }
+        }
+        system = {"gpu": {"cuda": "12.1"}}
+        result = _apply_cuda_variants(resolved, details, system)
+        pkg = result["resolved_packages"]["torch"]
+        assert pkg["version"] == "2.1.0+cu121"
+        assert pkg["cuda_variant"] is True

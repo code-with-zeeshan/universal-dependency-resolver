@@ -16,9 +16,9 @@ from rich.table import Table
 from backend.orchestrator import (
     _aggregator_to_resolver_input,
     _extract_cuda_variants,
-    _extract_system_requirements,
-    _normalize_cuda,
-    _parse_package_spec,
+    _extract_system_requirements,  # noqa: F401 — re-exported via __init__.py
+    _normalize_cuda,  # noqa: F401 — re-exported via __init__.py
+    _parse_package_spec,  # noqa: F401 — re-exported via __init__.py
     _resolve_transitive,
     _select_best_cuda_variant,
 )
