@@ -17,6 +17,8 @@ from ..shared import (
     _output_json,
     _run_resolution,
     _select_manifests_interactive,
+    _update_package_json,
+    _update_pubspec_yaml,
     _validate_manifest_update_line,
     console,
     err_console,
@@ -253,12 +255,11 @@ def cmd_lock(args):
                 ],
             }
 
-        if getattr(args, "json", False):
-            return _output_json(lock_data, args)
-
         lock_path = directory / "udr.lock"
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
-        console.print(f"[green]Lock file saved:[/green] {lock_path}")
+
+        if not getattr(args, "json", False):
+            console.print(f"[green]Lock file saved:[/green] {lock_path}")
 
         rp_count = len([p for p in lock_data["packages"].values() if p["resolved_version"]])
         total_pkgs = len(lock_data["packages"])
@@ -287,74 +288,75 @@ def cmd_lock(args):
             else:
                 summary_table.add_row(pname, pinfo["ecosystem"], "[red]unresolved[/red]", "", "")
 
-        if total_vulns > 0:
-            vuln_table = Table(
-                title=f"[red]{total_vulns} known vulnerabilities[/red]", box=box.SIMPLE
-            )
-            vuln_table.add_column("Package", style="cyan")
-            vuln_table.add_column("CVE ID", style="yellow")
-            vuln_table.add_column("Severity")
-            vuln_table.add_column("Summary")
-            for pname, pinfo in lock_data["packages"].items():
-                for v in pinfo.get("vulnerabilities", []):
-                    sev = v.get("severity", "UNKNOWN")
-                    sev_tag = (
-                        f"[red]{sev}[/red]"
-                        if sev in ("CRITICAL", "HIGH")
-                        else f"[yellow]{sev}[/yellow]"
-                    )
-                    vuln_table.add_row(pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80])
-            console.print(vuln_table)
-
-        console.print(summary_table)
-
-        if getattr(args, "report", False):
-            try:
-                report_lines = [
-                    f"UDR Lock Report — {lock_path.name}",
-                    f"Generated: {lock_data['generated_at']}",
-                    f"Resolved: {rp_count}/{total_pkgs} packages",
-                    "",
-                ]
+        if not getattr(args, "json", False):
+            if total_vulns > 0:
+                vuln_table = Table(
+                    title=f"[red]{total_vulns} known vulnerabilities[/red]", box=box.SIMPLE
+                )
+                vuln_table.add_column("Package", style="cyan")
+                vuln_table.add_column("CVE ID", style="yellow")
+                vuln_table.add_column("Severity")
+                vuln_table.add_column("Summary")
                 for pname, pinfo in lock_data["packages"].items():
-                    ver = pinfo.get("resolved_version") or "unresolved"
-                    ptype = "direct" if pinfo.get("direct") else "transitive"
-                    vuln_count = len(pinfo.get("vulnerabilities", []))
-                    vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
-                    report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
-                report_path = lock_path.with_suffix(".report.txt")
-                report_path.write_text("\n".join(report_lines) + "\n")
-                console.print(f"[green]Report saved:[/green] {report_path}")
-            except Exception as exc:
-                console.print(f"[yellow]Warning: could not write report:[/yellow] {exc}")
+                    for v in pinfo.get("vulnerabilities", []):
+                        sev = v.get("severity", "UNKNOWN")
+                        sev_tag = (
+                            f"[red]{sev}[/red]"
+                            if sev in ("CRITICAL", "HIGH")
+                            else f"[yellow]{sev}[/yellow]"
+                        )
+                        vuln_table.add_row(pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80])
+                console.print(vuln_table)
 
-        if getattr(args, "export", None):
-            export_format = args.export
-            with Progress(
-                SpinnerColumn(),
-                TextColumn(f"Exporting as {export_format}..."),
-                transient=True,
-                console=err_console,
-            ) as p:
-                p.add_task("export", total=None)
+            console.print(summary_table)
+
+            if getattr(args, "report", False):
                 try:
-                    export_content = exporter.generate(
-                        {
-                            pname: {
-                                "version": pinfo["resolved_version"],
-                                "ecosystem": pinfo["ecosystem"],
-                            }
-                            for pname, pinfo in lock_data["packages"].items()
-                            if pinfo["resolved_version"]
-                        },
-                        format=export_format,
-                        system_info=system_info,
-                    )
-                    export_path = directory / f"udr-output.{export_format.replace('.', '-')}"
-                    export_path.write_text(export_content)
-                    console.print(f"[green]Exported:[/green] {export_path}")
-                except Exception as e:
-                    console.print(f"[red]Export failed:[/red] {e}")
+                    report_lines = [
+                        f"UDR Lock Report — {lock_path.name}",
+                        f"Generated: {lock_data['generated_at']}",
+                        f"Resolved: {rp_count}/{total_pkgs} packages",
+                        "",
+                    ]
+                    for pname, pinfo in lock_data["packages"].items():
+                        ver = pinfo.get("resolved_version") or "unresolved"
+                        ptype = "direct" if pinfo.get("direct") else "transitive"
+                        vuln_count = len(pinfo.get("vulnerabilities", []))
+                        vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
+                        report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
+                    report_path = lock_path.with_suffix(".report.txt")
+                    report_path.write_text("\n".join(report_lines) + "\n")
+                    console.print(f"[green]Report saved:[/green] {report_path}")
+                except Exception as exc:
+                    console.print(f"[yellow]Warning: could not write report:[/yellow] {exc}")
+
+            if getattr(args, "export", None):
+                export_format = args.export
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn(f"Exporting as {export_format}..."),
+                    transient=True,
+                    console=err_console,
+                ) as p:
+                    p.add_task("export", total=None)
+                    try:
+                        export_content = exporter.generate(
+                            {
+                                pname: {
+                                    "version": pinfo["resolved_version"],
+                                    "ecosystem": pinfo["ecosystem"],
+                                }
+                                for pname, pinfo in lock_data["packages"].items()
+                                if pinfo["resolved_version"]
+                            },
+                            format=export_format,
+                            system_info=system_info,
+                        )
+                        export_path = directory / f"udr-output.{export_format.replace('.', '-')}"
+                        export_path.write_text(export_content)
+                        console.print(f"[green]Exported:[/green] {export_path}")
+                    except Exception as e:
+                        console.print(f"[red]Export failed:[/red] {e}")
 
         if getattr(args, "dry_run", False):
             console.print("[yellow]── dry run — no files modified ──[/yellow]")
@@ -384,9 +386,28 @@ def cmd_lock(args):
             resolved_ver = pkg_info.get("resolved_version")
             if not resolved_ver:
                 continue
-            content = manifest_path.read_text(encoding="utf-8", errors="replace")
             constraint = pkg["constraint"]
-            if constraint != resolved_ver and not constraint.startswith("=="):
+            if constraint == resolved_ver or constraint.startswith("=="):
+                continue
+            filename = manifest_path.name
+            content = manifest_path.read_text(encoding="utf-8", errors="replace")
+            if filename == "package.json":
+                new_content = _update_package_json(content, pkg["name"], resolved_ver)
+                if new_content and new_content != content:
+                    manifest_path.write_text(new_content)
+                    updated_count += 1
+                    updated_manifests.setdefault(str(manifest_path), []).append(
+                        f"{pkg['name']} → {resolved_ver}"
+                    )
+            elif filename == "pubspec.yaml":
+                new_content = _update_pubspec_yaml(content, pkg["name"], resolved_ver)
+                if new_content and new_content != content:
+                    manifest_path.write_text(new_content)
+                    updated_count += 1
+                    updated_manifests.setdefault(str(manifest_path), []).append(
+                        f"{pkg['name']} → {resolved_ver}"
+                    )
+            else:
                 new_lines = []
                 replaced = False
                 for line in content.split("\n"):
@@ -414,6 +435,9 @@ def cmd_lock(args):
                 rel = Path(mpath).relative_to(directory)
                 update_table.add_row(str(rel), "\n".join(updates))
             console.print(update_table)
+
+        if getattr(args, "json", False):
+            _output_json(lock_data, args)
 
         await aggregator.close()
         return 0

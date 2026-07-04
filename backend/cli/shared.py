@@ -214,10 +214,10 @@ def _build_resolved_table(resolved: dict, title: str | None = None) -> Table | N
 
 
 def _output_json(data: Any, args) -> None:
-    """Output json."""
+    """Output json and exit."""
     json.dump(data, sys.stdout, indent=2, default=str)
     print()
-    sys.exit(0)
+    raise SystemExit(0)
 
 
 def _read_lock_file(lock_path: Path) -> dict:
@@ -297,6 +297,62 @@ def _select_manifests_interactive(manifests: list[dict]) -> list[dict]:
     except (ValueError, IndexError):
         console.print("[yellow]Invalid input — using all manifests[/yellow]")
         return manifests
+
+
+def _update_package_json(
+    content: str, pkg_name: str, resolved_ver: str
+) -> str | None:
+    """Update package.json content with pinned version.
+
+    Replaces version in dependencies, devDependencies, and peerDependencies.
+    Returns updated content or None if the package was not found.
+    """
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return None
+    updated = False
+    for section in ("dependencies", "devDependencies", "peerDependencies"):
+        if section in data and pkg_name in data[section]:
+            data[section][pkg_name] = resolved_ver
+            updated = True
+    if not updated:
+        return None
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _update_pubspec_yaml(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    """Update pubspec.yaml content with pinned version.
+
+    Replaces version in dependencies and dev_dependencies sections.
+    Returns updated content or None if the package was not found.
+    """
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    in_deps = False
+    in_dev_deps = False
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if stripped == "dependencies:":
+            in_deps = True
+            in_dev_deps = False
+        elif stripped == "dev_dependencies:":
+            in_dev_deps = True
+            in_deps = False
+        elif stripped == "dependency_overrides:":
+            in_deps = False
+            in_dev_deps = False
+        elif stripped and not stripped.startswith("#") and not indent:
+            in_deps = False
+            in_dev_deps = False
+        if (in_deps or in_dev_deps) and stripped.startswith(pkg_name + ":"):
+            new_lines.append(f"{indent}{pkg_name}: {resolved_ver}")
+            updated = True
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
 
 
 def _generate_install_command(ecosystem: str, packages: list[tuple[str, str]]) -> str | None:
