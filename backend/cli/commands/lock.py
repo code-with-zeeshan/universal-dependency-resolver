@@ -254,6 +254,21 @@ def cmd_lock(args):
                 ],
             }
 
+        dep_tree = resolved.get("dependency_tree", {})
+        for pkg_name in lock_data["packages"]:
+            tree_entry = dep_tree.get(pkg_name)
+            if not tree_entry:
+                lock_data["packages"][pkg_name]["depends_on"] = {}
+                continue
+            deps = tree_entry.get("dependencies", {})
+            dep_names = {}
+            for dep_eco, dep_map in deps.items():
+                if isinstance(dep_map, dict):
+                    for dep_name, dep_constraint in dep_map.items():
+                        if dep_name in lock_data["packages"]:
+                            dep_names[dep_name] = dep_constraint
+            lock_data["packages"][pkg_name]["depends_on"] = dep_names
+
         lock_path = directory / "udr.lock"
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
 

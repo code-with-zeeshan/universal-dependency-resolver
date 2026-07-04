@@ -34,6 +34,7 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
+from backend.settings import API_KEY, API_KEY_HEADER, FEATURES
 from backend.api.middleware import setup_middleware
 from backend.api.routes import (
     auth as auth_routes,
@@ -130,6 +131,26 @@ app.add_middleware(
 )
 
 
+# API Key Authentication Middleware
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    exempt_paths = {"/healthz", "/readyz", "/api/v1/health", "/api/v1/readyz"}
+    if request.url.path in exempt_paths or request.method == "OPTIONS":
+        return await call_next(request)
+
+    if not FEATURES.get("ENABLE_AUTH", True):
+        return await call_next(request)
+
+    api_key = request.headers.get(API_KEY_HEADER)
+    if not api_key or api_key != API_KEY:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Invalid or missing API key"},
+        )
+
+    return await call_next(request)
+
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -208,7 +229,7 @@ async def validate_environment() -> None:
 
     # Guard: production must have auth enabled
     env = os.getenv("ENV", "development")
-    enable_auth = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+    enable_auth = os.getenv("ENABLE_AUTH", "true").lower() == "true"
     if env == "production" and not enable_auth:
         raise RuntimeError(
             "Refusing to start in production mode with ENABLE_AUTH=false. "
@@ -275,6 +296,15 @@ async def root(request: Request) -> dict:
     }
 
 
+@app.get("/healthz", tags=["Health"])
+async def healthz():
+    return {"status": "ok"}
+
+@app.get("/readyz", tags=["Health"])
+async def readyz():
+    return {"status": "ok"}
+
+
 # Health check endpoint with dependency checks
 @app.get("/api/v1/health", tags=["General"])
 @limiter.limit("30/minute")
@@ -335,7 +365,7 @@ async def health_check(request: Request) -> dict:
 
 # Include routers with versioned prefix
 # Register auth router only when auth is enabled (saas mode)
-enable_auth = os.getenv("ENABLE_AUTH", "false").lower() == "true"
+enable_auth = os.getenv("ENABLE_AUTH", "true").lower() == "true"
 if enable_auth:
     app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
 else:

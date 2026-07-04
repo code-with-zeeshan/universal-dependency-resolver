@@ -633,6 +633,125 @@ def _update_pyproject_toml(content: str, pkg_name: str, resolved_ver: str) -> st
     return "\n".join(new_lines) + "\n" if updated else None
 
 
+def _update_build_gradle(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+            new_lines.append(line)
+            continue
+        for prefix in ("implementation", "api", "compile", "runtimeOnly", "compileOnly", "testImplementation",
+                       "androidTestImplementation", "kapt", "annotationProcessor"):
+            pattern = re.escape(prefix) + r"\s+['\"]" + re.escape(pkg_name) + r"['\"]"
+            if re.match(pattern, stripped):
+                new_lines.append(f"{indent}{prefix} '{pkg_name}:{resolved_ver}'")
+                updated = True
+                break
+            pattern_full = re.escape(prefix) + r"\s+['\"]" + re.escape(pkg_name) + r":\S+['\"]"
+            if re.match(pattern_full, stripped):
+                new_lines.append(f"{indent}{prefix} '{pkg_name}:{resolved_ver}'")
+                updated = True
+                break
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_mix_exs(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        m = re.match(r'\{:\s*' + re.escape(pkg_name) + r'\s*,\s*"[^"]*"\s*\}', stripped)
+        if m:
+            new_lines.append(f"{indent}{{:{pkg_name}, \"{resolved_ver}\"}}")
+            updated = True
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_package_swift(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        m = re.search(r'\.package\(url:\s*"[^"]*' + re.escape(pkg_name) + r'[^"]*"\s*,\s*from\s*:\s*"([^"]+)"\s*\)', stripped)
+        if m:
+            before = m.group(1)
+            new_line = stripped.replace(f'from: "{before}"', f'from: "{resolved_ver}"')
+            new_lines.append(f"{indent}{new_line}")
+            updated = True
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_podfile(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        for q in ['"', "'"]:
+            pattern = f"pod {q}{pkg_name}{q}"
+            if stripped.startswith(pattern):
+                rest = stripped[len(pattern):].strip().strip(",").strip()
+                comment = ""
+                if "#" in rest:
+                    comment = " #" + rest.split("#", 1)[1]
+                new_lines.append(f"{indent}pod {q}{pkg_name}{q}, \"{resolved_ver}\"{comment}")
+                updated = True
+                break
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_gemspec_dependency(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        for prefix in ("s.add_dependency", "s.add_runtime_dependency", "s.add_development_dependency",
+                       "add_dependency", "add_runtime_dependency", "add_development_dependency"):
+            for q in ['"', "'"]:
+                pattern = re.escape(prefix) + r"\s*\(\s*" + re.escape(q) + re.escape(pkg_name) + re.escape(q)
+                if re.match(pattern, stripped):
+                    before_rest = stripped[stripped.find(q + pkg_name + q) + len(q + pkg_name + q):].strip()
+                    comment = ""
+                    if "#" in before_rest:
+                        comment = " #" + before_rest.split("#", 1)[1]
+                    new_lines.append(f"{indent}{prefix} {q}{pkg_name}{q}, \"{resolved_ver}\"{comment}")
+                    updated = True
+                    break
+                pattern2 = re.escape(prefix) + r"\s+" + re.escape(q) + re.escape(pkg_name) + re.escape(q)
+                if re.match(pattern2, stripped):
+                    before_rest = stripped[stripped.find(q + pkg_name + q) + len(q + pkg_name + q):].strip()
+                    comment = ""
+                    if "#" in before_rest:
+                        comment = " #" + before_rest.split("#", 1)[1]
+                    new_lines.append(f"{indent}{prefix} {q}{pkg_name}{q}, \"{resolved_ver}\"{comment}")
+                    updated = True
+                    break
+            else:
+                continue
+            break
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
 def _get_manifest_updater(filename: str):
     _updaters = {
         "package.json": _update_package_json,
@@ -642,8 +761,17 @@ def _get_manifest_updater(filename: str):
         "Gemfile": _update_gemfile,
         "composer.json": _update_composer_json,
         "pyproject.toml": _update_pyproject_toml,
+        "build.gradle": _update_build_gradle,
+        "build.gradle.kts": _update_build_gradle,
+        "Package.swift": _update_package_swift,
+        "mix.exs": _update_mix_exs,
+        "Podfile": _update_podfile,
     }
-    return _updaters.get(filename)
+    if filename in _updaters:
+        return _updaters[filename]
+    if filename.endswith(".gemspec"):
+        return _update_gemspec_dependency
+    return None
 
 
 def _generate_install_command(ecosystem: str, packages: list[tuple[str, str]]) -> str | None:

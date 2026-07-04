@@ -4,6 +4,8 @@
 import asyncio
 import logging
 import re
+
+import aiohttp
 import xmlrpc.client
 from datetime import datetime
 from typing import Any
@@ -33,6 +35,28 @@ class PyPIClient(BaseDataSourceClient):
         self.xmlrpc_url = "https://pypi.org/pypi"
         self._search_cache = {}
         self._search_cache_ttl = CACHE_TTL // 2
+        self._rate_limiter = asyncio.Semaphore(5)
+
+    async def _get(self, url: str, **kwargs) -> dict | None:
+        for attempt in range(3):
+            try:
+                async with self._rate_limiter:
+                    session = self._get_session()
+                    timeout = aiohttp.ClientTimeout(total=30)
+                    async with session.get(url, timeout=timeout, **kwargs) as resp:
+                        if resp.status == 429:
+                            retry_after = int(resp.headers.get('Retry-After', str(2 ** attempt)))
+                            await asyncio.sleep(retry_after)
+                            continue
+                        resp.raise_for_status()
+                        return await resp.json()
+            except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logger.warning("PyPI request failed after 3 retries: %s", e)
+                return None
+        return None
 
     async def package_exists(self, package_name: str) -> bool:
         """Check if package exists on PyPI."""

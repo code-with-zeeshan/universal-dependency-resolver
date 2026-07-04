@@ -101,6 +101,7 @@ class ConflictResolver:
         self._version_weights = []  # Weights for minimize() objective
         self._minimization_added = False
         self.offline_mode = False
+        self._batch_active = False
 
     @property
     def solver(self):
@@ -148,6 +149,15 @@ class ConflictResolver:
                     **resolution_context,
                 },
             )
+
+            # Try SCC-based batch resolution for large graphs with multiple SCCs
+            sccs_found = list(nx.strongly_connected_components(self.dependency_graph))
+            if len(sccs_found) > 1 and len(normalized_packages) > 20:
+                scc_result = self._batch_resolve_sccs(
+                    normalized_packages, system_info, prefer_compatibility, solver_timeout
+                )
+                if scc_result is not None:
+                    return scc_result
 
             constraints = self._create_constraints(normalized_packages, system_info)
             logger.debug(
@@ -221,6 +231,124 @@ class ConflictResolver:
                 },
             )
             return error.to_payload()
+
+    def _batch_resolve_sccs(
+        self,
+        normalized_packages: list[dict],
+        system_info: dict,
+        prefer_compatibility: bool,
+        solver_timeout: int | None,
+    ) -> dict | None:
+        """Resolve packages by partitioning the dependency graph into SCCs.
+
+        Each SCC is resolved independently with its own Z3 solver instance.
+        Already-resolved dependency versions are pinned in downstream SCCs.
+        Returns None if the graph has only one SCC (fall back to monolithic).
+        """
+        try:
+            sccs = list(nx.strongly_connected_components(self.dependency_graph))
+            if len(sccs) <= 1:
+                return None
+
+            # Build condensation DAG for topological ordering
+            cond = nx.condensation(self.dependency_graph)
+            topo_order = list(nx.topological_sort(cond))
+
+            # Collect packages per SCC from condensation node members
+            scc_packages: dict[int, list[dict]] = {}
+            for scc_node in cond.nodes():
+                scc_id = scc_node
+                members = cond.nodes[scc_node].get("members", set())
+                pkgs = []
+                for node in members:
+                    pkg_data = dict(self.dependency_graph.nodes[node])
+                    if pkg_data:
+                        pkgs.append(pkg_data)
+                scc_packages[scc_id] = pkgs
+
+            resolved_versions: dict[str, str] = {}
+            all_results: dict[str, dict] = {}
+
+            logger.info(
+                "Batch resolving %d SCCs from dependency graph",
+                len(topo_order),
+                extra={"event": "batch_scc_resolution_start", "scc_count": len(topo_order)},
+            )
+
+            for scc_id in topo_order:
+                pkgs = scc_packages.get(scc_id, [])
+                if not pkgs:
+                    continue
+
+                # Pin already-resolved deps in this SCC
+                scc_pkg_names = {p["name"] for p in pkgs}
+                for pkg in pkgs:
+                    pinned_deps = {}
+                    for eco, deps in pkg.get("dependencies", {}).items():
+                        pinned_deps[eco] = {}
+                        for dep_name, constraint in deps.items():
+                            if dep_name in resolved_versions and dep_name not in scc_pkg_names:
+                                pinned_deps[eco][dep_name] = f"=={resolved_versions[dep_name]}"
+                            else:
+                                pinned_deps[eco][dep_name] = constraint
+                    if pinned_deps:
+                        pkg["dependencies"] = pinned_deps
+
+                # Resolve this SCC with a fresh solver instance
+                self._batch_active = True
+                self.version_vars.clear()
+                self.version_to_int.clear()
+                self.int_to_version.clear()
+                self._reset_solver_state(solver_timeout)
+
+                try:
+                    constraints = self._create_constraints(pkgs, system_info)
+                    solution = self._solve_constraints(constraints, prefer_compatibility)
+
+                    if solution["status"] == "satisfiable":
+                        formatted = self._format_solution(solution)
+                        pkgs_dict = formatted.get("resolved_packages", {})
+                        for pname, pinfo in pkgs_dict.items():
+                            ver = pinfo.get("version", "")
+                            if ver:
+                                resolved_versions[pname] = ver
+                            all_results[pname] = pinfo
+                    else:
+                        logger.warning(
+                            "SCC %d unsatisfiable, trying alternatives", scc_id,
+                            extra={"event": "scc_unsat", "scc_id": scc_id},
+                        )
+                        alt_result = self._resolve_with_alternatives(pkgs, system_info)
+                        for pname, pinfo in alt_result.get("packages", {}).items():
+                            ver = pinfo.get("version", "")
+                            if ver:
+                                resolved_versions[pname] = ver
+                            all_results[pname] = pinfo
+                except Exception as exc:
+                    logger.warning(
+                        "SCC %d resolution failed: %s", scc_id, exc,
+                        extra={"event": "scc_failed", "scc_id": scc_id},
+                    )
+
+            self._batch_active = False
+
+            if not all_results:
+                return None
+
+            return {
+                "status": "satisfiable",
+                "resolved_packages": all_results,
+                "dependency_tree": {},
+                "warnings": [],
+                "installation_order": list(all_results.keys()),
+                "batch_resolved": True,
+                "scc_count": len(topo_order),
+            }
+
+        except Exception as exc:
+            logger.warning("Batch SCC resolution failed: %s", exc)
+            self._batch_active = False
+            return None
 
     async def resolve_batch(
         self, package_batches: list[list[dict]], system_info: dict

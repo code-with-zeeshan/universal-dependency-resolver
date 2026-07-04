@@ -3,6 +3,7 @@
 # settings/__init__.py
 import logging
 import os
+import secrets
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
 API_KEY_HEADER = os.getenv("API_KEY_HEADER", "X-API-Key")
 ENABLE_API_KEY_AUTH = os.getenv("ENABLE_API_KEY_AUTH", "false").lower() == "true"
+
+_API_KEY_ENV = os.getenv("API_KEY")
+if _API_KEY_ENV:
+    API_KEY = _API_KEY_ENV
+else:
+    API_KEY = f"udr_{secrets.token_urlsafe(32)}"
+    logger.info("Generated random API key for this session (set API_KEY env var to persist)")
 
 # =============================================================================
 # HTTP Client Configuration
@@ -150,7 +158,7 @@ ENABLE_CACHE = os.getenv("ENABLE_CACHE", "true").lower() == "true"
 FEATURES = {
     "ENABLE_CACHE": ENABLE_CACHE,
     "ENABLE_METRICS": os.getenv("ENABLE_METRICS", "true").lower() == "true",
-    "ENABLE_AUTH": os.getenv("ENABLE_AUTH", "false").lower() == "true",
+    "ENABLE_AUTH": os.getenv("ENABLE_AUTH", "true").lower() == "true",
     "ENABLE_RESPONSE_COMPRESSION": os.getenv("ENABLE_RESPONSE_COMPRESSION", "true").lower()
     == "true",
     "ENABLE_CSRF": os.getenv("ENABLE_CSRF", "true").lower() == "true",
