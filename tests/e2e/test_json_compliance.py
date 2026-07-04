@@ -58,12 +58,12 @@ class TestJSONOutputCompliance:
         assert isinstance(data, dict)
         assert "cpu" in data, f"Expected 'cpu' key, got keys: {list(data.keys())[:10]}"
 
-    def test_info_json(self):
-        result = _run("info", "--json")
+    def test_check_deps_json(self):
+        result = _run("check", "--deps", "--json")
         assert result.returncode == 0, f"stderr: {result.stderr}"
         data = json.loads(result.stdout)
         assert isinstance(data, dict)
-        assert "runtime_versions" in data or "cpu" in data
+        assert "platform" in data or "cpu" in data
 
     def test_resolve_format_json(self):
         result = _run("resolve", "requests", "--format", "json", timeout=60)
