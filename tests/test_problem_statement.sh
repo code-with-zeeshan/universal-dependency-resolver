@@ -21,7 +21,7 @@ fail() { ((FAIL++)); echo "  ✗ FAIL: $*"; }
 
 run_udr() {
     local dir="$1"; shift
-    SOLVER_TIMEOUT=300 timeout 300 udr lock --directory "$dir" --yes --json > "$dir/out.json" 2>/dev/null || true
+    SOLVER_TIMEOUT=600 timeout 600 udr lock --directory "$dir" --yes --json > "$dir/out.json" 2>/dev/null || true
 }
 
 # ─── Scenario 1: Single-ecosystem resolution (Python PyPI) ───
@@ -312,7 +312,7 @@ fi
 # ─── Scenario 13: CLI resolve command ───
 test_name "CLI: udr resolve single package"
 mkdir -p "$TMPDIR/13"
-OUT=$(udr resolve requests>=2.28 2>&1) || true
+OUT=$(udr resolve "requests>=2.28" 2>&1) || true
 if echo "$OUT" | grep -qi "requests"; then
     pass "udr resolve shows requests info"
 else

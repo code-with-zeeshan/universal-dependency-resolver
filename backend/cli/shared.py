@@ -78,6 +78,9 @@ async def _run_resolution(
         resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
         resolved["resolved_packages"] = resolved.pop("packages", {})
 
+    if "packages" in resolved and "resolved_packages" not in resolved:
+        resolved["resolved_packages"] = resolved.pop("packages")
+
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
 
     if interactive and resolved.get("status") == "unsatisfiable":

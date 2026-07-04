@@ -4,6 +4,7 @@ Pure-logic functions for package spec parsing, transitive resolution,
 CUDA variant selection, and aggregator → resolver data conversion.
 """
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -231,16 +232,24 @@ async def _resolve_transitive(
     depth = 0
     while queue and depth <= max_depth:
         depth += 1
-        next_round = []
-        for pkg in queue:
-            key = (pkg["name"], pkg["ecosystem"])
-            if key in visited:
-                continue
-            visited.add(key)
-            if key not in all_packages:
-                all_packages[key] = pkg
-            info = await _fetch_dep_info(aggregator, pkg["name"], pkg["ecosystem"])
-            if not info:
+        pkgs = [p for p in queue if (p["name"], p["ecosystem"]) not in visited]
+        if not pkgs:
+            break
+        for p in pkgs:
+            visited.add((p["name"], p["ecosystem"]))
+        for p in pkgs:
+            if (p["name"], p["ecosystem"]) not in all_packages:
+                all_packages[(p["name"], p["ecosystem"])] = p
+
+        info_list = await asyncio.gather(*[
+            _fetch_dep_info(aggregator, p["name"], p["ecosystem"]) for p in pkgs
+        ], return_exceptions=True)
+
+        dep_map: dict[tuple[str, str], list[tuple[dict, Any, str]]] = {}
+        cross_edges: list[tuple[tuple[str, str], Any, str, str, str]] = []
+
+        for pkg, info in zip(pkgs, info_list):
+            if isinstance(info, Exception) or not info:
                 continue
             all_deps = info.get("dependencies", {})
             for dep_eco, dep_data in all_deps.items():
@@ -248,29 +257,35 @@ async def _resolve_transitive(
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg["ecosystem"])
                     dep_key = (dep.name, dep_ecosystem_val)
                     if dep_key not in visited and dep_key not in all_packages:
-                        dep_info = await _fetch_dep_info(aggregator, dep.name, dep_ecosystem_val)
-                        dep_pkg = (
-                            _build_dep_pkg(
-                                dep, dep_ecosystem_val, dep_info, pkg["ecosystem"], pkg["name"]
-                            )
-                            if dep_info
-                            else None
-                        )
-                        if dep_pkg:
-                            all_packages[dep_key] = dep_pkg
-                            next_round.append(dep_pkg)
+                        dep_map.setdefault(dep_key, []).append((pkg, dep, dep_ecosystem_val))
                     if dep_ecosystem_val != pkg["ecosystem"]:
-                        _add_cross_eco_edge(
-                            all_packages,
-                            dep_key,
-                            dep,
-                            pkg["name"],
-                            pkg["ecosystem"],
-                            dep_ecosystem_val,
-                        )
+                        cross_edges.append((dep_key, dep, pkg["name"], pkg["ecosystem"], dep_ecosystem_val))
+
+        dep_info_list = await asyncio.gather(*[
+            _fetch_dep_info(aggregator, k[0], k[1]) for k in dep_map
+        ], return_exceptions=True)
+
+        next_round = []
+        for dep_key, dep_info in zip(dep_map.keys(), dep_info_list):
+            if isinstance(dep_info, Exception) or not dep_info:
+                continue
+            source_pkg, dep_obj, dep_eco_val = dep_map[dep_key][0]
+            dep_pkg = _build_dep_pkg(
+                dep_obj, dep_eco_val, dep_info, source_pkg["ecosystem"], source_pkg["name"]
+            )
+            if dep_pkg:
+                all_packages[dep_key] = dep_pkg
+                next_round.append(dep_pkg)
+
+        for dep_key, dep, pkg_name, pkg_eco, dep_eco_val in cross_edges:
+            _add_cross_eco_edge(all_packages, dep_key, dep, pkg_name, pkg_eco, dep_eco_val)
+
         queue = next_round
     pkg_list = list(all_packages.values())
-    return resolver.resolve_dependencies(pkg_list, system_info, prefer_compatibility=True)
+    result = resolver.resolve_dependencies(pkg_list, system_info, prefer_compatibility=True)
+    if "packages" in result and "resolved_packages" not in result:
+        result["resolved_packages"] = result.pop("packages")
+    return result
 
 
 def _extract_cuda_variants(versions_info: list[dict], base_version: str) -> list[dict]:
