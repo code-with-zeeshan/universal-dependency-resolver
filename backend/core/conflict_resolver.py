@@ -38,6 +38,8 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "5000"))
+SOLVER_MAX_CLUSTERS = int(os.environ.get("SOLVER_MAX_CLUSTERS", "5"))
+SOLVER_PRERELEASE_PENALTY = int(os.environ.get("SOLVER_PRERELEASE_PENALTY", "100000"))
 USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
 
 # Data-driven conflict rules: each rule specifies incompatible version ranges
@@ -809,6 +811,53 @@ class ConflictResolver:
                         cross_ecosystem=True,
                     )
 
+    def _is_prerelease(self, ver: str) -> bool:
+        """Check if a version is a pre-release (alpha, beta, dev, rc)."""
+        try:
+            parsed = version.parse(ver)
+            return parsed.is_prerelease
+        except Exception:
+            return bool(re.search(r'(a|alpha|b|beta|rc|dev|pre|preview)[._-]?\d*$', ver, re.IGNORECASE))
+
+    def _cluster_versions(self, versions: list[str]) -> list[str]:
+        """Group versions by major.minor, keep latest stable per cluster.
+
+        Keeps at most SOLVER_MAX_CLUSTERS clusters, each with the latest
+        stable version.  If a cluster has no stable version, the latest
+        pre-release is kept as fallback.  If the list is short (<=10)
+        and most versions are same major, return as-is.
+        """
+        if len(versions) <= SOLVER_MAX_CLUSTERS:
+            return versions
+        parsed_pairs: list[tuple[str, Any]] = []
+        for ver in versions:
+            p = parse_version(ver)
+            if p:
+                parsed_pairs.append((ver, p))
+        if not parsed_pairs:
+            return versions[:SOLVER_MAX_CLUSTERS]
+        parsed_pairs.sort(key=lambda x: x[1], reverse=True)
+        clusters: dict[str, list[tuple[str, Any]]] = {}
+        for ver, p in parsed_pairs:
+            key = f"{p.major}.{p.minor}"
+            clusters.setdefault(key, []).append((ver, p))
+        sorted_keys = sorted(
+            clusters.keys(),
+            key=lambda k: [int(x) for x in k.split('.')],
+            reverse=True,
+        )
+        result = []
+        for key in sorted_keys[:SOLVER_MAX_CLUSTERS]:
+            entries = clusters[key]
+            stable = [(v, p) for v, p in entries if not self._is_prerelease(v)]
+            if stable:
+                result.append(stable[0][0])
+            else:
+                result.append(entries[0][0])
+        if not result:
+            return versions[:SOLVER_MAX_CLUSTERS]
+        return result
+
     def _create_version_mapping(self, package_name: str, versions: list[str]):
         """Create integer mapping for versions to use in Z3."""
         # Use parse_version for safer version parsing
@@ -846,6 +895,10 @@ class ConflictResolver:
             pkg_name = package["name"]  # Already normalized
             versions = package.get("available_versions", [])
 
+            # Cluster versions to reduce solver variables and avoid old versions
+            versions = self._cluster_versions(versions)
+            package["available_versions"] = versions
+
             # Create version mapping
             self._create_version_mapping(pkg_name, versions)
 
@@ -873,6 +926,9 @@ class ConflictResolver:
                 total_versions = len(versions)
                 # Newest version gets weight 0, oldest gets weight total_versions
                 weight = total_versions - sorted_idx
+                # Pre-release penalty: strongly prefer stable versions
+                if self._is_prerelease(v):
+                    weight += SOLVER_PRERELEASE_PENALTY
                 self._version_weights.append(weight * var)
 
                 # Add system requirement constraints
@@ -1002,6 +1058,10 @@ class ConflictResolver:
                             if valid_dep_vars:
                                 # If package is selected, one of the valid dependency versions must be selected
                                 self.solver.add(z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars)))
+                            else:
+                                # No valid dependency version satisfies the constraint
+                                # → this package version cannot be selected
+                                self.solver.add(z3.Not(pkg_var_ref))
 
     def _add_conflict_constraints(self, packages: list[dict], constraints: dict):
         """Add known conflict constraints."""
@@ -1145,6 +1205,10 @@ class ConflictResolver:
                 sys_cuda = system_info.get("gpu", {}).get("cuda", "")
                 if sys_cuda and compare_versions(sys_cuda, min_cuda) < 0:
                     continue
+
+            # Skip pre-release versions in fallback path
+            if self._is_prerelease(version_str):
+                continue
 
             compatible.append(version_str)
 

@@ -502,6 +502,10 @@ class DataAggregator:
                 data["dependencies"], ecosystem
             )
 
+        # Preserve peer_dependencies for post-resolution compatibility checks
+        if "peer_dependencies" in data:
+            aggregated.setdefault("peer_dependencies", {})[ecosystem.value] = data["peer_dependencies"]
+
         # Merge system requirements
         if "system_requirements" in data:
             aggregated["system_requirements"][ecosystem.value] = (

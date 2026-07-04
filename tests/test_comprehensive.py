@@ -317,7 +317,7 @@ class TestManifestParsing:
         assert isinstance(result, list)
         assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
-        assert "gradle" in ecosystems
+        assert "maven" in ecosystems
 
     def test_package_swift(self, temp_project):
         self._write_manifest_bytes(temp_project, "Package.swift",
