@@ -230,59 +230,57 @@ async def _resolve_transitive(
     queue = list(packages)
     all_packages: dict = {}
     depth = 0
+    sem = asyncio.Semaphore(3)
+
+    async def _fetch_with_sem(name: str, ecosystem: str) -> dict | None:
+        async with sem:
+            return await _fetch_dep_info(aggregator, name, ecosystem)
+
     while queue and depth <= max_depth:
         depth += 1
-        pkgs = [p for p in queue if (p["name"], p["ecosystem"]) not in visited]
-        if not pkgs:
-            break
-        for p in pkgs:
-            visited.add((p["name"], p["ecosystem"]))
-        for p in pkgs:
-            if (p["name"], p["ecosystem"]) not in all_packages:
-                all_packages[(p["name"], p["ecosystem"])] = p
-
-        info_list = await asyncio.gather(
-            *[_fetch_dep_info(aggregator, p["name"], p["ecosystem"]) for p in pkgs],
-            return_exceptions=True,
-        )
-
-        dep_map: dict[tuple[str, str], list[tuple[dict, Any, str]]] = {}
-        cross_edges: list[tuple[tuple[str, str], Any, str, str, str]] = []
-
-        for pkg, info in zip(pkgs, info_list):
-            if isinstance(info, Exception) or not info:
+        next_round = []
+        for pkg in queue:
+            key = (pkg["name"], pkg["ecosystem"])
+            if key in visited:
+                continue
+            visited.add(key)
+            if key not in all_packages:
+                all_packages[key] = pkg
+            info = await _fetch_with_sem(pkg["name"], pkg["ecosystem"])
+            if not info:
                 continue
             all_deps = info.get("dependencies", {})
+            dep_fetches = []
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg["ecosystem"])
                     dep_key = (dep.name, dep_ecosystem_val)
                     if dep_key not in visited and dep_key not in all_packages:
-                        dep_map.setdefault(dep_key, []).append((pkg, dep, dep_ecosystem_val))
+                        dep_fetches.append((dep, dep_ecosystem_val, dep_key, pkg))
                     if dep_ecosystem_val != pkg["ecosystem"]:
-                        cross_edges.append(
-                            (dep_key, dep, pkg["name"], pkg["ecosystem"], dep_ecosystem_val)
+                        _add_cross_eco_edge(
+                            all_packages,
+                            dep_key,
+                            dep,
+                            pkg["name"],
+                            pkg["ecosystem"],
+                            dep_ecosystem_val,
                         )
-
-        dep_info_list = await asyncio.gather(
-            *[_fetch_dep_info(aggregator, k[0], k[1]) for k in dep_map], return_exceptions=True
-        )
-
-        next_round = []
-        for dep_key, dep_info in zip(dep_map.keys(), dep_info_list):
-            if isinstance(dep_info, Exception) or not dep_info:
-                continue
-            source_pkg, dep_obj, dep_eco_val = dep_map[dep_key][0]
-            dep_pkg = _build_dep_pkg(
-                dep_obj, dep_eco_val, dep_info, source_pkg["ecosystem"], source_pkg["name"]
+            dep_info_results = await asyncio.gather(
+                *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in dep_fetches],
+                return_exceptions=True,
             )
-            if dep_pkg:
-                all_packages[dep_key] = dep_pkg
-                next_round.append(dep_pkg)
-
-        for dep_key, dep, pkg_name, pkg_eco, dep_eco_val in cross_edges:
-            _add_cross_eco_edge(all_packages, dep_key, dep, pkg_name, pkg_eco, dep_eco_val)
-
+            for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
+                dep_fetches, dep_info_results
+            ):
+                if isinstance(dep_info, Exception) or not dep_info:
+                    continue
+                dep_pkg = _build_dep_pkg(
+                    dep, dep_ecosystem_val, dep_info, source_pkg["ecosystem"], source_pkg["name"]
+                )
+                if dep_pkg:
+                    all_packages[dep_key] = dep_pkg
+                    next_round.append(dep_pkg)
         queue = next_round
     pkg_list = list(all_packages.values())
     result = resolver.resolve_dependencies(pkg_list, system_info, prefer_compatibility=True)

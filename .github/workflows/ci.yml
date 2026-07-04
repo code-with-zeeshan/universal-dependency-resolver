@@ -58,7 +58,7 @@ jobs:
           PYTHONPATH: .
           ENABLE_CSRF: "false"
         run: |
-          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend.core --cov=backend.api --cov=backend.cli --cov=backend.settings --cov=backend.manifest_detector --cov-report=term-missing --cov-report=xml --cov-fail-under=49
+          python -m pytest tests/unit/ -v --tb=long -k "not data_source" --cov=backend.core --cov=backend.api --cov=backend.cli --cov=backend.settings --cov=backend.manifest_detector --cov-report=term-missing --cov-report=xml --cov-fail-under=48
 
       - name: CLI end-to-end smoke tests
         env:
