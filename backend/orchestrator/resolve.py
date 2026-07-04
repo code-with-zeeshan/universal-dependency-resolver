@@ -241,9 +241,10 @@ async def _resolve_transitive(
             if (p["name"], p["ecosystem"]) not in all_packages:
                 all_packages[(p["name"], p["ecosystem"])] = p
 
-        info_list = await asyncio.gather(*[
-            _fetch_dep_info(aggregator, p["name"], p["ecosystem"]) for p in pkgs
-        ], return_exceptions=True)
+        info_list = await asyncio.gather(
+            *[_fetch_dep_info(aggregator, p["name"], p["ecosystem"]) for p in pkgs],
+            return_exceptions=True,
+        )
 
         dep_map: dict[tuple[str, str], list[tuple[dict, Any, str]]] = {}
         cross_edges: list[tuple[tuple[str, str], Any, str, str, str]] = []
@@ -259,11 +260,13 @@ async def _resolve_transitive(
                     if dep_key not in visited and dep_key not in all_packages:
                         dep_map.setdefault(dep_key, []).append((pkg, dep, dep_ecosystem_val))
                     if dep_ecosystem_val != pkg["ecosystem"]:
-                        cross_edges.append((dep_key, dep, pkg["name"], pkg["ecosystem"], dep_ecosystem_val))
+                        cross_edges.append(
+                            (dep_key, dep, pkg["name"], pkg["ecosystem"], dep_ecosystem_val)
+                        )
 
-        dep_info_list = await asyncio.gather(*[
-            _fetch_dep_info(aggregator, k[0], k[1]) for k in dep_map
-        ], return_exceptions=True)
+        dep_info_list = await asyncio.gather(
+            *[_fetch_dep_info(aggregator, k[0], k[1]) for k in dep_map], return_exceptions=True
+        )
 
         next_round = []
         for dep_key, dep_info in zip(dep_map.keys(), dep_info_list):
