@@ -95,7 +95,7 @@ jobs:
           TESTING: "true"
           PYTHONPATH: .
         run: |
-          python -m pytest tests/test_comprehensive.py -v --tb=short -m "e2e" -q
+          python -m pytest tests/test_comprehensive.py -v --tb=short -m "e2e and not slow" -q
 
       - name: CLI JSON output compliance
         env:

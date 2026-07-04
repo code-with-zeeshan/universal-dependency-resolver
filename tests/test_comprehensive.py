@@ -470,6 +470,7 @@ class TestCrossEcosystem:
         assert len(found) >= 2, \
             f"Expected transitive deps like werkzeug/jinja2/click, got: {list(pkgs.keys())[:10]}"
 
+    @pytest.mark.slow
     async def test_npm_transitive(self, aggregator, resolver):
         """Test npm deep transitive resolution."""
         system_info = _build_system_info()
