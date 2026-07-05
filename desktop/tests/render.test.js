@@ -17,10 +17,10 @@ describe('Electron render test', { skip: !xvfbAvailable && !process.env.DISPLAY 
     let cmd, args
     if (xvfbAvailable && !process.env.DISPLAY) {
       cmd = 'xvfb-run'
-      args = ['--auto-servernum', electronBin, testScript]
+      args = ['--auto-servernum', electronBin, '--no-sandbox', testScript]
     } else {
       cmd = electronBin
-      args = [testScript]
+      args = ['--no-sandbox', testScript]
     }
 
     const result = spawnSync(cmd, args, {
