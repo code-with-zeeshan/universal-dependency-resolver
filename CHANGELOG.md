@@ -81,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **docs/ARCHITECTURE.md**: ASCII architecture art replaced with Mermaid graph + import rules + ER diagrams; deeper saturated backgrounds with white text for readability
 - **docs/PERFORMANCE.md**: Added Mermaid SAT solver internals flowchart showing the 5-step Z3 pipeline (normalize → variables → constraints → solve → output)
 - **docs/DEPLOYMENT.md**: Added Mermaid deployment topology diagram covering 5 deployment scenarios (dev, CI, single-server, multi-worker, desktop)
-- **Root config cleanup**: `install.sh` — dynamic version reading from `pyproject.toml` or `udr --version` (removed hardcoded `VERSION`); `Makefile` — added `.DEFAULT_GOAL=help`, `--cov-fail-under=70` (consistent with pyproject.toml), removed stale `--timeout=120`; `.env.example` — added `ENABLE_CSRF` + 5 missing ecosystem rate limits; `MANIFEST.in` — added `README_PYPI.md` + `alembic/` include rules; `pytest.ini` — removed blanket `DeprecationWarning` suppression
+- **Root config cleanup**: `install.sh` — dynamic version reading from `pyproject.toml` or `udr --version` (removed hardcoded `VERSION`); `Makefile` — added `.DEFAULT_GOAL=help`, `--cov-fail-under=46`, removed stale `--timeout=120`; `.env.example` — added `ENABLE_CSRF` + 5 missing ecosystem rate limits; `MANIFEST.in` — added `README_PYPI.md` + `alembic/` include rules; `pytest.ini` — removed blanket `DeprecationWarning` suppression
 - **Desktop**: Removed DMG background image to fix transient arm64 build failures; `electron-updater` moved to `dependencies` in `package.json` (runtime dep)
 
 ### Fixed

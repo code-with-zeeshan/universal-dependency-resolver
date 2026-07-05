@@ -190,10 +190,12 @@ jobs:
         run: npm install
         working-directory: desktop
 
+      - name: Install xvfb (virtual framebuffer for render tests)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+
       - name: Run desktop smoke tests
         run: npm test
         working-directory: desktop
-        continue-on-error: true
 
   security-scan:
     runs-on: ubuntu-latest
