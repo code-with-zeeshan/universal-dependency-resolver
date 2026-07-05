@@ -1,6 +1,7 @@
 """Module docstring."""
 
 # backend/api/routes/system.py
+import asyncio
 import json
 import logging
 import re
@@ -601,7 +602,7 @@ async def _get_detailed_gpu_info() -> list[dict[str, Any]]:
                         }
                     )
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return gpu_details
 
@@ -691,7 +692,7 @@ async def _check_docker() -> dict[str, Any]:
 
             return docker_info
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -727,7 +728,7 @@ async def _check_rust() -> dict[str, Any]:
             rust_info["toolchains"] = toolchain_result.stdout.strip().split("\n")
 
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return rust_info
 
@@ -758,7 +759,7 @@ async def _check_go() -> dict[str, Any]:
 
             return go_info
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -771,7 +772,7 @@ async def _check_julia() -> dict[str, Any]:
         if result.returncode == 0:
             return {"version": result.stdout.strip(), "available": True}
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -788,7 +789,7 @@ async def _check_r() -> dict[str, Any]:
 
             return {"version": version_line, "available": True}
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -818,7 +819,7 @@ async def _check_dotnet() -> dict[str, Any]:
 
             return info
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -841,7 +842,7 @@ async def _check_ruby() -> dict[str, Any]:
 
             return ruby_info
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -867,7 +868,7 @@ async def _check_php() -> dict[str, Any]:
 
             return php_info
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -880,7 +881,7 @@ async def _check_kotlin() -> dict[str, Any]:
         if result.returncode == 0:
             return {"version": result.stdout.strip(), "available": True}
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -896,7 +897,7 @@ async def _check_scala() -> dict[str, Any]:
                 "available": True,
             }
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return {"available": False}
 
@@ -909,7 +910,7 @@ def _get_npm_version() -> str | None:
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return None
 
@@ -924,7 +925,7 @@ async def _get_python_packages() -> list[dict[str, Any]]:
         if result.returncode == 0:
             return json.loads(result.stdout)
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return []
 
@@ -943,7 +944,7 @@ async def _get_npm_global_packages() -> list[str]:
             lines = result.stdout.strip().split("\n")[1:]  # Skip first line
             return [line.strip() for line in lines if line.strip()]
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return []
 
@@ -1087,7 +1088,8 @@ def _is_compatible_os_version(os_name: str, system_version: str, required_versio
 
         return version.parse(system_version) >= version.parse(required_version)
     except Exception:
-        return True  # Assume compatible if can't parse
+        logger.debug("Version comparison failed", exc_info=True)
+        return True
 
 
 def _is_compatible_version(installed: str, required: str) -> bool:
@@ -1101,6 +1103,7 @@ def _is_compatible_version(installed: str, required: str) -> bool:
             return version.parse(installed) in spec
         return version.parse(installed) >= version.parse(required)
     except Exception:
+        logger.debug("Version comparison failed", exc_info=True)
         return True
 
 
@@ -1126,13 +1129,18 @@ def _get_compiler_version(compiler: str) -> str | None:
             if match:
                 return match.group(1)
     except Exception:
-        pass
+        logger.debug("Runtime detection failed", exc_info=True)
 
     return None
 
 
 async def _benchmark_cpu() -> dict[str, Any]:
-    """Run CPU benchmark."""
+    """Run CPU benchmark in thread pool."""
+    return await asyncio.to_thread(_benchmark_cpu_sync)
+
+
+def _benchmark_cpu_sync() -> dict[str, Any]:
+    """Synchronous CPU benchmark (runs in thread pool)."""
     import time
 
     results: dict[str, Any] = {}
@@ -1180,7 +1188,7 @@ def _benchmark_memory() -> dict[str, Any]:
 
     memory = psutil.virtual_memory()
 
-    return {  # type: ignore[return-value]
+    return {
         "total_gb": round(memory.total / (1024**3), 2),
         "available_gb": round(memory.available / (1024**3), 2),
         "used_gb": round(memory.used / (1024**3), 2),

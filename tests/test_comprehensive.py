@@ -317,7 +317,7 @@ class TestManifestParsing:
         assert isinstance(result, list)
         assert len(result) >= 1
         ecosystems = {r.get("ecosystem") for r in result if isinstance(r, dict)}
-        assert "maven" in ecosystems
+        assert "gradle" in ecosystems
 
     def test_package_swift(self, temp_project):
         self._write_manifest_bytes(temp_project, "Package.swift",
@@ -562,7 +562,7 @@ class TestLockFile:
         assert "version" in data, f"Missing version: {list(data.keys())}"
         assert "packages" in data, f"Missing packages: {list(data.keys())}"
         assert "system" in data, f"Missing system: {list(data.keys())}"
-        assert data["version"] in ("2.0",), f"Unexpected version: {data['version']}"
+        assert data["version"] in ("2.0", "2.1"), f"Unexpected version: {data['version']}"
         assert len(data["packages"]) >= 3, \
             f"Expected >=3 packages, got {len(data['packages'])}"
 

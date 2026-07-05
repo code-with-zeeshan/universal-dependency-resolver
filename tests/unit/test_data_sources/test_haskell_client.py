@@ -92,5 +92,5 @@ class TestHaskellClient:
             result = await client.get_package_info("test-pkg")
         assert result is not None
         calls = mock_get.call_args_list
-        # Should call /package/test-pkg/preferred
-        assert any("preferred" in c[0][0] for c in calls)
+        # Should call /package/test-pkg.json
+        assert any(".json" in c[0][0] for c in calls)

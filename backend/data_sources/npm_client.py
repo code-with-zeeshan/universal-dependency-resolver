@@ -38,6 +38,10 @@ class VersionRequirement:
     prerelease: str | None = None
 
 
+# Rate limiter: shared across all NPM client instances
+_NPM_SEMAPHORE = asyncio.Semaphore(10)
+
+
 class NPMClient(BaseDataSourceClient):
     def __init__(
         self,
@@ -75,10 +79,11 @@ class NPMClient(BaseDataSourceClient):
                 mirror_url = url.replace(self.registry_url, mirror.rstrip("/"))
                 urls_to_try.append(mirror_url)
 
-        for attempt_url in urls_to_try:
-            result = await super()._make_request(method, attempt_url, **kwargs)
-            if result is not None:
-                return result
+        async with _NPM_SEMAPHORE:
+            for attempt_url in urls_to_try:
+                result = await super()._make_request(method, attempt_url, **kwargs)
+                if result is not None:
+                    return result
         return None
 
     async def search_packages(

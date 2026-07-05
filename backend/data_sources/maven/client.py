@@ -254,7 +254,64 @@ class MavenClient(BaseDataSourceClient):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Maven search error: {e!s}")
 
+    # ── Standard interface (used by DataAggregator) ─────────────────────
+
+    async def get_package_info_async(
+        self,
+        package_name: str,
+        include_dependencies: bool = False,
+        include_versions: bool = True,
+    ) -> dict[str, Any] | None:
+        """Standard interface: single package_name, returns None on not-found."""
+        group_id, artifact_id = (
+            package_name.split(":", 1) if ":" in package_name else (package_name, package_name)
+        )
+        group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
+
+        try:
+            session = self._get_session()
+            params = {"q": f"g:{group_id} AND a:{artifact_id}", "rows": 1, "wt": "json"}
+            async with session.get(self.base_url, params=params) as response:
+                if response.status != 200:
+                    return None
+                data = await response.json()
+                docs = data.get("response", {}).get("docs", [])
+                if not docs:
+                    return None
+
+            doc = docs[0]
+            result: dict[str, Any] = {
+                "name": f"{group_id}:{artifact_id}",
+                "ecosystem": "maven",
+                "version": doc.get("latestVersion", "unknown"),
+                "description": doc.get("text", [""])[0] if doc.get("text") else "",
+                "versions": [],
+                "dependencies": {"dependencies": {}},
+                "system_requirements": {"java_versions": ["8+"], "os": ["any"]},
+                "compatibility_matrix": {"java": {"minimum": "1.8", "recommended": "11"}},
+            }
+
+            if include_versions:
+                versions = await self.get_package_versions(group_id, artifact_id)
+                result["versions"] = versions if versions else []
+
+            if include_dependencies:
+                deps = await self.get_dependencies(group_id, artifact_id, result["version"])
+                if deps:
+                    result["dependencies"]["dependencies"] = {
+                        d.get("name", f"{d['group_id']}:{d['artifact_id']}"): d.get("version", "*")
+                        for d in deps
+                    }
+
+            return result
+
+        except Exception:
+            return None
+
+    # ── Legacy interface (backward compat with direct calls) ────────────
+
     async def get_package_info(self, group_id: str, artifact_id: str) -> dict[str, Any]:
+        """Legacy signature. Prefer get_package_info_async for new code."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             session = self._get_session()

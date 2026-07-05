@@ -19,6 +19,8 @@ from starlette.types import ASGIApp
 
 from backend.core.cache import cache_manager
 from backend.settings import (
+    CACHE_TTL_SHORT,
+    CACHE_TTL_VERSIONS,
     ENABLE_PERFORMANCE_LOGGING,
     ENABLE_REQUEST_LOGGING,
     FEATURES,
@@ -357,11 +359,11 @@ class CacheMiddleware(BaseHTTPMiddleware):
             }
 
             # Determine TTL based on endpoint
-            ttl = 300  # 5 minutes default
+            ttl = CACHE_TTL_SHORT  # 5 minutes default
             if "/packages/search" in request.url.path:
                 ttl = 60  # 1 minute for search
             elif "/packages/" in request.url.path and "/versions" in request.url.path:
-                ttl = 600  # 10 minutes for versions
+                ttl = CACHE_TTL_VERSIONS
 
             await cache_manager.set(cache_key, cache_data, ttl)
 

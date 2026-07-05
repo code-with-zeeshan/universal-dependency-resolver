@@ -400,8 +400,7 @@ docs/build/
 site/
 
 # Internal assessment
-weaknesses.md
-CODEREVIEW.md
+docs/PRODUCTION_HARDENING_PLAN.md
 AGENTS.md
 
 # =============================================================================

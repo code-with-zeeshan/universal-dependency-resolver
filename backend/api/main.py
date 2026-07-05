@@ -34,7 +34,6 @@ except ImportError:
 
 # Use absolute imports
 from backend.api.dependencies import limiter
-from backend.settings import API_KEY, API_KEY_HEADER, FEATURES
 from backend.api.middleware import setup_middleware
 from backend.api.routes import (
     auth as auth_routes,
@@ -47,7 +46,9 @@ from backend.api.routes import (
     scan,
     system,
 )
+from backend.data_sources.base_client import close_all_sessions
 from backend.logging_config import setup_logging
+from backend.settings import API_KEY, API_KEY_HEADER, FEATURES
 from backend.tracing_config import setup_tracing
 
 # Configure structured logging
@@ -85,6 +86,13 @@ async def lifespan(app: FastAPI):
         logger.info("Database connections disposed")
     except Exception as e:
         logger.warning(f"Error disposing database connections: {e}")
+
+    # Close all aiohttp sessions
+    try:
+        await close_all_sessions()
+        logger.info("HTTP sessions closed")
+    except Exception as e:
+        logger.warning(f"Error closing HTTP sessions: {e}")
 
 
 # Create FastAPI app with lifespan events
@@ -142,13 +150,34 @@ async def api_key_middleware(request: Request, call_next):
         return await call_next(request)
 
     api_key = request.headers.get(API_KEY_HEADER)
-    if not api_key or api_key != API_KEY:
+    if not api_key:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Invalid or missing API key"},
+            content={"detail": "Missing API key"},
         )
 
-    return await call_next(request)
+    # 1. Check against env var API_KEY (super-admin, backward compat)
+    if api_key == API_KEY:
+        request.state.api_key_name = "env-super-admin"
+        request.state.api_key_role = "admin"
+        return await call_next(request)
+
+    # 2. Check against database-backed API keys
+    try:
+        from backend.database.service import authenticate_api_key
+
+        result = authenticate_api_key(api_key)
+        if result is not None:
+            request.state.api_key_name = result["name"]
+            request.state.api_key_role = result["role"]
+            return await call_next(request)
+    except Exception:
+        pass
+
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={"detail": "Invalid or missing API key"},
+    )
 
 
 # Global exception handler
@@ -299,6 +328,7 @@ async def root(request: Request) -> dict:
 @app.get("/healthz", tags=["Health"])
 async def healthz():
     return {"status": "ok"}
+
 
 @app.get("/readyz", tags=["Health"])
 async def readyz():

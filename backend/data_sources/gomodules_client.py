@@ -1,10 +1,13 @@
 """Module docstring."""
 
 # data_sources/gomodules_client.py
+import asyncio
 import json
 import logging
 import re
 from typing import Any
+
+import aiohttp
 
 from backend.core.cache import cached
 from backend.core.utils import (
@@ -14,12 +17,24 @@ from backend.core.utils import (
 )
 from backend.settings import (
     CACHE_TTL,
+    RETRY_BACKOFF_FACTOR,
     get_ecosystem_config,
 )
 
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
+
+
+# Rate limiter: shared across all Go client instances
+_GO_SEMAPHORE = asyncio.Semaphore(8)
+
+
+def _strip_v(version: str) -> str:
+    """Strip leading 'v' prefix from Go version strings for PEP 440 compatibility."""
+    if version.startswith("v") and len(version) > 1 and version[1].isdigit():
+        return version[1:]
+    return version
 
 
 class GoModulesClient(BaseDataSourceClient):
@@ -38,7 +53,8 @@ class GoModulesClient(BaseDataSourceClient):
         package_name = self._normalize_go_module_path(package_name)
         try:
             session = self._get_session()
-            response = await session.head(f"{self.base_url}/{package_name}/@v/list")
+            async with _GO_SEMAPHORE:
+                response = await session.head(f"{self.base_url}/{package_name}/@v/list")
             return response.status == 200
         except Exception:
             return False
@@ -73,8 +89,8 @@ class GoModulesClient(BaseDataSourceClient):
 
         info = {
             "name": package_name,
-            "version": latest_version,
-            "versions": versions_data,
+            "version": _strip_v(latest_version),
+            "versions": [_strip_v(v) for v in versions_data],
             "description": f"Go module: {package_name}",
             "homepage": f"https://pkg.go.dev/{package_name}",
             "repository": f"https://{package_name}",
@@ -93,7 +109,7 @@ class GoModulesClient(BaseDataSourceClient):
     async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
         package_name = self._normalize_go_module_path(package_name)
 
-        if not version.startswith("v"):
+        if not version.startswith("v") and not version.startswith("0"):
             version = f"v{version}"
 
         module_info = await self._get_module_info(package_name, version)
@@ -104,7 +120,7 @@ class GoModulesClient(BaseDataSourceClient):
 
         return {
             "name": package_name,
-            "version": version,
+            "version": _strip_v(version),
             "dependencies": dependencies,
             "system_requirements": {"go": {"min_version": self._extract_go_version(module_info)}},
         }
@@ -118,15 +134,16 @@ class GoModulesClient(BaseDataSourceClient):
 
         versions: list[Any] = []
         for ver in versions_data:
+            clean = _strip_v(ver)
             ver_info = {
-                "version": ver,
+                "version": clean,
                 "stable": not ("-" in ver or "+incompatible" in ver),
                 "upload_time": None,
             }
             versions.append(ver_info)
 
         versions.sort(
-            key=lambda x: parse_version_key(x["version"].lstrip("v")),
+            key=lambda x: parse_version_key(x["version"]),
             reverse=True,
         )
 
@@ -182,23 +199,52 @@ class GoModulesClient(BaseDataSourceClient):
     async def _make_request(  # type: ignore[override]
         self, url: str, params: dict[str, Any] | None = None
     ) -> Any | None:
+        await self._throttle()
         session = self._get_session()
-        try:
-            async with session.get(url, params=params) as response:
-                if response.status == 404:
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                async with _GO_SEMAPHORE:
+                    async with session.get(
+                        url, params=params, timeout=aiohttp.ClientTimeout(total=self.timeout)
+                    ) as response:
+                        if response.status == 404:
+                            return None
+                        if response.status == 429:
+                            retry_after = response.headers.get("Retry-After")
+                            if retry_after:
+                                wait = int(retry_after) if retry_after.isdigit() else 5
+                            else:
+                                wait = RETRY_BACKOFF_FACTOR**attempt
+                            if attempt < self.max_retries - 1:
+                                logger.debug(
+                                    f"429 from {url}, retrying in {wait}s (attempt {attempt + 1})"
+                                )
+                                await asyncio.sleep(wait)
+                                continue
+                            logger.error(f"429 from {url} after {self.max_retries} retries")
+                            return None
+                        if response.status >= 500 and attempt < self.max_retries - 1:
+                            wait = RETRY_BACKOFF_FACTOR**attempt
+                            logger.debug(f"{response.status} from {url}, retrying in {wait}s")
+                            await asyncio.sleep(wait)
+                            continue
+                        if response.status != 200:
+                            logger.error(f"HTTP {response.status} from {url}")
+                            return None
+                        content_type = response.headers.get("Content-Type", "")
+                        if "application/json" in content_type:
+                            return await response.json()
+                        return await response.text()
+            except (TimeoutError, aiohttp.ClientError) as e:
+                last_error = e
+                if attempt == self.max_retries - 1:
+                    logger.error(f"Request error for {url} after {self.max_retries} retries: {e}")
                     return None
-
-                if response.status != 200:
-                    logger.error(f"HTTP {response.status} from {url}")
-                    return None
-
-                content_type = response.headers.get("Content-Type", "")
-                if "application/json" in content_type:
-                    return await response.json()
-                return await response.text()
-        except Exception as e:
-            logger.error(f"Request error for {url}: {e}")
-            return None
+                await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
+        if last_error:
+            logger.error(f"Request error for {url}: {last_error}")
+        return None
 
     async def _parse_go_mod(self, module_info: dict[str, Any]) -> dict[str, Any]:
         dependencies: dict[str, Any] = {"required": {}, "indirect": {}, "replace": {}}

@@ -31,7 +31,7 @@ jobs:
         run: |
           python -m pytest tests/e2e/test_problem_statement.py \
             -v --tb=short --durations=0 -q \
-            -k "02 or 03 or 04 or 06" \
+            -k "01 or 05 or 07 or 08 or 09 or 10 or 11 or 12 or 13" \
             2>&1 | tee benchmark-results.txt
 
       - name: Extract timing summary

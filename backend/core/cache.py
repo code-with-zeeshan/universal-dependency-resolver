@@ -38,6 +38,7 @@ class DictCache:
     def __init__(self, persist_path: str | None = None):
         """Initialize."""
         self._store: dict[str, tuple[Any, float | None]] = {}
+        self._lock = asyncio.Lock()
         self._persist_path = persist_path or os.path.join(tempfile.gettempdir(), "udr_cache.json")
         self._dirty = False
         self._load_from_disk()
@@ -71,52 +72,58 @@ class DictCache:
 
     async def get(self, key: str) -> Any | None:
         """Get."""
-        entry = self._store.get(key)
-        if entry is None:
-            return None
-        value, expiry = entry
-        if expiry is not None and time.time() > expiry:
-            del self._store[key]
-            self._dirty = True
-            return None
-        return value
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            value, expiry = entry
+            if expiry is not None and time.time() > expiry:
+                del self._store[key]
+                self._dirty = True
+                return None
+            return value
 
     async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set."""
-        expiry = (time.time() + ttl) if ttl is not None else None
-        self._store[key] = (value, expiry)
-        self._dirty = True
-        self._save_to_disk()
+        async with self._lock:
+            expiry = (time.time() + ttl) if ttl is not None else None
+            self._store[key] = (value, expiry)
+            self._dirty = True
+            self._save_to_disk()
 
     async def delete(self, key: str) -> None:
         """Delete."""
-        self._store.pop(key, None)
-        self._dirty = True
-        self._save_to_disk()
+        async with self._lock:
+            self._store.pop(key, None)
+            self._dirty = True
+            self._save_to_disk()
 
     async def clear(self) -> None:
         """Clear."""
-        self._store.clear()
-        self._dirty = True
-        self._save_to_disk()
+        async with self._lock:
+            self._store.clear()
+            self._dirty = True
+            self._save_to_disk()
 
     async def close(self) -> None:
         """Close."""
-        self._save_to_disk()
-        self._store.clear()
+        async with self._lock:
+            self._save_to_disk()
+            self._store.clear()
 
     async def incr(self, key: str, delta: int = 1) -> int:
         """Incr."""
-        entry = self._store.get(key)
-        if entry is None:
-            self._store[key] = (delta, None)
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                self._store[key] = (delta, None)
+                self._dirty = True
+                return delta
+            value, expiry = entry
+            value = (value or 0) + delta
+            self._store[key] = (value, expiry)
             self._dirty = True
-            return delta
-        value, expiry = entry
-        value = (value or 0) + delta
-        self._store[key] = (value, expiry)
-        self._dirty = True
-        return value
+            return value
 
     async def ping(self) -> bool:
         """Ping."""

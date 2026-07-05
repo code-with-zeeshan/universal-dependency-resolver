@@ -555,10 +555,9 @@ class CondaClient(BaseDataSourceClient):
             version = info.get("version")
 
         cache_key = f"deps:{package_name}:{version}"
-        if cache_key in self._cache:
-            cached_data, timestamp = self._cache[cache_key]
-            if (datetime.now() - timestamp).total_seconds() < self._cache_ttl:
-                return cached_data
+        cached = await self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         info = await self.get_package_info_async(package_name)
         if not info:
@@ -572,6 +571,6 @@ class CondaClient(BaseDataSourceClient):
             channel,
         )
 
-        self._cache[cache_key] = (dependencies, datetime.now())
+        await self._cache.set(cache_key, dependencies, ttl=self._cache_ttl)
 
         return dependencies

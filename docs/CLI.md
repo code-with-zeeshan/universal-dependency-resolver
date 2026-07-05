@@ -56,7 +56,11 @@ udr serve --ssl-keyfile key.pem --ssl-certfile cert.pem  # HTTPS
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOLVER_TIMEOUT` | `30` | Seconds before SAT solver falls back to per-package alternatives (used by `lock`/`scan`/`update`; `resolve` always uses fast path) |
+| `SOLVER_TIMEOUT` | `30` | Total seconds for BFS+SAT resolution (used by `lock`/`scan`/`update`). ~65% of budget goes to Z3 solver; rest for BFS dep discovery |
+| `SCANNER_MAX_WORKERS` | `10` | Thread pool workers for parallel system scanning in `system_scanner.py` |
+| `CACHE_TTL` | `3600` | Default cache TTL in seconds for package metadata |
+| `CACHE_TTL_SHORT` | `300` | Cache TTL for rate-limited API endpoints (5 min default) |
+| `CACHE_TTL_VERSIONS` | `600` | Cache TTL for package version listings |
 
 **Exit codes:**
 
@@ -193,8 +197,8 @@ udr lock --cuda 12.1                         # override CUDA detection
 
 ```json
 {
-  "version": "2.0",
-  "generated_at": "2026-06-28T12:00:00",
+  "version": "2.1",
+  "generated_at": "2026-07-05T12:00:00",
   "resolver": "sat",
   "system": {
     "os": "Linux 6.2.0",
@@ -209,10 +213,18 @@ udr lock --cuda 12.1                         # override CUDA detection
       "name": "torch",
       "ecosystem": "pypi",
       "resolved_version": "2.1.2+cu121",
+      "direct": true,
       "cuda_variant": true,
       "cuda_version": "121",
       "original_constraint": ">=2.0",
-      "source": "requirements.txt"
+      "source": "requirements.txt",
+      "resolution_hash": "abc123...",
+      "depends_on": {
+        "pypi": {
+          "sympy": ">=1.0",
+          "jinja2": ">=2.0"
+        }
+      }
     }
   },
   "warnings": []
@@ -247,7 +259,6 @@ udr lock --cuda 12.1                         # override CUDA detection
 | `Cargo.toml` | crates | Manifest |
 | `Cargo.lock` | crates | Lock |
 | `go.mod` | gomodules | Manifest |
-| `go.sum` | gomodules | Lock |
 | `environment.yml`, `environment.yaml` | conda | Manifest |
 | `Gemfile` | rubygems | Manifest |
 | `Gemfile.lock` | rubygems | Lock |
@@ -461,7 +472,7 @@ udr update flask --dry-run              # preview changes without writing
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
 
 **Exit codes:**
-|
+
 | Code | Condition |
 |---|---|
 | `0` | Package updated or already at latest version |
@@ -532,13 +543,16 @@ Explain why a package version was selected — show the dependency chain from th
 udr why flask                          # explain flask version in current project
 udr why flask -d /path/to/project      # specific project
 udr why flask --json                   # JSON output
+udr why --all                          # explain all packages
+udr why --all --json                   # all packages as JSON array
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |---|---|---|
-| `package` | (required) | Package name to explain |
+| `package` | (optional with `--all`) | Package name to explain |
+| `-a, --all` | `false` | Show info for all packages |
 | `-d, --directory` | `.` | Project directory with lock file |
 | `--json` | `False` | Output as JSON |
 

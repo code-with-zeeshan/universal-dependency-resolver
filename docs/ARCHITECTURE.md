@@ -13,6 +13,10 @@ graph TB
         SCHEMAS["<code>schemas.py</code><br/>Pydantic request/response"]:::api
     end
 
+    subgraph OrchestratorLayer["🔄 Orchestrator"]
+        ORCH["<code>orchestrator/resolve.py</code><br/>BFS + SAT pipeline"]:::api
+    end
+
     subgraph CoreLayer["🧠 Core Logic"]
         CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]:::core
         DA["<code>data_aggregator.py</code><br/>Async metadata aggregation"]:::core
@@ -23,7 +27,7 @@ graph TB
     end
 
     subgraph DataLayer["📦 Data Sources"]
-        DS_CLIENTS["<code>data_sources/</code><br/>18 ecosystem clients"]:::data
+        DS_CLIENTS["<code>data_sources/</code><br/>20 ecosystem clients"]:::data
         PYPI["PyPI"]:::data
         NPM["npm"]:::data
         CRATES["Crates.io"]:::data
@@ -43,7 +47,9 @@ graph TB
     CLI -->|"direct import"| CoreLayer
     API_MAIN --> ROUTES
     ROUTES --> SCHEMAS
-    ROUTES --> CoreLayer
+    CLI -->|"direct import"| OrchestratorLayer
+    ROUTES --> OrchestratorLayer
+    OrchestratorLayer --> CoreLayer
     CoreLayer --> DataLayer
     CoreLayer --> DBLayer
     DS_CLIENTS -.-> PYPI
@@ -116,7 +122,7 @@ Routes:
 
 ### Core logic (`backend/core/`)
 
-- **`conflict_resolver.py`** — Z3 SAT solver. All 18 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
+- **`conflict_resolver.py`** — Z3 SAT solver. All 20 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
 - **`export_generator.py`** — Jinja2 template-based export. 12 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
@@ -125,7 +131,7 @@ Routes:
 
 ### Data sources (`backend/data_sources/`)
 
-18 ecosystem clients, all inheriting from `BaseClient`:
+20 ecosystem clients, all inheriting from `BaseClient`:
 
 | Client | Ecosystem | Registry |
 |---|---|---|
@@ -210,7 +216,7 @@ graph LR
 
 ## Key design decisions
 
-- **Lazy loading**: `import z3` inside methods (not at module level), 18 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
+- **Lazy loading**: `import z3` inside methods (not at module level), 20 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
 - **SQLite first**: No PostgreSQL or Redis required. SQLite + DictCache work for all standalone/desktop use cases.
 - **Auth conditionally registered**: `ENABLE_AUTH=false` by default. Auth router only mounted when explicitly enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.

@@ -1,14 +1,20 @@
+import os
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.core.cache import DictCache
 from backend.data_sources.conda_client import CondaClient
 
 
 class TestCondaClient:
     @pytest.fixture
     def client(self):
-        return CondaClient()
+        tmpdir = tempfile.mkdtemp()
+        cl = CondaClient()
+        cl._cache = DictCache(persist_path=os.path.join(tmpdir, "test_cache.json"))
+        return cl
 
     @pytest.fixture
     def sample_package_data(self):

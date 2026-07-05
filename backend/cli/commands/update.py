@@ -89,6 +89,7 @@ def cmd_update(args):
             system_info,
             package_details,
             interactive=getattr(args, "interactive", False),
+            lock_data=lock_data,
         )
 
         rp = resolved.get("resolved_packages", {})
@@ -134,6 +135,21 @@ def cmd_update(args):
             lock_data["packages"][pname]["resolved_version"] = pinfo.get("version")
             lock_data["packages"][pname]["cuda_variant"] = pinfo.get("cuda_variant", False)
             lock_data["packages"][pname]["cuda_version"] = pinfo.get("cuda_version")
+
+        # Recompute resolution hash for the updated package
+        from backend.core.conflict_resolver import ConflictResolver
+
+        for rinput in resolver_inputs:
+            if rinput["name"] == package_name:
+                lock_data["packages"][package_name]["resolution_hash"] = (
+                    ConflictResolver.compute_resolution_hash(
+                        rinput["name"],
+                        rinput["ecosystem"],
+                        rinput.get("version_constraint", "*"),
+                        rinput.get("dependencies", {}),
+                        system_info,
+                    )
+                )
 
         if getattr(args, "dry_run", False):
             console.print("[yellow]── dry run — lock file not modified ──[/yellow]")

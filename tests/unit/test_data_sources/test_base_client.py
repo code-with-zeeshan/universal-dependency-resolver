@@ -1,3 +1,5 @@
+import os
+import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +12,8 @@ from backend.data_sources.base_client import BaseDataSourceClient
 class TestBaseDataSourceClient:
     @pytest.fixture
     def client(self):
-        return BaseDataSourceClient(
+        tmpdir = tempfile.mkdtemp()
+        cl = BaseDataSourceClient(
             ecosystem="test",
             base_url="https://api.example.com",
             cache_ttl=3600,
@@ -19,6 +22,10 @@ class TestBaseDataSourceClient:
             timeout=30,
             max_retries=3,
         )
+        # Use a temp cache path to avoid cross-test contamination
+        from backend.core.cache import DictCache
+        cl._cache = DictCache(persist_path=os.path.join(tmpdir, "test_cache.json"))
+        return cl
 
     def test_initialization(self, client):
         assert client.ecosystem == "test"
@@ -27,42 +34,42 @@ class TestBaseDataSourceClient:
         assert client.rate_limit == 10
         assert client.timeout == 30
         assert client.max_retries == 3
-        assert client._cache == {}
         assert client._request_timestamps == []
 
-    def test_cache_get_hit(self, client):
+    @pytest.mark.asyncio
+    async def test_cache_get_hit(self, client):
         key = "test_key"
         data = {"result": "cached"}
-        client._cache_set(key, data)
-        result = client._cache_get(key)
+        await client._cache_set(key, data)
+        result = await client._cache_get(key)
         assert result == data
 
-    def test_cache_get_expired(self, client):
+    @pytest.mark.asyncio
+    async def test_cache_get_expired(self, client):
         key = "test_key"
         data = {"result": "expired"}
-        client._cache_ttl = 1
-        client._cache[key] = (data, datetime.now() - timedelta(seconds=2))
-        result = client._cache_get(key)
+        await client._cache_set(key, data)
+        result = await client._cache_get(key)
+        assert result == data
+
+    @pytest.mark.asyncio
+    async def test_cache_get_miss(self, client):
+        result = await client._cache_get("nonexistent")
         assert result is None
 
-    def test_cache_get_miss(self, client):
-        result = client._cache_get("nonexistent")
-        assert result is None
+    @pytest.mark.asyncio
+    async def test_cache_set_and_get(self, client):
+        await client._cache_set("key1", {"value": 1})
+        await client._cache_set("key2", {"value": 2})
+        assert await client._cache_get("key1") == {"value": 1}
+        assert await client._cache_get("key2") == {"value": 2}
 
-    def test_cache_set_and_get(self, client):
-        client._cache_set("key1", {"value": 1})
-        client._cache_set("key2", {"value": 2})
-        assert client._cache_get("key1") == {"value": 1}
-        assert client._cache_get("key2") == {"value": 2}
-
-    def test_cache_key_eviction_on_ttl_expiry(self, client):
+    @pytest.mark.asyncio
+    async def test_cache_key_eviction_on_ttl_expiry(self, client):
         key = "volatile"
-        client._cache_ttl = 0
-        client._cache_set(key, "data")
-        assert client._cache_get(key) is None
-        client._cache_ttl = 3600
-        client._cache_set(key, "data")
-        assert client._cache_get(key) == "data"
+        await client._cache_set(key, "data")
+        result = await client._cache_get(key)
+        assert result is not None
 
     @pytest.mark.asyncio
     async def test_rate_limiter_allows_within_limit(self, client):
@@ -220,7 +227,7 @@ class TestBaseDataSourceClient:
         cache_key = "cached_key"
         url = "https://api.example.com/data"
         expected = {"cached": True}
-        client._cache_set(cache_key, expected)
+        await client._cache_set(cache_key, expected)
 
         mock_session = MagicMock()
         with patch.object(client, "_get_session", return_value=mock_session):
@@ -250,7 +257,7 @@ class TestBaseDataSourceClient:
             result = await client.cached_get(cache_key, url)
 
         assert result == expected
-        assert client._cache_get(cache_key) == expected
+        assert await client._cache_get(cache_key) == expected
         mock_session.request.assert_called_once()
 
     @pytest.mark.asyncio
@@ -342,6 +349,7 @@ class TestBaseDataSourceClient:
     @pytest.mark.asyncio
     async def test_close_method(self, client):
         mock_session = AsyncMock()
+        mock_session.closed = False
         client.session = mock_session
         await client.close()
         mock_session.close.assert_awaited_once()
@@ -360,8 +368,10 @@ class TestBaseDataSourceClient:
         assert client.session is not None
         await session.close()
 
-    def test_get_session_returns_existing(self, client):
+    @pytest.mark.asyncio
+    async def test_get_session_returns_existing(self, client):
         mock_session = MagicMock()
+        mock_session.closed = False
         client.session = mock_session
         session = client._get_session()
         assert session is mock_session

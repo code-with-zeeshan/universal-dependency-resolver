@@ -7,13 +7,13 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/1681%2B%20tests-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/1538%2B%20tests-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
 ---
 
-## ✨ One tool. 18 ecosystems. Infinite possibilities.
+## ✨ One tool. 20 ecosystems. Infinite possibilities.
 
 ```bash
 udr resolve torch@pypi express@npm serde@crates
@@ -63,7 +63,7 @@ udr serve --port 8000
 
 ## 💎 Features at a Glance
 
-### 🌍 18 Supported Ecosystems
+### 🌍 20 Supported Ecosystems
 
 | ☁️ Cloud Native | 🐍 Dynamic | ☕ JVM & .NET | 📦 Package Managers | 🛠️ System |
 |---|---|---|---|---|
@@ -71,7 +71,7 @@ udr serve --port 8000
 | **Conda** – Multi-language | **Crates.io** – Rust | **Gradle** – Java/Kotlin | **NuGet** – .NET | **APK** – Alpine |
 | **Go Modules** – Go | **RubyGems** – Ruby | **Pub** – Dart/Flutter | **Packagist** – PHP | **Homebrew** – macOS/Linux |
 | | **Hex** – Elixir | **Swift** – Swift | | |
-| | **Haskell** – Cabal | | | |
+| | **Haskell** – Cabal | | **Docs DB** – Internal | |
 
 ### ⚡ Core Capabilities
 
@@ -208,8 +208,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Metric | Value |
 |---|---|
-| ✅ Supported ecosystems | **18** |
-| 🧪 Tests passing | **1681+** |
+| ✅ Supported ecosystems | **20** |
+| 🧪 Unit tests passing | **1538** |
 | 🎛️ CLI commands | **16** |
 | 🌐 API endpoints | **35+** |
 | 📤 Export formats | **12** |
@@ -222,17 +222,23 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 ## 🧪 Testing
 
 ```bash
-# All 1681+ tests
-python -m pytest tests/
-
-# Unit only (fast, no deps)
+# All unit tests (fast, no network)
 python -m pytest tests/unit/
 
-# CLI end-to-end (black-box subprocess)
-python -m pytest tests/cli/
+# CLI end-to-end (black-box subprocess, real registries)
+python -m pytest tests/e2e/test_cli_realworld.py
+
+# Problem statement scenarios
+python -m pytest tests/e2e/test_problem_statement.py
+
+# JSON output compliance
+python -m pytest tests/e2e/test_json_compliance.py
 
 # Integration (SQLite, no Docker needed)
 python -m pytest tests/integration/
+
+# Comprehensive (system-aware, cross-ecosystem)
+python -m pytest tests/test_comprehensive.py
 
 # Desktop smoke tests
 cd desktop && node --test tests/

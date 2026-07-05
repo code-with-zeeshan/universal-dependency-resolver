@@ -30,6 +30,8 @@ def cmd_lock(args):
     from backend.core.export_generator import ExportGenerator
     from backend.manifest_detector import ManifestDetector
 
+    from ..shared import _read_lock_file
+
     async def _lock():
         """Lock."""
         directory = Path(args.directory).resolve()
@@ -42,6 +44,14 @@ def cmd_lock(args):
         resolver = ConflictResolver()
         scanner = SystemScanner()
         exporter = ExportGenerator()
+
+        lock_path = directory / "udr.lock"
+        existing_lock = None
+        if lock_path.is_file() and not getattr(args, "force", False):
+            try:
+                existing_lock = _read_lock_file(lock_path)
+            except SystemExit:
+                existing_lock = None
 
         with Progress(
             SpinnerColumn(),
@@ -100,6 +110,23 @@ def cmd_lock(args):
         seen = set()
         resolver_inputs = []
         package_details = {}
+        pinned_ecosystems: set[str] = {"gomodules"}
+        lock_source_patterns = (
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+            "Cargo.lock",
+            "composer.lock",
+            "Gemfile.lock",
+            "poetry.lock",
+            "uv.lock",
+            "mix.lock",
+            "go.sum",
+            "Brewfile.lock.json",
+        )
+
+        def _is_lock_source(source: str) -> bool:
+            return any(source.endswith(p) for p in lock_source_patterns)
 
         with Progress(
             SpinnerColumn(),
@@ -109,26 +136,49 @@ def cmd_lock(args):
             console=err_console,
         ) as progress:
             fetch_task = progress.add_task("Fetching package metadata...", total=len(packages))
+            fetch_semaphore = asyncio.Semaphore(10)
 
             async def fetch_one(pkg):
                 """Fetch one."""
-                key = (pkg["name"], pkg["ecosystem"])
-                if key in seen:
-                    return None
-                seen.add(key)
-                progress.update(fetch_task, description=f"Fetching [cyan]{pkg['name']}[/cyan]...")
-                try:
-                    data = await aggregator.get_package_info(
-                        pkg["name"],
-                        ecosystem=pkg["ecosystem"],
-                        include_dependencies=True,
-                        include_versions=True,
+                async with fetch_semaphore:
+                    key = (pkg["name"], pkg["ecosystem"])
+                    if key in seen:
+                        return None
+                    seen.add(key)
+                    eco = pkg["ecosystem"]
+                    constraint = pkg.get("constraint")
+                    source = pkg.get("source", "")
+
+                    if _is_lock_source(source) and constraint and constraint != "*":
+                        progress.update(
+                            fetch_task, description=f"Locked [cyan]{pkg['name']}[/cyan]..."
+                        )
+                        return (
+                            pkg,
+                            {
+                                "name": pkg["name"],
+                                "version": constraint,
+                                "versions": [constraint],
+                                "dependencies": {},
+                                "ecosystem": eco,
+                            },
+                        )
+
+                    progress.update(
+                        fetch_task, description=f"Fetching [cyan]{pkg['name']}[/cyan]..."
                     )
-                    if data:
-                        return (pkg, data)
-                except Exception as exc:
-                    err_console.print(f"  [red]Error fetching {pkg['name']}:[/red] {exc}")
-                return None
+                    try:
+                        data = await aggregator.get_package_info(
+                            pkg["name"],
+                            ecosystem=eco,
+                            include_dependencies=True,
+                            include_versions=True,
+                        )
+                        if data:
+                            return (pkg, data)
+                    except Exception as exc:
+                        err_console.print(f"  [red]Error fetching {pkg['name']}:[/red] {exc}")
+                    return None
 
             results = await asyncio.gather(*[fetch_one(p) for p in packages])
 
@@ -136,9 +186,20 @@ def cmd_lock(args):
                 if result:
                     _, data = result
                     package_details[pkg["name"]] = data
-                    rinput = _aggregator_to_resolver_input(
-                        data, pkg["ecosystem"], constraint=pkg.get("constraint")
-                    )
+                    eco = pkg["ecosystem"]
+                    constraint = pkg.get("constraint")
+                    source = pkg.get("source", "")
+                    is_pinned = eco in pinned_ecosystems or _is_lock_source(source)
+                    if is_pinned and constraint and constraint != "*":
+                        rinput = {
+                            "name": pkg["name"],
+                            "ecosystem": eco,
+                            "version_constraint": constraint,
+                            "dependencies": data.get("dependencies", {}),
+                            "pinned_version": constraint,
+                        }
+                    else:
+                        rinput = _aggregator_to_resolver_input(data, eco, constraint=constraint)
                     resolver_inputs.append(rinput)
                 progress.advance(fetch_task)
 
@@ -179,23 +240,57 @@ def cmd_lock(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["type"] = "cuda"
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("Resolving dependencies..."),
-            transient=True,
-            console=err_console,
-        ) as p:
-            p.add_task("SAT solver", total=None)
-            resolved = await _run_resolution(
-                aggregator,
-                resolver,
-                resolver_inputs,
-                system_info,
-                package_details,
-                interactive=args.interactive,
-            )
+        # Separate pinned (Go) from SAT-solved packages
+        sat_inputs = [r for r in resolver_inputs if "pinned_version" not in r]
+        pinned_inputs = [r for r in resolver_inputs if "pinned_version" in r]
 
-        resolved_pkgs = resolved.get("resolved_packages", {})
+        resolved_pkgs: dict = {}
+        dep_tree: dict = {}
+
+        if pinned_inputs:
+            if not getattr(args, "json", False):
+                console.print(
+                    f"[cyan]Pinned packages:[/cyan] {len(pinned_inputs)} (recorded directly)"
+                )
+            for r in pinned_inputs:
+                resolved_pkgs[r["name"]] = {
+                    "version": r["pinned_version"],
+                    "ecosystem": r["ecosystem"],
+                    "cuda_variant": False,
+                    "cuda_version": None,
+                }
+                dep_tree[r["name"]] = {"dependencies": r.get("dependencies", {})}
+
+        if not sat_inputs:
+            resolved = {"resolved_packages": resolved_pkgs, "dependency_tree": dep_tree}
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("Resolving dependencies..."),
+                transient=True,
+                console=err_console,
+            ) as p:
+                p.add_task("SAT solver", total=None)
+                resolved = await _run_resolution(
+                    aggregator,
+                    resolver,
+                    sat_inputs,
+                    system_info,
+                    package_details,
+                    interactive=args.interactive,
+                    lock_data=existing_lock,
+                )
+
+            sat_pkgs = resolved.get("resolved_packages", {})
+            for name, info in sat_pkgs.items():
+                if name not in resolved_pkgs:
+                    resolved_pkgs[name] = info
+            sat_tree = resolved.get("dependency_tree", {})
+            for name, tree_info in sat_tree.items():
+                if name not in dep_tree:
+                    dep_tree[name] = tree_info
+            resolved["resolved_packages"] = resolved_pkgs
+            resolved["dependency_tree"] = dep_tree
         plat = system_info.get("platform", {})
         gpu_info = system_info.get("gpu", {})
         gpu_name = None
@@ -204,7 +299,7 @@ def cmd_lock(args):
             if gpu_devices:
                 gpu_name = gpu_devices[0].get("name")
         lock_data = {
-            "version": "2.0",
+            "version": "2.1",
             "generated_at": __import__("datetime").datetime.now().isoformat(),
             "resolver": "sat",
             "system": {
@@ -269,7 +364,21 @@ def cmd_lock(args):
                             dep_names[dep_name] = dep_constraint
             lock_data["packages"][pkg_name]["depends_on"] = dep_names
 
-        lock_path = directory / "udr.lock"
+        # Compute resolution hash for each package for incremental re-resolution
+        for pkg_name, pkg_info in lock_data["packages"].items():
+            rinput = next(
+                (r for r in resolver_inputs if r["name"] == pkg_name),
+                None,
+            )
+            if rinput:
+                pkg_info["resolution_hash"] = ConflictResolver.compute_resolution_hash(
+                    rinput["name"],
+                    rinput["ecosystem"],
+                    rinput.get("version_constraint", "*"),
+                    rinput.get("dependencies", {}),
+                    system_info,
+                )
+
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
 
         if not getattr(args, "json", False):
@@ -319,7 +428,9 @@ def cmd_lock(args):
                             if sev in ("CRITICAL", "HIGH")
                             else f"[yellow]{sev}[/yellow]"
                         )
-                        vuln_table.add_row(pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80])
+                        vuln_table.add_row(
+                            pname, v.get("id", "?"), sev_tag, v.get("summary", "")[:80]
+                        )
                 console.print(vuln_table)
 
             console.print(summary_table)
@@ -382,11 +493,11 @@ def cmd_lock(args):
             )
             if not proceed:
                 return 0
-        elif not getattr(args, "yes", False):
-            console.print(
+        elif not getattr(args, "yes", False) and not getattr(args, "json", False):
+            err_console.print(
                 "[yellow]Non-interactive mode detected — skipping manifest update.[/yellow]"
             )
-            console.print("[yellow]Use --yes to update manifests without prompting.[/yellow]")
+            err_console.print("[yellow]Use --yes to update manifests without prompting.[/yellow]")
 
         updated_count = 0
         updated_manifests = {}
@@ -431,7 +542,7 @@ def cmd_lock(args):
                         f"{pkg['name']} → {resolved_ver}"
                     )
 
-        if updated_count:
+        if updated_count and not getattr(args, "json", False):
             update_table = Table(
                 title=f"[green]Updated {updated_count} packages across {len(updated_manifests)} manifest(s)[/green]",
                 box=box.SIMPLE,
@@ -451,7 +562,8 @@ def cmd_lock(args):
 
     try:
         ret = asyncio.run(_lock())
-        sys.exit(ret if ret is not None else 0)
+        if ret is not None:
+            sys.exit(ret)
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")
         sys.exit(130)

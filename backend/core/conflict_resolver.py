@@ -11,6 +11,7 @@ import logging
 import os
 import platform
 import re
+import threading
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,7 @@ from packaging import version
 if TYPE_CHECKING:
     import z3
 
+from backend.settings import CACHE_TTL
 from backend.utils.errors import (
     ResolverError,
     ResolverErrorCode,
@@ -37,7 +39,7 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "5000"))
+SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "50000"))
 SOLVER_MAX_CLUSTERS = int(os.environ.get("SOLVER_MAX_CLUSTERS", "5"))
 SOLVER_PRERELEASE_PENALTY = int(os.environ.get("SOLVER_PRERELEASE_PENALTY", "100000"))
 USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
@@ -95,18 +97,55 @@ class ConflictResolver:
             use_optimization = USE_OPTIMIZATION
         self._use_optimization = use_optimization
         self._solver = z3.Optimize() if use_optimization else z3.Solver()
-        self.version_vars = {}  # Maps package_version strings to Z3 variables
-        self.version_to_int = {}  # Maps version strings to integers for Z3
-        self.int_to_version = {}  # Reverse mapping
-        self._version_weights = []  # Weights for minimize() objective
+        self.version_vars: dict[str, Any] = {}
+        self.version_to_int: dict[str, int] = {}
+        self.int_to_version: dict[int, str] = {}
+        self._version_weights: list[Any] = []
         self._minimization_added = False
         self.offline_mode = False
         self._batch_active = False
+        self._name_map: dict[str, str] = {}
+        self._resolve_lock = threading.Lock()
 
     @property
     def solver(self):
         """Get the Z3 solver instance (backward-compatible access)."""
         return self._solver
+
+    @staticmethod
+    def compute_resolution_hash(
+        package_name: str,
+        ecosystem: str,
+        version_constraint: str,
+        dependencies: dict,
+        system_info: dict | None = None,
+    ) -> str:
+        """Compute a hash of the package's resolution context for incremental resolution.
+
+        The hash captures everything that determines a package's resolution:
+        its name, ecosystem, version constraint, dependency names+constraints,
+        and relevant system info (CUDA, Python version).
+        When the hash matches a stored value in the lock file, re-resolution
+        can be skipped and the locked version reused.
+        """
+        ctx: dict[str, Any] = {
+            "name": package_name,
+            "ecosystem": ecosystem,
+            "constraint": version_constraint,
+            "deps": {k: dict(v) for k, v in sorted(dependencies.items())}
+            if isinstance(dependencies, dict)
+            else {},
+        }
+        if system_info:
+            gpu = system_info.get("gpu", {})
+            if gpu:
+                ctx["cuda"] = gpu.get("cuda")
+            rt = system_info.get("runtime_versions", {})
+            py = rt.get("python", {})
+            if py:
+                ctx["python"] = py.get("version")
+        raw = json.dumps(ctx, sort_keys=True, default=str)
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
     # Additional error handling enhancements
     def resolve_dependencies(
@@ -117,10 +156,31 @@ class ConflictResolver:
         solver_timeout: int | None = None,
     ) -> dict[str, Any]:
         """Resolve package dependencies and conflicts."""
-        # Clear previous solver state
-        self.version_vars.clear()
-        self.version_to_int.clear()
-        self.int_to_version.clear()
+        self._resolve_lock.acquire()
+        try:
+            return self._resolve_dependencies_impl(
+                packages, system_info, prefer_compatibility, solver_timeout
+            )
+        finally:
+            self._resolve_lock.release()
+
+    def _resolve_dependencies_impl(
+        self,
+        packages: list[dict[str, Any]],
+        system_info: dict[str, Any] | None = None,
+        prefer_compatibility: bool = True,
+        solver_timeout: int | None = None,
+    ) -> dict[str, Any]:
+        """Internal implementation of resolve_dependencies (holds _resolve_lock)."""
+        # Reassign (not clear) to give each call fresh state
+        import z3
+
+        self.version_vars = {}
+        self.version_to_int = {}
+        self.int_to_version = {}
+        self._version_weights = []
+        self._minimization_added = False
+        self._solver = z3.Optimize() if self._use_optimization else z3.Solver()
 
         resolution_context = {
             "package_count": len(packages),
@@ -315,7 +375,8 @@ class ConflictResolver:
                             all_results[pname] = pinfo
                     else:
                         logger.warning(
-                            "SCC %d unsatisfiable, trying alternatives", scc_id,
+                            "SCC %d unsatisfiable, trying alternatives",
+                            scc_id,
                             extra={"event": "scc_unsat", "scc_id": scc_id},
                         )
                         alt_result = self._resolve_with_alternatives(pkgs, system_info)
@@ -326,7 +387,9 @@ class ConflictResolver:
                             all_results[pname] = pinfo
                 except Exception as exc:
                     logger.warning(
-                        "SCC %d resolution failed: %s", scc_id, exc,
+                        "SCC %d resolution failed: %s",
+                        scc_id,
+                        exc,
                         extra={"event": "scc_failed", "scc_id": scc_id},
                     )
 
@@ -463,7 +526,7 @@ class ConflictResolver:
 
         return f"resolution:{packages_hash}:{system_hash}"
 
-    @cached(ttl=3600, key_prefix="dependency_resolution")  # 1 hour cache
+    @cached(ttl=CACHE_TTL, key_prefix="dependency_resolution")
     async def resolve_dependencies_async(
         self,
         packages: list[dict[str, Any]],
@@ -565,9 +628,27 @@ class ConflictResolver:
                 )
                 continue
 
+            # Skip packages with no available versions (e.g. Go pseudo-versions
+            # that don't exist on the proxy)
+            available_versions = package.get("available_versions", [])
+            if not isinstance(available_versions, list) or not available_versions:
+                logger.info(
+                    "Skipping package with zero available versions",
+                    extra={
+                        "event": "skip_zero_version_package",
+                        "pkg_name": package.get("name"),
+                        **context,
+                    },
+                )
+                continue
+
             normalized_name = normalize_package_name(package["name"])
             normalized_package = copy.deepcopy(package)
             normalized_package["name"] = normalized_name
+            # Preserve original name so output uses the non-normalized form
+            if normalized_name != package["name"]:
+                normalized_package["_original_name"] = package["name"]
+                self._name_map[normalized_name] = package["name"]
 
             dependencies = normalized_package.get("dependencies", {})
             if not isinstance(dependencies, dict):
@@ -944,8 +1025,10 @@ class ConflictResolver:
         try:
             parsed = version.parse(ver)
             return parsed.is_prerelease
-        except Exception:
-            return bool(re.search(r'(a|alpha|b|beta|rc|dev|pre|preview)[._-]?\d*$', ver, re.IGNORECASE))
+        except version.InvalidVersion:
+            return bool(
+                re.search(r"(a|alpha|b|beta|rc|dev|pre|preview)[._-]?\d*$", ver, re.IGNORECASE)
+            )
 
     def _cluster_versions(self, versions: list[str]) -> list[str]:
         """Group versions by major.minor, keep latest stable per cluster.
@@ -971,7 +1054,7 @@ class ConflictResolver:
             clusters.setdefault(key, []).append((ver, p))
         sorted_keys = sorted(
             clusters.keys(),
-            key=lambda k: [int(x) for x in k.split('.')],
+            key=lambda k: [int(x) for x in k.split(".")],
             reverse=True,
         )
         result = []
@@ -1024,58 +1107,67 @@ class ConflictResolver:
             versions = package.get("available_versions", [])
 
             # Cluster versions to reduce solver variables and avoid old versions
-            versions = self._cluster_versions(versions)
-            package["available_versions"] = versions
-
-            # Create version mapping
-            self._create_version_mapping(pkg_name, versions)
+            clustered = self._cluster_versions(versions)
 
             # Create boolean variable for each version
             constraint = package.get("version_constraint", "*")
             if constraint != "*":
+                from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
                 try:
-                    from packaging.specifiers import SpecifierSet
-
                     SpecifierSet(constraint)
-                except Exception:
-                    constraint = "*"
-            version_vars = []
-            for v in versions:
-                if constraint != "*" and not is_compatible_version(v, constraint):
-                    continue
+                except InvalidSpecifier:
+                    try:
+                        SpecifierSet(f"=={constraint}")
+                        constraint = f"=={constraint}"
+                    except InvalidSpecifier:
+                        constraint = "*"
 
-                var_name = f"{pkg_name}_{v}"
-                var = z3.Bool(var_name)
-                version_vars.append(var)
-                self.version_vars[var_name] = var
+            def _build_vars(ver_list, pkg_name=pkg_name, constraint=constraint, package=package):
+                vars_list = []
+                self._create_version_mapping(pkg_name, ver_list)
+                for v in ver_list:
+                    if constraint != "*" and not is_compatible_version(v, constraint):
+                        continue
+                    var_name = f"{pkg_name}_{v}"
+                    var = z3.Bool(var_name)
+                    vars_list.append(var)
+                    self.version_vars[var_name] = var
+                    sorted_idx = self.version_to_int.get(var_name, 0)
+                    total_vers = len(ver_list)
+                    weight = total_vers - sorted_idx
+                    if self._is_prerelease(v):
+                        weight += SOLVER_PRERELEASE_PENALTY
+                    self._version_weights.append(weight * var)
+                    if "system_requirements" in package:
+                        self._add_system_constraints(
+                            var, package["system_requirements"], system_info, constraints
+                        )
+                return vars_list
 
-                # Weight for minimization: higher version index = lower weight (preferred)
-                sorted_idx = self.version_to_int.get(var_name, 0)
-                total_versions = len(versions)
-                # Newest version gets weight 0, oldest gets weight total_versions
-                weight = total_versions - sorted_idx
-                # Pre-release penalty: strongly prefer stable versions
-                if self._is_prerelease(v):
-                    weight += SOLVER_PRERELEASE_PENALTY
-                self._version_weights.append(weight * var)
+            version_vars = _build_vars(clustered)
+            versions_used = clustered
 
-                # Add system requirement constraints
-                if "system_requirements" in package:
-                    self._add_system_constraints(
-                        var, package["system_requirements"], system_info, constraints
-                    )
+            # If clustering eliminated all versions matching the constraint,
+            # fall back to unclustered list (but still filtered by constraint)
+            if not version_vars:
+                version_vars = _build_vars(versions)
+                versions_used = versions
+
+            # No compatible versions at all — skip this package
+            if not version_vars:
+                continue
+            package["available_versions"] = versions_used
 
             constraints["package_versions"][pkg_name] = version_vars
             total_vars += len(version_vars)
-
-            if not version_vars:
-                continue
 
             # Max-vars guard to prevent memory blowup on huge graphs
             if total_vars > SOLVER_MAX_VARS:
                 logger.warning(
                     f"Solver variable limit ({SOLVER_MAX_VARS}) reached at {total_vars} vars, "
-                    f"limiting further package versions",
+                    f"limiting further package versions. "
+                    f"Increase with --max-vars N or SOLVER_MAX_VARS=N env var",
                     extra={
                         "event": "solver_max_vars_reached",
                         "total_vars": total_vars,
@@ -1150,13 +1242,21 @@ class ConflictResolver:
                 if not constraint_str:
                     continue
 
-                # Skip deps with unparseable constraints (e.g. path-based, git urls)
-                try:
-                    from packaging.specifiers import SpecifierSet
+                # Wrap bare version in == prefix for PEP 440 compatibility
+                from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
-                    SpecifierSet(constraint_str)
-                except Exception:
-                    continue
+                parsed_constraint = constraint_str
+                try:
+                    SpecifierSet(parsed_constraint)
+                except InvalidSpecifier:
+                    try:
+                        SpecifierSet(f"=={parsed_constraint}")
+                        parsed_constraint = f"=={parsed_constraint}"
+                    except InvalidSpecifier:
+                        logger.debug(
+                            f"Skipping unparseable constraint '{constraint_str}' for dep edge"
+                        )
+                        continue
 
                 # Get successor package info
                 successor_data = self.dependency_graph.nodes.get(successor, {})
@@ -1179,17 +1279,21 @@ class ConflictResolver:
 
                                 # Use is_compatible_version for checking
                                 if dep_var_ref is not None and is_compatible_version(
-                                    dep_version, constraint_str
+                                    dep_version, parsed_constraint
                                 ):
                                     valid_dep_vars.append(dep_var_ref)
 
                             if valid_dep_vars:
                                 # If package is selected, one of the valid dependency versions must be selected
                                 self.solver.add(z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars)))
-                            else:
+                            elif (
+                                dep_name in constraints["package_versions"]
+                                and constraints["package_versions"][dep_name]
+                            ):
                                 # No valid dependency version satisfies the constraint
                                 # → this package version cannot be selected
                                 self.solver.add(z3.Not(pkg_var_ref))
+                            # else: dep has zero available versions → skip constraint silently
 
     def _add_conflict_constraints(self, packages: list[dict], constraints: dict):
         """Add known conflict constraints."""
@@ -1250,7 +1354,9 @@ class ConflictResolver:
                     var_ref = self.version_vars.get(str(var))
                     if var_ref is not None and z3.is_true(model.eval(var_ref)):
                         version_str = str(var).split("_", 1)[-1]
-                        solution["packages"][pkg_name] = {
+                        # Use original name if available
+                        display_name = self._name_map.get(pkg_name, pkg_name)
+                        solution["packages"][display_name] = {
                             "version": version_str,
                             "ecosystem": self._get_ecosystem(pkg_name),
                         }
@@ -1415,7 +1521,7 @@ class ConflictResolver:
                     },
                 )
             except Exception:
-                pass
+                logger.warning("Failed to detect cycles in dependency graph", exc_info=True)
             return list(packages.keys())
 
     def _get_ecosystem(self, package_name: str) -> str:

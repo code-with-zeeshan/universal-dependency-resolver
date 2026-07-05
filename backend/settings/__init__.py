@@ -30,7 +30,7 @@ else:
 # =============================================================================
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))
 RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", 2.0))
-RETRY_MAX_DELAY = float(os.getenv("RETRY_MAX_DELAY", 60.0))
+RETRY_MAX_DELAY = float(os.getenv("RETRY_MAX_DELAY", 10.0))
 CIRCUIT_BREAKER_FAILURE_THRESHOLD = int(os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"))
 CIRCUIT_BREAKER_OPEN_TIME = int(os.getenv("CIRCUIT_BREAKER_OPEN_TIME", "30"))
 
@@ -75,6 +75,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 # =============================================================================
 CACHE_TTL = int(os.getenv("CACHE_TTL", 3600))
 CACHE_TTL_SHORT = int(os.getenv("CACHE_TTL_SHORT", 300))
+CACHE_TTL_VERSIONS = int(os.getenv("CACHE_TTL_VERSIONS", 600))
 MAX_REQUEST_SIZE = int(os.getenv("MAX_REQUEST_SIZE", 10 * 1024 * 1024))
 PROMETHEUS_ENABLED = os.getenv("PROMETHEUS_ENABLED", "false").lower() == "true"
 
@@ -150,6 +151,23 @@ EXPORT_FORMAT_METADATA = {
 }
 
 OSV_API_URL = os.getenv("OSV_API_URL", "https://api.osv.dev/v1/query")
+
+# =============================================================================
+# Installers (ecosystem → install-command tuples)
+# =============================================================================
+INSTALLERS: dict[str, tuple[str, ...]] = {
+    "pypi": ("pip", "install"),
+    "npm": ("npm", "install"),
+    "crates": ("cargo", "add"),
+    "gomodules": ("go", "get"),
+    "conda": ("conda", "install"),
+    "rubygems": ("gem", "install"),
+    "packagist": ("composer", "require"),
+    "pub": ("dart", "pub", "add"),
+    "nuget": ("dotnet", "add", "package"),
+    "cocoapods": ("pod", "install"),
+    "maven": ("mvn", "dependency:copy-dependencies"),
+}
 
 # =============================================================================
 # Feature Flags
@@ -285,6 +303,7 @@ def get_ecosystem_config(ecosystem: str) -> dict[str, Any]:
         },
         "swift": {
             "url": "https://swiftpackageindex.com/api",
+            "api_key": os.environ.get("SWIFT_API_KEY", ""),
             "cache_ttl": CACHE_TTL,
             "rate_limit": 300,
         },

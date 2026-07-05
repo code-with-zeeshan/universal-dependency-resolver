@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **SCC batch SAT solver**: Dependency graph partitioned into strongly connected components via `nx.strongly_connected_components`; each SCC resolves independently with its own Z3 solver instance. Activates for graphs >20 packages with multiple SCCs; zero overhead for small projects.
+- **6 new manifest updaters**: `_update_build_gradle` (build.gradle/kts), `_update_package_swift` (Package.swift), `_update_mix_exs` (mix.exs), `_update_podfile` (Podfile), `_update_gemspec_dependency` (.gemspec). Total: 13/20 ecosystems with dedicated in-place updaters.
+- **PyPI rate limiting**: `asyncio.Semaphore(5)` concurrent request cap; 3 retries with exponential backoff (1s, 2s, 4s); 429 handling with Retry-After header; 30s per-request timeout.
+- **`udr why` command**: `udr why <package> [--directory] [--json]` shows dependency chain, constraint trace, resolved version. Reads `udr.lock` with reverse-dependency mapping.
+- **API auth middleware**: X-API-Key header validation; exempts `/healthz`, `/readyz`; auto-generates session key if `API_KEY` env not set; configurable via `ENABLE_AUTH` setting.
+- **docs/ROADMAP.md**: Documents 15 known limitations with 5-phase plan through v3.0.
+- **Real-world repo validation**: Tested against `gin` (78 pkgs, 53/53 resolved), `fastapi-template` (143 pkgs), `requests` (11 pkgs).
+- **npm Semaphore**: `asyncio.Semaphore(10)` bounds concurrent npm registry requests during BFS traversal.
+- **429 Retry-After handling**: `base_client.py` reads `Retry-After` header on 429 responses and sleeps before retrying.
+- **`udr why --all`**: New `--all`/`-a` flag outputs explanation for every package in the lock file.
+- **Incremental resolution transitive deps**: `_collect_locked_transitive_deps()` walks the lock file's `depends_on` graph to pre-resolve transitive deps of unchanged roots.
+- **Database service layer**: `backend/database/service.py` with `authenticate_api_key()` — breaks API→DB direct import dependency.
+- **20 new API endpoint tests**: Covers verify, install-commands, restore-commands, why, diff, Content-Type validation (102 total API tests).
+- **`INSTALLERS` in settings**: Ecosystem→installer mapping moved to `settings.INSTALLERS` for runtime configurability.
+- **GPU detector module**: All GPU detection extracted to `backend/core/detectors/gpu.py` (420 lines removed from monolithic `system_scanner.py`).
+- **`CACHE_TTL_VERSIONS` setting**: Middleware TTLs for version endpoints no longer hardcoded.
+
+### Changed
+
+- **Name normalization scoped to 3 ecosystems**: Only PyPI, npm, crates get case-flattening normalization. Go, Swift, Haskell, RubyGems, CocoaPods, Gradle, Hex, Packagist, Maven, Pub, NuGet, Homebrew preserve original case/separators.
+- **Gradle ecosystem mapping**: `build.gradle`/`.kts` ecosystem changed from `maven` to `gradle` in manifest detection.
+- **Swift Package Manager parser**: Extract `from:`, `exact:`, `.upToNextMajor/Minor` version constraints instead of always `*`.
+- **Go module resolution**: Packages with zero `available_versions` skipped; `_name_map` preserves original names in output.
+- **ClientTimeout split**: `base_client.py:111` now uses `ClientTimeout(connect=10, sock_read=timeout)` instead of `ClientTimeout(total=...)`.
+- **Middleware TTLs parametrized**: `middleware.py:360-364` uses `CACHE_TTL_SHORT` (300) and `CACHE_TTL_VERSIONS` (600) instead of hardcoded values.
+- **`SCANNER_MAX_WORKERS` env var**: `system_scanner.py:107` reads `SCANNER_MAX_WORKERS` env var (default 10) instead of hardcoded `max_workers=10`.
+- **`normalize_package_name()` cached**: `@lru_cache(maxsize=4096)` on 100+ call-site function in `utils.py`.
+
+### Fixed
+
+- **SAT solver scaling**: Batch/SCC resolution replaces monolithic solver for large graphs. Tested: 26/26 packages across 26 SCCs resolved correctly.
+- **Gradle data source**: Rewritten with Maven Central fallback via `maven-metadata.xml` XML parsing. Proper group:artifact splitting before normalization.
+- **RubyGems data source**: Version endpoint fixed from `/gems/{name}/versions.json` to `/versions/{name}.json`.
+- **Haskell data source**: Endpoint fixed from `/package/{name}/preferred` to `/package/{name}.json`; version extraction from dict format.
+- **CocoaPods resolution**: Handle nested version dicts like `{"version": {"name": "1.0.0", ...}}` in resolver input.
+- **Go module name normalization bug**: Only normalize for case-insensitive ecosystems; Go modules preserve case and separators.
+- **Gradle dot-sensitive normalization**: `gradle` added to `_dot_sensitive` set in `data_aggregator.py` to prevent dot-to-dash mangling of Maven coordinates.
+- **`ThreadPoolExecutor` shutdown race**: `data_aggregator.py` added `_shutdown` guard + `__del__` fallback to prevent race on executor shutdown.
+- **`_benchmark_memory()` type: ignore**: Removed unnecessary `# type: ignore[return-value]` from `system.py:1191`.
+- **`RETRY_MAX_DELAY` never used**: Retry backoff now capped at `min(backoff, RETRY_MAX_DELAY)` in `base_client.py`.
+- **lock POST body validation**: `_check_request_body()` validates Content-Type (415) and content-length (413); Pydantic validator rejects oversized manifest entries.
+
 ## [1.3.2] - 2026-07-03
 
 ### Added

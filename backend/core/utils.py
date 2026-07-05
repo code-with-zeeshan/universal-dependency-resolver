@@ -5,6 +5,7 @@ import asyncio
 import logging
 import re
 from collections.abc import Coroutine
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -19,22 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 def run_async(coro: Coroutine) -> Any:
-    """Run a coroutine synchronously.
-    Uses asyncio.run() when no event loop is running;
-    falls back to creating a new loop if called from a running loop.
+    """Run a coroutine synchronously from a non-async context.
+
+    Use ``await run_async_await(coro)`` from async contexts instead.
+
+    Raises ``RuntimeError`` if called from within a running event loop.
     """
-    try:
-        asyncio.get_running_loop()
-        # We're inside a running loop — create a new one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-    except RuntimeError:
-        # No running loop — use asyncio.run (cleanest)
-        return asyncio.run(coro)
+    return asyncio.run(coro)
+
+
+async def run_async_await(coro: Coroutine) -> Any:
+    """Run a coroutine from an async context (just awaits it).
+
+    For use in API handlers and other async code that calls
+    methods originally designed for sync contexts.
+    """
+    return await coro
 
 
 def parse_version(version_str: str) -> version.Version | None:
@@ -65,6 +66,7 @@ def is_compatible_version(version_str: str, spec: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=4096)
 def normalize_package_name(name: str) -> str:
     """Normalize package name (e.g., convert to lowercase, replace underscores)."""
     return re.sub(r"[-_.]+", "-", name).lower()
@@ -179,30 +181,15 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
 
 
 def download_github_repo(url: str, branch: str) -> Path:
-    """Download a GitHub repo as zipball and extract to temp dir."""
-    import io
-    import re
-    import tempfile
-    import urllib.request
-    import zipfile
+    """Download a GitHub repo as zipball and extract to temp dir.
 
-    match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", url)
-    if not match:
-        raise ValueError(f"Invalid GitHub URL: {url}")
-    owner, repo = match.group(1), match.group(2).rstrip(".git")
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
-    req = urllib.request.Request(api_url, headers={"User-Agent": "UDR/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"GitHub API returned {resp.status}")
-        data = resp.read()
-    tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
-    z = zipfile.ZipFile(io.BytesIO(data))
-    z.extractall(path=str(tmp))
-    contents = list(tmp.iterdir())
-    if contents and contents[0].is_dir():
-        return contents[0]
-    return tmp
+    Deprecated: use backend.orchestrator.scanner._download_github_repo (async) instead.
+    """
+    import asyncio
+
+    from backend.orchestrator.scanner import _download_github_repo as _async_download
+
+    return asyncio.run(_async_download(url, branch))
 
 
 def compare_versions(v1: str, v2: str) -> int:

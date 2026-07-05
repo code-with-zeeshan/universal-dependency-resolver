@@ -2,6 +2,8 @@
 
 import logging
 
+from backend.settings import INSTALLERS
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,20 +13,7 @@ def _generate_install_command(
 ) -> str | None:
     if not packages:
         return None
-    installers = {
-        "pypi": ("pip", "install"),
-        "npm": ("npm", "install"),
-        "crates": ("cargo", "add"),
-        "gomodules": ("go", "get"),
-        "conda": ("conda", "install"),
-        "rubygems": ("gem", "install"),
-        "packagist": ("composer", "require"),
-        "pub": ("dart", "pub", "add"),
-        "nuget": ("dotnet", "add", "package"),
-        "cocoapods": ("pod", "install"),
-        "maven": ("mvn", "dependency:copy-dependencies"),
-    }
-    installer = installers.get(ecosystem)
+    installer = INSTALLERS.get(ecosystem)
     if not installer:
         logger.warning("No installer known for ecosystem: %s", ecosystem)
         return None

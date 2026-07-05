@@ -8,8 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, validator
 
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_data_aggregator
@@ -68,6 +68,21 @@ class GenerateLockRequest(BaseModel):
     resolution: dict[str, Any] | None = None
     manifest_contents: dict[str, str] | None = None
     manifest_filter: str | None = None
+
+    @validator("manifest_contents")
+    def validate_manifest_contents(cls, v):
+        if v is None:
+            return v
+        if len(v) > 50:
+            raise ValueError("Too many manifest files (max 50)")
+        for fname, content in v.items():
+            if not isinstance(fname, str) or not isinstance(content, str):
+                raise ValueError(f"Invalid manifest entry type for {fname}")
+            if len(fname) > 200:
+                raise ValueError(f"Manifest filename too long: {fname}")
+            if len(content) > 10 * 1024 * 1024:
+                raise ValueError(f"Manifest content too large: {fname}")
+        return v
 
 
 class WhyRequest(BaseModel):
@@ -199,8 +214,11 @@ async def dependency_graph(
         raise HTTPException(status_code=404, detail="No packages could be resolved")
 
     try:
+        solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
         resolved = await asyncio.wait_for(
-            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            _resolve_transitive(
+                aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+            ),
             timeout=SOLVER_API_TIMEOUT,
         )
     except (TimeoutError, Exception):
@@ -282,8 +300,11 @@ async def update_package(
         raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
 
     try:
+        solver_ms = max(5000, int((SOLVER_API_TIMEOUT - 5) * 1000))
         resolved = await asyncio.wait_for(
-            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            _resolve_transitive(
+                aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+            ),
             timeout=SOLVER_API_TIMEOUT,
         )
     except (TimeoutError, Exception):
@@ -383,8 +404,11 @@ async def _run_lock_pipeline(
             system_info = await scanner.scan_all()
 
         try:
+            solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
             resolved = await asyncio.wait_for(
-                _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+                _resolve_transitive(
+                    aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+                ),
                 timeout=SOLVER_API_TIMEOUT,
             )
         except (TimeoutError, Exception):
@@ -523,8 +547,21 @@ def _build_lock_from_synthesis(
     }
 
 
+MANIFEST_MAX_BYTES = 10 * 1024 * 1024
+
+
+async def _check_request_body(request: Request):
+    content_type = request.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        raise HTTPException(status_code=415, detail="Content-Type must be application/json")
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MANIFEST_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Request body too large")
+
+
 @router.post("/generate-lock")
 async def generate_lock(
+    request: Request,
     req: GenerateLockRequest,
     current_user=Depends(get_current_user),
 ):
@@ -540,6 +577,7 @@ async def generate_lock(
 
     Returns ``{"status": "success", "lock_data": {...}}``.
     """
+    await _check_request_body(request)
     if req.manifest_contents:
         result = await _run_lock_pipeline(
             req.manifest_contents,

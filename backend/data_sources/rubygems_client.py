@@ -250,7 +250,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
     async def _get_all_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
-        url = f"{self.base_url}/gems/{package_name}/versions.json"
+        url = f"{self.base_url}/versions/{package_name}.json"
         data: Any = await self._get(url)
         if data is None:
             return []

@@ -7,6 +7,55 @@ let sysInfoCache = null
 let sysInfoCacheTime = 0
 const SYS_CACHE_TTL = 30000
 
+// Settings persistence
+function loadSetting(key, def) {
+  try { const v = localStorage.getItem('udr_' + key); return v !== null ? JSON.parse(v) : def } catch(e) { return def }
+}
+function saveSetting(key, val) {
+  try { localStorage.setItem('udr_' + key, JSON.stringify(val)) } catch(e) {}
+}
+
+// Toast notification system
+function showToast(msg, type = 'info', duration = 4000) {
+  const c = document.getElementById('toastContainer')
+  const el = document.createElement('div')
+  el.className = 'toast ' + type
+  el.innerHTML = '<span>' + msg + '</span><span class="close-btn" onclick="this.parentElement.remove()">✕</span>'
+  c.appendChild(el)
+  if (duration > 0) setTimeout(() => { el.style.animation = 'toastOut .25s ease forwards'; setTimeout(() => el.remove(), 300) }, duration)
+}
+
+// Loading overlay
+let loadingCount = 0
+function showLoading(msg, sub) {
+  loadingCount++
+  document.getElementById('loadingMsg').textContent = msg || 'Loading...'
+  document.getElementById('loadingSub').textContent = sub || ''
+  document.getElementById('loadingOverlay').classList.add('show')
+}
+function hideLoading() {
+  loadingCount = Math.max(0, loadingCount - 1)
+  if (loadingCount === 0) document.getElementById('loadingOverlay').classList.remove('show')
+}
+
+// Error boundary wrapper — wraps an async operation with loading + error handling
+async function withErrorBoundary(tabId, fn) {
+  const tab = document.getElementById('tab-' + tabId)
+  if (!tab) return fn()
+  try {
+    const result = await fn()
+    return result
+  } catch(e) {
+    // Find the first result card or show in a new error card
+    let errorEl = tab.querySelector('.error-boundary') || tab.querySelector('.card:last-child')
+    if (errorEl) {
+      errorEl.innerHTML = errorEl.innerHTML + '<div class="alert error" style="margin-top:8px">⚠ ' + e.message + ' <button class="ghost" onclick="this.parentElement.remove()" style="font-size:11px">✕</button></div>'
+    }
+    showToast(e.message, 'error', 6000)
+    throw e
+  }
+}
+
 async function getBaseUrl() {
   if (window.udrDesktop) {
     try { BASE = await window.udrDesktop.getBackendUrl() || BASE } catch(e) {}
@@ -151,6 +200,30 @@ document.addEventListener('keydown', e => {
     e.preventDefault()
     switchTab('resolve')
     document.getElementById('pkgInput').focus()
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    e.preventDefault()
+    switchTab('scan')
+    document.getElementById('scanPath').focus()
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+    e.preventDefault()
+    switchTab('restore')
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'q') {
+    e.preventDefault()
+    if (window.udrDesktop && window.udrDesktop.quit) window.udrDesktop.quit()
+  }
+  if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.target.closest('input,textarea,select')) {
+    e.preventDefault()
+    toggleHelpModal()
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const active = document.activeElement
+    if (active && active.closest('.tab.active')) {
+      const btn = active.closest('.tab.active').querySelector('button:not(.ghost):not(.secondary)')
+      if (btn) btn.click()
+    }
   }
 })
 
@@ -387,6 +460,10 @@ async function loadExportFormats() {
 
 async function init() {
   setStatus(null, 'connecting...')
+  // Restore saved settings
+  const savedDir = loadSetting('lastDir', '')
+  const dirInput = document.getElementById('scanPath')
+  if (dirInput && savedDir) dirInput.value = savedDir
   try {
     const health = await api('GET', '/api/v1/health')
     setStatus(true, 'connected')
@@ -400,6 +477,7 @@ async function init() {
     await loadExportFormats()
     loadSystemInfo()
     updateTrayStatus({ version, backendStatus: 'running' })
+    showToast('Backend connected — ' + version, 'success', 3000)
   } catch(e) {
     setStatus(false, 'disconnected')
     document.getElementById('dashStatus').innerHTML = 'Disconnected <button class="ghost" onclick="init()" style="font-size:11px">Retry</button>'
@@ -450,36 +528,43 @@ function renderSystemInfo(info) {
 
 // --- Resolve ---
 document.getElementById('resolveBtn').addEventListener('click', async () => {
-  const raw = document.getElementById('pkgInput').value.trim()
-  if(!raw) return
-  const eco = document.getElementById('ecoSelect').value
-  const packages = raw.split(/\s+/).map(p => {
-    if(p.includes('@')) { const [name, e] = p.split('@'); return {name, ecosystem: e} }
-    return {name: p, ecosystem: eco}
+  await withErrorBoundary('resolve', async () => {
+    const raw = document.getElementById('pkgInput').value.trim()
+    if(!raw) return
+    const eco = document.getElementById('ecoSelect').value
+    const packages = raw.split(/\s+/).map(p => {
+      if(p.includes('@')) { const [name, e] = p.split('@'); return {name, ecosystem: e} }
+      return {name: p, ecosystem: eco}
+    })
+    const btn = document.getElementById('resolveBtn')
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Resolving...'
+    const card = document.getElementById('resolveResultCard')
+    const div = document.getElementById('resolveResult')
+    card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running SAT solver...</div>'
+    showLoading('Resolving dependencies...', packages.length + ' package(s)')
+    try {
+      const device = document.getElementById('resolveDeviceSelect').value
+      const body = {packages}
+      if (device === 'cuda12.1') body.system_info = {gpu: {available: true, cuda: '12.1'}}
+      else if (device === 'cuda11.8') body.system_info = {gpu: {available: true, cuda: '11.8'}}
+      else if (device === 'cpu') body.system_info = {gpu: {available: false, cuda: ''}}
+      else if (device === 'mps') body.system_info = {gpu: {available: true, type: 'mps', cuda: ''}}
+      const result = await api('POST', '/api/v1/packages/resolve', body, LONG_API_TIMEOUT)
+      lastResolved = result
+      sessionStorage.setItem('udr_lastResolved', JSON.stringify(result))
+      div.innerHTML = formatResolveTable(result)
+      document.getElementById('resolveRaw').textContent = JSON.stringify(result, null, 2)
+      document.getElementById('exportLastBtn').disabled = false
+      updateTrayStatus({ lastResolved: new Date().toLocaleTimeString() })
+      const count = Object.keys(result.resolved_packages || {}).length
+      showToast(`Resolved ${count} packages`, 'success')
+    } catch(e) {
+      showError(e.message, div)
+      showToast(e.message, 'error', 6000)
+    }
+    btn.disabled = false; btn.textContent = 'Resolve'
+    hideLoading()
   })
-  const btn = document.getElementById('resolveBtn')
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Resolving...'
-  const card = document.getElementById('resolveResultCard')
-  const div = document.getElementById('resolveResult')
-  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running SAT solver...</div>'
-  try {
-    const device = document.getElementById('resolveDeviceSelect').value
-    const body = {packages}
-    if (device === 'cuda12.1') body.system_info = {gpu: {available: true, cuda: '12.1'}}
-    else if (device === 'cuda11.8') body.system_info = {gpu: {available: true, cuda: '11.8'}}
-    else if (device === 'cpu') body.system_info = {gpu: {available: false, cuda: ''}}
-    else if (device === 'mps') body.system_info = {gpu: {available: true, type: 'mps', cuda: ''}}
-    const result = await api('POST', '/api/v1/packages/resolve', body, LONG_API_TIMEOUT)
-    lastResolved = result
-    sessionStorage.setItem('udr_lastResolved', JSON.stringify(result))
-    div.innerHTML = formatResolveTable(result)
-    document.getElementById('resolveRaw').textContent = JSON.stringify(result, null, 2)
-    document.getElementById('exportLastBtn').disabled = false
-    updateTrayStatus({ lastResolved: new Date().toLocaleTimeString() })
-  } catch(e) {
-    showError(e.message, div)
-  }
-  btn.disabled = false; btn.textContent = 'Resolve'
 })
 
 // --- Export (merged into Resolve tab) ---
@@ -668,6 +753,7 @@ async function doScan(path, body, source) {
   const div = document.getElementById('scanResult')
   document.getElementById('scanLockRow').style.display = 'none'
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Detecting manifests and resolving...</div>'
+  showLoading('Scanning project...', source === 'local' ? body.directory_path : body.repo_url || '')
   try {
     let url = `/api/v1/scan/${source}`
     if (exportFmt) url += `?export=${encodeURIComponent(exportFmt)}`
@@ -688,9 +774,15 @@ async function doScan(path, body, source) {
       }
       sessionStorage.setItem('udr_lastResolved', JSON.stringify(lastResolved))
     }
+    // Save last directory
+    if (source === 'local' && body.directory_path) saveSetting('lastDir', body.directory_path)
+    const pkgCount = result.packages ? result.packages.length : 0
+    showToast(`Scan complete: ${pkgCount} packages from ${result.manifests ? result.manifests.length : 0} manifests`, 'success')
   } catch(e) {
     showError(e.message, div)
+    showToast(e.message, 'error', 6000)
   }
+  hideLoading()
 }
 
 document.getElementById('scanBtn').addEventListener('click', () => {
@@ -715,12 +807,13 @@ document.getElementById('scanUploadBtn').addEventListener('click', () => {
   if (!fileInput.files.length) return
   const btn = document.getElementById('scanUploadBtn')
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scanning...'
-  const formData = new FormData()
-  formData.append('file', fileInput.files[0])
-  const exportFmt = document.getElementById('scanExportFmt').value
   const card = document.getElementById('scanResultCard')
   const div = document.getElementById('scanResult')
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Uploading and resolving...</div>'
+  showLoading('Uploading and scanning...', fileInput.files[0].name)
+  const formData = new FormData()
+  formData.append('file', fileInput.files[0])
+  const exportFmt = document.getElementById('scanExportFmt').value
   let url = '/api/v1/scan/upload'
   if (exportFmt) url += `?export=${encodeURIComponent(exportFmt)}`
   fetch(BASE + url, {method:'POST', body: formData})
@@ -745,31 +838,38 @@ document.getElementById('scanUploadBtn').addEventListener('click', () => {
         }
         sessionStorage.setItem('udr_lastResolved', JSON.stringify(lastResolved))
       }
+      showToast(`Scan complete: ${result.packages ? result.packages.length : 0} packages`, 'success')
     })
-    .catch(e => showError(e.message, div))
-    .finally(() => { btn.disabled = false; btn.textContent = 'Scan & Resolve' })
+    .catch(e => { showError(e.message, div); showToast(e.message, 'error', 6000) })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Scan & Resolve'; hideLoading() })
 })
 
 // --- Graph ---
 document.getElementById('graphBtn').addEventListener('click', async () => {
-  const raw = document.getElementById('graphPkgInput').value.trim()
-  if(!raw) return
-  const eco = document.getElementById('graphEcoSelect').value
-  const packages = raw.split(/\s+/)
-  const btn = document.getElementById('graphBtn')
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Building tree...'
-  const card = document.getElementById('graphResultCard')
-  const div = document.getElementById('graphResult')
-  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Resolving dependencies...</div>'
-  try {
-    const result = await api('POST', '/api/v1/graph', {packages, ecosystem: eco}, LONG_API_TIMEOUT)
-    const trees = result.trees || []
-    div.innerHTML = formatGraphTree(trees)
-    document.getElementById('graphRaw').textContent = JSON.stringify(result, null, 2)
-  } catch(e) {
-    showError(e.message, div)
-  }
-  btn.disabled = false; btn.textContent = 'Show Tree'
+  await withErrorBoundary('graph', async () => {
+    const raw = document.getElementById('graphPkgInput').value.trim()
+    if(!raw) return
+    const eco = document.getElementById('graphEcoSelect').value
+    const packages = raw.split(/\s+/)
+    const btn = document.getElementById('graphBtn')
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Building tree...'
+    const card = document.getElementById('graphResultCard')
+    const div = document.getElementById('graphResult')
+    card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Resolving dependencies...</div>'
+    showLoading('Building dependency graph...')
+    try {
+      const result = await api('POST', '/api/v1/graph', {packages, ecosystem: eco}, LONG_API_TIMEOUT)
+      const trees = result.trees || []
+      div.innerHTML = formatGraphTree(trees)
+      document.getElementById('graphRaw').textContent = JSON.stringify(result, null, 2)
+      showToast(`Graph built: ${trees.length} root packages`, 'success')
+    } catch(e) {
+      showError(e.message, div)
+      showToast(e.message, 'error', 6000)
+    }
+    btn.disabled = false; btn.textContent = 'Show Tree'
+    hideLoading()
+  })
 })
 
 // --- Verify ---

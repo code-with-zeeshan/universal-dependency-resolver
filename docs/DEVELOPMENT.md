@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **1681+ tests** (unit + data-source + CLI e2e + integration). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **1538+ unit tests** + **33 comprehensive** + **10 CLI e2e** + **5 JSON compliance** + **12 problem-statement**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 
@@ -72,7 +72,7 @@ backend/
 │   ├── constraint_normalizer.py # Version constraint normalization
 │   └── utils.py
 ├── manifest_detector.py  # Auto-detect manifest files
-├── data_sources/      # 18 ecosystem API clients
+├── data_sources/      # 20 ecosystem API clients
 ├── database/          # SQLAlchemy models
 ├── settings/          # Configuration (~200 lines)
 ├── tracing_config.py  # OpenTelemetry setup

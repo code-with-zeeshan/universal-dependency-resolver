@@ -127,9 +127,51 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+/* Responsive <800px */
+@media(max-width:800px){
+  nav{width:var(--nav-collapsed);padding:4px 2px}
+  nav:hover{width:var(--nav-collapsed)}
+  nav:hover .nav-btn .label{opacity:0}
+  nav:hover .nav-section{opacity:0}
+  main{padding:12px 10px}
+  .info-grid{grid-template-columns:1fr 1fr!important}
+  .result-table{font-size:12px}
+  .result-table th,.result-table td{padding:5px 6px}
+  header .logo span{display:none}
+  .row{flex-direction:column;align-items:stretch}
+  .row input,.row select{width:100%}
+  .tab-header h2{font-size:15px}
+  #helpModal>div{padding:16px;max-width:95%}
+}
+/* Loading overlay */
+#loadingOverlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:none;justify-content:center;align-items:center;backdrop-filter:blur(2px)}
+#loadingOverlay.show{display:flex}
+#loadingOverlay .box{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 36px;text-align:center;box-shadow:var(--shadow-lg)}
+#loadingOverlay .box .spinner{width:28px;height:28px;border-width:3px;margin-bottom:10px}
+#loadingOverlay .box .msg{font-size:14px;color:var(--text);margin-bottom:4px}
+#loadingOverlay .box .sub{font-size:11.5px;color:var(--text-muted)}
+/* Toast notifications */
+#toastContainer{position:fixed;bottom:20px;right:20px;z-index:1001;display:flex;flex-direction:column;gap:6px;max-width:360px;pointer-events:none}
+.toast{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;box-shadow:var(--shadow-lg);animation:toastIn .25s ease;pointer-events:auto;display:flex;align-items:center;gap:8px;line-height:1.3}
+.toast.success{border-left:3px solid var(--green)}
+.toast.error{border-left:3px solid var(--red)}
+.toast.warning{border-left:3px solid var(--yellow)}
+.toast.info{border-left:3px solid var(--blue)}
+.toast .close-btn{cursor:pointer;opacity:0.5;margin-left:auto;font-size:14px;padding:0 4px}
+.toast .close-btn:hover{opacity:1}
+@keyframes toastIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes toastOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}
 </style>
 </head>
 <body>
+<div id="loadingOverlay">
+  <div class="box">
+    <div class="spinner"></div>
+    <div class="msg" id="loadingMsg">Loading...</div>
+    <div class="sub" id="loadingSub"></div>
+  </div>
+</div>
+<div id="toastContainer"></div>
 <header>
 <div class="logo"><h1>UDR</h1><span>Universal Dependency Resolver</span></div>
 <div class="right">
@@ -140,8 +182,11 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 <h3 style="margin-bottom:14px;color:var(--accent-light)">Keyboard Shortcuts</h3>
 <table class="result-table"><tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl+K</kbd></td><td>Open Resolve tab</td></tr>
+<tr><td><kbd>Ctrl+N</kbd></td><td>New scan (Scan tab)</td></tr>
+<tr><td><kbd>Ctrl+L</kbd></td><td>Lock project</td></tr>
 <tr><td><kbd>Ctrl+R</kbd></td><td>Reload frontend</td></tr>
 <tr><td><kbd>Ctrl+Shift+R</kbd></td><td>Restart backend</td></tr>
+<tr><td><kbd>Ctrl+Q</kbd></td><td>Quit app</td></tr>
 <tr><td><kbd>Ctrl+Shift+I</kbd></td><td>Toggle DevTools</td></tr>
 <tr><td><kbd>Enter</kbd></td><td>Submit active search/resolve field</td></tr>
 </table>

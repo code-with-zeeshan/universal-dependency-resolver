@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **18 package ecosystems** using a Z3 SAT-solver engine that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using a Z3 SAT-solver engine that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -186,7 +186,7 @@ graph TB
     end
 
     subgraph DBLayer["🗄️ Database & Data Sources"]
-        DS["📦 18 Data Source Clients<br/>PyPI · npm · Crates · Maven · Go<br/>RubyGems · NuGet · Conda · APT · APK<br/>Homebrew · CocoaPods · Pub · Gradle<br/>Swift · Hex · Haskell · Packagist"]
+        DS["📦 20 Data Source Clients<br/>PyPI · npm · Crates · Maven · Go<br/>RubyGems · NuGet · Conda · APT · APK<br/>Homebrew · CocoaPods · Pub · Gradle<br/>Swift · Hex · Haskell · Packagist<br/>Docs · Custom DB"]
         DB["🗄️ SQLite (default) / PostgreSQL"]
     end
 

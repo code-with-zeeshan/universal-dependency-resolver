@@ -43,8 +43,8 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("coordinator/*.in", "pypi", "requirements"),
     ("dependencies/*.txt", "pypi", "requirements"),
     ("dependencies/*.in", "pypi", "requirements"),
-    ("build.gradle", "maven", "gradle"),
-    ("build.gradle.kts", "maven", "gradle"),
+    ("build.gradle", "gradle", "gradle"),
+    ("build.gradle.kts", "gradle", "gradle"),
     ("Package.swift", "swift", "swift"),
     ("mix.exs", "hex", "hex"),
     ("*.cabal", "haskell", "cabal"),
@@ -58,7 +58,6 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("apk-packages.txt", "apk", "simple"),
     ("poetry.lock", "pypi", "poetry_lock"),
     ("uv.lock", "pypi", "uv_lock"),
-    ("go.sum", "go", "go_sum"),
     ("composer.lock", "packagist", "composer_lock"),
     ("Gemfile.lock", "rubygems", "gemfile_lock"),
     ("mix.lock", "hex", "mix_lock"),
@@ -132,6 +131,7 @@ class ManifestDetector:
         try:
             return parser(content)
         except Exception:
+            logger.warning("Failed to parse %s using %s", path, parser_key, exc_info=True)
             return []
 
     def parse_all(self, manifests: list[dict]) -> list[dict]:
@@ -158,11 +158,18 @@ class ManifestDetector:
             raw_name = pkg.get("name", "").strip()
             if not raw_name:
                 continue
-            name = (
-                normalize_package_name(raw_name) if normalize_package_name(raw_name) else raw_name
-            )
             raw_eco = pkg.get("_ecosystem", "pypi")
             ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
+            # Only normalize names for case-insensitive ecosystems (PyPI, npm, crates)
+            # All others preserve original case and separators
+            if raw_eco in ("pypi", "pip", "npm", "node", "crates", "cargo", "rust"):
+                name = (
+                    normalize_package_name(raw_name)
+                    if normalize_package_name(raw_name)
+                    else raw_name
+                )
+            else:
+                name = raw_name
             constraint = pkg.get("version", "*") or "*"
             normalized.append(
                 {
@@ -249,6 +256,7 @@ class ManifestDetector:
                             }
                         )
                 except Exception:
+                    logger.warning("Failed to parse requirement line: %s", line, exc_info=True)
                     packages.append({"name": line, "version": "*"})
             else:
                 for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
@@ -282,7 +290,22 @@ class ManifestDetector:
             if m:
                 url = m.group(1)
                 name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-                packages.append({"name": name, "version": "*"})
+                constraint = "*"
+                # Extract version constraint from `from:`, `exact:`, or `.upToNextMajor/minor`
+                cm = re.search(r'from:\s*["\']([^"\']+)["\']', line)
+                if cm:
+                    constraint = cm.group(1)
+                else:
+                    cm = re.search(r'exact:\s*["\']([^"\']+)["\']', line)
+                    if cm:
+                        constraint = cm.group(1)
+                    else:
+                        cm = re.search(
+                            r'\.upToNext(Major|Minor)\(from:\s*["\']([^"\']+)["\']\)', line
+                        )
+                        if cm:
+                            constraint = cm.group(2)
+                packages.append({"name": name, "version": constraint})
         return packages
 
     def _parse_hex(self, content: str) -> list[dict]:
@@ -312,7 +335,7 @@ class ManifestDetector:
                     ver = version.text if version is not None else "*"
                     packages.append({"name": name, "version": ver})
         except Exception:
-            pass
+            logger.warning("Failed to parse Maven pom.xml", exc_info=True)
         return packages
 
     def _parse_cocoapods(self, content: str) -> list[dict]:
@@ -340,7 +363,7 @@ class ManifestDetector:
                 if name:
                     packages.append({"name": name, "version": version})
         except Exception:
-            pass
+            logger.warning("Failed to parse NuGet packages.config", exc_info=True)
         return packages
 
     def _parse_simple(self, content: str) -> list[dict]:
@@ -375,7 +398,7 @@ class ManifestDetector:
                             if name:
                                 packages.append({"name": name, "version": version})
             except Exception:
-                pass
+                logger.warning("Failed to parse Homebrew JSON manifest", exc_info=True)
             return packages
         for line in content.split("\n"):
             line = line.strip()
@@ -400,21 +423,6 @@ class ManifestDetector:
                         version_spec = m.group(2).strip() or "*"
                         packages.append({"name": name, "version": version_spec})
         return packages
-        for line in content.split("\n"):
-            line = line.strip()
-            if not line or line.startswith(("#", "-r ", "-e ", "-i ", "--")):
-                continue
-            try:
-                req = Requirement(line)
-                packages.append(
-                    {
-                        "name": req.name,
-                        "version": str(req.specifier) if req.specifier else "*",
-                    }
-                )
-            except Exception:
-                packages.append({"name": line, "version": "*"})
-        return packages
 
     def _parse_pipfile(self, content: str) -> list[dict]:
         """Parse pipfile."""
@@ -423,6 +431,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["packages", "dev-packages"]:
@@ -444,6 +453,7 @@ class ManifestDetector:
 
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["default", "develop"]:
@@ -464,6 +474,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
 
@@ -494,6 +505,7 @@ class ManifestDetector:
                         }
                     )
                 except Exception:
+                    logger.warning("Failed to parse pyproject dependency: %s", dep, exc_info=True)
                     packages.append({"name": dep, "version": "*"})
         return packages
 
@@ -502,6 +514,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["dependencies", "devDependencies", "peerDependencies"]:
@@ -515,6 +528,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for name, info in data.get("packages", {}).items():
@@ -556,6 +570,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["dependencies", "dev-dependencies", "build-dependencies"]:
@@ -576,6 +591,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for pkg in data.get("package", []):
@@ -594,10 +610,13 @@ class ManifestDetector:
             line = line.strip()
             parts = line.split()
             if len(parts) >= 2 and "." in parts[0]:
+                ver = parts[1] if len(parts) > 1 else "*"
+                if ver.startswith("v") and len(ver) > 1 and ver[1].isdigit():
+                    ver = ver[1:]
                 packages.append(
                     {
                         "name": parts[0],
-                        "version": parts[1] if len(parts) > 1 else "*",
+                        "version": ver,
                     }
                 )
         return packages
@@ -609,6 +628,7 @@ class ManifestDetector:
 
             data = yaml.safe_load(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for dep in data.get("dependencies", []):
@@ -653,6 +673,7 @@ class ManifestDetector:
 
             data = yaml.safe_load(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for name, info in data.get("packages", {}).items():
@@ -674,6 +695,7 @@ class ManifestDetector:
 
             data = yaml.safe_load(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["dependencies", "dev_dependencies"]:
@@ -694,6 +716,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["require", "require-dev"]:
@@ -711,6 +734,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for entry in data.get("package", []):
@@ -727,6 +751,7 @@ class ManifestDetector:
 
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for entry in data.get("package", []):
@@ -749,6 +774,8 @@ class ManifestDetector:
             if len(parts) >= 2 and "/" in parts[0]:
                 name = parts[0]
                 ver = parts[1] if parts[1] else "*"
+                if ver.startswith("v") and len(ver) > 1 and ver[1].isdigit():
+                    ver = ver[1:]
                 if name.startswith("go.mod"):
                     continue
                 if name not in seen:
@@ -761,6 +788,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for section in ["packages", "packages-dev"]:
@@ -817,6 +845,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         pins = data.get("pins", data.get("object", {}).get("pins", []))
@@ -832,6 +861,7 @@ class ManifestDetector:
         try:
             data = json.loads(content)
         except Exception:
+            logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
         for entry in data.get("packages", []):

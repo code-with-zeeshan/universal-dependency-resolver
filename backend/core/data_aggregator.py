@@ -175,10 +175,19 @@ class DataAggregator:
 
     async def close(self):
         """Cleanup resources."""
-        self.executor.shutdown(wait=True)
+        if not self.executor._shutdown:
+            self.executor.shutdown(wait=True)
         for client in self._sources.values():
             if hasattr(client, "close"):
-                await client.close()
+                try:
+                    await client.close()
+                except Exception:
+                    logger.debug("Error closing client %s", client, exc_info=True)
+
+    def __del__(self):
+        """Ensure executor is shut down on garbage collection."""
+        if hasattr(self, "executor") and not self.executor._shutdown:
+            self.executor.shutdown(wait=False)
 
     def _get_cache_key(self, method: str, *args, **kwargs) -> str:
         """Generate cache key."""
@@ -210,9 +219,9 @@ class DataAggregator:
         else:
             eco_str = ""
         # Only normalize for PyPI-style ecosystems where dots/underscores
-        # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods
+        # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods, gradle
         # use dots as semantic separators.
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods"}
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle"}
         if eco_str not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
@@ -397,7 +406,7 @@ class DataAggregator:
         include_versions: bool,
     ) -> dict:
         """Fetch package data from a specific ecosystem."""
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods"}
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle"}
         if ecosystem.value not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
         try:
@@ -504,7 +513,9 @@ class DataAggregator:
 
         # Preserve peer_dependencies for post-resolution compatibility checks
         if "peer_dependencies" in data:
-            aggregated.setdefault("peer_dependencies", {})[ecosystem.value] = data["peer_dependencies"]
+            aggregated.setdefault("peer_dependencies", {})[ecosystem.value] = data[
+                "peer_dependencies"
+            ]
 
         # Merge system requirements
         if "system_requirements" in data:

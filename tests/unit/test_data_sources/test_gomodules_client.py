@@ -40,7 +40,7 @@ class TestGoModulesClient:
 
         assert result is not None
         assert result["name"] == "github.com/example/mymodule"
-        assert result["version"] == "v1.2.0"
+        assert result["version"] == "1.2.0"
         assert "dependencies" in result
         assert "required" in result["dependencies"]
         assert "indirect" in result["dependencies"]
@@ -141,8 +141,8 @@ class TestGoModulesClient:
         ):
             versions = await client.get_versions("github.com/example/mymodule")
         assert len(versions) == 3
-        assert versions[0]["version"] == "v2.0.0"
-        assert versions[-1]["version"] == "v1.0.0"
+        assert versions[0]["version"] == "2.0.0"
+        assert versions[-1]["version"] == "1.0.0"
         assert all("stable" in v for v in versions)
 
     @pytest.mark.asyncio
@@ -164,9 +164,9 @@ class TestGoModulesClient:
         ):
             versions = await client.get_versions("github.com/example/mymodule")
         for v in versions:
-            if v["version"] == "v1.0.0":
+            if v["version"] == "1.0.0":
                 assert v["stable"] is True
-            elif v["version"] == "v2.0.0-beta.1" or v["version"] == "v1.0.1+incompatible":
+            elif v["version"] == "2.0.0-beta.1" or v["version"] == "1.0.1+incompatible":
                 assert v["stable"] is False
 
     @pytest.mark.asyncio
@@ -186,7 +186,7 @@ class TestGoModulesClient:
                 "github.com/example/mymodule", "v1.0.0"
             )
         assert result is not None
-        assert result["version"] == "v1.0.0"
+        assert result["version"] == "1.0.0"
         assert "dependencies" in result
         assert "system_requirements" in result
 

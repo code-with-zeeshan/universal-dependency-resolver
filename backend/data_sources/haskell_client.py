@@ -31,14 +31,16 @@ class HaskellClient(BaseDataSourceClient):
     ) -> dict[str, Any] | None:
         pkg = normalize_package_name(package_name)
         try:
-            data = await self._get(f"{self.base_url}/package/{pkg}/preferred")
+            data = await self._get(f"{self.base_url}/package/{pkg}.json")
             if not data:
                 return None
-            versions_data = await self._get(f"{self.base_url}/package/{pkg}/preferred")
             versions = []
-            if versions_data:
-                vs = versions_data if isinstance(versions_data, list) else []
-                for v in vs:
+            if isinstance(data, dict):
+                # Hackage returns {"version": {...deps...}, ...}
+                for ver_str in data:
+                    versions.append({"version": ver_str})
+            elif isinstance(data, list):
+                for v in data:
                     if isinstance(v, dict):
                         versions.append({"version": v.get("version", "")})
                     elif isinstance(v, str):

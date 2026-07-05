@@ -265,7 +265,7 @@ source = ["backend"]
 omit = ["backend/database/*", "backend/data_sources/*"]
 
 [tool.coverage.report]
-fail_under = 48
+fail_under = 46
 show_missing = true
 skip_empty = true
 

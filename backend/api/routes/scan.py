@@ -43,7 +43,7 @@ class LocalScanRequest(BaseModel):
     directory_path: str
 
 
-from backend.core.utils import download_github_repo as _download_github_repo
+from backend.orchestrator import _download_github_repo
 
 
 async def _run_resolution_pipeline(project_dir: Path, export_format: str | None = None) -> dict:
@@ -167,14 +167,8 @@ async def scan_github(
     current_user=Depends(get_current_user),
 ):
     """Clone a GitHub repo, detect manifests, resolve all dependencies."""
-    loop = asyncio.get_event_loop()
     try:
-        project_dir = await loop.run_in_executor(
-            None,
-            _download_github_repo,  # type: ignore[arg-type]
-            req.repo_url,
-            req.branch,
-        )
+        project_dir = await _download_github_repo(req.repo_url, req.branch)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     try:

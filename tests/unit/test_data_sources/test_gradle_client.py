@@ -16,8 +16,7 @@ class TestGradleClient:
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
             result = await client.get_package_info("com.example:lib")
         assert result is not None
-        # normalize_package_name replaces dots with hyphens
-        assert result["name"] == "com-example:lib"
+        assert result["name"] == "com.example:lib"
         assert result["version"] == "1.0.0"
         assert "versions" in result
 
@@ -40,7 +39,7 @@ class TestGradleClient:
         assert result is not None
         mock_get.assert_called_once()
         url = mock_get.call_args[0][0]
-        assert "org-gradle" in url
+        assert "org.gradle" in url
         assert "plugin" in url
 
     @pytest.mark.asyncio

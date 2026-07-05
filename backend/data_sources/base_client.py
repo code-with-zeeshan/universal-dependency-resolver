@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
 import aiohttp
 
+from backend.core.cache import DictCache
 from backend.settings import (
     CACHE_TTL,
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
@@ -15,10 +17,23 @@ from backend.settings import (
     RATE_LIMITS,
     REQUEST_TIMEOUT,
     RETRY_BACKOFF_FACTOR,
+    RETRY_MAX_DELAY,
     USER_AGENTS,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Registry of all active sessions for clean shutdown
+_sessions_registry: list[aiohttp.ClientSession] = []
+
+
+async def close_all_sessions() -> None:
+    """Close all tracked aiohttp sessions (call on application shutdown)."""
+    for sess in _sessions_registry:
+        if not sess.closed:
+            await sess.close()
+    _sessions_registry.clear()
 
 
 class BaseDataSourceClient:
@@ -37,7 +52,8 @@ class BaseDataSourceClient:
         self.ecosystem = ecosystem
         self.base_url = base_url
         self.session: aiohttp.ClientSession | None = None
-        self._cache: dict[str, tuple] = {}
+        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "udr", ecosystem)
+        self._cache: DictCache = DictCache(persist_path=os.path.join(cache_dir, "cache.json"))
         self._cache_ttl = cache_ttl
         self.user_agent = user_agent or USER_AGENTS.get(ecosystem, USER_AGENTS["default"])
         self.rate_limit = rate_limit or RATE_LIMITS.get(ecosystem, 600)
@@ -54,32 +70,37 @@ class BaseDataSourceClient:
 
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
+        _sessions_registry.append(self.session)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
+            if self.session in _sessions_registry:
+                _sessions_registry.remove(self.session)
+            self.session = None
 
     async def close(self):
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
+            if self.session in _sessions_registry:
+                _sessions_registry.remove(self.session)
             self.session = None
 
     def _get_session(self) -> aiohttp.ClientSession:
-        if self.session is None:
+        if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
+            _sessions_registry.append(self.session)
         return self.session
 
-    def _cache_get(self, key: str) -> Any | None:
-        if key in self._cache:
-            data, timestamp = self._cache[key]
-            if (datetime.now() - timestamp).total_seconds() < self._cache_ttl:
-                return data
-            del self._cache[key]
+    async def _cache_get(self, key: str) -> Any | None:
+        data = await self._cache.get(key)
+        if data is not None:
+            return data
         return None
 
-    def _cache_set(self, key: str, data: Any):
-        self._cache[key] = (data, datetime.now())
+    async def _cache_set(self, key: str, data: Any):
+        await self._cache.set(key, data, ttl=self._cache_ttl)
 
     async def _throttle(self):
         now = datetime.now()
@@ -108,13 +129,21 @@ class BaseDataSourceClient:
                     method,
                     url,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    timeout=aiohttp.ClientTimeout(connect=10, sock_read=self.timeout),
                     **kwargs,
                 ) as resp:
                     if resp.status == 404:
                         return None
+                    if resp.status == 429:
+                        retry_after = int(resp.headers.get("Retry-After", "5"))
+                        backoff = min(retry_after, RETRY_MAX_DELAY)
+                        logger.warning(
+                            f"{self.ecosystem} rate limited (429), retrying after {backoff}s"
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
                     if resp.status >= 500 and attempt < self.max_retries - 1:
-                        backoff = RETRY_BACKOFF_FACTOR**attempt
+                        backoff = min(RETRY_BACKOFF_FACTOR**attempt, RETRY_MAX_DELAY)
                         await asyncio.sleep(backoff)
                         continue
                     resp.raise_for_status()
@@ -126,7 +155,7 @@ class BaseDataSourceClient:
                         f"{self.ecosystem} request failed after {self.max_retries} retries: {e}"
                     )
                     break
-                await asyncio.sleep(RETRY_BACKOFF_FACTOR**attempt)
+                await asyncio.sleep(min(RETRY_BACKOFF_FACTOR**attempt, RETRY_MAX_DELAY))
         raise OSError(f"{self.ecosystem} request failed: {last_error}") from last_error
 
     async def _circuit_breaker_call(self, method: str, url: str, **kwargs) -> dict | None:
@@ -188,7 +217,7 @@ class BaseDataSourceClient:
     async def cached_get(self, cache_key: str, url: str, ttl: int | None = None) -> dict | None:
         import os as _os
 
-        cached = self._cache_get(cache_key)
+        cached = await self._cache_get(cache_key)
         if cached is not None:
             return cached
 
@@ -201,7 +230,7 @@ class BaseDataSourceClient:
             orig_ttl = self._cache_ttl
             if ttl is not None:
                 self._cache_ttl = ttl
-            self._cache_set(cache_key, data)
+            await self._cache_set(cache_key, data)
             if ttl is not None:
                 self._cache_ttl = orig_ttl
         return data

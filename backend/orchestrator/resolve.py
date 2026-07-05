@@ -88,7 +88,10 @@ def _aggregator_to_resolver_input(
     raw_versions = agg_data.get("versions", {}).get(ecosystem, [])
     for vinfo in raw_versions:
         ver = vinfo.get("version", "") if isinstance(vinfo, dict) else str(vinfo)
-        if not re.search(r"\+cu\d", ver):
+        # Handle nested version objects (e.g. CocoaPods: {"version": {"name": "1.0.0", ...}})
+        if isinstance(ver, dict):
+            ver = ver.get("name", "") if isinstance(ver, dict) else str(ver)
+        if isinstance(ver, str) and not re.search(r"\+cu\d", ver):
             yanked = vinfo.get("yanked", False) if isinstance(vinfo, dict) else False
             deprecated = vinfo.get("deprecated", False) if isinstance(vinfo, dict) else False
             if not yanked and not deprecated:
@@ -219,15 +222,91 @@ def _add_cross_eco_edge(
     )
 
 
+def _collect_locked_transitive_deps(
+    locked_pkgs: dict,
+    root_name: str,
+    root_eco: str,
+) -> dict[tuple[str, str], str]:
+    """Walk the lock file's depends_on graph to collect all transitive deps of a root package."""
+    collected: dict[tuple[str, str], str] = {}
+    queue = [root_name]
+    visited_lock = {root_name}
+    while queue:
+        pname = queue.pop(0)
+        entry = locked_pkgs.get(pname, {})
+        pkey = (pname, entry.get("ecosystem", root_eco))
+        ver = entry.get("resolved_version") or entry.get("version", "")
+        if ver:
+            collected[pkey] = ver
+        for dep_name in entry.get("depends_on", {}):
+            if dep_name not in visited_lock and dep_name in locked_pkgs:
+                visited_lock.add(dep_name)
+                queue.append(dep_name)
+    return collected
+
+
 async def _resolve_transitive(
     aggregator: Any,
     resolver: Any,
     packages: list[dict],
     system_info: dict,
     max_depth: int = 10,
+    lock_data: dict | None = None,
+    solver_timeout: int | None = None,
 ) -> dict:
-    visited = set()
-    queue = list(packages)
+    """Resolve packages with optional incremental resolution from existing lock data.
+
+    When lock_data is provided, each root package's resolution hash is compared
+    against the stored hash.  Packages whose hash hasn't changed are pinned to
+    their locked version, skipping the SAT solver for them and their subtrees.
+    Only packages whose resolution context changed go through the full BFS+SAT path.
+    """
+    from backend.core.conflict_resolver import ConflictResolver
+
+    # Pre-resolve unchanged packages from lock data
+    pre_resolved: dict[tuple[str, str], str] = {}  # (name, ecosystem) -> version
+    changed_packages: list[dict] = []
+
+    if lock_data:
+        locked_pkgs = lock_data.get("packages", {})
+        for pkg in packages:
+            key = (pkg["name"], pkg["ecosystem"])
+            locked_entry = locked_pkgs.get(pkg["name"], {})
+            stored_hash = locked_entry.get("resolution_hash", "")
+            current_hash = ConflictResolver.compute_resolution_hash(
+                pkg["name"],
+                pkg["ecosystem"],
+                pkg.get("version_constraint", "*"),
+                pkg.get("dependencies", {}),
+                system_info,
+            )
+            if stored_hash and stored_hash == current_hash:
+                locked_ver = locked_entry.get("resolved_version") or locked_entry.get("version", "")
+                if locked_ver:
+                    pre_resolved[key] = locked_ver
+                    # Also pre-resolve all transitive deps of this root from the lock file
+                    transitive_deps = _collect_locked_transitive_deps(
+                        locked_pkgs, pkg["name"], pkg["ecosystem"]
+                    )
+                    for dep_key, dep_ver in transitive_deps.items():
+                        if dep_key not in pre_resolved:
+                            pre_resolved[dep_key] = dep_ver
+                    continue
+            changed_packages.append(pkg)
+    else:
+        changed_packages = list(packages)
+
+    if not changed_packages:
+        # Everything is unchanged — return lock data as-is
+        return (
+            _lock_data_to_result(lock_data)
+            if lock_data
+            else {"status": "satisfiable", "resolved_packages": {}}
+        )
+
+    # BFS transitive resolution for changed packages only
+    visited: set = set()
+    queue = list(changed_packages)
     all_packages: dict = {}
     depth = 0
     sem = asyncio.Semaphore(3)
@@ -243,6 +322,8 @@ async def _resolve_transitive(
             key = (pkg["name"], pkg["ecosystem"])
             if key in visited:
                 continue
+            if key in pre_resolved:
+                continue
             visited.add(key)
             if key not in all_packages:
                 all_packages[key] = pkg
@@ -255,7 +336,11 @@ async def _resolve_transitive(
                 for dep in dep_data.get("all", []):
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg["ecosystem"])
                     dep_key = (dep.name, dep_ecosystem_val)
-                    if dep_key not in visited and dep_key not in all_packages:
+                    if (
+                        dep_key not in visited
+                        and dep_key not in all_packages
+                        and dep_key not in pre_resolved
+                    ):
                         dep_fetches.append((dep, dep_ecosystem_val, dep_key, pkg))
                     if dep_ecosystem_val != pkg["ecosystem"]:
                         _add_cross_eco_edge(
@@ -266,27 +351,68 @@ async def _resolve_transitive(
                             pkg["ecosystem"],
                             dep_ecosystem_val,
                         )
-            dep_info_results = await asyncio.gather(
-                *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in dep_fetches],
-                return_exceptions=True,
-            )
-            for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
-                dep_fetches, dep_info_results
-            ):
-                if isinstance(dep_info, Exception) or not dep_info:
-                    continue
-                dep_pkg = _build_dep_pkg(
-                    dep, dep_ecosystem_val, dep_info, source_pkg["ecosystem"], source_pkg["name"]
+            if dep_fetches:
+                dep_info_results = await asyncio.gather(
+                    *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in dep_fetches],
+                    return_exceptions=True,
                 )
-                if dep_pkg:
-                    all_packages[dep_key] = dep_pkg
-                    next_round.append(dep_pkg)
+                for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
+                    dep_fetches, dep_info_results
+                ):
+                    if isinstance(dep_info, Exception) or not dep_info:
+                        continue
+                    dep_pkg = _build_dep_pkg(
+                        dep,
+                        dep_ecosystem_val,
+                        dep_info,
+                        source_pkg["ecosystem"],
+                        source_pkg["name"],
+                    )
+                    if dep_pkg:
+                        all_packages[dep_key] = dep_pkg
+                        next_round.append(dep_pkg)
         queue = next_round
+
+    # Resolve with SAT solver for the changed packages
     pkg_list = list(all_packages.values())
-    result = resolver.resolve_dependencies(pkg_list, system_info, prefer_compatibility=True)
-    if "packages" in result and "resolved_packages" not in result:
-        result["resolved_packages"] = result.pop("packages")
+    if pkg_list:
+        result = resolver.resolve_dependencies(
+            pkg_list, system_info, prefer_compatibility=True, solver_timeout=solver_timeout
+        )
+        if "packages" in result and "resolved_packages" not in result:
+            result["resolved_packages"] = result.pop("packages")
+    else:
+        result = {"status": "satisfiable", "resolved_packages": {}}
+
+    # Merge pre-resolved (unchanged) packages into result
+    if pre_resolved:
+        for (name, eco), version in pre_resolved.items():
+            if name not in result.get("resolved_packages", {}):
+                result.setdefault("resolved_packages", {})[name] = {
+                    "version": version,
+                    "ecosystem": eco,
+                }
+
     return result
+
+
+def _lock_data_to_result(lock_data: dict) -> dict:
+    """Convert existing lock data to a resolution result dict."""
+    pkgs = {}
+    for name, info in lock_data.get("packages", {}).items():
+        ver = info.get("resolved_version") or info.get("version", "")
+        if ver:
+            pkgs[name] = {
+                "version": ver,
+                "ecosystem": info.get("ecosystem", "unknown"),
+            }
+    return {
+        "status": "satisfiable",
+        "resolved_packages": pkgs,
+        "dependency_tree": {},
+        "warnings": [],
+        "installation_order": list(pkgs.keys()),
+    }
 
 
 def _extract_cuda_variants(versions_info: list[dict], base_version: str) -> list[dict]:

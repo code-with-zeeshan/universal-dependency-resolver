@@ -290,8 +290,8 @@ class TestParseGoMod:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_mod"})
         assert len(result) == 2
-        assert {"name": "github.com/pkg/errors", "version": "v0.9.1"} in result
-        assert {"name": "golang.org/x/text", "version": "v0.3.0"} in result
+        assert {"name": "github.com/pkg/errors", "version": "0.9.1"} in result
+        assert {"name": "golang.org/x/text", "version": "0.3.0"} in result
 
     def test_skips_lines_without_dot(self, tmp_path):
         p = tmp_path / "go.mod"
@@ -689,8 +689,8 @@ class TestParseSwift:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "swift"})
         assert len(result) == 2
-        assert {"name": "Alamofire", "version": "*"} in result
-        assert {"name": "swift-argument-parser", "version": "*"} in result
+        assert {"name": "Alamofire", "version": "5.0.0"} in result
+        assert {"name": "swift-argument-parser", "version": "1.0.0"} in result
 
     def test_skips_lines_without_package_url(self, tmp_path):
         p = tmp_path / "Package.swift"
@@ -1063,8 +1063,8 @@ class TestParseGoSum:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_sum"})
         assert len(result) == 2
-        assert {"name": "github.com/pkg/errors", "version": "v0.9.1"} in result
-        assert {"name": "golang.org/x/text", "version": "v0.3.7"} in result
+        assert {"name": "github.com/pkg/errors", "version": "0.9.1"} in result
+        assert {"name": "golang.org/x/text", "version": "0.3.7"} in result
 
     def test_skips_go_mod_lines(self, tmp_path):
         p = tmp_path / "go.sum"

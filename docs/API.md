@@ -1468,8 +1468,8 @@ Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json`
 {
   "status": "success",
   "lock_data": {
-    "version": "2.0",
-    "generated_at": "2026-06-28T12:00:00",
+    "version": "2.1",
+    "generated_at": "2026-07-05T12:00:00",
     "resolver": "sat",
     "system": {"os": "Linux 6.2.0", "python": "3.11.5", "cpu": "Intel(R) Xeon(R)", "gpu": "NVIDIA A100", "cuda": "12.1"},
     "manifests": ["requirements.txt"],

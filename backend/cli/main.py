@@ -6,6 +6,7 @@ import os
 
 from backend.settings import ECOSYSTEMS
 
+from .commands.auth import cmd_auth
 from .commands.check import cmd_check
 from .commands.completion import cmd_completion
 from .commands.details import cmd_details
@@ -162,6 +163,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write readable report file (udr-lock-report.txt) alongside lock file",
     )
+    lock_p.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force full re-resolution, ignoring existing lock file cache",
+    )
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
     graph_p.add_argument(
@@ -299,7 +306,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "why",
         help="Explain why a package version was selected — show dependency chain",
     )
-    why_p.add_argument("package", help="Package name to explain")
+    why_p.add_argument("package", nargs="?", help="Package name to explain")
+    why_p.add_argument("--all", "-a", action="store_true", help="Show info for all packages")
     why_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     why_p.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -350,6 +358,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     details_p.add_argument("--json", action="store_true", help="Output as JSON")
 
+    auth_p = sub.add_parser("auth", help="Manage API keys for the API server")
+    auth_sub = auth_p.add_subparsers(dest="auth_action", required=True)
+
+    auth_create = auth_sub.add_parser("create", help="Create a new API key")
+    auth_create.add_argument("--name", help="Human-readable name for this key")
+    auth_create.add_argument(
+        "--role",
+        choices=["read-only", "read-write", "admin"],
+        default="read-only",
+        help="Access role for the key (default: read-only)",
+    )
+    auth_create.add_argument("--description", help="Optional description")
+
+    auth_revoke = auth_sub.add_parser("revoke", help="Revoke an API key")
+    auth_revoke.add_argument("key_id", type=int, help="ID of the key to revoke")
+
+    auth_sub.add_parser("list", help="List all API keys")
+
     return parser
 
 
@@ -386,6 +412,7 @@ def main():
         "diff": cmd_diff,
         "search": cmd_search,
         "details": cmd_details,
+        "auth": cmd_auth,
     }
     dispatch[args.command](args)
 

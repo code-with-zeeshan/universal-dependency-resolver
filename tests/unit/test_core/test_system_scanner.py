@@ -135,8 +135,8 @@ class TestSystemScanner:
         assert memory_info["available"] == 8 * 1024 ** 3
         assert memory_info["used"] == 8 * 1024 ** 3
 
-    @patch("backend.core.system_scanner.GPUtil", create=True)
-    @patch("backend.core.system_scanner.HAS_GPUTIL", True)
+    @patch("backend.core.detectors.gpu.GPUtil", create=True)
+    @patch("backend.core.detectors.gpu.HAS_GPUTIL", True)
     def test_detect_gpu_info_with_gputil(self, mock_gputil_module, scanner):
         mock_gpu = MagicMock()
         mock_gpu.id = 0
@@ -258,7 +258,7 @@ class TestSystemScanner:
 
     def test_fallback_values(self, scanner):
         with patch("backend.core.system_scanner.HAS_PSUTIL", False), \
-             patch("backend.core.system_scanner.HAS_GPUTIL", False), \
+             patch("backend.core.detectors.gpu.HAS_GPUTIL", False), \
              patch.dict("sys.modules", {"cpuinfo": None}), \
              patch("platform.system", return_value="UnknownOS"):
             cpu_info = scanner.detect_cpu_info()

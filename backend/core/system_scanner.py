@@ -11,17 +11,18 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from backend.core.detectors import gpu as gpu_detector
 from backend.core.scanner_models import (
     ContainerType,
     CPUInfo,
     DiskInfo,
-    GPUInfo,
     MemoryInfo,
     NetworkInterface,
     OSType,
@@ -29,33 +30,6 @@ from backend.core.scanner_models import (
     RuntimeInfo,
 )
 from backend.core.utils import hash_system_info
-
-# Third-party imports with fallback
-try:
-    import GPUtil
-
-    HAS_GPUTIL = True
-except Exception:
-    HAS_GPUTIL = False
-
-try:
-    from pynvml import (
-        NVML_TEMPERATURE_GPU,
-        nvmlDeviceGetCount,
-        nvmlDeviceGetHandleByIndex,
-        nvmlDeviceGetMemoryInfo,
-        nvmlDeviceGetName,
-        nvmlDeviceGetTemperature,
-        nvmlDeviceGetUtilizationRates,
-        nvmlInit,
-        nvmlShutdown,
-        nvmlSystemGetCudaDriverVersion,
-        nvmlSystemGetDriverVersion,
-    )
-
-    HAS_PYNVML = True
-except Exception:
-    HAS_PYNVML = False
 
 try:
     import psutil
@@ -101,8 +75,65 @@ class SystemScanner:
         self.scan_packages = scan_packages
         self.deep_scan = deep_scan
         self._cache: dict[str, tuple[Any, datetime]] = {}
-        self._executor = ThreadPoolExecutor(max_workers=10)
+        self._cache_lock = threading.Lock()
+        self._info_lock = asyncio.Lock()
+        max_workers = int(os.environ.get("SCANNER_MAX_WORKERS", "10"))
+        self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self.system_info: dict[str, Any] = {}
+
+    def _run_subprocess(
+        self,
+        cmd: list[str],
+        timeout: int = 10,
+        capture_output: bool = True,
+        text: bool = True,
+    ) -> subprocess.CompletedProcess | None:
+        """Run a subprocess with proper error logging. Returns None on any failure."""
+        try:
+            return subprocess.run(
+                cmd,
+                capture_output=capture_output,
+                text=text,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            logger.debug("Command not found: %s", cmd[0])
+            return None
+        except subprocess.TimeoutExpired:
+            logger.warning("Command timed out (%ss): %s", timeout, " ".join(cmd))
+            return None
+        except PermissionError:
+            logger.debug("Permission denied: %s", " ".join(cmd))
+            return None
+        except Exception as e:
+            logger.warning("Subprocess failed (%s): %s", e, " ".join(cmd))
+            return None
+
+    def _check_output(
+        self,
+        cmd: list[str],
+        timeout: int = 10,
+    ) -> str | None:
+        """Run subprocess and return stdout string. Returns None on failure."""
+        result = self._run_subprocess(cmd, timeout=timeout)
+        if result is None or result.returncode != 0:
+            return None
+        return result.stdout.strip()
+
+    def _safe_read_file(self, path: str | Path) -> str | None:
+        """Read a file and return contents. Returns None on failure."""
+        try:
+            with open(path) as f:
+                return f.read()
+        except FileNotFoundError:
+            logger.debug("File not found: %s", path)
+            return None
+        except PermissionError:
+            logger.debug("Permission denied: %s", path)
+            return None
+        except Exception as e:
+            logger.warning("Failed to read file %s: %s", path, e)
+            return None
 
     async def __aenter__(self):
         """Aenter."""
@@ -131,17 +162,19 @@ class SystemScanner:
         if not self.enable_cache:
             return None
 
-        if key in self._cache:
-            data, timestamp = self._cache[key]
-            if (datetime.now() - timestamp).total_seconds() < self.cache_ttl:
-                return data
-            del self._cache[key]
+        with self._cache_lock:
+            if key in self._cache:
+                data, timestamp = self._cache[key]
+                if (datetime.now() - timestamp).total_seconds() < self.cache_ttl:
+                    return data
+                del self._cache[key]
         return None
 
     def _set_cache(self, key: str, data: Any):
         """Set cache data."""
         if self.enable_cache:
-            self._cache[key] = (data, datetime.now())
+            with self._cache_lock:
+                self._cache[key] = (data, datetime.now())
 
     async def scan_all(self, categories: list[str] | None = None) -> dict[str, Any]:
         """Perform complete or selective system scan."""
@@ -183,27 +216,32 @@ class SystemScanner:
             for category, result in zip(scan_categories.keys(), results):
                 if isinstance(result, Exception):
                     logger.error(f"Error scanning {category}: {result}")
-                    self.system_info[category] = {"error": str(result)}
+                    async with self._info_lock:
+                        self.system_info[category] = {"error": str(result)}
                 else:
-                    self.system_info[category] = result
+                    async with self._info_lock:
+                        self.system_info[category] = result
         else:
             # Sequential scanning
             for category, scanner_func in scan_categories.items():
                 try:
                     result = await self._scan_category_async(category, scanner_func)
-                    self.system_info[category] = result
+                    async with self._info_lock:
+                        self.system_info[category] = result
                 except Exception as e:
                     logger.error(f"Error scanning {category}: {e}")
-                    self.system_info[category] = {"error": str(e)}
+                    async with self._info_lock:
+                        self.system_info[category] = {"error": str(e)}
 
         # Add metadata
-        self.system_info["scan_metadata"] = {
-            "timestamp": datetime.now().isoformat(),
-            "duration": (datetime.now() - start_time).total_seconds(),
-            "categories_scanned": list(scan_categories.keys()),
-            "scanner_version": "2.0.0",
-            "system_hash": hash_system_info(self.system_info),
-        }
+        async with self._info_lock:
+            self.system_info["scan_metadata"] = {
+                "timestamp": datetime.now().isoformat(),
+                "duration": (datetime.now() - start_time).total_seconds(),
+                "categories_scanned": list(scan_categories.keys()),
+                "scanner_version": "2.0.0",
+                "system_hash": hash_system_info(self.system_info),
+            }
 
         return self.system_info
 
@@ -296,45 +334,37 @@ class SystemScanner:
 
         # Fallback to os-release
         elif os.path.exists("/etc/os-release"):
-            try:
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if "=" in line:
-                            key, value = line.strip().split("=", 1)
-                            dist_info[key.lower()] = value.strip('"')
-            except Exception:
-                pass
+            content = self._safe_read_file("/etc/os-release")
+            if content:
+                for line in content.splitlines():
+                    if "=" in line:
+                        key, value = line.strip().split("=", 1)
+                        dist_info[key.lower()] = value.strip('"')
 
         # Additional detection for specific distros
         if os.path.exists("/etc/redhat-release"):
-            try:
-                with open("/etc/redhat-release") as f:
-                    dist_info["redhat_release"] = f.read().strip()
-            except Exception:
-                pass
+            content = self._safe_read_file("/etc/redhat-release")
+            if content:
+                dist_info["redhat_release"] = content.strip()
 
         return dist_info
 
     def _get_kernel_version(self) -> str | None:
         """Get Linux kernel version."""
-        try:
-            return subprocess.check_output(["uname", "-r"]).decode().strip()
-        except Exception:
-            return None
+        return self._check_output(["uname", "-r"])
 
     def _get_libc_version(self) -> dict[str, str] | None:
         """Get libc version."""
-        try:
-            ldd_output = subprocess.check_output(["ldd", "--version"]).decode()
-            version_match = re.search(r"(\d+\.\d+)", ldd_output)
-            if version_match:
-                return {
-                    "version": version_match.group(1),
-                    "type": "glibc" if "GNU" in ldd_output else "unknown",
-                }
+        ldd_output = self._check_output(["ldd", "--version"])
+        if ldd_output is None:
             return None
-        except Exception:
-            return None
+        version_match = re.search(r"(\d+\.\d+)", ldd_output)
+        if version_match:
+            return {
+                "version": version_match.group(1),
+                "type": "glibc" if "GNU" in ldd_output else "unknown",
+            }
+        return None
 
     def _get_windows_edition(self) -> str | None:
         """Get Windows edition."""
@@ -348,37 +378,37 @@ class SystemScanner:
             edition, _ = winreg.QueryValueEx(key, "EditionID")  # type: ignore[attr-defined]
             winreg.CloseKey(key)  # type: ignore[attr-defined]
             return edition
+        except ImportError:
+            logger.debug("winreg not available — not Windows")
+            return None
         except Exception:
+            logger.warning("Failed to read Windows edition", exc_info=True)
             return None
 
     def _get_windows_version(self) -> dict[str, str] | None:
         """Get detailed Windows version."""
-        try:
-            output = subprocess.check_output(
-                ["wmic", "os", "get", "Caption,Version,BuildNumber", "/value"]
-            ).decode()
-            info = {}
-            for line in output.strip().split("\n"):
-                if "=" in line:
-                    key, value = line.split("=", 1)
-                    if key and value:
-                        info[key.lower()] = value.strip()
-            return info
-        except Exception:
+        output = self._check_output(["wmic", "os", "get", "Caption,Version,BuildNumber", "/value"])
+        if output is None:
             return None
+        info = {}
+        for line in output.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                if key and value:
+                    info[key.lower()] = value.strip()
+        return info
 
     def _get_macos_version(self) -> dict[str, str] | None:
         """Get macOS version details."""
-        try:
-            output = subprocess.check_output(["sw_vers"]).decode()
-            info = {}
-            for line in output.strip().split("\n"):
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    info[key.strip().lower().replace(" ", "_")] = value.strip()
-            return info
-        except Exception:
+        output = self._check_output(["sw_vers"])
+        if output is None:
             return None
+        info = {}
+        for line in output.strip().split("\n"):
+            if ":" in line:
+                key, value = line.split(":", 1)
+                info[key.strip().lower().replace(" ", "_")] = value.strip()
+        return info
 
     def detect_cpu_info(self) -> dict[str, Any]:
         """Detect comprehensive CPU information."""
@@ -476,29 +506,22 @@ class SystemScanner:
 
     def _get_cpu_temperature(self) -> float | None:
         """Get CPU temperature."""
-        if not HAS_PSUTIL:
-            return None
-
-        try:
-            temps = psutil.sensors_temperatures()
-            if temps:
-                # Try different sensor names
-                for name in ["coretemp", "cpu_thermal", "k10temp", "zenpower"]:
-                    if name in temps:
-                        return temps[name][0].current
-        except Exception:
-            pass
-
-        # Platform-specific methods
-        if platform.system() == "Darwin":
-            # macOS temperature reading (requires osx-cpu-temp)
+        if HAS_PSUTIL:
             try:
-                output = subprocess.check_output(["osx-cpu-temp"]).decode()
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    for name in ["coretemp", "cpu_thermal", "k10temp", "zenpower"]:
+                        if name in temps:
+                            return temps[name][0].current
+            except Exception as e:
+                logger.debug("psutil sensors_temperatures failed: %s", e)
+
+        if platform.system() == "Darwin":
+            output = self._check_output(["osx-cpu-temp"])
+            if output:
                 temp_match = re.search(r"(\d+\.\d+)", output)
                 if temp_match:
                     return float(temp_match.group(1))
-            except Exception:
-                pass
 
         return None
 
@@ -543,8 +566,8 @@ class SystemScanner:
                 mem_info.swap_used = swap.used
                 mem_info.swap_free = swap.free
                 mem_info.swap_percent = swap.percent
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("psutil swap_memory failed: %s", e)
 
             mem_data = asdict(mem_info)
 
@@ -553,394 +576,54 @@ class SystemScanner:
             mem_data["cached"] = getattr(vmem, "cached", 0)
             mem_data["shared"] = getattr(vmem, "shared", 0)
 
-        else:
-            # Fallback for basic memory info
-            try:
-                if platform.system() == "Linux":
-                    with open("/proc/meminfo") as f:
-                        for line in f:
-                            if line.startswith("MemTotal:"):
-                                mem_data["total"] = int(line.split()[1]) * 1024
-                            elif line.startswith("MemAvailable:"):
-                                mem_data["available"] = int(line.split()[1]) * 1024
-            except Exception:
-                pass
+        # Fallback for basic memory info
+        elif platform.system() == "Linux":
+            content = self._safe_read_file("/proc/meminfo")
+            if content:
+                for line in content.splitlines():
+                    if line.startswith("MemTotal:"):
+                        mem_data["total"] = int(line.split()[1]) * 1024
+                    elif line.startswith("MemAvailable:"):
+                        mem_data["available"] = int(line.split()[1]) * 1024
 
         return mem_data
 
     def detect_gpu_info(self) -> dict[str, Any]:
         """Detect comprehensive GPU information."""
-        gpu_data: dict[str, Any] = {
-            "available": False,
-            "devices": [],
-            "cuda": self._detect_cuda_info(),
-            "opencl": self._detect_opencl_info(),
-            "vulkan": self._detect_vulkan_info(),
-            "metal": self._detect_metal_info() if platform.system() == "Darwin" else None,
-        }
-
-        # NVIDIA GPUs
-        nvidia_gpus = self._detect_nvidia_gpus()
-        gpu_data["devices"].extend(nvidia_gpus)
-
-        # AMD GPUs
-        amd_gpus = self._detect_amd_gpus()
-        gpu_data["devices"].extend(amd_gpus)
-
-        # Intel GPUs
-        intel_gpus = self._detect_intel_gpus()
-        gpu_data["devices"].extend(intel_gpus)
-
-        if gpu_data["devices"]:
-            gpu_data["available"] = True
-
-        return gpu_data
+        return gpu_detector.detect_gpu_info(self)
 
     def _detect_gpus_pynvml(self) -> list[dict[str, Any]]:
-        """Detect NVIDIA GPUs using pynvml."""
-        gpus = []
-        try:
-            nvmlInit()
-            device_count = nvmlDeviceGetCount()
-            driver_version = nvmlSystemGetDriverVersion()
-
-            for i in range(device_count):
-                handle = nvmlDeviceGetHandleByIndex(i)
-                name = nvmlDeviceGetName(handle)
-                memory = nvmlDeviceGetMemoryInfo(handle)
-                utilization = nvmlDeviceGetUtilizationRates(handle)
-                temp = nvmlDeviceGetTemperature(handle, NVML_TEMPERATURE_GPU)
-
-                gpu_info = GPUInfo(
-                    id=i,
-                    name=name,
-                    memory_total=int(memory.total / 1024 / 1024),
-                    memory_free=int(memory.free / 1024 / 1024),
-                    memory_used=int(memory.used / 1024 / 1024),
-                    utilization=utilization.gpu,
-                    temperature=float(temp),
-                    driver_version=driver_version,
-                )
-                gpus.append({**asdict(gpu_info), "vendor": "NVIDIA"})
-
-            nvmlShutdown()
-        except Exception as e:
-            logger.debug(f"pynvml error: {e}")
-
-        return gpus
+        return gpu_detector._detect_gpus_pynvml()
 
     def _detect_nvidia_gpus(self) -> list[dict[str, Any]]:
-        """Detect NVIDIA GPUs."""
-        gpus = []
-
-        # Try pynvml first
-        if HAS_PYNVML:
-            gpus.extend(self._detect_gpus_pynvml())
-
-        # Then GPUtil
-        if not gpus and HAS_GPUTIL:
-            try:
-                gpu_list = GPUtil.getGPUs()
-                for idx, gpu in enumerate(gpu_list):
-                    gpu_info = GPUInfo(
-                        id=gpu.id,
-                        name=gpu.name,
-                        memory_total=int(gpu.memoryTotal),
-                        memory_free=int(gpu.memoryFree),
-                        memory_used=int(gpu.memoryUsed),
-                        utilization=gpu.load * 100,
-                        temperature=gpu.temperature,
-                        driver_version=gpu.driver,
-                    )
-                    gpus.append({**asdict(gpu_info), "vendor": "NVIDIA"})
-            except Exception as e:
-                logger.debug(f"GPUtil error: {e}")
-
-        # Fallback to nvidia-smi
-        if not gpus:
-            gpus.extend(self._parse_nvidia_smi())
-
-        return gpus
+        return gpu_detector._detect_nvidia_gpus(self)
 
     def _parse_nvidia_smi(self) -> list[dict[str, Any]]:
-        """Parse nvidia-smi output."""
-        gpus = []
-        try:
-            # Query specific fields
-            query_cmd = [
-                "nvidia-smi",
-                "--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,driver_version",
-                "--format=csv,noheader,nounits",
-            ]
-            output = subprocess.check_output(query_cmd).decode()
-
-            for line in output.strip().split("\n"):
-                if line:
-                    parts = line.split(", ")
-                    if len(parts) >= 8:
-                        gpu_info = {
-                            "id": int(parts[0]),
-                            "name": parts[1],
-                            "memory_total": int(parts[2]),
-                            "memory_used": int(parts[3]),
-                            "memory_free": int(parts[4]),
-                            "utilization": float(parts[5]),
-                            "temperature": float(parts[6]) if parts[6] != "N/A" else None,
-                            "driver_version": parts[7],
-                            "vendor": "NVIDIA",
-                        }
-
-                        # Get CUDA version
-                        cuda_info = self._detect_cuda_info()
-                        if cuda_info:
-                            gpu_info["cuda_version"] = cuda_info.get("version")
-
-                        gpus.append(gpu_info)
-
-        except subprocess.CalledProcessError:
-            pass
-        except Exception as e:
-            logger.debug(f"nvidia-smi parsing error: {e}")
-
-        return gpus
+        return gpu_detector._parse_nvidia_smi(self)
 
     def _detect_amd_gpus(self) -> list[dict[str, Any]]:
-        """Detect AMD GPUs."""
-        gpus = []
-
-        # Try rocm-smi
-        try:
-            output = subprocess.check_output(["rocm-smi", "--showallinfo"]).decode()
-            # Parse rocm-smi output (simplified)
-            # In production, implement proper parsing
-            if "GPU" in output:
-                gpus.append({"vendor": "AMD", "name": "AMD GPU", "driver": "ROCm"})
-        except Exception:
-            pass
-
-        # Try clinfo for OpenCL devices
-        opencl_devices = self._get_opencl_devices()
-        for device in opencl_devices:
-            if "AMD" in device.get("vendor", ""):
-                gpus.append(device)
-
-        return gpus
+        return gpu_detector._detect_amd_gpus(self)
 
     def _detect_intel_gpus(self) -> list[dict[str, Any]]:
-        """Detect Intel GPUs."""
-        gpus = []
-
-        # Check for Intel integrated graphics
-        if platform.system() == "Linux":
-            try:
-                # Check if i915 driver is loaded
-                lsmod = subprocess.check_output(["lsmod"]).decode()
-                if "i915" in lsmod:
-                    gpus.append(
-                        {
-                            "vendor": "Intel",
-                            "name": "Intel Integrated Graphics",
-                            "driver": "i915",
-                        }
-                    )
-            except Exception:
-                pass
-
-        return gpus
+        return gpu_detector._detect_intel_gpus(self)
 
     def _detect_cuda_info(self) -> dict[str, Any] | None:
-        """Detect CUDA installation and version."""
-        cuda_info: dict[str, Any] = {}
-
-        # Try pynvml first for CUDA driver version
-        if HAS_PYNVML:
-            try:
-                nvmlInit()
-                cuda_driver = nvmlSystemGetCudaDriverVersion()
-                nvmlShutdown()
-                if cuda_driver:
-                    cuda_info["version"] = f"{cuda_driver // 100}.{cuda_driver % 100}"
-                    cuda_info["runtime_version"] = cuda_info["version"]
-            except Exception:
-                pass
-
-        # Fallback to nvcc
-        if not cuda_info.get("version"):
-            try:
-                nvcc_output = subprocess.check_output(["nvcc", "--version"]).decode()
-                version_match = re.search(r"release (\d+\.\d+)", nvcc_output)
-                if version_match:
-                    cuda_info["version"] = version_match.group(1)
-                    cuda_info["nvcc_path"] = shutil.which("nvcc")
-            except Exception:
-                pass
-
-        # Fallback to nvidia-smi for CUDA version
-        if not cuda_info.get("version"):
-            try:
-                smi_output = subprocess.check_output(["nvidia-smi"]).decode()
-                cuda_match = re.search(r"CUDA Version:\s*(\d+\.\d+)", smi_output)
-                if cuda_match:
-                    cuda_info["version"] = cuda_match.group(1)
-                    cuda_info["runtime_version"] = cuda_match.group(1)
-            except Exception:
-                pass
-
-        # Check for cuDNN
-        cudnn_info = self._detect_cudnn_version()
-        if cudnn_info:
-            cuda_info["cudnn"] = cudnn_info
-
-        # Check CUDA paths
-        cuda_paths = [
-            "/usr/local/cuda",
-            "/usr/local/cuda-*",
-            "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\*",
-        ]
-
-        for pattern in cuda_paths:
-            for path in Path("/").glob(pattern.lstrip("/")):
-                if path.exists():
-                    cuda_info["cuda_path"] = str(path)
-                    break
-
-        return cuda_info if cuda_info else None
+        return gpu_detector._detect_cuda_info(self)
 
     def _detect_cudnn_version(self) -> dict[str, str] | None:
-        """Detect cuDNN version."""
-        cudnn_info = {}
-
-        # Check header file
-        header_paths = [
-            "/usr/local/cuda/include/cudnn_version.h",
-            "/usr/include/cudnn_version.h",
-            "/usr/local/include/cudnn_version.h",
-        ]
-
-        for header_path in header_paths:
-            if os.path.exists(header_path):
-                try:
-                    with open(header_path) as f:
-                        content = f.read()
-                        major = re.search(r"#define CUDNN_MAJOR (\d+)", content)
-                        minor = re.search(r"#define CUDNN_MINOR (\d+)", content)
-                        patch = re.search(r"#define CUDNN_PATCHLEVEL (\d+)", content)
-
-                        if major and minor and patch:
-                            cudnn_info["version"] = (
-                                f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}"
-                            )
-                            cudnn_info["header_path"] = header_path
-                            return cudnn_info
-                except Exception:
-                    pass
-
-        # Try ldconfig
-        if platform.system() == "Linux":
-            try:
-                output = subprocess.check_output(["ldconfig", "-p"]).decode()
-                cudnn_match = re.search(r"libcudnn\.so\.(\d+)", output)
-                if cudnn_match:
-                    cudnn_info["version"] = cudnn_match.group(1)
-                    return cudnn_info
-            except Exception:
-                pass
-
-        return None
+        return gpu_detector._detect_cudnn_version(self)
 
     def _detect_opencl_info(self) -> dict[str, Any] | None:
-        """Detect OpenCL support."""
-        opencl_info: dict[str, Any] = {
-            "available": False,
-            "version": None,
-            "devices": [],
-        }
-
-        try:
-            # Try clinfo
-            output = subprocess.check_output(["clinfo"]).decode()
-            if "Number of platforms" in output:
-                opencl_info["available"] = True
-
-                # Extract version
-                version_match = re.search(r"OpenCL (\d+\.\d+)", output)
-                if version_match:
-                    opencl_info["version"] = version_match.group(1)
-
-                # Get device count
-                device_match = re.search(r"Number of devices\s+(\d+)", output)
-                if device_match:
-                    opencl_info["device_count"] = int(device_match.group(1))
-
-        except Exception:
-            pass
-
-        return opencl_info if opencl_info["available"] else None
+        return gpu_detector._detect_opencl_info(self)
 
     def _get_opencl_devices(self) -> list[dict[str, Any]]:
-        """Get OpenCL device list by parsing clinfo output."""
-        devices = []
-        try:
-            import subprocess
-
-            result = subprocess.run(
-                ["clinfo", "--raw"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                for line in result.stdout.split("\n"):
-                    if "=" in line:
-                        key, val = line.split("=", 1)
-                        devices.append({"key": key.strip(), "value": val.strip()})
-        except Exception:
-            pass
-        return devices
+        return gpu_detector._get_opencl_devices(self)
 
     def _detect_vulkan_info(self) -> dict[str, Any] | None:
-        """Detect Vulkan support."""
-        vulkan_info: dict[str, Any] = {"available": False, "version": None}
-
-        try:
-            # Try vulkaninfo
-            output = subprocess.check_output(["vulkaninfo", "--summary"]).decode()
-            if "Vulkan Instance Version" in output:
-                vulkan_info["available"] = True
-
-                # Extract version
-                version_match = re.search(r"Vulkan Instance Version:\s*(\d+\.\d+\.\d+)", output)
-                if version_match:
-                    vulkan_info["version"] = version_match.group(1)
-
-        except Exception:
-            pass
-
-        return vulkan_info if vulkan_info["available"] else None
+        return gpu_detector._detect_vulkan_info(self)
 
     def _detect_metal_info(self) -> dict[str, Any] | None:
-        """Detect Metal support (macOS)."""
-        metal_info = {"available": False}
-
-        try:
-            # Check if Metal framework exists
-            framework_path = "/System/Library/Frameworks/Metal.framework"
-            if os.path.exists(framework_path):
-                metal_info["available"] = True
-
-                # Get GPU info via system_profiler
-                output = subprocess.check_output(
-                    ["system_profiler", "SPDisplaysDataType", "-json"]
-                ).decode()
-
-                json.loads(output)
-                # Parse GPU info from system_profiler
-                # Implementation depends on output structure
-
-        except Exception:
-            pass
-
-        return metal_info if metal_info["available"] else None
+        return gpu_detector._detect_metal_info(self)
 
     def detect_disk_info(self) -> dict[str, Any]:
         """Detect disk information."""
@@ -962,8 +645,8 @@ class SystemScanner:
                         percent=usage.percent,
                     )
                     disk_data["partitions"].append(asdict(disk_info))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Detection failed", exc_info=_e)
 
             # Get disk I/O counters
             try:
@@ -977,8 +660,8 @@ class SystemScanner:
                         "read_time": counters.read_time,
                         "write_time": counters.write_time,
                     }
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # Get physical disk info
         disk_data["physical_disks"] = self._detect_physical_disks()
@@ -1007,8 +690,8 @@ class SystemScanner:
                             "rotational": device.get("rota") == "1",
                         }
                         disks.append(disk_info)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Windows":
             # Use wmic
@@ -1036,8 +719,8 @@ class SystemScanner:
                                     "serial": parts[3],
                                 }
                             )
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Darwin":
             # Use diskutil
@@ -1045,8 +728,8 @@ class SystemScanner:
                 output = subprocess.check_output(["diskutil", "list"]).decode()
                 # Parse diskutil output
                 # Implementation depends on output format
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return disks
 
@@ -1097,8 +780,8 @@ class SystemScanner:
                         "pid": conn.pid,
                     }
                     network_data["connections"].append(conn_info)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
             # Network I/O stats
             try:
@@ -1113,8 +796,8 @@ class SystemScanner:
                     "dropin": io_counters.dropin,
                     "dropout": io_counters.dropout,
                 }
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # Additional network info
         network_data["hostname"] = socket.gethostname()
@@ -1138,8 +821,8 @@ class SystemScanner:
                     for line in f:
                         if line.startswith("nameserver"):
                             dns_servers.append(line.split()[1])
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Windows":
             try:
@@ -1154,8 +837,8 @@ class SystemScanner:
                             dns = parts[1].strip()
                             if dns and dns != "None":
                                 dns_servers.append(dns)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Darwin":
             try:
@@ -1166,8 +849,8 @@ class SystemScanner:
                         parts = line.split(":")
                         if len(parts) > 1:
                             dns_servers.append(parts[1].strip())
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return list(set(dns_servers))  # Remove duplicates
 
@@ -1179,8 +862,8 @@ class SystemScanner:
                 match = re.search(r"default via (\S+)", output)
                 if match:
                     return match.group(1)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Windows":
             try:
@@ -1192,8 +875,8 @@ class SystemScanner:
                         parts = line.split()
                         if len(parts) >= 3:
                             return parts[2]
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Darwin":
             try:
@@ -1201,8 +884,8 @@ class SystemScanner:
                 match = re.search(r"gateway: (\S+)", output)
                 if match:
                     return match.group(1)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return None
 
@@ -1232,8 +915,8 @@ class SystemScanner:
                     if b"container=lxc" in f.read():
                         container_data["type"] = ContainerType.LXC.value
                         container_data["detected"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # WSL detection
         if platform.system() == "Linux":
@@ -1243,8 +926,8 @@ class SystemScanner:
                         container_data["type"] = ContainerType.WSL.value
                         container_data["detected"] = True
                         container_data["details"]["wsl_version"] = self._get_wsl_version()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # VM detection
         if not container_data["detected"]:
@@ -1266,8 +949,8 @@ class SystemScanner:
         try:
             with open("/proc/self/cgroup") as f:
                 return "docker" in f.read()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return False
 
@@ -1284,8 +967,8 @@ class SystemScanner:
                         if len(parts) > 1:
                             info["container_id"] = parts[-1][:12]
                             break
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         # Get Docker version (if docker command available)
         try:
@@ -1293,8 +976,8 @@ class SystemScanner:
                 ["docker", "version", "--format", "{{.Server.Version}}"]
             ).decode()
             info["docker_version"] = output.strip()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return info
 
@@ -1308,8 +991,8 @@ class SystemScanner:
                     return "2"
                 if "Microsoft" in content:
                     return "1"
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return None
 
@@ -1325,8 +1008,8 @@ class SystemScanner:
                 if output and output != "none":
                     vm_info["type"] = output
                     return vm_info
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
             # Check DMI
             try:
@@ -1347,8 +1030,8 @@ class SystemScanner:
 
                         if vm_info:
                             return vm_info
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # Check CPU features
         try:
@@ -1359,8 +1042,8 @@ class SystemScanner:
             if "hypervisor" in flags:
                 vm_info["detected_by"] = "cpu_flags"
                 return vm_info
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return vm_info if vm_info else None
 
@@ -1468,7 +1151,8 @@ class SystemScanner:
                     "npm_path": shutil.which("npm"),
                 },
             )
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_java(self) -> RuntimeInfo | None:
@@ -1501,7 +1185,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_dotnet(self) -> RuntimeInfo | None:
@@ -1522,7 +1207,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _parse_dotnet_sdks(self, dotnet_output: str) -> list[str]:
@@ -1578,7 +1264,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_go(self) -> RuntimeInfo | None:
@@ -1598,7 +1285,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_rust(self) -> RuntimeInfo | None:
@@ -1614,8 +1302,8 @@ class SystemScanner:
                     cargo_match = re.search(r"cargo (\d+\.\d+\.\d+)", cargo_output)
                     if cargo_match:
                         cargo_version = cargo_match.group(1)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Detection failed", exc_info=_e)
 
                 return RuntimeInfo(
                     name="Rust",
@@ -1629,7 +1317,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_php(self) -> RuntimeInfo | None:
@@ -1647,7 +1336,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_swift(self) -> RuntimeInfo | None:
@@ -1662,7 +1352,8 @@ class SystemScanner:
                     path=shutil.which("swift"),
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_kotlin(self) -> RuntimeInfo | None:
@@ -1684,7 +1375,8 @@ class SystemScanner:
                     path=shutil.which("kotlin") or shutil.which("kotlinc"),
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_dart(self) -> RuntimeInfo | None:
@@ -1702,7 +1394,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_elixir(self) -> RuntimeInfo | None:
@@ -1721,7 +1414,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_haskell(self) -> RuntimeInfo | None:
@@ -1740,7 +1434,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_gcc(self) -> RuntimeInfo | None:
@@ -1760,7 +1455,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _get_gcc_target(self) -> str | None:
@@ -1768,7 +1464,8 @@ class SystemScanner:
         try:
             output = subprocess.check_output(["gcc", "-dumpmachine"]).decode().strip()
             return output
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _detect_clang(self) -> RuntimeInfo | None:
@@ -1788,7 +1485,8 @@ class SystemScanner:
                     },
                 )
             return None
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _get_llvm_version(self) -> str | None:
@@ -1796,7 +1494,8 @@ class SystemScanner:
         try:
             output = subprocess.check_output(["llvm-config", "--version"]).decode().strip()
             return output
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def detect_installed_packages(self) -> dict[str, list[Any]]:
@@ -1853,8 +1552,8 @@ class SystemScanner:
                             location=dist.location,
                         )
                     )
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         # Fallback to pip list
         if not packages:
@@ -1868,8 +1567,8 @@ class SystemScanner:
                     packages.append(
                         PackageInfo(name=pkg["name"], version=pkg["version"], manager="pip")
                     )
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -1935,8 +1634,8 @@ class SystemScanner:
                             metadata={"scope": "global"},
                         )
                     )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         # Local packages (if in a project directory)
         if os.path.exists("package.json"):
@@ -1954,8 +1653,8 @@ class SystemScanner:
                                 metadata={"scope": "local"},
                             )
                         )
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2003,8 +1702,8 @@ class SystemScanner:
                     parts = line.split("\t")
                     if len(parts) >= 3 and "installed" in parts[2]:
                         packages.append(PackageInfo(name=parts[0], version=parts[1], manager="apt"))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages[:100] if not self.deep_scan else packages  # Limit if not deep scan
 
@@ -2022,8 +1721,8 @@ class SystemScanner:
                     parts = line.split("\t")
                     if len(parts) >= 2:
                         packages.append(PackageInfo(name=parts[0], version=parts[1], manager="rpm"))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages[:100] if not self.deep_scan else packages
 
@@ -2041,8 +1740,8 @@ class SystemScanner:
                         packages.append(
                             PackageInfo(name=parts[0], version=parts[1], manager="pacman")
                         )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages[:100] if not self.deep_scan else packages
 
@@ -2058,8 +1757,8 @@ class SystemScanner:
                 parts = line.split()
                 if len(parts) >= 2:
                     packages.append(PackageInfo(name=parts[0], version=parts[1], manager="snap"))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2079,8 +1778,8 @@ class SystemScanner:
                         packages.append(
                             PackageInfo(name=parts[0], version=parts[1], manager="flatpak")
                         )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2098,8 +1797,8 @@ class SystemScanner:
                         packages.append(
                             PackageInfo(name=parts[0], version=parts[1], manager="homebrew")
                         )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2117,8 +1816,8 @@ class SystemScanner:
                         packages.append(
                             PackageInfo(name=parts[0], version=parts[1], manager="chocolatey")
                         )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2142,8 +1841,8 @@ class SystemScanner:
                                 else nv_parts[1]
                             )
                             packages.append(PackageInfo(name=name, version=version, manager="apk"))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
         return packages[:100] if not self.deep_scan else packages
 
     def _get_ruby_gems(self) -> list[PackageInfo]:
@@ -2164,8 +1863,8 @@ class SystemScanner:
                                 manager="gem",
                             )
                         )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages[:50] if not self.deep_scan else packages
 
@@ -2186,8 +1885,8 @@ class SystemScanner:
                             name=match.group(1), version=match.group(2), manager="cargo"
                         )
                         packages.append(current_package)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
 
         return packages
 
@@ -2216,8 +1915,8 @@ class SystemScanner:
                 )
                 firewall_info["type"] = "iptables"
                 firewall_info["enabled"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
             # Check ufw
             try:
@@ -2225,8 +1924,8 @@ class SystemScanner:
                 if "Status: active" in output:
                     firewall_info["type"] = "ufw"
                     firewall_info["enabled"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
             # Check firewalld
             try:
@@ -2236,8 +1935,8 @@ class SystemScanner:
                 if "running" in output:
                     firewall_info["type"] = "firewalld"
                     firewall_info["enabled"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Windows":
             # Check Windows Firewall
@@ -2248,8 +1947,8 @@ class SystemScanner:
                 if "ON" in output:
                     firewall_info["type"] = "windows_firewall"
                     firewall_info["enabled"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Darwin":
             # Check macOS firewall
@@ -2265,8 +1964,8 @@ class SystemScanner:
                 if "1" in output or "2" in output:
                     firewall_info["type"] = "macos_firewall"
                     firewall_info["enabled"] = True
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return firewall_info
 
@@ -2293,8 +1992,8 @@ class SystemScanner:
                     line = line.strip()
                     if line and line != "displayName":
                         av_list.append({"name": line, "type": "antivirus"})
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Linux":
             # Check for common Linux AV
@@ -2323,7 +2022,8 @@ class SystemScanner:
                     status["policy_version"] = line.split(":")[1].strip()
 
             return status
-        except Exception:
+        except Exception as _e:
+            logger.debug("Detection failed", exc_info=_e)
             return None
 
     def _check_system_updates(self) -> dict[str, Any]:
@@ -2344,8 +2044,8 @@ class SystemScanner:
                     if count > 0:
                         updates["available"] = True
                         updates["count"] = count
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("Detection failed", exc_info=_e)
 
         elif platform.system() == "Windows":
             # Windows Update check would require COM interface
@@ -2360,8 +2060,8 @@ class SystemScanner:
                     updates["available"] = True
                     # Count updates
                     updates["count"] = output.count("*")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Detection failed", exc_info=_e)
 
         return updates
 

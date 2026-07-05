@@ -73,9 +73,7 @@ def _render_dep_table(
 
     if direct:
         source = packages[target].get("source", "manifest")
-        console.print(
-            f"\n  [green]Direct dependency[/green] — declared in [cyan]{source}[/cyan]"
-        )
+        console.print(f"\n  [green]Direct dependency[/green] — declared in [cyan]{source}[/cyan]")
         if constraint and constraint != "*":
             console.print(f"  Constraint: [dim]{constraint}[/dim]")
     else:
@@ -93,7 +91,9 @@ def _render_dep_table(
             rev_table.add_row(parent_name, parent_ver, dep_constraint)
         console.print(rev_table)
     elif not direct:
-        console.print("\n  [dim]No reverse dependency info — orphaned or missing depends_on data[/dim]")
+        console.print(
+            "\n  [dim]No reverse dependency info — orphaned or missing depends_on data[/dim]"
+        )
 
     # Dependency chain
     if not direct:
@@ -108,7 +108,11 @@ def _render_dep_table(
             chain_table.add_column("Version")
             chain_table.add_column("Required By")
             for i, (pname, pver, req_constraint, is_direct) in enumerate(chain, 1):
-                label = "[green]manifest (direct)[/green]" if is_direct else f"parent ({req_constraint})"
+                label = (
+                    "[green]manifest (direct)[/green]"
+                    if is_direct
+                    else f"parent ({req_constraint})"
+                )
                 chain_table.add_row(str(i), pname, pver, label)
             chain_table.add_row(
                 str(len(chain) + 1),
@@ -130,6 +134,39 @@ def _render_dep_table(
         console.print(f"    Pulled in by: [cyan]{dep_list[0][0]}[/cyan]")
 
 
+def _explain_package_json(
+    packages: dict,
+    rev_deps: dict,
+    target: str,
+) -> dict:
+    """Build JSON explanation for a single package."""
+    info = packages.get(target, {})
+    ver = info.get("resolved_version")
+    eco = info.get("ecosystem", "?")
+    direct = info.get("direct", False)
+    constraint = info.get("original_constraint", "*")
+
+    data: dict = {
+        "package": target,
+        "version": ver,
+        "ecosystem": eco,
+        "direct": direct,
+        "original_constraint": constraint,
+        "depended_by": [
+            {"package": p, "version": v, "constraint": c}
+            for p, v, c in sorted(rev_deps.get(target, []))
+        ],
+        "dependency_chain": [],
+    }
+    if not direct:
+        chain = _find_dep_chain(packages, rev_deps, target)
+        if chain:
+            data["dependency_chain"] = [
+                {"package": p, "version": v, "constraint": c, "direct": d} for p, v, c, d in chain
+            ]
+    return data
+
+
 def cmd_why(args):
     """Cmd why."""
     lock_path = Path(args.directory).resolve() / "udr.lock"
@@ -138,9 +175,38 @@ def cmd_why(args):
         sys.exit(1)
 
     lock_data = _read_lock_file(lock_path)
-
     packages = lock_data.get("packages", {})
-    target = args.package
+    rev_deps = _build_reverse_deps(packages)
+
+    all_flag = getattr(args, "all", False)
+    target = getattr(args, "package", None)
+
+    if all_flag:
+        if getattr(args, "json", False):
+            results: list[dict] = []
+            for pkg_name in sorted(packages):
+                results.append(_explain_package_json(packages, rev_deps, pkg_name))
+            json.dump(results, sys.stdout, indent=2, default=str)
+            print()
+            return
+
+        for pkg_name in sorted(packages):
+            info = packages[pkg_name]
+            ver = info.get("resolved_version")
+            eco = info.get("ecosystem", "?")
+            direct = info.get("direct", False)
+            constraint = info.get("original_constraint", "*")
+            if not ver:
+                continue
+            if pkg_name != sorted(packages)[0]:
+                console.print()
+            _render_dep_table(packages, rev_deps, pkg_name, ver, eco, direct, constraint)
+        return
+
+    if not target:
+        console.print("[red]Specify a package name or use --all to show all packages[/red]")
+        sys.exit(1)
+
     if target not in packages:
         console.print(f"[red]Package '{target}' not found in lock file[/red]")
         console.print(f"  Available packages: {', '.join(sorted(packages)[:20])}")
@@ -158,28 +224,8 @@ def cmd_why(args):
         console.print(f"[yellow]{target} has no resolved version[/yellow]")
         return
 
-    rev_deps = _build_reverse_deps(packages)
-
     if getattr(args, "json", False):
-        data = {
-            "package": target,
-            "version": ver,
-            "ecosystem": eco,
-            "direct": direct,
-            "original_constraint": constraint,
-            "depended_by": [
-                {"package": p, "version": v, "constraint": c}
-                for p, v, c in sorted(rev_deps.get(target, []))
-            ],
-            "dependency_chain": [],
-        }
-        if not direct:
-            chain = _find_dep_chain(packages, rev_deps, target)
-            if chain:
-                data["dependency_chain"] = [
-                    {"package": p, "version": v, "constraint": c, "direct": d}
-                    for p, v, c, d in chain
-                ]
+        data = _explain_package_json(packages, rev_deps, target)
         json.dump(data, sys.stdout, indent=2, default=str)
         print()
         return

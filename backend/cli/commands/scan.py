@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import asyncio
 import sys
 
 from rich.panel import Panel
@@ -19,13 +20,17 @@ def cmd_scan(args):
         sys.exit(1)
 
 
+async def _async_download(url: str, branch: str):
+    from backend.orchestrator import _download_github_repo
+
+    return await _download_github_repo(url, branch)
+
+
 def _cmd_scan_github(args):
     """Cmd scan github."""
     try:
-        from backend.core.utils import download_github_repo as _download_github_repo
-
         console.print(f"[bold]Scanning GitHub repo:[/bold] [cyan]{args.github}[/cyan]")
-        repo_path = _download_github_repo(args.github, args.branch)
+        repo_path = asyncio.run(_async_download(args.github, args.branch))
         console.print(f"  Cloned to: [dim]{repo_path}[/dim]")
 
         args.directory = str(repo_path)
