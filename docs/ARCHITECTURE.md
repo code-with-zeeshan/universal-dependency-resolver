@@ -72,7 +72,7 @@ graph TB
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 20 files across 16 commands:
+Modular CLI package with 21 files across 17 commands:
 
 ```
 backend/cli/
@@ -91,6 +91,7 @@ backend/cli/
     ├── update.py      # cmd_update — re-resolve single package
     ├── install.py     # cmd_install, cmd_restore — restore from lock
     ├── list_ecosystems.py  # cmd_list_ecosystems
+    ├── auth.py        # cmd_auth — API key management
     ├── completion.py  # cmd_completion — shell completion
     ├── why.py         # cmd_why — explain version selection
     ├── outdated.py    # cmd_outdated — show outdated packages

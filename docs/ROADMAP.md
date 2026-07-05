@@ -7,10 +7,10 @@
 | Supported ecosystems | 20 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, docs, custom_db) |
 | Resolution engine | Z3 SAT solver with SCC batch partitioning, CUDA-aware conflict resolution, backtracking fallback, version clustering |
 | In-place manifest update | 13/20 ecosystems: `package.json` (npm), `pubspec.yaml` (pub), `build.gradle`/`.kts` (gradle), `Package.swift` (swift), `mix.exs` (hex), `Podfile` (cocoapods), `.gemspec` (rubygems), `requirements.txt` (pypi), `apt-packages.txt` (apt), `apk-packages.txt` (apk) |
-| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `info`, `export` |
+| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth` |
 | Lock file | `udr.lock` |
-| Export formats | requirements.txt, pip, conda, npm, json |
-| Tests | 1538 unit + 10 e2e CLI + 5 e2e JSON + 33 comprehensive + 12 problem-statement |
+| Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
+| Tests | 1558 unit + 10 e2e CLI + 5 e2e JSON + 33 comprehensive + 12 problem-statement |
 
 ---
 

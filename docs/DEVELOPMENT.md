@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **1538+ unit tests** + **33 comprehensive** + **10 CLI e2e** + **5 JSON compliance** + **12 problem-statement**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **1558+ unit tests** + **33 comprehensive** + **10 CLI e2e** + **5 JSON compliance** + **12 problem-statement**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 
@@ -59,7 +59,7 @@ ruff format backend/
 backend/
 ├── api/               # FastAPI routes, middleware, auth, schemas
 │   └── routes/        # packages.py, system.py, auth.py, scan.py, lock.py
-├── cli/               # CLI package (14 modules, 1 per command)
+├── cli/               # CLI package (17 modules, 1 per command)
 │   ├── main.py        # Parser setup + dispatch
 │   ├── shared.py      # Shared helpers (parse, resolve, output)
 │   └── commands/      # One file per command (serve, check, lock, resolve, …)

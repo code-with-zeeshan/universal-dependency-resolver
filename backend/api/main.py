@@ -33,6 +33,7 @@ except ImportError:
     PROMETHEUS_AVAILABLE = False
 
 # Use absolute imports
+from backend import __version__
 from backend.api.dependencies import limiter
 from backend.api.middleware import setup_middleware
 from backend.api.routes import (
@@ -312,7 +313,7 @@ async def root(request: Request) -> dict:
     """Get API information and available endpoints."""
     return {
         "name": "Universal Dependency Resolver API",
-        "version": "1.0.0",
+        "version": __version__,
         "documentation": {"openapi": "/api/v1/docs", "redoc": "/api/v1/redoc"},
         "endpoints": {
             "health": "/api/v1/health",
@@ -345,7 +346,7 @@ async def health_check(request: Request) -> dict:
     health_status: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "version": "1.0.0",
+        "version": __version__,
         "checks": {},
     }
 

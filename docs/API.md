@@ -131,7 +131,7 @@ Root endpoint — returns API metadata and links.
 ```json
 {
   "name": "Universal Dependency Resolver API",
-  "version": "1.0.0",
+  "version": "1.3.2",
   "documentation": {
     "openapi": "/api/v1/docs",
     "redoc": "/api/v1/redoc"
@@ -167,7 +167,7 @@ Health check — verifies database connection, Redis (if configured), and extern
 {
   "status": "healthy",
   "timestamp": "2026-06-28T12:00:00",
-  "version": "1.0.0",
+  "version": "1.3.2",
   "checks": {
     "database": {"status": "healthy"},
     "redis": {"status": "healthy"},
@@ -1074,7 +1074,7 @@ Get known compatibility information for a package.
 
 ### `GET /api/v1/packages/ecosystems`
 
-Get list of all 13 supported package ecosystems with capabilities.
+Get list of all 20 supported package ecosystems with capabilities.
 
 **Rate limit:** 60/minute  
 **Auth:** Yes (anonymous in local mode)
@@ -1094,7 +1094,7 @@ Get list of all 13 supported package ecosystems with capabilities.
       "supports_dependencies": true
     }
   },
-  "total": 13
+  "total": 20
 }
 ```
 
@@ -1116,6 +1116,12 @@ Get list of all 13 supported package ecosystems with capabilities.
 | `apt` | System | apt/apt-get |
 | `apk` | System | apk |
 | `pub` | Dart/Flutter | dart pub |
+| `gradle` | Java/Kotlin | gradle |
+| `swift` | Swift | swift |
+| `hex` | Elixir | mix |
+| `haskell` | Haskell | cabal/stack |
+| `docs` | Documentation | docs |
+| `custom_db` | Custom | custom |
 
 ---
 

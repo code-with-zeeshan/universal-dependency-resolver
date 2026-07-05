@@ -447,7 +447,7 @@ Single-page app with a collapsible icon sidebar:
 
 ## 11. Features in Detail
 
-### 18 supported ecosystems
+### 20 supported ecosystems
 
 | Ecosystem | Language | Registry | Client |
 |---|---|---|---|
@@ -469,6 +469,8 @@ Single-page app with a collapsible icon sidebar:
 | Swift | Swift | swiftpackageindex.com | `swift_client.py` |
 | Hex | Elixir | hex.pm | `hex_client.py` |
 | Haskell | Haskell | hackage.haskell.org | `haskell_client.py` |
+| Docs DB | Documentation | Internal | `docs_client.py` |
+| Custom DB | Custom | Internal | `custom_client.py` |
 
 ### SAT-solver resolution
 
@@ -494,7 +496,7 @@ Detects and adapts to your environment:
 
 Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when an NVIDIA GPU is detected. Use `--cuda` flag to override on CPU-only machines.
 
-### 12 export formats
+### 15 export formats
 
 | Format | Description |
 |---|---|
@@ -510,6 +512,9 @@ Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when an NVIDIA GP
 | `CMakeLists.txt` | CMake dependencies |
 | `install.sh` | Shell install script |
 | `install.bat` | Windows batch install script |
+| `Gemfile` | Ruby bundler format |
+| `composer.json` | PHP composer format |
+| `go.mod` | Go module format |
 
 ### Lock file
 
