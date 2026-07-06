@@ -95,7 +95,7 @@ dev = [
 ]
 postgres = [
     "psycopg2-binary>=2.9.9,<3",
-    "redis>=5.0.1,<6",
+    "redis>=5.0.1,<9",
     "celery>=5.3.4,<6",
     "aiocache>=0.12.2,<1",
 ]
@@ -119,7 +119,7 @@ all = [
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",
     "sqlalchemy[asyncio]>=2.0.23,<3",
-    "redis[hiredis]>=5.0,<6",
+    "redis[hiredis]>=5.0,<9",
     "celery[redis]>=5.3,<6",
     "flower>=2.0,<3",
     "opentelemetry-api>=1.22,<2",
