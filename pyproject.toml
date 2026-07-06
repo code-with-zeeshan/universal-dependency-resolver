@@ -107,7 +107,7 @@ monitoring = [
     "opentelemetry-exporter-otlp-proto-http>=1.22,<2",
     "opentelemetry-exporter-otlp-proto-grpc>=1.22,<2",
     "prometheus-fastapi-instrumentator>=6.1,<7",
-    "sentry-sdk[fastapi]>=1.39,<2",
+    "sentry-sdk[fastapi]>=1.39,<3",
     "python-socketio>=5.11,<6",
     "prometheus-client>=0.19,<1",
 ]
@@ -129,7 +129,7 @@ all = [
     "opentelemetry-instrumentation-sqlalchemy>=0.43b0,<1",
     "opentelemetry-instrumentation-httpx>=0.43b0,<1",
     "opentelemetry-exporter-otlp-proto-http>=1.22,<2",
-    "sentry-sdk[fastapi]>=1.39,<2",
+    "sentry-sdk[fastapi]>=1.39,<3",
     "python-socketio>=5.11,<6",
     "prometheus-client>=0.19,<1",
 ]
