@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,27 @@ from ..shared import (
     console,
     err_console,
 )
+
+
+def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[str, dict]]:
+    """Parse ecosystem lock files (package-lock.json, yarn.lock) and return lock tree.
+
+    Returns {ecosystem: {package_name: {version, dependencies: {dep_name: constraint}}}}
+    """
+    from backend.manifest_detector import ManifestDetector
+
+    tree: dict[str, dict[str, dict]] = {}
+    for m in manifests:
+        fname = m["filename"]
+        eco = m["ecosystem"]
+        mpath = directory / m["path"] if m["path"].startswith(str(directory)) else Path(m["path"])
+        if not mpath.is_file():
+            continue
+        if fname == "package-lock.json" and eco == "npm":
+            parsed = ManifestDetector.parse_package_lock_tree(str(mpath))
+            if parsed:
+                tree[eco] = parsed
+    return tree
 
 
 def cmd_lock(args):
@@ -60,7 +82,7 @@ def cmd_lock(args):
             console=err_console,
         ) as p:
             p.add_task("detect", total=None)
-            manifests = detector.detect()
+            manifests = detector.detect(include_dev=getattr(args, "include_dev", False))
 
         if not manifests:
             console.print(f"[red]No dependency manifests found in {directory}[/red]")
@@ -271,6 +293,7 @@ def cmd_lock(args):
                 console=err_console,
             ) as p:
                 p.add_task("SAT solver", total=None)
+                lock_tree = _build_lock_tree(manifests, directory)
                 resolved = await _run_resolution(
                     aggregator,
                     resolver,
@@ -279,6 +302,9 @@ def cmd_lock(args):
                     package_details,
                     interactive=args.interactive,
                     lock_data=existing_lock,
+                    timeout=getattr(args, "timeout", None)
+                    or int(os.environ.get("SOLVER_TIMEOUT", 120)),
+                    lock_tree_data=lock_tree if lock_tree else None,
                 )
 
             sat_pkgs = resolved.get("resolved_packages", {})

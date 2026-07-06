@@ -253,6 +253,7 @@ async def _resolve_transitive(
     max_depth: int = 10,
     lock_data: dict | None = None,
     solver_timeout: int | None = None,
+    lock_tree_data: dict[str, dict[str, dict]] | None = None,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -260,8 +261,19 @@ async def _resolve_transitive(
     against the stored hash.  Packages whose hash hasn't changed are pinned to
     their locked version, skipping the SAT solver for them and their subtrees.
     Only packages whose resolution context changed go through the full BFS+SAT path.
+
+    When lock_tree_data is provided (from e.g. package-lock.json), the BFS uses
+    it to resolve transitive deps without making API calls for locked packages.
+    Format: {ecosystem: {package_name: {version, dependencies: {dep_name: constraint}}}}
     """
     from backend.core.conflict_resolver import ConflictResolver
+
+    # Build a lookup: (name, ecosystem) -> {version, dependencies} from lock_tree_data
+    lock_tree_lookup: dict[tuple[str, str], dict] = {}
+    if lock_tree_data:
+        for eco, pkgs in lock_tree_data.items():
+            for name, info in pkgs.items():
+                lock_tree_lookup[(name, eco)] = info
 
     # Pre-resolve unchanged packages from lock data
     pre_resolved: dict[tuple[str, str], str] = {}  # (name, ecosystem) -> version
@@ -309,9 +321,27 @@ async def _resolve_transitive(
     queue = list(changed_packages)
     all_packages: dict = {}
     depth = 0
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(10)
 
     async def _fetch_with_sem(name: str, ecosystem: str) -> dict | None:
+        # Check lock tree first — skip API call if already in lock file
+        lk = lock_tree_lookup.get((name, ecosystem))
+        if lk is not None:
+            deps: dict[str, list] = {"all": []}
+            for dep_name, dep_ver in lk.get("dependencies", {}).items():
+                deps["all"].append(
+                    type(
+                        "_Dep",
+                        (),
+                        {"name": dep_name, "version_spec": dep_ver, "ecosystem": ecosystem},
+                    )()
+                )
+            return {
+                "name": name,
+                "version": lk.get("version", "0.0.0"),
+                "versions": [{"version": lk.get("version", "0.0.0")}],
+                "dependencies": {ecosystem: deps},
+            }
         async with sem:
             return await _fetch_dep_info(aggregator, name, ecosystem)
 
@@ -373,11 +403,24 @@ async def _resolve_transitive(
                         next_round.append(dep_pkg)
         queue = next_round
 
-    # Resolve with SAT solver for the changed packages
-    pkg_list = list(all_packages.values())
-    if pkg_list:
+    # Pin any package with an exact version constraint (e.g. from lock files)
+    # before sending to the SAT solver — avoids solver blow-up for huge lock files
+    # like Gemfile.lock with 200+ packages.
+    sat_packages = []
+    for pkg in list(all_packages.values()):
+        vc = (pkg.get("version_constraint") or "").strip()
+        if vc.startswith("==") or re.match(r"^\d+\.", vc):
+            ver = vc.lstrip("= ").strip()
+            key = (pkg["name"], pkg["ecosystem"])
+            if ver and key not in pre_resolved:
+                pre_resolved[key] = ver
+        else:
+            sat_packages.append(pkg)
+
+    # Resolve with SAT solver for remaining packages
+    if sat_packages:
         result = resolver.resolve_dependencies(
-            pkg_list, system_info, prefer_compatibility=True, solver_timeout=solver_timeout
+            sat_packages, system_info, prefer_compatibility=True, solver_timeout=solver_timeout
         )
         if "packages" in result and "resolved_packages" not in result:
             result["resolved_packages"] = result.pop("packages")

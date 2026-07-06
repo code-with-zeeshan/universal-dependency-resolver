@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, validator
 
 from backend.api.auth import get_current_user
@@ -563,6 +563,9 @@ async def _check_request_body(request: Request):
 async def generate_lock(
     request: Request,
     req: GenerateLockRequest,
+    export_format: str | None = Query(
+        None, description="Optional export format (e.g. requirements.txt, Dockerfile)"
+    ),
     current_user=Depends(get_current_user),
 ):
     """Generate a udr.lock from project manifests or pre-parsed data.
@@ -575,7 +578,11 @@ async def generate_lock(
       2. **Pre-parsed mode** (original):
          POST ``packages``, ``manifests``, ``system``, ``resolution``.
 
-    Returns ``{"status": "success", "lock_data": {...}}``.
+    Optionally pass ``?export_format=requirements.txt`` to also generate
+    export content alongside the lock data (mirrors ``udr lock --export``).
+
+    Returns ``{"status": "success", "lock_data": {...}}`` plus
+    ``"export_content"`` if ``export_format`` was provided.
     """
     await _check_request_body(request)
     if req.manifest_contents:
@@ -603,7 +610,38 @@ async def generate_lock(
             req.resolution or {},
         )
 
-    return {"status": "success", "lock_data": lock_data}
+    # Optional export chaining (mirrors --export flag on CLI lock)
+    export_content = None
+    if export_format:
+        try:
+            from backend.core.export_generator import ExportGenerator
+
+            exporter = ExportGenerator()
+            resolved_packages = lock_data.get("packages", {})
+            system = lock_data.get("system", {})
+            export_content = exporter.generate(
+                {
+                    name: {
+                        "version": info.get("resolved_version"),
+                        "ecosystem": info.get("ecosystem", "?"),
+                    }
+                    for name, info in resolved_packages.items()
+                },
+                format=export_format,
+                system_info={
+                    "os": {"system": system.get("os", "Unknown")},
+                    "runtime_versions": {"python": {"version": system.get("python", "3.x")}},
+                    "gpu": {"available": bool(system.get("cuda")), "cuda": system.get("cuda")},
+                },
+            )
+        except Exception as e:
+            logger.warning("Export generation failed: %s", e)
+
+    result = {"status": "success", "lock_data": lock_data}
+    if export_content is not None:
+        result["export_content"] = export_content
+        result["export_format"] = export_format
+    return result
 
 
 @router.post("/install-commands")

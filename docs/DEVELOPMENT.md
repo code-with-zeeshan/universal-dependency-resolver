@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **1558+ unit tests** + **33 comprehensive** + **10 CLI e2e** + **5 JSON compliance** + **12 problem-statement**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **1572 unit tests** + **10 CLI e2e** + **5 JSON compliance** + **13 problem-statement** + **46 edge-cases**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 
@@ -59,14 +59,14 @@ ruff format backend/
 backend/
 ├── api/               # FastAPI routes, middleware, auth, schemas
 │   └── routes/        # packages.py, system.py, auth.py, scan.py, lock.py
-├── cli/               # CLI package (17 modules, 1 per command)
+├── cli/               # CLI package (18 modules, 1 per command)
 │   ├── main.py        # Parser setup + dispatch
 │   ├── shared.py      # Shared helpers (parse, resolve, output)
 │   └── commands/      # One file per command (serve, check, lock, resolve, …)
 ├── core/              # Business logic
 │   ├── conflict_resolver.py   # Z3 SAT solver
 │   ├── data_aggregator.py     # Aggregates data from all sources
-│   ├── export_generator.py    # 12 export formats (Jinja2)
+│   ├── export_generator.py    # 15 export formats (Jinja2)
 │   ├── system_scanner.py      # OS/CPU/GPU/runtime detection
 │   ├── cache.py               # DictCache + optional Redis
 │   ├── constraint_normalizer.py # Version constraint normalization
@@ -85,8 +85,9 @@ desktop/
 └── package.json
 tests/
 ├── conftest.py        # Shared fixtures
-├── unit/              # 1400+ tests
-└── integration/       # 90+ tests
+├── unit/              # 1572 tests
+├── integration/       # 96 tests
+└── e2e/               # 74 tests
 ```
 
 ## Desktop development
@@ -103,7 +104,7 @@ npm run start          # Dev mode (uses system Python backend)
 1. Create `backend/data_sources/<name>_client.py` inheriting from `BaseClient`
 2. Implement `get_package_info`, `get_version_info`, `search_packages`, `get_dependencies`
 3. Add config in `backend/settings/__init__.py` `get_ecosystem_config()`
-4. Register in `backend/data_sources/__init__.py`
+4. Register in `backend/core/data_aggregator.py` `_register_clients()`
 5. Add tests in `tests/unit/data_sources/`
 
 ## Adding an export format

@@ -241,7 +241,7 @@ Integration tests default to SQLite. Set `DATABASE_URL=postgresql://...` to test
 
 ### Auth errors
 
-Auth is **disabled by default**. To enable: set `ENABLE_AUTH=true` and configure `SECRET_KEY` in `.env`.
+Auth is **enabled by default** (`ENABLE_AUTH=true`). To disable: set `ENABLE_AUTH=false`. Requires `SECRET_KEY` in `.env` when enabled.
 
 ## Resolution Issues
 

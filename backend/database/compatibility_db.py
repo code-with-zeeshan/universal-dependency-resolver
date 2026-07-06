@@ -2,13 +2,14 @@
 
 # compatibility_db.py
 import hashlib
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
+
+from backend.core._json import dumps
 
 from ..core.utils import (
     hash_system_info,
@@ -788,7 +789,7 @@ class CompatibilityDB:
         # Combine for final hash
         request_data = {"packages": sorted_packages, "system_hash": system_hash}
 
-        return hashlib.sha256(json.dumps(request_data, sort_keys=True).encode()).hexdigest()
+        return hashlib.sha256(dumps(request_data, sort_keys=True).encode()).hexdigest()
 
     def record_system_benchmark(self, system_info: dict, benchmarks: dict):
         """Record system benchmark results."""

@@ -12,6 +12,7 @@ from .commands.completion import cmd_completion
 from .commands.details import cmd_details
 from .commands.diff import cmd_diff
 from .commands.graph import cmd_graph
+from .commands.index import cmd_index
 from .commands.install import cmd_install
 from .commands.list_ecosystems import cmd_list_ecosystems
 from .commands.lock import cmd_lock
@@ -122,6 +123,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
+    resolve_p.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Resolution timeout in seconds (default: 120, from SOLVER_TIMEOUT env var)",
+    )
 
     lock_p = sub.add_parser(
         "lock", help="Auto-detect manifests, resolve all dependencies, write lock file"
@@ -162,6 +169,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "-r",
         action="store_true",
         help="Write readable report file (udr-lock-report.txt) alongside lock file",
+    )
+    lock_p.add_argument(
+        "--include-dev",
+        action="store_true",
+        help="Include manifests from examples, test, docs, and other excluded directories",
+    )
+    lock_p.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Resolution timeout in seconds (default: 120, from SOLVER_TIMEOUT env var)",
     )
     lock_p.add_argument(
         "--force",
@@ -258,6 +276,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--restore",
         action="store_true",
         help="Restore mode — alias for install (kept for compatibility)",
+    )
+    install_p.add_argument(
+        "--production",
+        action="store_true",
+        help="Skip dev dependencies",
+    )
+    install_p.add_argument(
+        "--cuda",
+        "-c",
+        help="CUDA version to target (e.g. 121 for cu121 wheels)",
     )
 
     completion_p = sub.add_parser(
@@ -376,6 +404,31 @@ def _build_parser() -> argparse.ArgumentParser:
 
     auth_sub.add_parser("list", help="List all API keys")
 
+    index_p = sub.add_parser("index", help="Manage offline SQLite indexes")
+    index_sub = index_p.add_subparsers(dest="index_action", required=True)
+
+    index_pull_p = index_sub.add_parser("pull", help="Download pre-built indexes")
+    index_pull_p.add_argument("url", help="Base URL for index download")
+    index_pull_p.add_argument("--ecosystem", "-e", help="Only pull index for this ecosystem")
+
+    index_build_p = index_sub.add_parser(
+        "build", help="Build index from resolved packages in udr.lock"
+    )
+    index_build_p.add_argument(
+        "--packages",
+        default="",
+        help="Comma-separated package names to index (builds for --ecosystem)",
+    )
+    index_build_p.add_argument(
+        "--ecosystem", "-e", default="pypi", choices=_eco_choices, help="Ecosystem for --packages"
+    )
+    index_build_p.add_argument(
+        "--directory", "-d", help="Directory containing udr.lock (default: cwd)"
+    )
+
+    index_status_p = index_sub.add_parser("status", help="Show local offline index status")
+    index_status_p.add_argument("--json", action="store_true", help="Output as JSON")
+
     return parser
 
 
@@ -413,6 +466,7 @@ def main():
         "search": cmd_search,
         "details": cmd_details,
         "auth": cmd_auth,
+        "index": cmd_index,
     }
     dispatch[args.command](args)
 

@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
-import json
 import logging
 import os
 import platform
@@ -17,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 from packaging import version
+
+from ._json import dumps
 
 if TYPE_CHECKING:
     import z3
@@ -144,7 +145,7 @@ class ConflictResolver:
             py = rt.get("python", {})
             if py:
                 ctx["python"] = py.get("version")
-        raw = json.dumps(ctx, sort_keys=True, default=str)
+        raw = dumps(ctx, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
     # Additional error handling enhancements
@@ -180,7 +181,7 @@ class ConflictResolver:
         self.int_to_version = {}
         self._version_weights = []
         self._minimization_added = False
-        self._solver = z3.Optimize() if self._use_optimization else z3.Solver()
+        self._solver = z3.Solver()
 
         resolution_context = {
             "package_count": len(packages),
@@ -193,7 +194,7 @@ class ConflictResolver:
 
             self._validate_package_inputs(normalized_packages, resolution_context)
             system_info = self._prepare_system_info(system_info, resolution_context)
-            self._reset_solver_state(solver_timeout)
+            self._reset_solver_state(solver_timeout, len(normalized_packages))
 
             logger.info(
                 "Starting dependency resolution",
@@ -359,7 +360,7 @@ class ConflictResolver:
                 self.version_vars.clear()
                 self.version_to_int.clear()
                 self.int_to_version.clear()
-                self._reset_solver_state(solver_timeout)
+                self._reset_solver_state(solver_timeout, len(pkgs))
 
                 try:
                     constraints = self._create_constraints(pkgs, system_info)
@@ -519,10 +520,10 @@ class ConflictResolver:
             package_data.append(sorted_pkg)
 
         # Create system info hash
-        system_hash = hashlib.md5(json.dumps(system_info, sort_keys=True).encode()).hexdigest()
+        system_hash = hashlib.md5(dumps(system_info, sort_keys=True).encode()).hexdigest()
 
         # Create packages hash
-        packages_hash = hashlib.md5(json.dumps(package_data, sort_keys=True).encode()).hexdigest()
+        packages_hash = hashlib.md5(dumps(package_data, sort_keys=True).encode()).hexdigest()
 
         return f"resolution:{packages_hash}:{system_hash}"
 
@@ -783,11 +784,17 @@ class ConflictResolver:
             "gpu": {"available": False, "cuda": None},
         }
 
-    def _reset_solver_state(self, solver_timeout: int | None = None) -> None:
-        """Reset the solver state and apply timeout if specified."""
+    def _reset_solver_state(
+        self, solver_timeout: int | None = None, package_count: int = 0
+    ) -> None:
+        """Reset the solver state and apply timeout if specified.
+
+        Automatically disables z3.Optimize when *package_count* > 100
+        to avoid the solver hanging on large graphs.
+        """
         import z3
 
-        if self._use_optimization:
+        if self._use_optimization and package_count <= 100:
             self._solver = z3.Optimize()
             self._minimization_added = False
             self._version_weights = []
@@ -1112,16 +1119,22 @@ class ConflictResolver:
             # Create boolean variable for each version
             constraint = package.get("version_constraint", "*")
             if constraint != "*":
+                ecosystem = package.get("ecosystem", "pypi")
                 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
-                try:
-                    SpecifierSet(constraint)
-                except InvalidSpecifier:
+                from .vers import VersSpec
+
+                spec_str = str(VersSpec.parse(constraint, ecosystem))
+                if spec_str != "*":
                     try:
-                        SpecifierSet(f"=={constraint}")
-                        constraint = f"=={constraint}"
+                        SpecifierSet(spec_str)
                     except InvalidSpecifier:
-                        constraint = "*"
+                        try:
+                            SpecifierSet(f"=={spec_str}")
+                            spec_str = f"=={spec_str}"
+                        except InvalidSpecifier:
+                            spec_str = "*"
+                constraint = spec_str
 
             def _build_vars(ver_list, pkg_name=pkg_name, constraint=constraint, package=package):
                 vars_list = []
@@ -1242,24 +1255,28 @@ class ConflictResolver:
                 if not constraint_str:
                     continue
 
-                # Wrap bare version in == prefix for PEP 440 compatibility
+                # Normalize ecosystem-specific constraint via VersSpec
                 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
-                parsed_constraint = constraint_str
-                try:
-                    SpecifierSet(parsed_constraint)
-                except InvalidSpecifier:
+                from .vers import VersSpec
+
+                successor_data = self.dependency_graph.nodes.get(successor, {})
+                dep_eco = successor_data.get("ecosystem", "unknown")
+                parsed_constraint = str(VersSpec.parse(constraint_str, dep_eco))
+                if parsed_constraint != "*":
                     try:
-                        SpecifierSet(f"=={parsed_constraint}")
-                        parsed_constraint = f"=={parsed_constraint}"
+                        SpecifierSet(parsed_constraint)
                     except InvalidSpecifier:
-                        logger.debug(
-                            f"Skipping unparseable constraint '{constraint_str}' for dep edge"
-                        )
-                        continue
+                        try:
+                            SpecifierSet(f"=={parsed_constraint}")
+                            parsed_constraint = f"=={parsed_constraint}"
+                        except InvalidSpecifier:
+                            logger.debug(
+                                f"Skipping unparseable constraint '{constraint_str}' for dep edge"
+                            )
+                            continue
 
                 # Get successor package info
-                successor_data = self.dependency_graph.nodes.get(successor, {})
                 dep_name = successor_data.get("name", successor.split("@")[0])
 
                 # For each version of the dependent package
@@ -1528,7 +1545,7 @@ class ConflictResolver:
         """Get ecosystem for a package from the graph."""
         for node in self.dependency_graph.nodes():
             if node.startswith(f"{package_name}@"):
-                return node.split("@")[1]
+                return node.rsplit("@", 1)[-1]
         return "unknown"
 
     def _get_package_dependencies(self, package_name: str, version_str: str) -> dict:

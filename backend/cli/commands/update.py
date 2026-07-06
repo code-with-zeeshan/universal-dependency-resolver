@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -90,6 +91,7 @@ def cmd_update(args):
             package_details,
             interactive=getattr(args, "interactive", False),
             lock_data=lock_data,
+            timeout=getattr(args, "timeout", None) or int(os.environ.get("SOLVER_TIMEOUT", 120)),
         )
 
         rp = resolved.get("resolved_packages", {})

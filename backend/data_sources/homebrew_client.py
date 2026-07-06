@@ -199,7 +199,8 @@ class HomebrewClient(BaseDataSourceClient):
     async def get_package_info_async(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
     ) -> dict | None:
-        package_name = normalize_package_name(package_name)
+        # Don't use normalize_package_name — it converts dots in version
+        # specs (e.g. python@3.11 → python@3-11) which breaks formula API URLs.
 
         if package_type == PackageType.FORMULA:
             return await self._get_formula_info(package_name)
@@ -208,7 +209,7 @@ class HomebrewClient(BaseDataSourceClient):
     def get_package_info(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
     ) -> dict:
-        package_name = normalize_package_name(package_name)
+        # Don't use normalize_package_name for Homebrew formula names
         return run_async(self.get_package_info_async(package_name, package_type))
 
     async def _get_formula_info(self, formula_name: str) -> dict | None:
@@ -218,6 +219,8 @@ class HomebrewClient(BaseDataSourceClient):
         if not data:
             return None
 
+        versions = data.get("versions", {})
+        stable_version = versions.get("stable", "")
         return {
             "name": data.get("name"),
             "type": "formula",
@@ -229,7 +232,8 @@ class HomebrewClient(BaseDataSourceClient):
             "description": data.get("desc"),
             "license": data.get("license"),
             "homepage": data.get("homepage"),
-            "versions": data.get("versions", {}),
+            "version": stable_version,
+            "versions": [{"version": stable_version}] if stable_version else [],
             "urls": data.get("urls", {}),
             "revision": data.get("revision", 0),
             "version_scheme": data.get("version_scheme", 0),

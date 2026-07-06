@@ -40,6 +40,12 @@ from backend.api.routes import (
     auth as auth_routes,
 )
 from backend.api.routes import (
+    completion as completion_routes,
+)
+from backend.api.routes import (
+    index as index_routes,
+)
+from backend.api.routes import (
     lock as lock_routes,
 )
 from backend.api.routes import (
@@ -409,6 +415,9 @@ app.include_router(packages.router, prefix="/api/v1/packages", tags=["Packages"]
 
 app.include_router(scan.router, prefix="/api/v1", tags=["Scan"])
 app.include_router(lock_routes.router, prefix="/api/v1", tags=["Lock"])
+
+app.include_router(index_routes.router, prefix="/api/v1/index", tags=["Index"])
+app.include_router(completion_routes.router, prefix="/api/v1", tags=["Completion"])
 
 
 # Optional: Add middleware for response time tracking

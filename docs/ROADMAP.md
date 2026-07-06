@@ -1,25 +1,25 @@
 # UDR Roadmap
 
-## Current State (v1.3.2)
+## Current State (v1.3.3)
 
 | Area | Status |
 |------|--------|
 | Supported ecosystems | 20 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, docs, custom_db) |
 | Resolution engine | Z3 SAT solver with SCC batch partitioning, CUDA-aware conflict resolution, backtracking fallback, version clustering |
 | In-place manifest update | 13/20 ecosystems: `package.json` (npm), `pubspec.yaml` (pub), `build.gradle`/`.kts` (gradle), `Package.swift` (swift), `mix.exs` (hex), `Podfile` (cocoapods), `.gemspec` (rubygems), `requirements.txt` (pypi), `apt-packages.txt` (apt), `apk-packages.txt` (apk) |
-| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth` |
+| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index` |
 | Lock file | `udr.lock` |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| Tests | 1558 unit + 10 e2e CLI + 5 e2e JSON + 33 comprehensive + 12 problem-statement |
+| Tests | 1572 unit + 10 e2e CLI + 5 e2e JSON + 13 e2e problem-statement + 46 e2e edge-cases |
 
 ---
 
 ## Limitations (Future Scope)
 
-### 1. Solver Capacity: 5000-variable limit (mitigated)
-- **What**: `SOLVER_MAX_VARS=5000` caps total Z3 boolean variables.
+### 1. Solver Capacity: 50000-variable limit (mitigated)
+- **What**: `SOLVER_MAX_VARS=50000` caps total Z3 boolean variables.
 - **Mitigation**: SCC batch partitioning resolves subgraphs independently. Projects up to ~500 packages now work reliably.
-- **Remaining gap**: Very large projects (>500 packages, >5000 vars) still hit the limit.
+- **Remaining gap**: Very large projects (>500 packages, >50000 vars) still hit the limit.
 
 ### 2. Manifest Update Coverage (improved)
 - **What**: 13/20 ecosystems now have dedicated in-place manifest updaters.
@@ -132,7 +132,7 @@
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.1 | Manifest update for 13/20 ecosystems + batch SCC solver | ✅ Released in v1.3.2 | Q3 2026 |
+| v1.1 | Manifest update for 13/20 ecosystems + batch SCC solver | ✅ Released in v1.3.3 | Q3 2026 |
 | v2.0 | WASM frontend + SBOM + license checking | Pending | Q4 2026 |
 | v2.1 | Desktop app + VSCode extension | Pending | Q1 2027 |
 | v3.0 | Policy engine + supply chain attestation | Pending | Q2 2027 |

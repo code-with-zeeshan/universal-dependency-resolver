@@ -67,9 +67,12 @@ async def _run_resolution(
     package_details,
     interactive: bool = False,
     lock_data: dict | None = None,
+    timeout: int | None = None,
+    lock_tree_data: dict[str, dict[str, dict]] | None = None,
 ) -> dict:
     """Run resolution."""
-    timeout = int(os.environ.get("SOLVER_TIMEOUT", 30))
+    if timeout is None:
+        timeout = int(os.environ.get("SOLVER_TIMEOUT", 120))
     # Reserve up to 120s for BFS; remainder goes to Z3 solver (in ms), min 10s
     bfs_budget = min(120, int(timeout * 0.5))
     solver_timeout = max(10000, int((timeout - bfs_budget) * 1000))
@@ -82,6 +85,7 @@ async def _run_resolution(
                 system_info,
                 lock_data=lock_data,
                 solver_timeout=solver_timeout,
+                lock_tree_data=lock_tree_data,
             ),
             timeout=timeout,
         )
@@ -1004,6 +1008,10 @@ def _get_manifest_updater(filename: str):
     return None
 
 
-def _generate_install_command(ecosystem: str, packages: list[tuple[str, str]]) -> str | None:
+def _generate_install_command(
+    ecosystem: str,
+    packages: list[tuple[str, str]],
+    cuda_version: str | None = None,
+) -> str | None:
     """Generate install command (delegates to orchestrator)."""
-    return _orchestrator_generate_install_command(ecosystem, packages)
+    return _orchestrator_generate_install_command(ecosystem, packages, cuda_version=cuda_version)

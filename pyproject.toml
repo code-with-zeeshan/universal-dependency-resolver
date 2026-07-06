@@ -61,6 +61,7 @@ dependencies = [
     "sqlalchemy>=2.0.23,<3",
     "alembic>=1.13,<2",
     # CLI & Formatting
+    "orjson>=3.10,<4",
     "rich>=13.7,<14",
     "slowapi>=0.1.9,<1",
 

@@ -5,15 +5,36 @@ parses them into a uniform package list, and maps each
 package to its ecosystem for resolution.
 """
 
-import json
 import logging
 import re
 from pathlib import Path
 from typing import Any
 
+from .core._json import loads
 from .core.utils import normalize_package_name
 
 logger = logging.getLogger(__name__)
+
+# Directories to exclude from manifest detection
+EXCLUDED_DIRS = {
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    ".tox",
+    ".eggs",
+    "env",
+    ".env",
+    "examples",
+    "example",
+    "test",
+    "tests",
+    "docs",
+    "documentation",
+}
 
 
 # Map filename patterns → (ecosystem, parser_func)
@@ -73,23 +94,32 @@ class ManifestDetector:
         """Initialize."""
         self.directory = Path(directory).resolve()
 
-    def detect(self) -> list[dict]:
-        """Scan directory recursively for known manifests. Returns list of manifest info dicts."""
+    def detect(self, include_dev: bool = False) -> list[dict]:
+        """Scan directory recursively for known manifests. Returns list of manifest info dicts.
+
+        Args:
+            include_dev: If True, include manifests from excluded dirs (examples, test, docs, etc.)
+        """
         found = []
         seen_paths = set()
+        excluded = set() if include_dev else EXCLUDED_DIRS
         for fname, raw_ecosystem, parser_key in MANIFEST_PATTERNS:
             ecosystem = self.ECOSYSTEM_ALIASES.get(raw_ecosystem, raw_ecosystem)
             for fp in self.directory.rglob(fname):
-                if fp.is_file() and str(fp) not in seen_paths:
-                    seen_paths.add(str(fp))
-                    found.append(
-                        {
-                            "path": str(fp),
-                            "filename": fname,
-                            "ecosystem": ecosystem,
-                            "parser": parser_key,
-                        }
-                    )
+                if not fp.is_file() or str(fp) in seen_paths:
+                    continue
+                rel = fp.relative_to(self.directory)
+                if any(part in excluded for part in rel.parts):
+                    continue
+                seen_paths.add(str(fp))
+                found.append(
+                    {
+                        "path": str(fp),
+                        "filename": fname,
+                        "ecosystem": ecosystem,
+                        "parser": parser_key,
+                    }
+                )
         unique_ecosystems = set(m["ecosystem"] for m in found)
         if len(unique_ecosystems) > 1:
             logger.warning(
@@ -283,30 +313,13 @@ class ManifestDetector:
 
     def _parse_swift(self, content: str) -> list[dict]:
         """Parse Swift Package Manager file."""
-        packages = []
-        for line in content.split("\n"):
-            line = line.strip()
-            m = re.search(r'\.package\(url:\s*["\']([^"\']+)["\']', line)
-            if m:
-                url = m.group(1)
-                name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-                constraint = "*"
-                # Extract version constraint from `from:`, `exact:`, or `.upToNextMajor/minor`
-                cm = re.search(r'from:\s*["\']([^"\']+)["\']', line)
-                if cm:
-                    constraint = cm.group(1)
-                else:
-                    cm = re.search(r'exact:\s*["\']([^"\']+)["\']', line)
-                    if cm:
-                        constraint = cm.group(1)
-                    else:
-                        cm = re.search(
-                            r'\.upToNext(Major|Minor)\(from:\s*["\']([^"\']+)["\']\)', line
-                        )
-                        if cm:
-                            constraint = cm.group(2)
-                packages.append({"name": name, "version": constraint})
-        return packages
+        from backend.core.swift_parser import parse_package_swift
+
+        parsed = parse_package_swift(content)
+        return [
+            {"name": name, "version": constraint or "*"}
+            for name, constraint in parsed["dependencies"].items()
+        ]
 
     def _parse_hex(self, content: str) -> list[dict]:
         """Parse Elixir mix.exs file."""
@@ -388,7 +401,7 @@ class ManifestDetector:
         stripped = content.strip()
         if stripped.startswith("{"):
             try:
-                data = json.loads(stripped)
+                data = loads(stripped)
                 entries = data.get("entries", data)
                 if isinstance(entries, list):
                     for e in entries:
@@ -449,9 +462,7 @@ class ManifestDetector:
     def _parse_pipfile_lock(self, content: str) -> list[dict]:
         """Parse pipfile lock."""
         try:
-            import json
-
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -512,7 +523,7 @@ class ManifestDetector:
     def _parse_package_json(self, content: str) -> list[dict]:
         """Parse package json."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -526,7 +537,7 @@ class ManifestDetector:
     def _parse_package_lock(self, content: str) -> list[dict]:
         """Parse package lock."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -536,11 +547,36 @@ class ManifestDetector:
                 continue
             packages.append(
                 {
-                    "name": name.lstrip("node_modules/"),
+                    "name": name.split("node_modules/")[-1],
                     "version": info.get("version", "*"),
                 }
             )
         return packages
+
+    @staticmethod
+    def parse_package_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse package-lock.json and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = loads(content)
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        for path, info in data.get("packages", {}).items():
+            if path == "":
+                continue
+            name = path.split("node_modules/")[-1]
+            deps = {}
+            for dep_name, dep_ver in info.get("dependencies", {}).items():
+                deps[dep_name] = dep_ver
+            tree[name] = {
+                "version": info.get("version", "0.0.0"),
+                "dependencies": deps,
+            }
+        return tree if tree else None
 
     def _parse_yarn_lock(self, content: str) -> list[dict]:
         """Parse yarn lock."""
@@ -714,7 +750,7 @@ class ManifestDetector:
     def _parse_composer_json(self, content: str) -> list[dict]:
         """Parse composer json."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -786,7 +822,7 @@ class ManifestDetector:
     def _parse_composer_lock(self, content: str) -> list[dict]:
         """Parse composer.lock (JSON format)."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -843,7 +879,7 @@ class ManifestDetector:
     def _parse_package_resolved(self, content: str) -> list[dict]:
         """Parse Package.resolved (Swift)."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
@@ -859,7 +895,7 @@ class ManifestDetector:
     def _parse_udr_lock(self, content: str) -> list[dict]:
         """Parse udr.lock — UDR's own lock file format."""
         try:
-            data = json.loads(content)
+            data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []

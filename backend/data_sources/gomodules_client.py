@@ -2,7 +2,6 @@
 
 # data_sources/gomodules_client.py
 import asyncio
-import json
 import logging
 import re
 from typing import Any
@@ -21,6 +20,7 @@ from backend.settings import (
     get_ecosystem_config,
 )
 
+from ..core._json import loads
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -191,7 +191,7 @@ class GoModulesClient(BaseDataSourceClient):
 
         if info_data and mod_data:
             return {
-                "info": info_data if isinstance(info_data, dict) else json.loads(info_data),
+                "info": info_data if isinstance(info_data, dict) else loads(info_data),
                 "go_mod": mod_data if isinstance(mod_data, str) else "",
             }
         return None

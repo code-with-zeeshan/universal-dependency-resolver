@@ -72,7 +72,7 @@ flowchart TB
 - Exactly-one constraint enforced via `z3.Or()` + `z3.AtMost(1)` per package
 - Dependency constraints use `z3.Implies(pkg_var, Or(valid_dep_vars))`
 - CUDA 11 vs 12 conflict: `z3.Not(And(var11, var12))` for each pair
-- `SOLVER_MAX_VARS` env var (default 5000) prevents memory blowup
+- `SOLVER_MAX_VARS` env var (default 50000) prevents memory blowup
 - Version clustering caps at 50 versions per package via `SOLVER_MAX_VERSIONS_PER_PKG`
 - When UNSAT/timeout, falls back to DFS backtracking in `_resolve_with_alternatives()`
 
@@ -102,7 +102,7 @@ The CLI starts in ~0.85s on a modern machine. This is achieved through:
 
 - All registry API calls use `aiohttp` with connection pooling
 - Concurrent fetching via `asyncio.gather` for package metadata
-- 5-second timeout on individual registry requests
+- 10-second timeout on individual registry requests
 - Configurable rate limits per ecosystem (default: 60-600 req/min)
 
 ## Desktop app

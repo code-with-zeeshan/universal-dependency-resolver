@@ -167,6 +167,9 @@ INSTALLERS: dict[str, tuple[str, ...]] = {
     "nuget": ("dotnet", "add", "package"),
     "cocoapods": ("pod", "install"),
     "maven": ("mvn", "dependency:copy-dependencies"),
+    "homebrew": ("brew", "install"),
+    "hex": ("mix", "deps.update"),
+    "swift": ("swift", "package", "resolve"),
 }
 
 # =============================================================================
@@ -302,8 +305,7 @@ def get_ecosystem_config(ecosystem: str) -> dict[str, Any]:
             "rate_limit": 300,
         },
         "swift": {
-            "url": "https://swiftpackageindex.com/api",
-            "api_key": os.environ.get("SWIFT_API_KEY", ""),
+            "url": "",
             "cache_ttl": CACHE_TTL,
             "rate_limit": 300,
         },

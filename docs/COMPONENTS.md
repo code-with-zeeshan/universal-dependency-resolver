@@ -17,7 +17,7 @@ Universal Dependency Resolver ships in two forms. Each targets a different use c
 
 The core resolver engine — a Python application with:
 
-- **CLI** — 16 commands for resolving, locking, checking, installing, exporting, searching, and completion
+- **CLI** — 18 commands for resolving, locking, checking, installing, exporting, searching, indexing, auth, and completion
 - **Python library** — import `backend.*` directly
 - **REST API** — FastAPI server with Swagger docs
 

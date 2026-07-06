@@ -214,6 +214,28 @@ class BaseDataSourceClient:
     async def _get(self, url: str, **kwargs) -> dict | None:
         return await self._request("GET", url, **kwargs)
 
+    async def _get_text(self, url: str, **kwargs) -> str | None:
+        """Like ``_get`` but returns the raw response body as text."""
+        await self._throttle()
+        session = self._get_session()
+        headers = kwargs.pop("headers", {})
+        headers.setdefault("User-Agent", self.user_agent)
+        try:
+            async with session.request(
+                "GET",
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(connect=10, sock_read=self.timeout),
+                **kwargs,
+            ) as resp:
+                if resp.status == 404:
+                    return None
+                resp.raise_for_status()
+                return await resp.text()
+        except (TimeoutError, aiohttp.ClientError) as e:
+            logger.debug("_get_text failed for %s: %s", url, e)
+            return None
+
     async def cached_get(self, cache_key: str, url: str, ttl: int | None = None) -> dict | None:
         import os as _os
 

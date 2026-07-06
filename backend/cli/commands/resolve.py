@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import sys
 
 from rich.panel import Panel
@@ -129,6 +130,8 @@ def cmd_resolve(args):
                 system_info,
                 package_details,
                 interactive=args.interactive,
+                timeout=getattr(args, "timeout", None)
+                or int(os.environ.get("SOLVER_TIMEOUT", 120)),
             )
 
         resolved_pkgs = resolved.get("resolved_packages", {})

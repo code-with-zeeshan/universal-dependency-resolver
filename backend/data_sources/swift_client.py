@@ -1,28 +1,42 @@
-"""Swift Package Manager client."""
+"""Swift Package Manager client with dual-path resolution.
+
+Resolution order (try-fallback):
+  1. SE-0292 registry (if configured) — ``Accept: application/vnd.swift.registry.v1+json``
+  2. GitHub API — tags via ``api.github.com``, manifests via ``raw.githubusercontent.com``
+  3. Falls back gracefully with user guidance when all paths fail.
+"""
 
 import logging
-import os
+import re
 from typing import Any
 from urllib.parse import quote
 
-from ..core.utils import normalize_package_name
+from ..core.swift_parser import parse_package_swift
 from ..settings import CACHE_TTL, get_ecosystem_config
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
 
+GITHUB_API = "https://api.github.com"
+GITHUB_RAW = "https://raw.githubusercontent.com"
+
+GIT_URL_RE = re.compile(r"(?:github\.com[/:]|git@)([\w.-]+)/([\w.-]+?)(?:\.git)?(?:\s|$|[/#?])")
+
+_SWIFT_HELP = """\
+Swift packages require one of:
+  1) A local Package.swift checkout (for `udr lock` — no API needed)
+  2) A Swift Package Registry host (SE-0292) — used automatically for \
+GitHub-hosted packages, no auth required
+  3) SPI GraphQL API key (if you prefer, request one via \
+https://swiftpackageindex.com)
+"""
+
 
 class SwiftClient(BaseDataSourceClient):
-    """Client for the Swift Package Index (swiftpackageindex.com).
+    """Swift Package Manager client.
 
-    Requires a SWIFT_API_KEY environment variable (or swift.api_key config)
-    to authenticate with the Swift Package Index API.
-
-    To obtain an API key:
-        1. Go to https://swiftpackageindex.com
-        2. Sign up / Sign in
-        3. Profile → Settings → API Keys → Generate New Key
-        4. Set SWIFT_API_KEY=<generated_key> in your .env file
+    Resolution tries the configured registry first, then falls back to
+    GitHub's public API.  All paths support public packages without auth.
     """
 
     def __init__(
@@ -32,16 +46,13 @@ class SwiftClient(BaseDataSourceClient):
         rate_limit_delay: float | None = None,
     ):
         config = get_ecosystem_config("swift")
-        base_url = config.get("url", "https://swiftpackageindex.com").rstrip("/")
-        self.api_key = config.get("api_key") or os.environ.get("SWIFT_API_KEY", "")
-        if not self.api_key:
-            logger.warning(
-                "No SWIFT_API_KEY configured. Swift resolution requires an API key. "
-                "See https://swiftpackageindex.com → Settings → API Keys"
-            )
+        configured_url = config.get("url", "").rstrip("/")
+        self._registry_url = configured_url or GITHUB_API
+        self._prefer_registry = bool(configured_url)
+
         super().__init__(
             ecosystem="swift",
-            base_url=base_url,
+            base_url=self._registry_url,
             cache_ttl=cache_ttl or config.get("cache_ttl", CACHE_TTL),
         )
 
@@ -51,85 +62,32 @@ class SwiftClient(BaseDataSourceClient):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        """Standard async interface used by DataAggregator."""
         return await self.get_package_info(
             package_name,
             include_dependencies=include_dependencies,
             include_versions=include_versions,
         )
 
-    def _get_headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        return headers
-
-    async def _search_package(self, name: str) -> dict | None:
-        """Search for a package by name on Swift Package Index."""
-        try:
-            data = await self._get(
-                f"{self.base_url}/api/search",
-                params={"query": name, "page": "1", "pageSize": "5"},
-                headers=self._get_headers(),
-            )
-            if not data:
-                return None
-            results = data.get("data", []) or data.get("results", [])
-            for result in results:
-                pkg_id = result.get("package", {}).get("id", "") or result.get("id", "")
-                repo_name = result.get("repository", {}).get("name", "") or pkg_id
-                if name.lower() in repo_name.lower():
-                    owner_repo = result.get("package", {}).get("url", pkg_id)
-                    parts = owner_repo.rstrip("/").rstrip(".git").split("/")
-                    if len(parts) >= 2:
-                        return {"owner": parts[-2], "repo": parts[-1]}
-            return None
-        except Exception as e:
-            logger.debug("Swift search error for %s: %s", name, e)
-            return None
-
     async def get_package_info(
-        self, package_name: str, include_dependencies: bool = True, include_versions: bool = True
+        self,
+        package_name: str,
+        include_dependencies: bool = True,
+        include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        pkg = normalize_package_name(package_name)
         try:
-            owner, repo = ([*pkg.split("/", 1), ""])[:2]
-            if not repo:
-                found = await self._search_package(owner)
-                if found:
-                    owner, repo = found["owner"], found["repo"]
-                else:
-                    repo = owner
-            encoded_owner = quote(owner, safe="")
-            encoded_repo = quote(repo, safe="")
-            data = await self._get(
-                f"{self.base_url}/api/packages/{encoded_owner}/{encoded_repo}",
-                headers=self._get_headers(),
-            )
-            if not data:
-                return None
-            versions_raw = data.get("versions", [])
-            if isinstance(versions_raw, list):
-                versions = [
-                    {"version": v.get("version", v) if isinstance(v, dict) else str(v)}
-                    for v in versions_raw
-                ]
-            elif isinstance(versions_raw, dict):
-                versions = [{"version": v} for v in versions_raw]
-            else:
-                versions = []
-            version = versions[0]["version"] if versions else "unknown"
-            deps = {}
-            dep_data = data.get("dependencies", {}) or data.get("package", {}).get(
-                "dependencies", {}
-            )
-            if isinstance(dep_data, dict):
-                deps["dependencies"] = dep_data
-            elif isinstance(dep_data, list):
-                deps["dependencies"] = {}
+            owner, repo = self._resolve_package(package_name)
+            versions = await self._list_versions(owner, repo) if include_versions else []
+            deps: dict[str, Any] = {}
+            if include_dependencies and versions:
+                latest = versions[0]["version"]
+                manifest = await self._fetch_manifest(owner, repo, latest)
+                if manifest:
+                    parsed = parse_package_swift(manifest)
+                    deps["dependencies"] = parsed["dependencies"]
+
             return {
-                "name": pkg,
-                "version": version,
+                "name": package_name,
+                "version": versions[0]["version"] if versions else "unknown",
                 "versions": versions,
                 "dependencies": deps,
             }
@@ -140,5 +98,123 @@ class SwiftClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        info = await self.get_package_info(package_name, include_versions=True)
+        info = await self.get_package_info(
+            package_name, include_versions=True, include_dependencies=False
+        )
         return info.get("versions", []) if info else []
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_package(name: str) -> tuple[str, str]:
+        """Parse *name* into ``(owner, repo)``.
+
+        Accepts:
+
+        * ``https://github.com/owner/repo``
+        * ``git@github.com:owner/repo.git``
+        * ``owner/repo``
+        * ``scope.name`` (SE-0292 identity)
+        * ``name`` (plain - used as both owner and repo)
+        """
+        name = name.strip()
+
+        m = GIT_URL_RE.search(name)
+        if m:
+            return m.group(1), m.group(2).rstrip("/")
+
+        if "/" in name:
+            parts = name.split("/", 1)
+            return parts[0], parts[1]
+
+        if "." in name:
+            parts = name.split(".", 1)
+            return parts[0], parts[1]
+
+        return name, name
+
+    async def _list_versions(self, owner: str, repo: str) -> list[dict]:
+        """Return ``[{"version": str}, ...]``.
+
+        Tries primary path first, then falls back to the alternative.
+        """
+        if self._prefer_registry:
+            versions = await self._list_registry_releases(owner, repo)
+            if versions:
+                return versions
+            return await self._list_github_tags(owner, repo)
+
+        versions = await self._list_github_tags(owner, repo)
+        if versions:
+            return versions
+        return await self._list_registry_releases(owner, repo)
+
+    async def _list_github_tags(self, owner: str, repo: str) -> list[dict]:
+        tags = await self._get(
+            f"{GITHUB_API}/repos/{quote(owner)}/{quote(repo)}/tags",
+            headers={"Accept": "application/vnd.github.v3+json"},
+        )
+        if not tags or not isinstance(tags, list):
+            return []
+        versions: list[dict] = []
+        for tag in tags:
+            raw = tag.get("name", "")
+            cleaned = raw.lstrip("v")
+            if cleaned:
+                versions.append({"version": cleaned})
+        return versions
+
+    async def _list_registry_releases(self, owner: str, repo: str) -> list[dict]:
+        """SE-0292 ``GET /{scope}/{name}``."""
+        scope = quote(owner, safe="")
+        name = quote(repo, safe="")
+        data = await self._get(
+            f"{self.base_url}/{scope}/{name}",
+            headers={"Accept": "application/vnd.swift.registry.v1+json"},
+        )
+        if not data:
+            return []
+        releases = data.get("releases", {})
+        return [{"version": v} for v in releases if isinstance(v, str)]
+
+    async def _fetch_manifest(self, owner: str, repo: str, version: str) -> str | None:
+        """Return the raw ``Package.swift`` content.
+
+        Tries primary path first, then falls back to the alternative.
+        """
+        if self._prefer_registry:
+            manifest = await self._fetch_registry_manifest(owner, repo, version)
+            if manifest:
+                return manifest
+            return await self._fetch_raw_manifest(owner, repo, version)
+
+        manifest = await self._fetch_raw_manifest(owner, repo, version)
+        if manifest:
+            return manifest
+        return await self._fetch_registry_manifest(owner, repo, version)
+
+    async def _fetch_raw_manifest(self, owner: str, repo: str, version: str) -> str | None:
+        url = f"{GITHUB_RAW}/{quote(owner)}/{quote(repo)}/{quote(version)}/Package.swift"
+        return await self._get_text(url)
+
+    async def _fetch_registry_manifest(self, owner: str, repo: str, version: str) -> str | None:
+        """SE-0292 ``GET /{scope}/{name}/{version}/Package.swift``."""
+        scope = quote(owner, safe="")
+        name = quote(repo, safe="")
+        ver = quote(version, safe="")
+        return await self._get_text(
+            f"{self.base_url}/{scope}/{name}/{ver}/Package.swift",
+            headers={"Accept": "application/vnd.swift.registry.v1+swift"},
+        )
+
+    @staticmethod
+    def _swift_resolution_help() -> str:
+        """Return a user-facing message explaining Swift resolution options."""
+        return _SWIFT_HELP
+
+    @staticmethod
+    def _parse_swift_deps(content: str) -> dict[str, str]:
+        """Extract ``{package_name: version_constraint}`` from ``Package.swift``."""
+        return parse_package_swift(content)["dependencies"]

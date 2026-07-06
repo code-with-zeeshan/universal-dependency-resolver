@@ -161,14 +161,14 @@ sequenceDiagram
 1. **Metadata fetch** — Queries registry APIs (PyPI, npmjs.org, crates.io, etc.) for each package's versions, dependencies, and system requirements
 2. **System scan** — Detects OS, CPU, GPU, CUDA version, Python version, Node.js, GCC, Java
 3. **SAT resolution** — Z3 solver finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
-4. **Export / Lock** — Writes `udr.lock` or exports to any of 12 formats
+4. **Export / Lock** — Writes `udr.lock` or exports to any of 15 formats
 
 ### Architecture overview
 
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>16 commands"]
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>18 commands"]
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code>"]
     end
 
@@ -179,9 +179,9 @@ graph TB
     subgraph CoreLayer["🧠 Core Logic"]
         CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]
         DA["<code>data_aggregator.py</code><br/>Async aggregation"]
-        EG["<code>export_generator.py</code><br/>12 export formats"]
+        EG["<code>export_generator.py</code><br/>15 export formats"]
         SS["<code>system_scanner.py</code><br/>OS · GPU · CUDA · runtimes"]
-        MD["<code>manifest_detector.py</code><br/>20+ manifest patterns"]
+        MD["<code>manifest_detector.py</code><br/>47+ manifest/lock patterns"]
         CACHE["<code>cache.py</code><br/>DictCache + Redis"]
     end
 
@@ -223,7 +223,7 @@ graph TB
 
 ## 7. CLI Usage
 
-All 16 commands support `--help` for inline usage.
+All 18 commands support `--help` for inline usage.
 
 ### Global flags
 
@@ -252,6 +252,8 @@ All 16 commands support `--help` for inline usage.
 | `outdated` | Check for newer versions | `udr outdated --json` |
 | `diff` | Compare two lock files | `udr diff old.lock new.lock` |
 | `search` | Search packages across ecosystems | `udr search numpy --limit 50` |
+| `auth` | Manage API keys for the API server | `udr auth create --name my-key` |
+| `index` | Manage offline SQLite indexes | `udr index status` |
 | `details` | Show package details | `udr details react -e npm` |
 
 ### Package spec syntax
@@ -305,7 +307,6 @@ udr resolve torch --cuda 12.1
 | `Cargo.toml` | crates | Manifest |
 | `Cargo.lock` | crates | Lock |
 | `go.mod` | gomodules | Manifest |
-| `go.sum` | gomodules | Lock |
 | `environment.yml` | conda | Manifest |
 | `Gemfile` | rubygems | Manifest |
 | `Gemfile.lock` | rubygems | Lock |
@@ -355,6 +356,10 @@ Swagger UI: `http://localhost:8000/api/v1/docs`
 | `POST` | `/api/v1/verify` | Verify lock file |
 | `POST` | `/api/v1/graph` | Dependency graph |
 | `POST` | `/api/v1/install-commands` | Get install commands |
+| `GET` | `/api/v1/index/status` | List offline indexes |
+| `POST` | `/api/v1/index/pull` | Download pre-built index |
+| `POST` | `/api/v1/index/build` | Build index from package data |
+| `GET` | `/api/v1/completion/{shell}` | Generate shell completion script |
 
 ### Example: Resolve packages via API
 
@@ -477,7 +482,7 @@ Single-page app with a collapsible icon sidebar:
 Uses Z3 (Microsoft's theorem prover) to find compatible versions across all ecosystems simultaneously:
 - Handles complex cross-ecosystem version constraints
 - Detects and reports conflicts with specific error messages
-- Configurable timeout via `SOLVER_TIMEOUT` env var (default: 30s)
+- Configurable timeout via `SOLVER_TIMEOUT` env var (default: 120s)
 - Falls back to backtracking search when SAT times out
 
 ### System awareness
@@ -636,7 +641,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 | Resource | What it covers |
 |---|---|
 | [CLI Reference](CLI.md) | Every command with flags and examples |
-| [API Reference](API.md) | 43 REST endpoints with request/response schemas |
+| [API Reference](API.md) | 47 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |
 | [Development](DEVELOPMENT.md) | Setup, testing, project structure |

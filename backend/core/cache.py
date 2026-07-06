@@ -1,7 +1,6 @@
 # backend/core/cache.py
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import shutil
@@ -11,6 +10,8 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 from urllib.parse import urlparse
+
+from ._json import dumps, loads
 
 try:
     from aiocache import Cache
@@ -48,7 +49,7 @@ class DictCache:
         try:
             if os.path.exists(self._persist_path):
                 with open(self._persist_path) as f:
-                    raw = json.load(f)
+                    raw = loads(f.read())
                 now = time.time()
                 for key, (value, expiry) in raw.items():
                     if expiry is None or expiry > now:
@@ -64,7 +65,7 @@ class DictCache:
             os.makedirs(os.path.dirname(self._persist_path), exist_ok=True)
             tmp_path = self._persist_path + ".tmp"
             with open(tmp_path, "w") as f:
-                json.dump(self._store, f, default=str)
+                f.write(dumps(self._store, default=str))
             shutil.move(tmp_path, self._persist_path)
             self._dirty = False
         except Exception as exc:
@@ -181,13 +182,13 @@ class CacheManager:
 
         for arg in args:
             if isinstance(arg, (dict, list)):
-                key_parts.append(hashlib.md5(json.dumps(arg, sort_keys=True).encode()).hexdigest())
+                key_parts.append(hashlib.md5(dumps(arg, sort_keys=True).encode()).hexdigest())
             else:
                 key_parts.append(str(arg))
 
         if kwargs:
             sorted_kwargs = sorted(kwargs.items())
-            kwargs_str = json.dumps(sorted_kwargs)
+            kwargs_str = dumps(sorted_kwargs)
             key_parts.append(hashlib.md5(kwargs_str.encode()).hexdigest())
 
         return ":".join(key_parts)
@@ -416,7 +417,7 @@ class CacheKeys:
     def search_results(query: str, ecosystems: list[str] | None = None, **filters) -> str:
         """Generate cache key for search results."""
         eco_str = ",".join(sorted(ecosystems)) if ecosystems else "all"
-        filter_str = hashlib.md5(json.dumps(filters, sort_keys=True).encode()).hexdigest()
+        filter_str = hashlib.md5(dumps(filters, sort_keys=True).encode()).hexdigest()
         return f"search:{query}:{eco_str}:{filter_str}"
 
     @staticmethod

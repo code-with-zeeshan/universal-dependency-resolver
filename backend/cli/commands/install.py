@@ -1,4 +1,17 @@
-"""Module docstring."""
+"""Install packages from udr.lock.
+
+Delegates to native installers per ecosystem:
+  pypi      → pip install
+  npm       → npm install
+  crates    → cargo add
+  gomodules → go get
+  rubygems  → gem install
+  packagist → composer require
+  homebrew  → brew install
+  hex       → mix deps.update
+  swift     → swift package resolve
+  ...
+"""
 
 import shlex
 import subprocess
@@ -10,7 +23,7 @@ from ..shared import _generate_install_command, _read_lock_file, console
 
 
 def cmd_install(args):
-    """Cmd install."""
+    """Install packages from ``udr.lock``."""
     directory = Path(args.directory).resolve()
     lock_path = directory / "udr.lock"
     if getattr(args, "lock_file", None):
@@ -22,8 +35,14 @@ def cmd_install(args):
         console.print("[red]No packages in lock file[/red]")
         return 1
 
+    # Filter by production mode (skip dev dependencies)
+    production = getattr(args, "production", False)
+
+    # Group by ecosystem
     eco_groups: dict[str, list[tuple[str, str]]] = {}
     for pkg_name, pinfo in packages.items():
+        if production and pinfo.get("direct") and pinfo.get("dev"):
+            continue
         eco = pinfo.get("ecosystem", "pypi")
         ver = pinfo.get("resolved_version")
         if not ver:
@@ -33,29 +52,44 @@ def cmd_install(args):
         eco_groups[eco].append((pkg_name, ver))
 
     if not eco_groups:
-        console.print("[red]No resolved packages to install[/red]")
+        console.print("[red]No packages to install[/red]")
         return 1
 
+    # Filter by ecosystem argument
+    requested_eco = getattr(args, "ecosystem", None)
+    if requested_eco:
+        eco_groups = {k: v for k, v in eco_groups.items() if k == requested_eco}
+        if not eco_groups:
+            console.print(f"[red]No packages found for ecosystem '{requested_eco}'[/red]")
+            return 1
+
+    # Generate install commands
+    cuda_version = getattr(args, "cuda", None)
     install_commands: list[tuple[str, str]] = []
     install_pkg_list: dict[str, list[tuple[str, str]]] = {}
+    missing_tools: list[str] = []
+
     for eco, pkgs in eco_groups.items():
-        if getattr(args, "ecosystem", None) and eco != args.ecosystem:
-            continue
-        cmd = _generate_install_command(eco, pkgs)
+        cmd = _generate_install_command(eco, pkgs, cuda_version=cuda_version)
         if cmd:
             install_commands.append((eco, cmd))
             install_pkg_list[eco] = pkgs
+        else:
+            missing_tools.append(eco)
 
     if not install_commands:
-        console.print(
-            "[yellow]No install commands could be generated — no installer known for these ecosystems[/yellow]"
-        )
+        console.print("[yellow]No install commands could be generated[/yellow]")
+        if missing_tools:
+            console.print(f"[yellow]  Unknown installers for: {', '.join(missing_tools)}[/yellow]")
         return 1
 
+    # Show plan
     label = "Restore" if getattr(args, "restore", False) else "Install"
     console.print(f"[bold]{label} Plan[/bold]")
     for eco, cmd in install_commands:
         console.print(f"  [cyan]{eco}[/cyan] ({len(install_pkg_list[eco])} pkgs): [dim]{cmd}[/dim]")
+    if missing_tools:
+        console.print(f"  [yellow]Skipped (no installer): {', '.join(missing_tools)}[/yellow]")
 
     if getattr(args, "dry_run", False):
         console.print("[yellow]── dry run — no installations performed ──[/yellow]")
@@ -66,17 +100,18 @@ def cmd_install(args):
         if not proceed:
             return 0
 
+    # Execute
     success = True
     for eco, cmd in install_commands:
         console.print(f"\n[cyan]{label}ing {eco} packages...[/cyan]")
         parts = shlex.split(cmd)
         result = subprocess.call(parts, shell=False)
         if result != 0:
-            console.print(
-                f"[red]Failed to {label.lower()} {eco} packages (exit code {result})[/red]"
-            )
+            console.print(f"[red]Failed to install {eco} packages (exit code {result})[/red]")
             success = False
+        else:
+            console.print(f"  [green]Done ({len(install_pkg_list[eco])} packages)[/green]")
 
     if success:
-        console.print(f"\n[bold green]All packages {label.lower()}ed successfully[/bold green]")
+        console.print("\n[bold green]All packages installed successfully[/bold green]")
     return 0 if success else 1

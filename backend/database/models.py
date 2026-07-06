@@ -1,4 +1,5 @@
 # models.py
+import logging
 import os
 import sys
 from contextlib import contextmanager
@@ -398,6 +399,15 @@ def run_migrations(db_url: str | None = None) -> None:
     Accepts an optional db_url override for testing with
     engine patching.  Defaults to DATABASE_URL from settings.
     """
+    import sys as _sys
+
+    for _name in ("alembic", "alembic.runtime", "alembic.runtime.migration", "sqlalchemy.engine"):
+        _log = logging.getLogger(_name)
+        _log.handlers.clear()
+        _handler = logging.StreamHandler(_sys.stderr)
+        _handler.setFormatter(logging.Formatter("%(levelname)s [%(name)s] %(message)s"))
+        _log.addHandler(_handler)
+
     from alembic.config import Config
 
     from alembic import command

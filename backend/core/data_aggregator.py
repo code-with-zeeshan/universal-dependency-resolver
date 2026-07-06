@@ -4,8 +4,8 @@
 import asyncio
 import hashlib
 import importlib
-import json
 import logging
+import os
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +23,8 @@ from backend.core.utils import (
     sanitize_ecosystem_name,
 )
 from backend.settings import OSV_API_URL
+
+from ._json import dumps
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +201,7 @@ class DataAggregator:
             kwargs = kwargs.copy()
             kwargs["system_info"] = hash_system_info(system_info)
 
-        key_str = json.dumps(key_data, sort_keys=True, default=str)
+        key_str = dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()
 
     async def get_package_info(
@@ -219,9 +221,9 @@ class DataAggregator:
         else:
             eco_str = ""
         # Only normalize for PyPI-style ecosystems where dots/underscores
-        # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods, gradle
-        # use dots as semantic separators.
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle"}
+        # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods, gradle,
+        # homebrew use dots as semantic separators.
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle", "homebrew"}
         if eco_str not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
@@ -406,9 +408,22 @@ class DataAggregator:
         include_versions: bool,
     ) -> dict:
         """Fetch package data from a specific ecosystem."""
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle"}
+        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle", "homebrew"}
         if ecosystem.value not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
+
+        if os.environ.get("UDR_OFFLINE", "").lower() == "true":
+            from backend.core.offline_index import get_package_info as off_get_info
+
+            off_result = off_get_info(ecosystem.value, package_name)
+            if off_result is not None:
+                logger.debug("Offline index hit for %s/%s", ecosystem.value, package_name)
+                return off_result
+            logger.debug("Offline index miss for %s/%s", ecosystem.value, package_name)
+            raise FileNotFoundError(
+                f"Package {package_name} not found in offline index for {ecosystem.value}"
+            )
+
         try:
             client = self._get_client(ecosystem)
 

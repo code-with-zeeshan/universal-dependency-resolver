@@ -2,7 +2,6 @@
 
 # conda_client.py
 import io
-import json
 import logging
 import re
 import tarfile
@@ -12,6 +11,7 @@ from typing import Any
 import aiohttp
 import yaml  # type: ignore[import-untyped]
 
+from ..core._json import loads
 from ..core.utils import (
     normalize_package_name,
     parse_version,
@@ -327,7 +327,7 @@ class CondaClient(BaseDataSourceClient):
                                 member = tar.getmember("info/index.json")
                                 f = tar.extractfile(member)
                                 if f:
-                                    metadata = json.loads(f.read().decode("utf-8"))
+                                    metadata = loads(f.read())
                                     return metadata
                             except KeyError:
                                 try:

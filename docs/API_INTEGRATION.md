@@ -14,7 +14,7 @@ udr serve --port 8000 --host 0.0.0.0
 ENABLE_AUTH=false UDR_PORT=8000 udr serve
 ```
 
-With auth disabled, all 30 business/infra endpoints are available immediately.
+With auth disabled, all 33 business/infra endpoints are available immediately.
 
 ---
 

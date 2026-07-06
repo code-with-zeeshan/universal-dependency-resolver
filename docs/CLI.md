@@ -17,7 +17,7 @@ All commands support `--help` for inline usage.
 | Flag | Description |
 |---|---|
 | `--version` | Print version and exit (reads from `pyproject.toml`) |
-| `--offline` | Offline mode: use cached data only, no network requests |
+| `--offline` | Offline mode: use SQLite offline indexes + cached data; no network requests |
 | `-h, --help` | Show help for any command |
 
 ---
@@ -56,7 +56,7 @@ udr serve --ssl-keyfile key.pem --ssl-certfile cert.pem  # HTTPS
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOLVER_TIMEOUT` | `30` | Total seconds for BFS+SAT resolution (used by `lock`/`scan`/`update`). ~65% of budget goes to Z3 solver; rest for BFS dep discovery |
+| `SOLVER_TIMEOUT` | `120` | Total seconds for BFS+SAT resolution (used by `lock`/`scan`/`update`). ~80% of budget goes to Z3 solver (minimum 10s); rest for BFS dep discovery |
 | `SCANNER_MAX_WORKERS` | `10` | Thread pool workers for parallel system scanning in `system_scanner.py` |
 | `CACHE_TTL` | `3600` | Default cache TTL in seconds for package metadata |
 | `CACHE_TTL_SHORT` | `300` | Cache TTL for rate-limited API endpoints (5 min default) |
@@ -132,6 +132,7 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 | `-i, --interactive` | `False` | If SAT solver reports unsatisfiable, enter manual resolution mode |
 | `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`). Auto-detected if omitted |
 | `--device` | `None` | Target compute device: `cpu`, `cuda` (NVIDIA GPU), or `mps` (Apple Silicon). Auto-detected if omitted |
+| `--timeout` | `None` | Resolution timeout in seconds (default: 120, from `SOLVER_TIMEOUT` env var) |
 
 **Package spec syntax:**
 
@@ -197,7 +198,7 @@ udr lock --cuda 12.1                         # override CUDA detection
 
 ```json
 {
-  "version": "2.1",
+  "version": "2.0",
   "generated_at": "2026-07-05T12:00:00",
   "resolver": "sat",
   "system": {
@@ -437,6 +438,8 @@ udr completion zsh > /usr/local/share/zsh/site-functions/_udr
 udr completion fish > ~/.config/fish/completions/udr.fish
 ```
 
+**API equivalent:** `GET /api/v1/completion/{shell}` returns the same scripts as `text/plain`.
+
 **Exit codes:**
 
 | Code | Condition |
@@ -481,6 +484,111 @@ udr update flask --dry-run              # preview changes without writing
 
 ---
 
+## `auth`
+
+Manage DB-backed API keys for the UDR API server. Requires a running server with `ENABLE_AUTH=true` and a connected database.
+
+**Usage:**
+
+```bash
+udr auth create --name my-key --role admin
+udr auth revoke 1
+udr auth list
+```
+
+**Subcommands:**
+
+### `auth create`
+
+| Flag | Default | Description |
+|---|---|---|
+| `--name` | `cli-generated` | Human-readable name for the key |
+| `--role` | `read-only` | `admin`, `read-write`, or `read-only` |
+| `--description` | — | Optional description |
+
+### `auth revoke`
+
+| Argument | Description |
+|---|---|
+| `key_id` | ID of the key to revoke (required, positional) |
+
+### `auth list`
+
+No flags. Displays a table of all API keys with ID, name, role, active status, last used, and usage count.
+
+---
+
+## `index`
+
+Manage offline SQLite indexes for local package resolution. Indexes are stored at
+`~/.cache/udr/indexes/{ecosystem}.db`.
+
+**Subcommands:**
+
+### `index pull`
+
+Download pre-built SQLite indexes from a remote URL.
+
+```bash
+udr index pull https://indexes.udr.dev       # pull all available indexes
+udr index pull https://indexes.udr.dev -e pypi  # single ecosystem
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `url` | (required) | Base URL for index download (expects `index.json` manifest + `{eco}.db` files) |
+| `-e, --ecosystem` | `None` | Only pull index for this ecosystem |
+
+### `index build`
+
+Build an offline SQLite index from resolved packages in `udr.lock` or a comma-separated
+package list. Fetches version + dependency data from registries and stores locally.
+
+```bash
+udr index build                             # build from udr.lock in cwd
+udr index build -d /path/to/project          # build from lock file in project
+udr index build --packages flask,requests    # build index for specific packages
+udr index build --packages react -e npm      # build index for npm packages
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--packages` | `""` | Comma-separated package names to index (uses `--ecosystem`) |
+| `-e, --ecosystem` | `pypi` | Ecosystem for `--packages` |
+| `-d, --directory` | cwd | Directory containing `udr.lock` |
+
+### `index status`
+
+Show which ecosystems have local indexes available, with package/version counts.
+
+```bash
+udr index status                            # rich table output
+udr index status --json                     # JSON output
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--json` | `False` | Output as JSON |
+
+**Integration**: When `--offline` is set, the resolver queries the SQLite index instead
+of making network calls. Use `udr index build` after `udr lock` to cache resolved
+packages for offline use.
+
+**API equivalents:**
+| CLI | API |
+|---|---|
+| `udr index status` | `GET /api/v1/index/status` |
+| `udr index pull <url>` | `POST /api/v1/index/pull` |
+| `udr index build` | `POST /api/v1/index/build` |
+
+---
+
 ## `install`
 
 Install all **direct** dependencies from the lock file using their native package managers.
@@ -507,6 +615,7 @@ udr install --restore                    # restore mode (all packages)
 | `-n, --dry-run` | `False` | Show install plan without running commands |
 | `-y, --yes` | `False` | Skip confirmation prompt |
 | `--restore` | `False` | Restore mode — alias for install (kept for compatibility) |
+| `--cuda` | `None` | CUDA version to target (e.g. 121 for cu121 wheels) |
 
 **Supported installers (direct deps only):**
 
@@ -523,6 +632,9 @@ udr install --restore                    # restore mode (all packages)
 | `nuget` | `dotnet add package pkg --version ver` |
 | `cocoapods` | `pod install` (uses Podfile) |
 | `maven` | `mvn dependency:copy-dependencies` |
+| `homebrew` | `brew install pkg` |
+| `hex` | `mix deps.update pkg` |
+| `swift` | `swift package resolve` |
 
 **Exit codes:**
 
@@ -794,7 +906,10 @@ Every CLI subcommand has a corresponding REST API endpoint when `udr serve` is r
 | `udr diff` | `/api/v1/diff` | POST | Same |
 | `udr search` | `/api/v1/packages/search` | GET | Same response shape |
 | `udr details` | `/api/v1/packages/{eco}/{name}/details` | GET | Same response shape |
-| `udr completion` | — | — | CLI-only: shell completion generation |
+| `udr index pull` | `/api/v1/index/pull` | POST | Downloads SQLite index from URL |
+| `udr index build` | `/api/v1/index/build` | POST | Builds index from package data |
+| `udr index status` | `/api/v1/index/status` | GET | Shows local offline index status |
+| `udr completion` | `/api/v1/completion/{shell}` | GET | Returns shell completion script as text/plain |
 
 **Key differences:**
 - The API returns JSON only; CLI supports `--json`, text tables, and interactive TUI modes.

@@ -3,7 +3,7 @@
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>16 commands"]:::cli
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>18 commands"]:::cli
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code><br/>Standalone binary"]:::desktop
     end
 
@@ -20,9 +20,9 @@ graph TB
     subgraph CoreLayer["🧠 Core Logic"]
         CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]:::core
         DA["<code>data_aggregator.py</code><br/>Async metadata aggregation"]:::core
-        EG["<code>export_generator.py</code><br/>12 export formats (Jinja2)"]:::core
-        SS["<code>system_scanner.py</code><br/>OS · CPU · GPU · CUDA · runtimes"]:::core
-        MD["<code>manifest_detector.py</code><br/>20+ manifest patterns"]:::core
+        EG["<code>export_generator.py</code><br/>15 export formats (Jinja2)"]:::core
+        SS["<code>system_scanner.py</code><br/>OS · CPU · GPU · CUDA · runtimes · accelerators"]:::core
+        MD["<code>manifest_detector.py</code><br/>47+ manifest/lock patterns"]:::core
         CACHE["<code>cache.py</code><br/>DictCache + Redis"]:::core
     end
 
@@ -106,7 +106,7 @@ The old monolithic `backend/cli.py` (2105 lines) was replaced by this package. A
 
 Entry point: `api/main.py` — creates the FastAPI app, registers middleware and routes.
 
-- **Auth** (`api/auth.py`) — JWT + API key authentication. Only registered when `ENABLE_AUTH=true`. Default is anonymous access.
+- **Auth** (`api/auth.py`) — JWT + API key authentication. Only registered when `ENABLE_AUTH=true` (default).
 - **Middleware** (`api/middleware.py`) — request ID, CORS, security headers, rate limiting, request size limits, correlation ID, response time.
 - **Schemas** (`api/schemas.py`) — Pydantic request/response models.
 - **Dependencies** (`api/dependencies.py`) — FastAPI dependency injection (database session, data aggregator, resolver, scanner).
@@ -125,7 +125,7 @@ Routes:
 
 - **`conflict_resolver.py`** — Z3 SAT solver. All 20 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
-- **`export_generator.py`** — Jinja2 template-based export. 12 formats using `.j2` templates.
+- **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
 - **`cache.py`** — `DictCache` (in-memory dict + TTL, no dependencies) with optional Redis fallback.
 - **`manifest_detector.py`** — Scans project directories for 20+ manifest formats (requirements.txt, package.json, Cargo.toml, etc.)
@@ -219,7 +219,7 @@ graph LR
 
 - **Lazy loading**: `import z3` inside methods (not at module level), 20 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
 - **SQLite first**: No PostgreSQL or Redis required. SQLite + DictCache work for all standalone/desktop use cases.
-- **Auth conditionally registered**: `ENABLE_AUTH=false` by default. Auth router only mounted when explicitly enabled.
+- **Auth conditionally registered**: `ENABLE_AUTH=true` by default. Auth router only mounted when enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.
 - **No Docker**: Tool ships as `pip install ud-resolver` and as a desktop app. Docker export templates (Dockerfile.j2, docker-compose.yml.j2) are user-facing features for exporting resolved dependencies.
 
@@ -227,8 +227,8 @@ graph LR
 
 ```
 tests/
-├── unit/         → 1400+ tests (CLI, API, core, data sources, settings)
-├── integration/  → 90+ tests (API + DB + data flow, uses SQLite)
+├── unit/         → 1572 tests (CLI, API, core, data sources, settings)
+├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures
 ```
@@ -379,7 +379,7 @@ erDiagram
     }
 ```
 
-**8 tables** across 3 domains:
+**9 tables** across 4 domains:
 
 | Domain | Tables | Purpose |
 |---|---|---|

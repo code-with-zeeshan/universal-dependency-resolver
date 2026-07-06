@@ -1,6 +1,5 @@
 """GPU detection module."""
 
-import json
 import logging
 import os
 import platform
@@ -12,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.scanner_models import GPUInfo
+
+from .._json import JSONDecodeError, loads
 
 try:
     import GPUtil
@@ -348,8 +349,8 @@ def _detect_metal_info(scanner) -> dict[str, Any] | None:
         output = scanner._check_output(["system_profiler", "SPDisplaysDataType", "-json"])
         if output:
             try:
-                json.loads(output)
-            except json.JSONDecodeError as e:
+                loads(output)
+            except JSONDecodeError as e:
                 logger.debug("system_profiler JSON parse failed: %s", e)
 
     return metal_info if metal_info["available"] else None

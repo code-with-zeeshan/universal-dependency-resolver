@@ -2,7 +2,6 @@
 
 # backend/api/routes/system.py
 import asyncio
-import json
 import logging
 import re
 import subprocess
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_system_scanner, limiter
+from backend.core._json import loads
 from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import User
 
@@ -680,7 +680,7 @@ async def _check_docker() -> dict[str, Any]:
             docker_info = {"version": version_output, "available": True}  # type: ignore[assignment]
 
             if info_result.returncode == 0:
-                info_data = json.loads(info_result.stdout)
+                info_data = loads(info_result.stdout)
                 docker_info.update(
                     {
                         "server_version": info_data.get("ServerVersion"),
@@ -923,7 +923,7 @@ async def _get_python_packages() -> list[dict[str, Any]]:
         )
 
         if result.returncode == 0:
-            return json.loads(result.stdout)
+            return loads(result.stdout)
     except Exception:
         logger.debug("Runtime detection failed", exc_info=True)
 

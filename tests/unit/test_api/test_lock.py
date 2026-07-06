@@ -321,3 +321,89 @@ class TestDiff:
         assert data["changed"][0]["name"] == "requests"
         assert data["changed"][0]["from"] == "2.31.0"
         assert data["changed"][0]["to"] == "3.0.0"
+
+
+class TestGenerateLockExportFormat:
+    """POST /api/v1/generate-lock?export_format=..."""
+
+    def test_export_format_requirements(self, client):
+        response = client.post(
+            "/api/v1/generate-lock?export_format=requirements.txt",
+            json={
+                "packages": [{"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"}],
+                "manifests": [],
+                "system": {},
+                "resolution": {
+                    "resolved_packages": {
+                        "requests": {"name": "requests", "version": "2.31.0", "ecosystem": "pypi"}
+                    }
+                },
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "export_content" in data
+        assert data["export_format"] == "requirements.txt"
+        assert "requests==2.31.0" in data["export_content"]
+
+    def test_export_format_dockerfile(self, client):
+        response = client.post(
+            "/api/v1/generate-lock?export_format=Dockerfile",
+            json={
+                "packages": [{"name": "flask", "ecosystem": "pypi", "resolved_version": "3.0.0"}],
+                "manifests": [],
+                "system": {},
+                "resolution": {
+                    "resolved_packages": {
+                        "flask": {"name": "flask", "version": "3.0.0", "ecosystem": "pypi"}
+                    }
+                },
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "export_content" in data
+        # Dockerfile template includes FROM pip install
+        content = data["export_content"]
+        assert "FROM" in content or "pip install" in content or "flask" in content
+
+    def test_no_export_format_omits_field(self, client):
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "packages": [{"name": "click", "ecosystem": "pypi", "resolved_version": "8.1.7"}],
+                "manifests": [],
+                "system": {},
+                "resolution": {
+                    "resolved_packages": {
+                        "click": {"name": "click", "version": "8.1.7", "ecosystem": "pypi"}
+                    }
+                },
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "export_content" not in data
+        assert "export_format" not in data
+
+    def test_export_format_with_unknown_format_graceful(self, client):
+        response = client.post(
+            "/api/v1/generate-lock?export_format=nonexistent_format_xyz",
+            json={
+                "packages": [{"name": "numpy", "ecosystem": "pypi", "resolved_version": "1.26.0"}],
+                "manifests": [],
+                "system": {},
+                "resolution": {
+                    "resolved_packages": {
+                        "numpy": {"name": "numpy", "version": "1.26.0", "ecosystem": "pypi"}
+                    }
+                },
+            },
+        )
+        # Should still return lock_data even if export fails
+        assert response.status_code == 200
+        data = response.json()
+        assert "lock_data" in data
+        # Export content might fail gracefully for unknown formats
+        assert "export_content" not in data or data["export_content"] is None

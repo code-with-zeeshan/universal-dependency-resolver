@@ -109,11 +109,17 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 | 37 | POST | `/api/v1/why` | Yes | none |
 | 38 | POST | `/api/v1/outdated` | Yes | none |
 | 39 | POST | `/api/v1/diff` | Yes | none |
+| **Index Management** | | | | |
+| 40 | GET | `/api/v1/index/status` | Yes | 30/min |
+| 41 | POST | `/api/v1/index/pull` | Yes | 10/min |
+| 42 | POST | `/api/v1/index/build` | Yes | 10/min |
+| **Completion** | | | | |
+| 43 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
 | **Infrastructure** | | | | |
-| 40 | GET | `/metrics` | No | none |
-| 41 | GET | `/api/v1/docs` | No | none |
-| 42 | GET | `/api/v1/redoc` | No | none |
-| 43 | GET | `/api/v1/openapi.json` | No | none |
+| 44 | GET | `/metrics` | No | none |
+| 45 | GET | `/api/v1/docs` | No | none |
+| 46 | GET | `/api/v1/redoc` | No | none |
+| 47 | GET | `/api/v1/openapi.json` | No | none |
 
 ---
 
@@ -131,7 +137,7 @@ Root endpoint — returns API metadata and links.
 ```json
 {
   "name": "Universal Dependency Resolver API",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "documentation": {
     "openapi": "/api/v1/docs",
     "redoc": "/api/v1/redoc"
@@ -167,7 +173,7 @@ Health check — verifies database connection, Redis (if configured), and extern
 {
   "status": "healthy",
   "timestamp": "2026-06-28T12:00:00",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "checks": {
     "database": {"status": "healthy"},
     "redis": {"status": "healthy"},
@@ -1430,11 +1436,22 @@ Re-resolve a single package and return updated lock data. Mirrors `udr update <p
 
 ### `POST /api/v1/generate-lock`
 
-Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json` output format.
+Generate a `udr.lock` structure from project manifests or pre-parsed package data. Supports two modes:
+
+1. **Pre-parsed mode** (original): POST `packages`, `manifests`, `system`, `resolution`.
+2. **Manifest content mode** (mirrors `udr lock --json`): POST `manifest_contents` as a dict of `{filename: content}`.
+
+Optionally pass `?export_format=requirements.txt` to chain export generation (mirrors `udr lock --export`).
 
 **Auth:** Yes (anonymous in local mode)
 
-**Request body:**
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `export_format` | string | — | Optional export format (e.g. `requirements.txt`, `Dockerfile`) |
+
+**Request body (pre-parsed mode):**
 
 ```json
 {
@@ -1467,6 +1484,8 @@ Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json`
 | `manifests` | array | `[]` | Manifest files detected |
 | `system` | object | `null` | System scan data (platform, cpu, gpu, runtime_versions) |
 | `resolution` | object | `null` | Resolution results (resolved_packages, warnings) |
+| `manifest_contents` | dict | `null` | **Alternative mode**: filename → content mapping of manifest files |
+| `manifest_filter` | string | `null` | Only process this manifest filename (used with `manifest_contents`) |
 
 **Response:**
 
@@ -1474,7 +1493,7 @@ Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json`
 {
   "status": "success",
   "lock_data": {
-    "version": "2.1",
+    "version": "2.0",
     "generated_at": "2026-07-05T12:00:00",
     "resolver": "sat",
     "system": {"os": "Linux 6.2.0", "python": "3.11.5", "cpu": "Intel(R) Xeon(R)", "gpu": "NVIDIA A100", "cuda": "12.1"},
@@ -1494,6 +1513,17 @@ Generate a `udr.lock` structure from scan result data. Mirrors `udr lock --json`
     },
     "warnings": []
   }
+}
+```
+
+When `?export_format=` is specified, the response also includes:
+
+```json
+{
+  "status": "success",
+  "lock_data": { ... },
+  "export_content": "numpy==1.26.0\n",
+  "export_format": "requirements.txt"
 }
 ```
 
@@ -1706,6 +1736,183 @@ Compare two lock data objects and report package differences. Mirrors `udr diff 
 
 ---
 
+## Index Management
+
+Manage offline SQLite indexes used for local package resolution without network access. Mirrors the `udr index` CLI subcommand.
+
+### `GET /api/v1/index/status`
+
+List local offline indexes and their metadata.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `ecosystem` | string | — | Filter to one ecosystem |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "indexes": [
+    {
+      "ecosystem": "pypi",
+      "path": "/home/user/.cache/udr/indexes/pypi.db",
+      "size_bytes": 1048576,
+      "packages": 15000,
+      "versions": 120000,
+      "metadata": {
+        "index_version": "1",
+        "updated_at": "2026-07-06T10:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Indexes listed |
+| `404` | No index for the specified ecosystem |
+
+---
+
+### `POST /api/v1/index/pull`
+
+Download a pre-built SQLite index from a remote URL and install it locally.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "url": "https://index-server.example.com/pypi.db",
+  "ecosystem": "pypi"
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `url` | string | (required) | URL to download the index from (http/https) |
+| `ecosystem` | string | auto-detected | Ecosystem name (derived from URL filename if omitted) |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "ecosystem": "pypi",
+  "index": {
+    "ecosystem": "pypi",
+    "path": "/home/user/.cache/udr/indexes/pypi.db",
+    "size_bytes": 1048576,
+    "packages": 15000
+  }
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Index downloaded and installed |
+| `400` | Invalid URL or could not determine ecosystem |
+| `502` | Download failed |
+
+---
+
+### `POST /api/v1/index/build`
+
+Build an offline index from package version data.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "ecosystem": "pypi",
+  "packages": [
+    {
+      "name": "requests",
+      "versions": [
+        {
+          "version": "2.31.0",
+          "release_date": "2023-05-22",
+          "requires_python": ">=3.7",
+          "dependencies": {"urllib3": ">=1.21.1,<3"}
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ecosystem` | string | (required) | Target ecosystem |
+| `packages` | array | (required) | Package version data (name + versions list) |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "ecosystem": "pypi",
+  "packages_indexed": 1,
+  "index": {
+    "ecosystem": "pypi",
+    "packages": 15001
+  }
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Index built |
+| `400` | No packages provided |
+
+---
+
+## Completion
+
+### `GET /api/v1/completion/{shell}`
+
+Generate a shell completion script for `udr` commands. Returns raw shell script text suitable for sourcing.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `shell` | string | One of `bash`, `zsh`, or `fish` |
+
+**Response:** `text/plain` — a shell script.
+
+```bash
+# Example: save and source
+curl http://localhost:8000/api/v1/completion/bash > udr-completion.sh
+source udr-completion.sh
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Completion script returned |
+| `400` | Unsupported shell |
+
+---
+
 ## Infrastructure
 
 ### `GET /metrics`
@@ -1740,7 +1947,7 @@ Every API endpoint maps to a CLI command when `udr serve` is running:
 | `GET /api/v1/packages/search` | GET | `udr search` | Same query parameters, response shape |
 | `GET /api/v1/packages/{eco}/{name}/details` | GET | `udr details` | Same |
 | `GET /api/v1/packages/ecosystems` | GET | `udr list-ecosystems` | Same response shape |
-| `POST /api/v1/generate-lock` | POST | `udr lock --json` | API takes pre-parsed packages |
+| `POST /api/v1/generate-lock` | POST | `udr lock --json` | Also supports `?export_format=` (mirrors `--export`) |
 | `POST /api/v1/graph` | POST | `udr graph` | Same |
 | `POST /api/v1/verify` | POST | `udr verify` | Same |
 | `POST /api/v1/update` | POST | `udr update` | Same |
@@ -1751,10 +1958,14 @@ Every API endpoint maps to a CLI command when `udr serve` is running:
 | `POST /api/v1/why` | POST | `udr why` | Same |
 | `POST /api/v1/outdated` | POST | `udr outdated` | Same |
 | `POST /api/v1/diff` | POST | `udr diff` | Same |
+| `GET /api/v1/index/status` | GET | `udr index status` | Same response shape |
+| `POST /api/v1/index/pull` | POST | `udr index pull` | Same |
+| `POST /api/v1/index/build` | POST | `udr index build` | Same |
+| `GET /api/v1/completion/{shell}` | GET | `udr completion {shell}` | Returns raw shell script |
 
 **API-only endpoints** (no CLI equivalent): `/api/v1/packages/{eco}/{name}/versions`, `/api/v1/packages/{eco}/{name}/dependencies`, `/api/v1/packages/{eco}/{name}/compatibility`, `/api/v1/packages/export-formats`, `/api/v1/system/check-compatibility`, auth endpoints.
 
-**CLI-only features** (no API equivalent): `udr serve` (starts the API), `udr completion` (shell completions), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`).
+**CLI-only features** (no API equivalent): `udr serve` (starts the API), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`).
 
 ---
 
@@ -1786,7 +1997,7 @@ Requests pass through middleware in this order:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENABLE_AUTH` | `false` | Enable JWT auth and auth endpoints |
+| `ENABLE_AUTH` | `true` | Enable JWT auth and auth endpoints |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated CORS origins |
 | `REDIS_URL` | — | Redis connection for rate limiting + caching |
 | `SENTRY_DSN` | — | Sentry error tracking |

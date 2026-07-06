@@ -100,9 +100,10 @@ def extract_requirements(content: str, file_type: str) -> list[dict[str, Any]]:
 def hash_system_info(system_info: dict[str, Any]) -> str:
     """Generate a hash of system info for caching."""
     import hashlib
-    import json
 
-    system_str = json.dumps(system_info, sort_keys=True)
+    from ._json import dumps
+
+    system_str = dumps(system_info, sort_keys=True)
     return hashlib.sha256(system_str.encode()).hexdigest()
 
 

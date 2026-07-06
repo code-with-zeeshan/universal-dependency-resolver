@@ -2,7 +2,6 @@
 
 # system_scanner.py
 import asyncio
-import json
 import logging
 import os
 import platform
@@ -30,6 +29,8 @@ from backend.core.scanner_models import (
     RuntimeInfo,
 )
 from backend.core.utils import hash_system_info
+
+from ._json import dumps, loads
 
 try:
     import psutil
@@ -679,7 +680,7 @@ class SystemScanner:
                     ["lsblk", "-J", "-b", "-o", "NAME,TYPE,SIZE,MODEL,SERIAL,ROTA"]
                 ).decode()
 
-                data = json.loads(output)
+                data = loads(output)
                 for device in data.get("blockdevices", []):
                     if device.get("type") == "disk":
                         disk_info = {
@@ -1562,7 +1563,7 @@ class SystemScanner:
                     [sys.executable, "-m", "pip", "list", "--format=json"]
                 ).decode()
 
-                pip_packages = json.loads(output)
+                pip_packages = loads(output)
                 for pkg in pip_packages:
                     packages.append(
                         PackageInfo(name=pkg["name"], version=pkg["version"], manager="pip")
@@ -1582,7 +1583,7 @@ class SystemScanner:
                 [sys.executable, "-m", "pip", "list", "--format=json"]
             ).decode()
 
-            pip_packages = json.loads(output)
+            pip_packages = loads(output)
 
             for pkg in pip_packages[:50]:  # Limit for performance
                 try:
@@ -1621,9 +1622,11 @@ class SystemScanner:
 
         try:
             # Global packages
-            output = subprocess.check_output(["npm", "list", "-g", "--json", "--depth=0"]).decode()
+            output = subprocess.check_output(
+                ["npm", "list", "-g", "--json", "--depth=0"], stderr=subprocess.DEVNULL
+            ).decode()
 
-            data = json.loads(output)
+            data = loads(output)
             if "dependencies" in data:
                 for name, info in data["dependencies"].items():
                     packages.append(
@@ -1640,9 +1643,11 @@ class SystemScanner:
         # Local packages (if in a project directory)
         if os.path.exists("package.json"):
             try:
-                output = subprocess.check_output(["npm", "list", "--json", "--depth=0"]).decode()
+                output = subprocess.check_output(
+                    ["npm", "list", "--json", "--depth=0"], stderr=subprocess.DEVNULL
+                ).decode()
 
-                data = json.loads(output)
+                data = loads(output)
                 if "dependencies" in data:
                     for name, info in data["dependencies"].items():
                         packages.append(
@@ -2287,7 +2292,7 @@ class SystemScanner:
                         ]
 
         if format == "json":
-            return json.dumps(data, indent=2, default=str)
+            return dumps(data, indent=2, default=str)
         if format == "summary":
             return self._generate_summary(data)
         return data
