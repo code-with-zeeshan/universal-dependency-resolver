@@ -349,21 +349,30 @@ async def _resolve_transitive(
 
     while queue and depth <= max_depth:
         depth += 1
-        next_round = []
+        # Fetch ALL packages at current BFS level concurrently
+        fetchable = []
         for pkg in queue:
             key = (pkg["name"], pkg["ecosystem"])
-            if key in visited:
-                continue
-            if key in pre_resolved:
+            if key in visited or key in pre_resolved:
                 continue
             visited.add(key)
+            fetchable.append(pkg)
+        if not fetchable:
+            break
+        pkg_infos = await asyncio.gather(
+            *[_fetch_with_sem(p["name"], p["ecosystem"]) for p in fetchable],
+            return_exceptions=True,
+        )
+        # Process results and discover next-level deps
+        next_round = []
+        all_dep_fetches = []
+        for pkg, info in zip(fetchable, pkg_infos):
+            if isinstance(info, Exception) or not info:
+                continue
+            key = (pkg["name"], pkg["ecosystem"])
             if key not in all_packages:
                 all_packages[key] = pkg
-            info = await _fetch_with_sem(pkg["name"], pkg["ecosystem"])
-            if not info:
-                continue
             all_deps = info.get("dependencies", {})
-            dep_fetches = []
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg["ecosystem"])
@@ -373,7 +382,7 @@ async def _resolve_transitive(
                         and dep_key not in all_packages
                         and dep_key not in pre_resolved
                     ):
-                        dep_fetches.append((dep, dep_ecosystem_val, dep_key, pkg))
+                        all_dep_fetches.append((dep, dep_ecosystem_val, dep_key, pkg))
                     if dep_ecosystem_val != pkg["ecosystem"]:
                         _add_cross_eco_edge(
                             all_packages,
@@ -383,26 +392,27 @@ async def _resolve_transitive(
                             pkg["ecosystem"],
                             dep_ecosystem_val,
                         )
-            if dep_fetches:
-                dep_info_results = await asyncio.gather(
-                    *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in dep_fetches],
-                    return_exceptions=True,
+        # Fetch next-level deps concurrently
+        if all_dep_fetches:
+            dep_info_results = await asyncio.gather(
+                *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in all_dep_fetches],
+                return_exceptions=True,
+            )
+            for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
+                all_dep_fetches, dep_info_results
+            ):
+                if isinstance(dep_info, Exception) or not dep_info:
+                    continue
+                dep_pkg = _build_dep_pkg(
+                    dep,
+                    dep_ecosystem_val,
+                    dep_info,
+                    source_pkg["ecosystem"],
+                    source_pkg["name"],
                 )
-                for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
-                    dep_fetches, dep_info_results
-                ):
-                    if isinstance(dep_info, Exception) or not dep_info:
-                        continue
-                    dep_pkg = _build_dep_pkg(
-                        dep,
-                        dep_ecosystem_val,
-                        dep_info,
-                        source_pkg["ecosystem"],
-                        source_pkg["name"],
-                    )
-                    if dep_pkg:
-                        all_packages[dep_key] = dep_pkg
-                        next_round.append(dep_pkg)
+                if dep_pkg:
+                    all_packages[dep_key] = dep_pkg
+                    next_round.append(dep_pkg)
         queue = next_round
 
     # Pin any package with an exact version constraint (e.g. from lock files)

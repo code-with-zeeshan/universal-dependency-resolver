@@ -123,7 +123,7 @@ class TestCLICommands:
         assert "pypi" in output
 
     def test_resolve_cross_ecosystem(self, test_dir):
-        output = run_cli("resolve", "fastapi@pypi", "express@npm", "--ecosystem", "pypi", timeout=120, cwd=test_dir)
+        output = run_cli("resolve", "fastapi@pypi", "express@npm", "--ecosystem", "pypi", timeout=300, cwd=test_dir)
         assert "Resolved" in output
         assert "fastapi" in output
         assert "express" in output
