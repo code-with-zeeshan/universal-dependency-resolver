@@ -212,6 +212,7 @@ class DataAggregator:
         include_dependencies: bool = True,
         include_versions: bool = True,
         include_documentation: bool = True,
+        include_extended: bool = True,
     ) -> dict[str, Any]:
         """Get comprehensive package information from all sources."""
         if ecosystem and isinstance(ecosystem, str):
@@ -253,7 +254,12 @@ class DataAggregator:
         for eco in ecosystems:
             tasks.append(
                 self._fetch_package_data(
-                    eco, package_name, version, include_dependencies, include_versions
+                    eco,
+                    package_name,
+                    version,
+                    include_dependencies,
+                    include_versions,
+                    include_extended,
                 )
             )
 
@@ -406,6 +412,7 @@ class DataAggregator:
         version: str | None,
         include_dependencies: bool,
         include_versions: bool,
+        include_extended: bool = True,
     ) -> dict:
         """Fetch package data from a specific ecosystem."""
         _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle", "homebrew"}
@@ -448,6 +455,8 @@ class DataAggregator:
                     kwargs["include_dependencies"] = include_dependencies
                 if "include_versions" in sig:
                     kwargs["include_versions"] = include_versions
+                if "include_extended" in sig:
+                    kwargs["include_extended"] = include_extended
 
             # Call the appropriate method
             method = None

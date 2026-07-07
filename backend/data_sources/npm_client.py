@@ -79,11 +79,11 @@ class NPMClient(BaseDataSourceClient):
                 mirror_url = url.replace(self.registry_url, mirror.rstrip("/"))
                 urls_to_try.append(mirror_url)
 
-        async with _NPM_SEMAPHORE:
-            for attempt_url in urls_to_try:
+        for attempt_url in urls_to_try:
+            async with _NPM_SEMAPHORE:
                 result = await super()._make_request(method, attempt_url, **kwargs)
-                if result is not None:
-                    return result
+            if result is not None:
+                return result
         return None
 
     async def search_packages(
@@ -146,12 +146,18 @@ class NPMClient(BaseDataSourceClient):
         package_name: str,
         include_readme: bool = True,
         include_versions: bool = True,
+        include_extended: bool = True,
     ) -> dict[str, Any] | None:
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
 
-        data = await self._make_request("GET", url)
+        # Use compact install metadata format during resolution (~10x smaller payload)
+        # Full format is only needed for rich analysis (descriptions, readmes, etc.)
+        extra_headers = {}
+        if not include_extended:
+            extra_headers = {"Accept": "application/vnd.npm.install-v1+json"}
+        data = await self._make_request("GET", url, headers=extra_headers)
         if not data:
             return None
 
@@ -161,11 +167,19 @@ class NPMClient(BaseDataSourceClient):
 
         latest_data = data.get("versions", {}).get(latest_version, {})
 
-        downloads = await self._get_download_stats(package_name)
+        downloads = await self._get_download_stats(package_name) if include_extended else {}
 
-        types_info = await self._check_typescript_support(package_name, latest_data)
+        types_info = (
+            await self._check_typescript_support(package_name, latest_data)
+            if include_extended
+            else {"has_types": False, "types_package": None, "included": False}
+        )
 
-        vulnerabilities = await self._check_vulnerabilities(package_name, latest_version)
+        vulnerabilities = (
+            await self._check_vulnerabilities(package_name, latest_version)
+            if include_extended
+            else []
+        )
 
         versions_info = []
         if include_versions:

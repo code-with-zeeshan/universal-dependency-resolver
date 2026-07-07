@@ -122,6 +122,7 @@ async def _fetch_dep_info(
     aggregator,
     name: str,
     ecosystem: str,
+    include_extended: bool = True,
 ) -> dict | None:
     try:
         return await aggregator.get_package_info(
@@ -129,6 +130,7 @@ async def _fetch_dep_info(
             ecosystem=ecosystem,
             include_dependencies=True,
             include_versions=True,
+            include_extended=include_extended,
         )
     except Exception as exc:
         logger.warning("Failed to fetch transitive dep %s/%s: %s", name, ecosystem, exc)
@@ -343,7 +345,7 @@ async def _resolve_transitive(
                 "dependencies": {ecosystem: deps},
             }
         async with sem:
-            return await _fetch_dep_info(aggregator, name, ecosystem)
+            return await _fetch_dep_info(aggregator, name, ecosystem, include_extended=False)
 
     while queue and depth <= max_depth:
         depth += 1
