@@ -125,7 +125,7 @@ udr serve
 ### `lock` command finds no manifests
 
 - `udr lock` scans the current directory for manifest files
-- Supported: requirements.txt, pyproject.toml, Pipfile, Pipfile.lock, package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.toml, Cargo.lock, go.mod, environment.yml, Gemfile, composer.json, pubspec.yaml, pom.xml, Podfile, Podfile.lock, packages.config, Brewfile, apt-packages.txt, apk-packages.txt, and more
+- Supported: requirements.txt, requirements.in, requirements-dev.txt, Pipfile, Pipfile.lock, pyproject.toml, poetry.lock, uv.lock, package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.toml, Cargo.lock, go.mod, environment.yml, environment.yaml, Gemfile, Gemfile.lock, composer.json, composer.lock, pubspec.yaml, build.gradle, build.gradle.kts, Package.swift, Package.resolved, mix.exs, mix.lock, *.cabal, pom.xml, Podfile, Podfile.lock, packages.config, Brewfile, Brewfile.lock.json, apt-packages.txt, apk-packages.txt, udr.lock
 - Use `--manifest path/to/file` to specify explicitly
 
 ## API / Server
@@ -257,7 +257,7 @@ Solver did not find a solution within timeout
 
 ```bash
 # Increase the timeout
-export UDR_SOLVER_TIMEOUT=120
+export SOLVER_API_TIMEOUT=120
 udr resolve requests numpy torch
 
 # Or reduce the number of packages

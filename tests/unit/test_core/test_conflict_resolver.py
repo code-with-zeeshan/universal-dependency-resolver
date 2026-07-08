@@ -43,9 +43,7 @@ class TestConflictResolver:
         """Test handling when no system info is provided."""
         packages = [{"name": "requests", "version_spec": ">=2.0.0"}]
 
-        with patch.object(
-            resolver, "_get_default_system_info", return_value={"os": "linux"}
-        ):
+        with patch.object(resolver, "_get_default_system_info", return_value={"os": "linux"}):
             result = resolver.resolve_dependencies(packages, {})
 
         assert result["status"] in ["success", "error"]
@@ -56,12 +54,8 @@ class TestConflictResolver:
         system_info = {"os": "linux"}
 
         # Run with timeout, then without: verify no crash
-        result1 = resolver.resolve_dependencies(
-            packages, system_info, solver_timeout=1500
-        )
-        result2 = resolver.resolve_dependencies(
-            packages, system_info, solver_timeout=None
-        )
+        result1 = resolver.resolve_dependencies(packages, system_info, solver_timeout=1500)
+        result2 = resolver.resolve_dependencies(packages, system_info, solver_timeout=None)
 
         assert result1 is not None
         assert result2 is not None
@@ -87,9 +81,7 @@ class TestConflictResolver:
             {
                 "name": "package-a",
                 "ecosystem": "pypi",
-                "dependencies": {
-                    "pypi": {"package-b": ">=1.0.0", "package-c": "==2.0.0"}
-                },
+                "dependencies": {"pypi": {"package-b": ">=1.0.0", "package-c": "==2.0.0"}},
             },
             {"name": "package-b", "ecosystem": "pypi"},
         ]
@@ -115,9 +107,13 @@ class TestConflictResolver:
         # Setup some version variables
         resolver.version_vars = {"pkg_1.0.0": z3.Bool("pkg_1.0.0")}
 
-
         result = resolver._solve_constraints(
-            {"package_versions": {}, "system_requirements": {}, "conflicts": [], "dependencies": []},
+            {
+                "package_versions": {},
+                "system_requirements": {},
+                "conflicts": [],
+                "dependencies": [],
+            },
             False,
         )
 
@@ -240,9 +236,7 @@ class TestConflictResolver:
         statuses = [result["status"] for result in results]
         assert statuses.count("success") == 1
         assert statuses.count("error") == 1
-        error_messages = [
-            result["message"] for result in results if result["status"] == "error"
-        ]
+        error_messages = [result["message"] for result in results if result["status"] == "error"]
         assert any("occurred" in message for message in error_messages)
 
     def test_format_solution(self, resolver):
@@ -283,9 +277,7 @@ class TestConflictResolver:
         assert key == key2
 
         # Different inputs should generate different key
-        key3 = resolver._generate_resolution_cache_key(
-            [{"name": "pandas"}], system_info
-        )
+        key3 = resolver._generate_resolution_cache_key([{"name": "pandas"}], system_info)
         assert key != key3
 
     def test_solver_reset(self, resolver):
@@ -332,9 +324,7 @@ class TestConflictResolver:
             mock_sync.assert_called_once_with(packages, system_info, True, None)
 
     @pytest.mark.asyncio
-    async def test_async_resolution_propagates_timeout_and_caches(
-        self, resolver, monkeypatch
-    ):
+    async def test_async_resolution_propagates_timeout_and_caches(self, resolver, monkeypatch):
         """Ensure async wrapper forwards solver timeout and caches results."""
         packages = [{"name": "requests", "version_spec": ">=2.0.0"}]
         system_info = {"python_version": "3.9"}

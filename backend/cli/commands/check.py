@@ -2,13 +2,22 @@
 
 import asyncio
 import sys
+from pathlib import Path
 
 from rich import box
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from ..shared import PROJECT_ROOT, _output_json, console, err_console
+from ..shared import (
+    PROJECT_ROOT,
+    _extract_severity,
+    _output_json,
+    _read_lock_file,
+    _resolve_lock_path,
+    console,
+    err_console,
+)
 
 
 def cmd_check(args):
@@ -16,7 +25,10 @@ def cmd_check(args):
     from backend.core import SystemScanner
 
     async def _check():
-        """Check."""
+        if getattr(args, "cve", False):
+            return await _check_cve(args)
+        if getattr(args, "license", False):
+            return await _check_license(args)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -141,3 +153,187 @@ def cmd_check(args):
     except Exception as e:
         console.print(Panel(f"[red]Check failed:[/red] {e}", title="Error"))
         sys.exit(1)
+
+
+async def _check_cve(args):
+    """Check lock file packages against OSV vulnerability database."""
+    from backend.core.data_aggregator import DataAggregator
+
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        sys.exit(1)
+
+    lock_data = _read_lock_file(lock_path)
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]Lock file has no packages to check.[/yellow]")
+        return True
+
+    aggregator = DataAggregator()
+    vuln_results: list[tuple[str, str, dict]] = []
+
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+        console=err_console,
+    )
+    with progress:
+        check_task = progress.add_task(
+            f"Checking {len(packages)} packages for CVEs...", total=len(packages)
+        )
+
+        async def _check_one(name: str, info: dict):
+            eco = info.get("ecosystem", "")
+            ver = info.get("resolved_version", "")
+            try:
+                vulns = await aggregator.check_vulnerabilities(name, eco, ver)
+                for v in vulns:
+                    vuln_results.append((name, ver, v))
+            except Exception:
+                err_console.print(f"[dim]Warning: CVE check failed for {name}[/dim]")
+            progress.advance(check_task)
+
+        await asyncio.gather(*[_check_one(n, i) for n, i in packages.items()])
+
+    if not vuln_results:
+        console.print("[green]✅ No known vulnerabilities found in lock file.[/green]")
+        return True
+
+    critical_high = [v for v in vuln_results if _extract_severity(v[2]) in ("CRITICAL", "HIGH")]
+    others = len(vuln_results) - len(critical_high)
+
+    title = f"[red]{len(vuln_results)} known vulnerabilities"
+    if critical_high:
+        title += f" ({len(critical_high)} critical/high)"
+    title += "[/red]"
+
+    vuln_table = Table(title=title, box=box.ROUNDED)
+    vuln_table.add_column("Package", style="cyan")
+    vuln_table.add_column("Version", style="dim")
+    vuln_table.add_column("CVE ID", style="yellow")
+    vuln_table.add_column("Severity")
+    vuln_table.add_column("Summary")
+
+    for pkg_name, pkg_ver, v in vuln_results:
+        cve_id = v.get("id", "?")
+        sev = _extract_severity(v)
+        summary = v.get("summary", "")[:80]
+        sev_style = {
+            "CRITICAL": "bold red",
+            "HIGH": "red",
+            "MEDIUM": "yellow",
+            "LOW": "dim",
+            "UNKNOWN": "dim",
+        }.get(sev, "dim")
+        vuln_table.add_row(pkg_name, pkg_ver, cve_id, f"[{sev_style}]{sev}[/{sev_style}]", summary)
+
+    console.print(vuln_table)
+
+    if others > 0:
+        console.print(f"[dim]... and {others} lower-severity vulnerabilities.[/dim]")
+
+    return True
+
+
+async def _check_license(args):
+    """Check lock file packages for license compliance."""
+    from backend.core.license_checker import check_license_compatibility
+
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        sys.exit(1)
+
+    lock_data = _read_lock_file(lock_path)
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]Lock file has no packages to check.[/yellow]")
+        return True
+
+    package_licenses: dict[str, str | list[str]] = {}
+    for pname, pinfo in packages.items():
+        raw_license = pinfo.get("license")
+        if raw_license:
+            package_licenses[pname] = raw_license
+
+    if not package_licenses:
+        console.print("[yellow]No license information found in lock file.[/yellow]")
+        console.print("Run [bold]udr lock[/bold] to obtain license data from registries.")
+        return True
+
+    results = check_license_compatibility(package_licenses)
+
+    denied = {n for n, r in results.items() if r["status"] == "denied"}
+    warnings = {n for n, r in results.items() if r["status"] == "warning"}
+    unknowns = {n for n, r in results.items() if r["status"] == "unknown"}
+
+    title_parts = [f"{len(results)} packages checked"]
+    if denied:
+        title_parts.append(f"[red]{len(denied)} denied[/red]")
+    if warnings:
+        title_parts.append(f"[yellow]{len(warnings)} warnings[/yellow]")
+    if unknowns:
+        title_parts.append(f"[dim]{len(unknowns)} unknown[/dim]")
+
+    lic_table = Table(
+        title="License Compliance — " + ", ".join(title_parts),
+        box=box.ROUNDED,
+    )
+    lic_table.add_column("Package", style="cyan")
+    lic_table.add_column("License", style="yellow")
+    lic_table.add_column("Category")
+    lic_table.add_column("Status")
+    lic_table.add_column("Reason")
+
+    status_style = {
+        "allowed": "bold green",
+        "warning": "yellow",
+        "denied": "bold red",
+        "unknown": "dim",
+    }
+
+    for pname in sorted(results):
+        r = results[pname]
+        normalized = r["normalized"]
+        lic_display = normalized if isinstance(normalized, str) else ", ".join(normalized)
+        cat_display = r["category"].replace("_", " ")
+        stat = r["status"]
+        styl = status_style.get(stat, "dim")
+        lic_table.add_row(
+            pname,
+            lic_display,
+            cat_display,
+            f"[{styl}]{stat}[/{styl}]",
+            r["reason"],
+        )
+
+    console.print(lic_table)
+
+    if denied:
+        console.print(
+            "\n[red]✗ Some packages have licenses incompatible with the default policy.[/red]"
+        )
+        console.print(
+            "  Review licenses or adjust policy via `check_license_compatibility(policy=...)`."
+        )
+        return False
+
+    if warnings or unknowns:
+        console.print("\n[yellow]⚠ Review warnings before production use.[/yellow]")
+
+    console.print("\n[green]✅ All packages meet the license policy.[/green]")
+    return True

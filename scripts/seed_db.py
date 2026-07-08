@@ -36,11 +36,15 @@ def seed(conflict_rules: bool = True):
 
     for name, ecosystem, version, description in SAMPLE_PACKAGES:
         try:
-            db.add_package(name, ecosystem, {
-                "version": version,
-                "description": description,
-                "versions": [{"version": version}],
-            })
+            db.add_package(
+                name,
+                ecosystem,
+                {
+                    "version": version,
+                    "description": description,
+                    "versions": [{"version": version}],
+                },
+            )
             count += 1
             print(f"  ✓ {name} ({ecosystem}) v{version}")
         except Exception as e:
@@ -49,8 +53,10 @@ def seed(conflict_rules: bool = True):
     if conflict_rules:
         try:
             db.add_conflict_rule(
-                "torch", ">=2.0.0",
-                "tensorflow", "<2.16.0",
+                "torch",
+                ">=2.0.0",
+                "tensorflow",
+                "<2.16.0",
                 "incompatible",
                 "PyTorch 2.x and TensorFlow 2.x CUDA conflicts",
                 severity="warning",
@@ -70,6 +76,7 @@ def main():
 
     if args.db:
         import os
+
         os.environ["DATABASE_URL"] = args.db
 
     seed()

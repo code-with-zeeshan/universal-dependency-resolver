@@ -42,32 +42,32 @@ logger = logging.getLogger(__name__)
 
 SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "50000"))
 SOLVER_MAX_CLUSTERS = int(os.environ.get("SOLVER_MAX_CLUSTERS", "5"))
+SOLVER_MAX_CLUSTERS_MIN = int(os.environ.get("SOLVER_MAX_CLUSTERS_MIN", "3"))
+SOLVER_MAX_CLUSTERS_MAX = int(os.environ.get("SOLVER_MAX_CLUSTERS_MAX", "20"))
 SOLVER_PRERELEASE_PENALTY = int(os.environ.get("SOLVER_PRERELEASE_PENALTY", "100000"))
 USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
+SOLVER_OPTIMIZATION_THRESHOLD = int(os.environ.get("SOLVER_OPTIMIZATION_THRESHOLD", "100"))
 
 # Data-driven conflict rules: each rule specifies incompatible version ranges
 # across packages or ecosystems.  Used by _add_conflict_constraints().
 CONFLICT_RULES: list[dict[str, Any]] = [
     {
-        "id": "cuda:min_version >=11.0,<12.0 vs cuda:min_version >=12.0,<13.0",
+        "id": "cuda 11.x vs cuda 12.x",
         "type": "cuda",
-        "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "11.0"},
-        "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "12.0"},
-        "mutually_exclusive_with": {
-            "field": "cuda.min_version",
+        "constraint_a": {
+            "field": "system_requirements.cuda.min_version",
+            "op": ">=",
+            "value": "11.0",
+        },
+        "constraint_b": {
+            "field": "system_requirements.cuda.min_version",
             "op": ">=",
             "value": "12.0",
         },
-    },
-    {
-        "id": "cuda:min_version >=12.0,<13.0 vs cuda:min_version >=11.0,<12.0",
-        "type": "cuda",
-        "constraint_a": {"field": "cuda.min_version", "op": ">=", "value": "12.0"},
-        "constraint_b": {"field": "cuda.min_version", "op": "<", "value": "13.0"},
         "mutually_exclusive_with": {
-            "field": "cuda.min_version",
+            "field": "system_requirements.cuda.min_version",
             "op": ">=",
-            "value": "11.0",
+            "value": "12.0",
         },
     },
     {
@@ -174,14 +174,12 @@ class ConflictResolver:
     ) -> dict[str, Any]:
         """Internal implementation of resolve_dependencies (holds _resolve_lock)."""
         # Reassign (not clear) to give each call fresh state
-        import z3
 
         self.version_vars = {}
         self.version_to_int = {}
         self.int_to_version = {}
         self._version_weights = []
         self._minimization_added = False
-        self._solver = z3.Solver()
 
         resolution_context = {
             "package_count": len(packages),
@@ -789,16 +787,25 @@ class ConflictResolver:
     ) -> None:
         """Reset the solver state and apply timeout if specified.
 
-        Automatically disables z3.Optimize when *package_count* > 100
-        to avoid the solver hanging on large graphs.
+        Uses z3.Optimize (prefers newer versions) for graphs up to
+        *SOLVER_OPTIMIZATION_THRESHOLD* packages.  Falls back to plain
+        z3.Solver for larger graphs to avoid solver hangs.
         """
         import z3
 
-        if self._use_optimization and package_count <= 100:
+        threshold = SOLVER_OPTIMIZATION_THRESHOLD
+        if self._use_optimization and package_count <= threshold:
             self._solver = z3.Optimize()
             self._minimization_added = False
             self._version_weights = []
         else:
+            if self._use_optimization and package_count > threshold:
+                logger.warning(
+                    "Optimization disabled: %d packages exceeds threshold %d "
+                    "(set SOLVER_OPTIMIZATION_THRESHOLD env var to adjust)",
+                    package_count,
+                    threshold,
+                )
             self._solver = z3.Solver()
         if solver_timeout is not None:
             self.solver.set(timeout=solver_timeout)
@@ -1037,15 +1044,35 @@ class ConflictResolver:
                 re.search(r"(a|alpha|b|beta|rc|dev|pre|preview)[._-]?\d*$", ver, re.IGNORECASE)
             )
 
+    def _get_max_clusters(self, n_versions: int) -> int:
+        """Compute dynamic cluster count based on version count.
+
+        When SOLVER_MAX_CLUSTERS is explicitly set via env var, that value
+        is used as-is.  Otherwise scales with sqrt(n_versions) to give
+        packages with many versions more representative coverage.
+        """
+        import os as _os
+
+        if "SOLVER_MAX_CLUSTERS" in _os.environ:
+            return SOLVER_MAX_CLUSTERS
+        import math
+
+        return min(
+            max(SOLVER_MAX_CLUSTERS_MIN, int(math.sqrt(n_versions)) * 2),
+            SOLVER_MAX_CLUSTERS_MAX,
+        )
+
     def _cluster_versions(self, versions: list[str]) -> list[str]:
         """Group versions by major.minor, keep latest stable per cluster.
 
-        Keeps at most SOLVER_MAX_CLUSTERS clusters, each with the latest
-        stable version.  If a cluster has no stable version, the latest
-        pre-release is kept as fallback.  If the list is short (<=10)
-        and most versions are same major, return as-is.
+        Keeps at most SOLVER_MAX_CLUSTERS clusters (dynamic: scales with
+        sqrt of version count), each with the latest stable version.
+        If a cluster has no stable version, the latest pre-release is kept
+        as fallback.  If the list is short (<=10) and most versions are
+        same major, return as-is.
         """
-        if len(versions) <= SOLVER_MAX_CLUSTERS:
+        max_clusters = self._get_max_clusters(len(versions))
+        if len(versions) <= max_clusters:
             return versions
         parsed_pairs: list[tuple[str, Any]] = []
         for ver in versions:
@@ -1053,7 +1080,7 @@ class ConflictResolver:
             if p:
                 parsed_pairs.append((ver, p))
         if not parsed_pairs:
-            return versions[:SOLVER_MAX_CLUSTERS]
+            return versions[:max_clusters]
         parsed_pairs.sort(key=lambda x: x[1], reverse=True)
         clusters: dict[str, list[tuple[str, Any]]] = {}
         for ver, p in parsed_pairs:
@@ -1065,7 +1092,7 @@ class ConflictResolver:
             reverse=True,
         )
         result = []
-        for key in sorted_keys[:SOLVER_MAX_CLUSTERS]:
+        for key in sorted_keys[:max_clusters]:
             entries = clusters[key]
             stable = [(v, p) for v, p in entries if not self._is_prerelease(v)]
             if stable:
@@ -1312,40 +1339,146 @@ class ConflictResolver:
                                 self.solver.add(z3.Not(pkg_var_ref))
                             # else: dep has zero available versions → skip constraint silently
 
+    def _get_pkg_field(self, package: dict, field_path: str) -> Any:
+        """Get a nested field value from a package dict by dot-separated path."""
+        value = package
+        for part in field_path.split("."):
+            if isinstance(value, dict):
+                value = value.get(part, {})
+            else:
+                return None
+        return value if value != {} else None
+
     def _add_conflict_constraints(self, packages: list[dict], constraints: dict):
-        """Add known conflict constraints."""
+        """Add known conflict constraints from data-driven CONFLICT_RULES.
+
+        For CUDA-type rules: finds packages whose cuda.min_version falls into each
+        of two ranges and adds cross-product conflict constraints between them.
+        For dependency-type rules: adds version constraints on specific deps.
+        """
         import z3
 
-        # Example: CUDA 11.x packages conflict with CUDA 12.x packages
-        cuda_11_packages = []
-        cuda_12_packages = []
+        pkg_by_name = {p["name"]: p for p in packages}
 
-        for package in packages:
-            if "system_requirements" in package:
-                cuda_req = package.get("system_requirements", {}).get("cuda", {})
-                if "min_version" in cuda_req:
-                    cuda_ver = cuda_req["min_version"]
-                    if cuda_ver.startswith("11."):
-                        cuda_11_packages.append(package["name"])
-                    elif cuda_ver.startswith("12."):
-                        cuda_12_packages.append(package["name"])
+        def _pkg_field_val(pkg: dict, field_path: str) -> Any:
+            value = pkg
+            for part in field_path.split("."):
+                if isinstance(value, dict):
+                    value = value.get(part, {})
+                else:
+                    return None
+            return value if value != {} else None
 
-        # Add conflict constraints
-        for pkg11 in cuda_11_packages:
-            for pkg12 in cuda_12_packages:
-                constraints["conflicts"].append((pkg11, pkg12))
+        def _field_match(val: Any, op: str, target: str) -> bool:
+            from backend.core.utils import compare_versions
 
-                # Add to solver: both packages cannot be selected simultaneously
-                if (
-                    pkg11 in constraints["package_versions"]
-                    and pkg12 in constraints["package_versions"]
-                ):
-                    for var11 in constraints["package_versions"][pkg11]:
-                        for var12 in constraints["package_versions"][pkg12]:
-                            var11_ref = self.version_vars.get(str(var11))
-                            var12_ref = self.version_vars.get(str(var12))
-                            if var11_ref is not None and var12_ref is not None:
-                                self.solver.add(z3.Not(z3.And(var11_ref, var12_ref)))
+            try:
+                cmp = compare_versions(str(val), target)
+                if op == ">=":
+                    return cmp >= 0
+                if op == "<=":
+                    return cmp <= 0
+                if op == ">":
+                    return cmp > 0
+                if op == "<":
+                    return cmp < 0
+                if op == "==":
+                    return cmp == 0
+                if op == "!=":
+                    return cmp != 0
+            except Exception:
+                pass
+            return False
+
+        def _in_range(pkg: dict, lo_constraint: dict, hi_constraint: dict) -> bool:
+            """Check if pkg's field falls in [lo, hi) range defined by two constraints."""
+            field = lo_constraint.get("field", "cuda.min_version")
+            val = _pkg_field_val(pkg, field)
+            if val is None:
+                return False
+            if not _field_match(val, lo_constraint.get("op", ">="), lo_constraint.get("value", "")):
+                return False
+            return _field_match(val, hi_constraint.get("op", "<"), hi_constraint.get("value", ""))
+
+        for rule in CONFLICT_RULES:
+            rule_type = rule.get("type")
+            if rule_type == "cuda":
+                constraint_a = rule.get("constraint_a", {})
+                constraint_b = rule.get("constraint_b", {})
+                exclusive = rule.get("mutually_exclusive_with", {})
+
+                # Group A: matches constraint_a AND NOT exclusive
+                # Group B: matches constraint_b (which is the other range entirely)
+                field = constraint_a.get("field", "cuda.min_version")
+                group_a = []
+                group_b = []
+                for pkg in packages:
+                    val = _pkg_field_val(pkg, field)
+                    if val is None:
+                        continue
+                    in_a = _field_match(
+                        val, constraint_a.get("op", ">="), constraint_a.get("value", "")
+                    ) and not _field_match(
+                        val, exclusive.get("op", ">="), exclusive.get("value", "")
+                    )
+                    if in_a:
+                        group_a.append(pkg["name"])
+                        continue
+                    if _field_match(
+                        val, constraint_b.get("op", "<"), constraint_b.get("value", "")
+                    ):
+                        group_b.append(pkg["name"])
+
+                for pkg_a in group_a:
+                    for pkg_b in group_b:
+                        if pkg_a == pkg_b:
+                            continue
+                        constraints["conflicts"].append((pkg_a, pkg_b))
+                        if (
+                            pkg_a in constraints["package_versions"]
+                            and pkg_b in constraints["package_versions"]
+                        ):
+                            for var_a in constraints["package_versions"][pkg_a]:
+                                for var_b in constraints["package_versions"][pkg_b]:
+                                    ref_a = self.version_vars.get(str(var_a))
+                                    ref_b = self.version_vars.get(str(var_b))
+                                    if ref_a is not None and ref_b is not None:
+                                        self.solver.add(z3.Not(z3.And(ref_a, ref_b)))
+
+            elif rule_type == "dependency":
+                pkg_names = rule.get("packages", [])
+                dep_constraints = rule.get("constraint", {})
+                for pkg_name in pkg_names:
+                    pkg = pkg_by_name.get(pkg_name)
+                    if not pkg:
+                        continue
+                    for dep_name, dep_ver_constraint in dep_constraints.items():
+                        constraints.setdefault("dependency_constraints", {}).setdefault(
+                            dep_name, []
+                        ).append(dep_ver_constraint)
+
+    @staticmethod
+    def _compare_field(field_val: Any, op: str, target: str) -> bool:
+        """Compare field_val against target using operator op."""
+        from backend.core.utils import compare_versions
+
+        try:
+            cmp = compare_versions(str(field_val), target)
+            if op == ">=":
+                return cmp >= 0
+            if op == "<=":
+                return cmp <= 0
+            if op == ">":
+                return cmp > 0
+            if op == "<":
+                return cmp < 0
+            if op == "==":
+                return cmp == 0
+            if op == "!=":
+                return cmp != 0
+        except Exception:
+            return False
+        return False
 
     def _solve_constraints(self, constraints: dict, prefer_compatibility: bool) -> dict:
         """Solve the constraint system."""
@@ -1390,29 +1523,176 @@ class ConflictResolver:
         return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
 
     def _resolve_with_alternatives(self, packages: list[dict], system_info: dict) -> dict:
-        """Try to resolve conflicts by finding alternative packages or versions."""
-        alternatives: dict[str, Any] = {
+        """DFS backtracking with forward checking — tries to satisfy all cross-package constraints.
+
+        Falls back to the best partial solution when a complete solution cannot be found.
+        """
+        from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+        from .constraint_normalizer import normalize_constraint
+
+        result: dict[str, Any] = {
             "status": "partial",
             "packages": {},
-            "alternatives": [],
             "warnings": [],
         }
 
-        # Try to find compatible versions for each package independently
-        for package in packages:
-            compatible_versions = self._find_compatible_versions(package, system_info)
-            if compatible_versions:
-                alternatives["packages"][package["name"]] = {
-                    "version": compatible_versions[0],
-                    "alternatives": compatible_versions[1:],
-                    "ecosystem": package.get("ecosystem", "unknown"),
-                }
-            else:
-                alternatives["warnings"].append(
-                    f"No compatible version found for {package['name']}"
-                )
+        # Build dependency constraint map: for each package name, store constraints
+        # that *other packages* place on it (e.g. reqA depends on libB >=1.0)
+        # dependencies are stored as {ecosystem: {dep_name: constraint_or_none}}
+        dep_constraints: dict[str, list[tuple[str, str]]] = {}
+        pkg_map: dict[str, dict] = {}
+        for pkg in packages:
+            name = pkg["name"]
+            eco = pkg.get("ecosystem", "pypi")
+            pkg_map[name] = pkg
+            raw_deps = pkg.get("dependencies") or {}
+            for eco_deps in raw_deps.values():
+                if isinstance(eco_deps, dict):
+                    for dep_name, dep_con in eco_deps.items():
+                        dep_constraints.setdefault(dep_name, []).append((dep_con or "*", eco))
 
-        return alternatives
+        # Pre-compute compatible versions for each package (system-compatible + own constraint)
+        candidate_versions: dict[str, list[str]] = {}
+        for pkg in packages:
+            versions = self._find_compatible_versions(pkg, system_info)
+            if versions:
+                candidate_versions[pkg["name"]] = versions
+            else:
+                result["warnings"].append(f"No compatible version found for {pkg['name']}")
+
+        # Sort packages: those with most dependency constraints first, then fewest versions
+        def _sort_key(name: str) -> tuple[int, int]:
+            constraint_count = len(dep_constraints.get(name, []))
+            ver_count = len(candidate_versions.get(name, []))
+            return (-constraint_count, ver_count)
+
+        sorted_names = sorted(candidate_versions, key=_sort_key)
+
+        if not sorted_names:
+            result["status"] = "unsatisfiable"
+            return result
+
+        # Backtracking DFS
+        assignment: dict[str, str] = {}
+        best_assignment: dict[str, str] = {}
+        best_count = 0
+        nodes_visited = 0
+        max_nodes = 50000
+
+        def _check_dep_con(con_str: str, eco: str, version_str: str) -> bool:
+            """Check if version_str satisfies constraint con_str for ecosystem eco."""
+            normed = normalize_constraint(con_str, eco)
+            if normed is None or normed == "*":
+                return True
+            try:
+                spec = SpecifierSet(normed)
+                return version_str in spec
+            except (InvalidSpecifier, Exception):
+                pass
+            return True
+
+        def _check_constraints(name: str, version_str: str, assignment: dict[str, str]) -> bool:
+            """Forward checking: does version_str for name satisfy all constraints
+            from already-assigned packages that depend on name?"""
+            if name not in dep_constraints:
+                return True
+            for con_str, eco in dep_constraints[name]:
+                if not _check_dep_con(con_str, eco, version_str):
+                    return False
+            return True
+
+        def _check_assignments(assignment: dict[str, str]) -> bool:
+            """Verify all assigned packages satisfy each other's constraints."""
+            for pkg_name, ver in assignment.items():
+                pkg = pkg_map.get(pkg_name)
+                if not pkg:
+                    continue
+                eco = pkg.get("ecosystem", "pypi")
+                # Check own version_constraint
+                pkg_constraint = pkg.get("version_constraint", "*")
+                if pkg_constraint != "*":
+                    normed = normalize_constraint(pkg_constraint, eco)
+                    if normed and normed != "*":
+                        try:
+                            spec = SpecifierSet(normed)
+                            if ver not in spec:
+                                return False
+                        except (InvalidSpecifier, Exception):
+                            pass
+                # Check each dependency's constraint against assigned version
+                raw_deps = pkg.get("dependencies") or {}
+                for eco_deps in raw_deps.values():
+                    if not isinstance(eco_deps, dict):
+                        continue
+                    for dep_name, dep_con in eco_deps.items():
+                        dep_ver = assignment.get(dep_name)
+                        if dep_ver is None:
+                            continue
+                        if not _check_dep_con(dep_con or "*", eco, dep_ver):
+                            return False
+            return True
+
+        def _dfs(idx: int) -> bool:
+            nonlocal nodes_visited, best_assignment, best_count
+
+            if nodes_visited >= max_nodes:
+                return False
+
+            if idx >= len(sorted_names):
+                if _check_assignments(assignment):
+                    best_assignment = dict(assignment)
+                    return True
+                return False
+
+            name = sorted_names[idx]
+            versions = candidate_versions[name]
+
+            for ver in versions:
+                nodes_visited += 1
+
+                # Forward checking: does this version satisfy constraints from already-assigned packages?
+                if not _check_constraints(name, ver, assignment):
+                    continue
+
+                assignment[name] = ver
+
+                # Track best partial solution
+                if len(assignment) > best_count:
+                    best_count = len(assignment)
+                    best_assignment = dict(assignment)
+
+                if _dfs(idx + 1):
+                    return True
+
+                del assignment[name]
+
+            return False
+
+        _dfs(0)
+
+        # Build result from best assignment found
+        if best_assignment:
+            for name, ver in best_assignment.items():
+                pkg = pkg_map.get(name, {})
+                result["packages"][name] = {
+                    "version": ver,
+                    "ecosystem": pkg.get("ecosystem", "unknown"),
+                }
+            if len(best_assignment) < len(sorted_names):
+                result["warnings"].append(
+                    f"Partial resolution: {len(best_assignment)}/{len(sorted_names)} packages resolved "
+                    f"(nodes visited: {nodes_visited})"
+                )
+                result["status"] = "partial"
+            else:
+                result["status"] = "satisfiable"
+
+        if not result["packages"]:
+            result["status"] = "unsatisfiable"
+            result["warnings"].append("No compatible version assignment found for any package")
+
+        return result
 
     def _find_compatible_versions(self, package: dict, system_info: dict) -> list[str]:
         """Find versions compatible with system requirements."""
@@ -1607,8 +1887,7 @@ class ConflictResolver:
         if not self._use_optimization:
             self.solver.set(unsat_core=True)
 
-        idx = 0
-        for assertion in self.solver.assertions():
+        for idx, assertion in enumerate(self.solver.assertions()):
             track_var = z3.Bool(f"track_{idx}")
             temp_solver.add(z3.Implies(track_var, assertion))
             tracked_assertions.append(track_var)
@@ -1632,8 +1911,6 @@ class ConflictResolver:
                     "type": "other",
                     "constraint": assertion_str,
                 }
-
-            idx += 1
 
         # Check with all tracking variables enabled
         result = temp_solver.check(tracked_assertions)
@@ -1671,11 +1948,9 @@ class ConflictResolver:
 
     def _format_conflict_description(self, info: dict, packages: list[dict]) -> str:
         """Format a human-readable description of the conflict."""
-        if info["type"] == "dependency":
-            if len(packages) >= 2:
-                return f"{packages[0]['name']} {packages[0]['version']} requires incompatible version of {packages[1]['name']}"
-        elif info["type"] == "conflict":
-            if len(packages) >= 2:
-                return f"{packages[0]['name']} {packages[0]['version']} conflicts with {packages[1]['name']} {packages[1]['version']}"
+        if info["type"] == "dependency" and len(packages) >= 2:
+            return f"{packages[0]['name']} {packages[0]['version']} requires incompatible version of {packages[1]['name']}"
+        if info["type"] == "conflict" and len(packages) >= 2:
+            return f"{packages[0]['name']} {packages[0]['version']} conflicts with {packages[1]['name']} {packages[1]['version']}"
 
         return f"Constraint conflict: {info['constraint']}"

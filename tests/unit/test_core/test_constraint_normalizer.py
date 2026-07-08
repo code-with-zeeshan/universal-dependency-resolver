@@ -10,18 +10,21 @@ from backend.core.vers import VersSpec, parse
 
 
 class TestNormalizeVersion:
-    @pytest.mark.parametrize(("input_ver", "expected"), [
-        ("1.2.3", "1.2.3"),
-        ("v2.0.0", "2.0.0"),
-        ("=3.0.0", "3.0.0"),
-        (" 1.0.0 ", "1.0.0"),
-        ("V1.2.3", "1.2.3"),
-        ("", "0.0.0"),
-        ("1.0", "1.0.0"),
-        ("2", "2.0.0"),
-        ("1.2.3.4", "1.2.3"),
-        ("v1.0.0-beta", "1.0.0"),
-    ])
+    @pytest.mark.parametrize(
+        ("input_ver", "expected"),
+        [
+            ("1.2.3", "1.2.3"),
+            ("v2.0.0", "2.0.0"),
+            ("=3.0.0", "3.0.0"),
+            (" 1.0.0 ", "1.0.0"),
+            ("V1.2.3", "1.2.3"),
+            ("", "0.0.0"),
+            ("1.0", "1.0.0"),
+            ("2", "2.0.0"),
+            ("1.2.3.4", "1.2.3"),
+            ("v1.0.0-beta", "1.0.0"),
+        ],
+    )
     def test_normalize(self, input_ver, expected):
         assert normalize_version(input_ver) == expected
 
@@ -182,6 +185,7 @@ class TestVersSpec:
         spec = s.to_specifier_set()
         assert spec is not None
         from packaging.version import parse as parse_version
+
         assert parse_version("1.5.0") in spec
         assert parse_version("2.0.0") not in spec
 

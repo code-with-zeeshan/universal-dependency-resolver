@@ -24,6 +24,7 @@ class TestBaseDataSourceClient:
         )
         # Use a temp cache path to avoid cross-test contamination
         from backend.core.cache import DictCache
+
         cl._cache = DictCache(persist_path=os.path.join(tmpdir, "test_cache.json"))
         return cl
 
@@ -115,12 +116,8 @@ class TestBaseDataSourceClient:
     async def test_retry_then_success(self, client):
         mock_session = MagicMock()
         responses = [
-            MagicMock(
-                status=503, __aenter__=AsyncMock(return_value=MagicMock(status=503))
-            ),
-            MagicMock(
-                status=503, __aenter__=AsyncMock(return_value=MagicMock(status=503))
-            ),
+            MagicMock(status=503, __aenter__=AsyncMock(return_value=MagicMock(status=503))),
+            MagicMock(status=503, __aenter__=AsyncMock(return_value=MagicMock(status=503))),
             MagicMock(
                 status=200,
                 __aenter__=AsyncMock(
@@ -163,9 +160,7 @@ class TestBaseDataSourceClient:
             __aenter__=AsyncMock(
                 return_value=MagicMock(
                     status=403,
-                    raise_for_status=MagicMock(
-                        side_effect=aiohttp.ClientError("Forbidden")
-                    ),
+                    raise_for_status=MagicMock(side_effect=aiohttp.ClientError("Forbidden")),
                 )
             ),
         )
@@ -245,9 +240,7 @@ class TestBaseDataSourceClient:
         mock_response = MagicMock(
             status=200,
             __aenter__=AsyncMock(
-                return_value=MagicMock(
-                    status=200, json=AsyncMock(return_value=expected)
-                )
+                return_value=MagicMock(status=200, json=AsyncMock(return_value=expected))
             ),
         )
         mock_response.__aexit__ = AsyncMock()
@@ -257,7 +250,11 @@ class TestBaseDataSourceClient:
             result = await client.cached_get(cache_key, url)
 
         assert result == expected
-        assert await client._cache_get(cache_key) == expected
+        cached = await client._cache_get(cache_key)
+        assert cached["data"] == expected
+        assert cached.get("__etag_wrapped__") is True
+        assert "etag" in cached
+        assert "expires" in cached
         mock_session.request.assert_called_once()
 
     @pytest.mark.asyncio
@@ -270,9 +267,7 @@ class TestBaseDataSourceClient:
         mock_response = MagicMock(
             status=200,
             __aenter__=AsyncMock(
-                return_value=MagicMock(
-                    status=200, json=AsyncMock(return_value=expected)
-                )
+                return_value=MagicMock(status=200, json=AsyncMock(return_value=expected))
             ),
         )
         mock_response.__aexit__ = AsyncMock()
@@ -320,9 +315,7 @@ class TestBaseDataSourceClient:
         mock_response.__aexit__ = AsyncMock()
         mock_session.request.return_value = mock_response
 
-        with patch.object(
-            client, "_get_session", return_value=mock_session
-        ) as mock_get_session:
+        with patch.object(client, "_get_session", return_value=mock_session) as mock_get_session:
             await client._get("https://api.example.com/a")
             await client._get("https://api.example.com/b")
 
@@ -337,9 +330,10 @@ class TestBaseDataSourceClient:
         mock_response.__aexit__ = AsyncMock()
         mock_session.request.return_value = mock_response
 
-        with patch.object(client, "_get_session", return_value=mock_session), patch(
-            "asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
+        with (
+            patch.object(client, "_get_session", return_value=mock_session),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
             await client._get("https://api.example.com/data")
 
         assert len(mock_sleep.call_args_list) == client.max_retries - 1

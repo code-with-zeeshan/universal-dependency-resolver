@@ -39,6 +39,7 @@ class PackageInfo:
     version: str
     ecosystem: PackageEcosystem
     extras: dict[str, Any] | None = None
+    license: str | None = None
 
     @classmethod
     def from_dict(cls, name: str, info: dict[str, Any]) -> "PackageInfo":
@@ -54,6 +55,7 @@ class PackageInfo:
             version=info.get("version", ""),
             ecosystem=ecosystem,
             extras=info.get("extras", {}) or {},
+            license=info.get("license") or info.get("unified_data", {}).get("license"),
         )
 
 

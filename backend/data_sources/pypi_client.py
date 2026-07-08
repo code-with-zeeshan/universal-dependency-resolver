@@ -42,7 +42,9 @@ class PyPIClient(BaseDataSourceClient):
                 async with self._rate_limiter:
                     session = self._get_session()
                     timeout = aiohttp.ClientTimeout(total=30)
-                    async with session.get(url, timeout=timeout, **kwargs) as resp:
+                    headers = dict(kwargs.pop("headers", {}))
+                    headers.update(self._auth_headers)
+                    async with session.get(url, headers=headers, timeout=timeout, **kwargs) as resp:
                         if resp.status == 429:
                             retry_after = int(resp.headers.get("Retry-After", str(2**attempt)))
                             await asyncio.sleep(retry_after)

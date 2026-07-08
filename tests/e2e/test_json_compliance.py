@@ -70,7 +70,9 @@ class TestJSONOutputCompliance:
         assert result.returncode in (0, 1), f"unexpected exit code: {result.returncode}"
         data = json.loads(result.stdout)
         assert isinstance(data, dict)
-        assert "resolved_packages" in data, f"Missing 'resolved_packages' key, got {list(data.keys())}"
+        assert "resolved_packages" in data, (
+            f"Missing 'resolved_packages' key, got {list(data.keys())}"
+        )
         assert isinstance(data["resolved_packages"], dict)
 
     def test_lock_json(self):

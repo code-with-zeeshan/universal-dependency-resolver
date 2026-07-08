@@ -19,13 +19,13 @@ from backend.cli import (
     _select_best_cuda_variant,
 )
 from backend.cli.shared import (
-    _apply_cuda_variants,
     _build_resolved_table,
     _extract_severity,
     _generate_install_command,
     _read_lock_file,
     _validate_manifest_update_line,
 )
+from backend.orchestrator import _apply_cuda_variants
 
 
 class TestParsePackageSpec:
@@ -134,17 +134,9 @@ class TestAggregatorToResolverInput:
         agg_data = {
             "name": "requests",
             "ecosystem": {"pypi": {"system_requirements": {}}},
-            "versions": {
-                "pypi": [{"version": "2.31.0"}, {"version": "2.28.0"}]
-            },
-            "dependencies": {
-                "pypi": {
-                    "all": [Dep()]
-                }
-            },
-            "system_requirements": {
-                "pypi": [Req()]
-            },
+            "versions": {"pypi": [{"version": "2.31.0"}, {"version": "2.28.0"}]},
+            "dependencies": {"pypi": {"all": [Dep()]}},
+            "system_requirements": {"pypi": [Req()]},
         }
         result = _aggregator_to_resolver_input(agg_data, "pypi")
         assert result["name"] == "requests"
@@ -176,11 +168,7 @@ class TestAggregatorToResolverInput:
     def test_cuda_system_requirements(self):
         agg_data = {
             "name": "torch",
-            "ecosystem": {
-                "pypi": {
-                    "system_requirements": {"cuda": {"min_version": "11.7"}}
-                }
-            },
+            "ecosystem": {"pypi": {"system_requirements": {"cuda": {"min_version": "11.7"}}}},
             "versions": {"pypi": [{"version": "2.1.0"}]},
             "dependencies": {"pypi": {"all": []}},
             "system_requirements": {"pypi": []},
@@ -195,6 +183,7 @@ class TestCliArgumentParsing:
 
     def test_serve_default_mode(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["serve"])
         assert args.command == "serve"
@@ -202,6 +191,7 @@ class TestCliArgumentParsing:
 
     def test_check_defaults(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["check"])
         assert args.command == "check"
@@ -210,12 +200,14 @@ class TestCliArgumentParsing:
 
     def test_check_json_flag(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["check", "--json"])
         assert args.json
 
     def test_check_json_flag(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["check", "--json"])
         assert args.command == "check"
@@ -223,6 +215,7 @@ class TestCliArgumentParsing:
 
     def test_lock_json_flag(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["lock", "--json"])
         assert args.command == "lock"
@@ -230,12 +223,14 @@ class TestCliArgumentParsing:
 
     def test_lock_dry_run(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["lock", "--dry-run"])
         assert args.dry_run
 
     def test_resolve_format_json(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["resolve", "numpy", "--format", "json"])
         assert args.command == "resolve"
@@ -244,6 +239,7 @@ class TestCliArgumentParsing:
 
     def test_resolve_interactive(self):
         from backend.cli import _build_parser
+
         p = _build_parser()
         args = p.parse_args(["resolve", "numpy@pypi", "express@npm", "-i"])
         assert args.command == "resolve"

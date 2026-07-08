@@ -1,6 +1,5 @@
 """Tests for udr details command."""
 
-
 from .test_commands import _run
 
 
@@ -11,7 +10,10 @@ class TestDetailsHelp:
 
     def test_help_shows_usage(self):
         result = _run("details", "--help")
-        assert "usage: udr details" in result.stdout.lower() or "usage: udr details" in result.stderr.lower()
+        assert (
+            "usage: udr details" in result.stdout.lower()
+            or "usage: udr details" in result.stderr.lower()
+        )
 
 
 class TestDetailsBasic:

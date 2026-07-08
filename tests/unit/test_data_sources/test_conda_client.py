@@ -48,16 +48,19 @@ class TestCondaClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_success(self, client, sample_package_data):
-        with patch.object(
-            client,
-            "_fetch_from_anaconda_api",
-            new_callable=AsyncMock,
-            return_value=sample_package_data,
-        ), patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={},
+        with (
+            patch.object(
+                client,
+                "_fetch_from_anaconda_api",
+                new_callable=AsyncMock,
+                return_value=sample_package_data,
+            ),
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
         ):
             result = await client.get_package_info_async("numpy")
         assert result is not None
@@ -65,19 +68,20 @@ class TestCondaClient:
         assert result["version"] == "1.24.3"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_package_data
-    ):
-        with patch.object(
-            client,
-            "_fetch_from_anaconda_api",
-            new_callable=AsyncMock,
-            return_value=sample_package_data,
-        ) as mock_fetch, patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={},
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_package_data):
+        with (
+            patch.object(
+                client,
+                "_fetch_from_anaconda_api",
+                new_callable=AsyncMock,
+                return_value=sample_package_data,
+            ) as mock_fetch,
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
         ):
             await client.get_package_info_async("numpy")
         mock_fetch.assert_called_once()
@@ -172,16 +176,19 @@ class TestCondaClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_success(self, client, sample_package_data):
-        with patch.object(
-            client,
-            "_fetch_from_anaconda_api",
-            new_callable=AsyncMock,
-            return_value=sample_package_data,
-        ), patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={},
+        with (
+            patch.object(
+                client,
+                "_fetch_from_anaconda_api",
+                new_callable=AsyncMock,
+                return_value=sample_package_data,
+            ),
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
         ):
             versions = await client.get_versions("numpy")
         assert len(versions) == 1
@@ -197,28 +204,31 @@ class TestCondaClient:
 
     @pytest.mark.asyncio
     async def test_get_dependencies_success(self, client):
-        with patch.object(
-            client,
-            "_fetch_from_anaconda_api",
-            new_callable=AsyncMock,
-            return_value={
-                "name": "numpy",
-                "latest_version": "1.24.3",
-                "summary": "",
-                "files": [
-                    {
-                        "version": "1.24.3",
-                        "basename": "numpy-1.24.3-py311_0.tar.bz2",
-                        "size": 15000000,
-                        "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch"},
-                    }
-                ],
-            },
-        ), patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={"run": {"python": ">=3.8"}},
+        with (
+            patch.object(
+                client,
+                "_fetch_from_anaconda_api",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "numpy",
+                    "latest_version": "1.24.3",
+                    "summary": "",
+                    "files": [
+                        {
+                            "version": "1.24.3",
+                            "basename": "numpy-1.24.3-py311_0.tar.bz2",
+                            "size": 15000000,
+                            "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch"},
+                        }
+                    ],
+                },
+            ),
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={"run": {"python": ">=3.8"}},
+            ),
         ):
             deps = await client.get_dependencies("numpy", "1.24.3")
         assert "run" in deps
@@ -303,7 +313,9 @@ class TestCondaClient:
             new_callable=AsyncMock,
             return_value={"run": {"python": ">=3.8"}},
         ) as mock_extract:
-            result = await client._extract_dependencies_from_repodata("numpy", "1.24.3", "conda-forge")
+            result = await client._extract_dependencies_from_repodata(
+                "numpy", "1.24.3", "conda-forge"
+            )
 
         assert result == {"run": {"python": ">=3.8"}}
         mock_extract.assert_called_once_with("numpy", "1.24.3", "conda-forge")
@@ -401,7 +413,10 @@ class TestCondaClient:
     @pytest.mark.asyncio
     async def test_extract_dependencies_from_package_metadata_no_files(self, client):
         with patch.object(
-            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value={"name": "numpy"}
+            client,
+            "_fetch_from_anaconda_api",
+            new_callable=AsyncMock,
+            return_value={"name": "numpy"},
         ):
             result = await client._extract_dependencies_from_package_metadata(
                 "numpy", "1.24.3", "conda-forge"
@@ -412,7 +427,10 @@ class TestCondaClient:
     @pytest.mark.asyncio
     async def test_get_package_info_async_exception(self, client):
         with patch.object(
-            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, side_effect=Exception("Boom")
+            client,
+            "_fetch_from_anaconda_api",
+            new_callable=AsyncMock,
+            side_effect=Exception("Boom"),
         ):
             result = await client.get_package_info_async("numpy")
 
@@ -533,14 +551,17 @@ class TestCondaClient:
                 }
             ],
         }
-        with patch.object(
-            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
-        ), patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={"run": {"python": ">=3.8"}},
-        ) as mock_extract:
+        with (
+            patch.object(
+                client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
+            ),
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={"run": {"python": ">=3.8"}},
+            ) as mock_extract,
+        ):
             deps1 = await client.get_dependencies("numpy", "1.24.3")
             assert deps1 == {"run": {"python": ">=3.8"}}
             mock_extract.assert_called_once()
@@ -564,13 +585,16 @@ class TestCondaClient:
                 }
             ],
         }
-        with patch.object(
-            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
-        ), patch.object(
-            client,
-            "_extract_dependencies_from_repodata",
-            new_callable=AsyncMock,
-            return_value={"run": {"python": ">=3.8"}},
+        with (
+            patch.object(
+                client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=info
+            ),
+            patch.object(
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={"run": {"python": ">=3.8"}},
+            ),
         ):
             deps = await client.get_dependencies("numpy")
 
@@ -616,9 +640,7 @@ class TestCondaClient:
 
     def test_extract_system_requirements_no_latest_version(self, client):
         data = {"name": "numpy", "summary": "", "description": ""}
-        files = [
-            {"attrs": {"build": "py311_0", "subdir": "noarch", "depends": ["python >=3.8"]}}
-        ]
+        files = [{"attrs": {"build": "py311_0", "subdir": "noarch", "depends": ["python >=3.8"]}}]
         result = client._extract_system_requirements(data, files)
         assert "python" in result
 
@@ -656,15 +678,36 @@ class TestCondaClient:
         data = {
             "name": "mypkg",
             "files": [
-                {"version": "2.0.0", "basename": "mypkg-2.0.0.tar.bz2",
-                 "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch", "depends": []}},
-                {"version": "1.0.0", "basename": "mypkg-1.0.0.tar.bz2",
-                 "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch", "depends": []}},
+                {
+                    "version": "2.0.0",
+                    "basename": "mypkg-2.0.0.tar.bz2",
+                    "attrs": {
+                        "build": "py311_0",
+                        "build_number": 0,
+                        "subdir": "noarch",
+                        "depends": [],
+                    },
+                },
+                {
+                    "version": "1.0.0",
+                    "basename": "mypkg-1.0.0.tar.bz2",
+                    "attrs": {
+                        "build": "py311_0",
+                        "build_number": 0,
+                        "subdir": "noarch",
+                        "depends": [],
+                    },
+                },
             ],
         }
-        with patch.object(client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=data):
+        with patch.object(
+            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=data
+        ):
             with patch.object(
-                client, "_extract_dependencies_from_repodata", new_callable=AsyncMock, return_value={}
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={},
             ):
                 result = await client.get_package_info_async("mypkg")
         assert result is not None
@@ -673,7 +716,10 @@ class TestCondaClient:
     @pytest.mark.asyncio
     async def test_extract_dependencies_from_package_metadata_exception(self, client):
         with patch.object(
-            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, side_effect=Exception("API fail")
+            client,
+            "_fetch_from_anaconda_api",
+            new_callable=AsyncMock,
+            side_effect=Exception("API fail"),
         ):
             result = await client._extract_dependencies_from_package_metadata(
                 "numpy", "1.24.3", "conda-forge"
@@ -740,15 +786,36 @@ class TestCondaClient:
             "name": "mypkg",
             "latest_version": "1.0.0",
             "files": [
-                {"version": "invalid", "basename": "mypkg-invalid.tar.bz2",
-                 "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch", "depends": []}},
-                {"version": "1.0.0", "basename": "mypkg-1.0.0.tar.bz2",
-                 "attrs": {"build": "py311_0", "build_number": 0, "subdir": "noarch", "depends": []}},
+                {
+                    "version": "invalid",
+                    "basename": "mypkg-invalid.tar.bz2",
+                    "attrs": {
+                        "build": "py311_0",
+                        "build_number": 0,
+                        "subdir": "noarch",
+                        "depends": [],
+                    },
+                },
+                {
+                    "version": "1.0.0",
+                    "basename": "mypkg-1.0.0.tar.bz2",
+                    "attrs": {
+                        "build": "py311_0",
+                        "build_number": 0,
+                        "subdir": "noarch",
+                        "depends": [],
+                    },
+                },
             ],
         }
-        with patch.object(client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=data):
+        with patch.object(
+            client, "_fetch_from_anaconda_api", new_callable=AsyncMock, return_value=data
+        ):
             with patch.object(
-                client, "_extract_dependencies_from_repodata", new_callable=AsyncMock, return_value={}
+                client,
+                "_extract_dependencies_from_repodata",
+                new_callable=AsyncMock,
+                return_value={},
             ):
                 result = await client.get_package_info_async("mypkg")
         assert result is not None

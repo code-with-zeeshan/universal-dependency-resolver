@@ -72,7 +72,7 @@ graph TB
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 21 files across 17 commands:
+Modular CLI package with 21 files across 18 commands:
 
 ```
 backend/cli/
@@ -123,7 +123,7 @@ Routes:
 
 ### Core logic (`backend/core/`)
 
-- **`conflict_resolver.py`** — Z3 SAT solver. All 20 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
+- **`conflict_resolver.py`** — Z3 SAT solver. 18 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
 - **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
@@ -132,7 +132,7 @@ Routes:
 
 ### Data sources (`backend/data_sources/`)
 
-20 ecosystem clients, all inheriting from `BaseClient`:
+18 ecosystem clients, all inheriting from `BaseClient`:
 
 | Client | Ecosystem | Registry |
 |---|---|---|
@@ -227,7 +227,7 @@ graph LR
 
 ```
 tests/
-├── unit/         → 1572 tests (CLI, API, core, data sources, settings)
+├── unit/         → 1839 tests (CLI, API, core, data sources, settings)
 ├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures

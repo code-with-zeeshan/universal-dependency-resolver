@@ -10,6 +10,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from ..shared import (
     _aggregator_to_resolver_input,
+    _build_pinning_policy,
     _build_resolved_table,
     _extract_severity,
     _parse_package_spec,
@@ -21,12 +22,13 @@ from ..shared import (
 
 def cmd_resolve(args):
     """Cmd resolve."""
-    from backend.core import ConflictResolver, DataAggregator, SystemScanner
+    from backend.core import DataAggregator, SystemScanner
+    from backend.orchestrator.resolve import create_solver
 
     async def _resolve():
         """Resolve."""
         aggregator = DataAggregator()
-        resolver = ConflictResolver()
+        resolver = create_solver()
 
         specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
 
@@ -107,7 +109,9 @@ def cmd_resolve(args):
                 if result:
                     pkg_name, data = result
                     package_details[pkg_name] = data
-                    rinput = _aggregator_to_resolver_input(data, spec[1], spec[2])
+                    rinput = _aggregator_to_resolver_input(
+                        data, spec[1], spec[2], extras=args.extras
+                    )
                     resolver_inputs.append(rinput)
                 progress.advance(fetch_task)
 
@@ -132,6 +136,7 @@ def cmd_resolve(args):
                 interactive=args.interactive,
                 timeout=getattr(args, "timeout", None)
                 or int(os.environ.get("SOLVER_TIMEOUT", 120)),
+                pinning_policy=_build_pinning_policy(args),
             )
 
         resolved_pkgs = resolved.get("resolved_packages", {})

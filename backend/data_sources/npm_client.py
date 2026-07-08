@@ -13,6 +13,7 @@ from urllib.parse import quote
 from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
+    NPM_CONCURRENCY,
     get_ecosystem_config,
 )
 from .base_client import BaseDataSourceClient
@@ -38,8 +39,11 @@ class VersionRequirement:
     prerelease: str | None = None
 
 
-# Rate limiter: shared across all NPM client instances
-_NPM_SEMAPHORE = asyncio.Semaphore(10)
+# Concurrency limit: shared across all NPM client instances.
+# Controls how many simultaneous requests are made to the npm registry.
+# Configurable via NPM_CONCURRENCY env var (default: 10).
+# Rate limiting (429 handling, RPM tracking) is handled by BaseDataSourceClient._throttle().
+_NPM_SEMAPHORE = asyncio.Semaphore(NPM_CONCURRENCY)
 
 
 class NPMClient(BaseDataSourceClient):
@@ -64,7 +68,6 @@ class NPMClient(BaseDataSourceClient):
 
         self.search_url = "https://registry.npmjs.org/-/v1/search"
         self.downloads_url = "https://api.npmjs.org/downloads"
-        self.mirror_urls: list[str] = []
         self._semver_cache: dict[str, VersionRequirement] = {}
 
     async def _make_request(
@@ -73,18 +76,14 @@ class NPMClient(BaseDataSourceClient):
         url: str,
         **kwargs,
     ) -> dict[str, Any] | None:
-        urls_to_try = [url]
-        if self.mirror_urls and "registry.npmjs.org" in url:
-            for mirror in self.mirror_urls:
-                mirror_url = url.replace(self.registry_url, mirror.rstrip("/"))
-                urls_to_try.append(mirror_url)
+        async with _NPM_SEMAPHORE:
+            return await super()._make_request(method, url, **kwargs)
 
-        for attempt_url in urls_to_try:
-            async with _NPM_SEMAPHORE:
-                result = await super()._make_request(method, attempt_url, **kwargs)
-            if result is not None:
-                return result
-        return None
+    async def cached_get(
+        self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
+    ) -> dict | None:
+        async with _NPM_SEMAPHORE:
+            return await super().cached_get(cache_key, url, ttl=ttl, headers=headers)
 
     async def search_packages(
         self,
@@ -155,9 +154,11 @@ class NPMClient(BaseDataSourceClient):
         # Use compact install metadata format during resolution (~10x smaller payload)
         # Full format is only needed for rich analysis (descriptions, readmes, etc.)
         extra_headers = {}
-        if not include_extended:
-            extra_headers = {"Accept": "application/vnd.npm.install-v1+json"}
-        data = await self._make_request("GET", url, headers=extra_headers)
+        accept_header = "application/vnd.npm.install-v1+json" if not include_extended else None
+        if accept_header:
+            extra_headers = {"Accept": accept_header}
+        cache_key = f"packument:{package_name}:{'' if include_extended else 'compact'}"
+        data = await self.cached_get(cache_key, url, headers=extra_headers)
         if not data:
             return None
 
@@ -175,11 +176,7 @@ class NPMClient(BaseDataSourceClient):
             else {"has_types": False, "types_package": None, "included": False}
         )
 
-        vulnerabilities = (
-            await self._check_vulnerabilities(package_name, latest_version)
-            if include_extended
-            else []
-        )
+        vulnerabilities = []
 
         versions_info = []
         if include_versions:
@@ -411,31 +408,44 @@ class NPMClient(BaseDataSourceClient):
         warnings = []
 
         engines = pkg_data.get("engines", {})
-        if "node" in engines and "node_version" in system_info:
-            if not self._check_node_compatibility(system_info["node_version"], engines["node"]):
-                errors.append(
-                    f"Requires Node.js {engines['node']}, but system has {system_info['node_version']}"
-                )
+        if (
+            "node" in engines
+            and "node_version" in system_info
+            and not self._check_node_compatibility(system_info["node_version"], engines["node"])
+        ):
+            errors.append(
+                f"Requires Node.js {engines['node']}, but system has {system_info['node_version']}"
+            )
 
-        if "npm" in engines and "npm_version" in system_info:
-            if not self._check_npm_compatibility(system_info["npm_version"], engines["npm"]):
-                warnings.append(
-                    f"Recommends npm {engines['npm']}, but system has {system_info['npm_version']}"
-                )
+        if (
+            "npm" in engines
+            and "npm_version" in system_info
+            and not self._check_npm_compatibility(system_info["npm_version"], engines["npm"])
+        ):
+            warnings.append(
+                f"Recommends npm {engines['npm']}, but system has {system_info['npm_version']}"
+            )
 
         supported_os = pkg_data.get("os", [])
-        if supported_os and "os" in system_info:
-            if not self._check_os_compatibility(system_info["os"], supported_os):
-                errors.append(f"Not compatible with OS: {system_info['os']}")
+        if (
+            supported_os
+            and "os" in system_info
+            and not self._check_os_compatibility(system_info["os"], supported_os)
+        ):
+            errors.append(f"Not compatible with OS: {system_info['os']}")
 
         supported_cpu = pkg_data.get("cpu", [])
-        if supported_cpu and "cpu" in system_info:
-            if not self._check_cpu_compatibility(system_info["cpu"], supported_cpu):
-                errors.append(f"Not compatible with CPU architecture: {system_info['cpu']}")
+        if (
+            supported_cpu
+            and "cpu" in system_info
+            and not self._check_cpu_compatibility(system_info["cpu"], supported_cpu)
+        ):
+            errors.append(f"Not compatible with CPU architecture: {system_info['cpu']}")
 
-        if self._has_native_dependencies(pkg_data):
-            if not system_info.get("has_build_tools", False):
-                warnings.append("Package contains native dependencies requiring C++ build tools")
+        if self._has_native_dependencies(pkg_data) and not system_info.get(
+            "has_build_tools", False
+        ):
+            warnings.append("Package contains native dependencies requiring C++ build tools")
 
         peer_deps = pkg_data.get("dependencies", {}).get("peerDependencies", {})
         if peer_deps and "installed_packages" in system_info:
@@ -643,10 +653,6 @@ class NPMClient(BaseDataSourceClient):
             package_name, include_readme=False, include_versions=False
         )
         return info is not None
-
-    async def _check_vulnerabilities(self, package_name: str, version: str) -> list[dict[str, Any]]:
-        package_name = normalize_package_name(package_name)
-        return []
 
     async def _has_deprecated_dependencies(self, pkg_data: dict[str, Any]) -> bool:
         deps = pkg_data.get("dependencies", {}).get("dependencies", {})

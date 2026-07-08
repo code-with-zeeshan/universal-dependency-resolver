@@ -51,9 +51,7 @@ class TestPackageLifecycle:
         db_session.add(pkg)
         db_session.commit()
 
-        versions = [
-            PackageVersion(package_id=pkg.id, version=f"1.{i}.0") for i in range(5)
-        ]
+        versions = [PackageVersion(package_id=pkg.id, version=f"1.{i}.0") for i in range(5)]
         db_session.add_all(versions)
         db_session.commit()
 

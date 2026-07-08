@@ -15,6 +15,20 @@ from .core.utils import normalize_package_name
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_inline_comment(line: str) -> str:
+    """Remove inline # comments from a dependency line, respecting quotes."""
+    in_quote = None
+    for i, ch in enumerate(line):
+        if ch in ("'", '"') and in_quote is None:
+            in_quote = ch
+        elif ch == in_quote:
+            in_quote = None
+        elif ch == "#" and in_quote is None:
+            return line[:i].rstrip()
+    return line
+
+
 # Directories to exclude from manifest detection
 EXCLUDED_DIRS = {
     "node_modules",
@@ -201,14 +215,15 @@ class ManifestDetector:
             else:
                 name = raw_name
             constraint = pkg.get("version", "*") or "*"
-            normalized.append(
-                {
-                    "name": name,
-                    "ecosystem": ecosystem,
-                    "constraint": constraint,
-                    "source": pkg.get("_manifest", "unknown"),
-                }
-            )
+            entry = {
+                "name": name,
+                "ecosystem": ecosystem,
+                "constraint": constraint,
+                "source": pkg.get("_manifest", "unknown"),
+            }
+            if "extras" in pkg:
+                entry["extras"] = pkg["extras"]
+            normalized.append(entry)
         return normalized
 
     # --- Private parsers ---
@@ -262,7 +277,7 @@ class ManifestDetector:
             has_requirement = False
 
         for line in content.split("\n"):
-            line = line.strip()
+            line = _strip_inline_comment(line.strip())
             if not line or line.startswith("#"):
                 continue
             if line.startswith("-"):
@@ -301,14 +316,35 @@ class ManifestDetector:
     def _parse_gradle(self, content: str) -> list[dict]:
         """Parse Gradle build file."""
         packages = []
+        configs = (
+            "implementation",
+            "api",
+            "compile",
+            "runtimeOnly",
+            "testImplementation",
+            "kapt",
+            "annotationProcessor",
+            "compileOnly",
+            "androidTestImplementation",
+            "debugImplementation",
+            "releaseImplementation",
+        )
+        config_pattern = "|".join(re.escape(c) for c in configs)
+        string_pattern = rf"({config_pattern})\s+['\"]([^'\":]+):([^'\":]+):([^'\"]+)['\"]"
         for line in content.split("\n"):
             line = line.strip()
-            # Match: implementation 'group:name:version' or "group:name:version"
-            m = re.match(r"(implementation|api|compile|runtimeOnly)\s+['\"]([^'\"]+)['\"]", line)
+            m = re.match(string_pattern, line)
             if m:
-                parts = m.group(2).split(":")
-                if len(parts) >= 3:
-                    packages.append({"name": f"{parts[0]}:{parts[1]}", "version": parts[2]})
+                packages.append({"name": f"{m.group(2)}:{m.group(3)}", "version": m.group(4)})
+                continue
+            map_pattern = rf"({config_pattern})\s+['\"]([^'\":]+):([^'\":]+)['\"]\s*{{"
+            mm = re.match(map_pattern, line)
+            if mm:
+                ver_match = re.search(r'version\s*[=:]\s*["\']([^"\']+)["\']', line)
+                if ver_match:
+                    packages.append(
+                        {"name": f"{mm.group(2)}:{mm.group(3)}", "version": ver_match.group(1)}
+                    )
         return packages
 
     def _parse_swift(self, content: str) -> list[dict]:
@@ -423,18 +459,39 @@ class ManifestDetector:
         return packages
 
     def _parse_cabal(self, content: str) -> list[dict]:
-        """Parse Cabal build file."""
+        """Parse Cabal build file, handling multi-line build-depends."""
         packages = []
-        for line in content.split("\n"):
-            line = line.strip()
+        in_build_depends = False
+        accum = ""
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
             if line.startswith("build-depends:"):
-                rest = line[len("build-depends:") :].strip()
-                for part in re.split(r",\s*", rest):
+                in_build_depends = True
+                accum = line[len("build-depends:") :].strip()
+            elif in_build_depends and line.startswith((",", "             ")):
+                accum += " " + line
+            elif in_build_depends:
+                in_build_depends = False
+                for part in re.split(r",\s*", accum):
                     m = re.match(r"(\S+)\s*(.*)", part)
                     if m:
                         name = m.group(1)
                         version_spec = m.group(2).strip() or "*"
                         packages.append({"name": name, "version": version_spec})
+                accum = ""
+                if line and not line.startswith(("--", "#", "{-#")):
+                    m2 = re.match(r"(\S+)\s*(.*)", line)
+                    if m2:
+                        packages.append(
+                            {"name": m2.group(1), "version": m2.group(2).strip() or "*"}
+                        )
+        if in_build_depends and accum:
+            for part in re.split(r",\s*", accum):
+                m = re.match(r"(\S+)\s*(.*)", part)
+                if m:
+                    name = m.group(1)
+                    version_spec = m.group(2).strip() or "*"
+                    packages.append({"name": name, "version": version_spec})
         return packages
 
     def _parse_pipfile(self, content: str) -> list[dict]:
@@ -479,7 +536,7 @@ class ManifestDetector:
         return packages
 
     def _parse_pyproject(self, content: str) -> list[dict]:
-        """Parse pyproject."""
+        """Parse pyproject.toml — handles PEP 621, Poetry, optional dependencies, and PDM."""
         try:
             import tomllib
 
@@ -503,7 +560,8 @@ class ManifestDetector:
                     elif isinstance(spec, dict):
                         info["version"] = spec.get("version", "*")
                     packages.append(info)
-        elif "project" in data:
+
+        if "project" in data:
             for dep in data.get("project", {}).get("dependencies", []):
                 try:
                     from packaging.requirements import Requirement
@@ -518,6 +576,40 @@ class ManifestDetector:
                 except Exception:
                     logger.warning("Failed to parse pyproject dependency: %s", dep, exc_info=True)
                     packages.append({"name": dep, "version": "*"})
+
+            for group_deps in data.get("project", {}).get("optional-dependencies", {}).values():
+                for dep in group_deps:
+                    try:
+                        from packaging.requirements import Requirement
+
+                        req = Requirement(dep)
+                        packages.append(
+                            {
+                                "name": req.name,
+                                "version": str(req.specifier) if req.specifier else "*",
+                            }
+                        )
+                    except Exception:
+                        logger.warning("Failed to parse optional dep: %s", dep, exc_info=True)
+                        packages.append({"name": dep, "version": "*"})
+
+        if "build-system" in data and "requires" in data["build-system"]:
+            for dep in data["build-system"]["requires"]:
+                try:
+                    from packaging.requirements import Requirement
+
+                    req = Requirement(dep)
+                    name = req.name
+                    if not any(p.get("name") == name for p in packages):
+                        packages.append(
+                            {
+                                "name": name,
+                                "version": str(req.specifier) if req.specifier else "*",
+                            }
+                        )
+                except Exception:
+                    pass
+
         return packages
 
     def _parse_package_json(self, content: str) -> list[dict]:
@@ -579,7 +671,7 @@ class ManifestDetector:
         return tree if tree else None
 
     def _parse_yarn_lock(self, content: str) -> list[dict]:
-        """Parse yarn lock."""
+        """Parse yarn lock — handles @scoped packages correctly."""
         packages = []
         for line in content.split("\n"):
             line = line.strip()
@@ -587,14 +679,12 @@ class ManifestDetector:
                 name_version = line.strip('":').strip('"')
                 if "," in name_version:
                     continue
-                if name_version.startswith("@"):
-                    continue
-                parts = name_version.split("@")
-                if len(parts) >= 2 and parts[0]:
+                parts = name_version.rsplit("@", 1)
+                if len(parts) == 2 and parts[0]:
                     packages.append(
                         {
                             "name": parts[0],
-                            "version": parts[-1],
+                            "version": parts[1],
                         }
                     )
         return packages
@@ -640,21 +730,31 @@ class ManifestDetector:
         return packages
 
     def _parse_go_mod(self, content: str) -> list[dict]:
-        """Parse go mod."""
+        """Parse go.mod — handles require(), single-line require, skips replace/exclude/go."""
         packages = []
+        require_block = False
         for line in content.split("\n"):
             line = line.strip()
-            parts = line.split()
-            if len(parts) >= 2 and "." in parts[0]:
-                ver = parts[1] if len(parts) > 1 else "*"
-                if ver.startswith("v") and len(ver) > 1 and ver[1].isdigit():
-                    ver = ver[1:]
-                packages.append(
-                    {
-                        "name": parts[0],
-                        "version": ver,
-                    }
-                )
+            if not line or line.startswith("//"):
+                continue
+            if line.startswith("require ("):
+                require_block = True
+                continue
+            if line == ")" and require_block:
+                require_block = False
+                continue
+            if require_block or line.startswith("require "):
+                match = re.match(r"(?:require\s+)?([^\s]+)\s+([^\s]+)(?:\s+//\s+indirect)?", line)
+                if match:
+                    dep_name = match.group(1)
+                    dep_version = match.group(2)
+                    if (
+                        dep_version.startswith("v")
+                        and len(dep_version) > 1
+                        and dep_version[1].isdigit()
+                    ):
+                        dep_version = dep_version[1:]
+                    packages.append({"name": dep_name, "version": dep_version})
         return packages
 
     def _parse_conda_env(self, content: str) -> list[dict]:
@@ -715,13 +815,15 @@ class ManifestDetector:
         for name, info in data.get("packages", {}).items():
             if name == ".":
                 continue
-            short_name = name.lstrip("@npm/").split("/")[-1] if name.startswith("/") else name
-            packages.append(
-                {
-                    "name": short_name,
-                    "version": info.get("version", "*"),
-                }
-            )
+            entry = name[1:] if name.startswith("/") else name
+            at_pos = entry.rfind("@")
+            if at_pos > 0:
+                pkg_name = entry[:at_pos]
+                pkg_ver = entry[at_pos + 1 :]
+            else:
+                pkg_name = entry
+                pkg_ver = info.get("version", "*")
+            packages.append({"name": pkg_name, "version": pkg_ver})
         return packages
 
     def _parse_pubspec(self, content: str) -> list[dict]:

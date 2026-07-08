@@ -110,7 +110,9 @@ class TestCLIRealWorld:
             proj.mkdir()
             (proj / "requirements.txt").write_text("requests>=2.28\nflask>=2.0\n")
             _run("lock", "-d", str(proj), "-y", timeout=300)
-            r1 = _run("lock", "-d", str(proj), "--export", "requirements.txt", "--dry-run", timeout=60)
+            r1 = _run(
+                "lock", "-d", str(proj), "--export", "requirements.txt", "--dry-run", timeout=60
+            )
             r2 = _run("install", "-d", str(proj), "--dry-run", "-y", timeout=60)
             assert r1.returncode == 0, f"export failed: {r1.stderr}"
             assert r2.returncode == 0, f"install failed: {r2.stderr}"

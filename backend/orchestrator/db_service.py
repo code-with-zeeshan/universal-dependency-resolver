@@ -20,6 +20,7 @@ __all__ = [
     "APIKey",
     "CompatibilityDB",
     "User",
+    "authenticate_api_key",
     "check_health",
     "db_session",
     "get_db_engine",
@@ -34,3 +35,14 @@ def get_db_engine():
 def check_health() -> dict[str, Any]:
     """Check database health."""
     return check_db_health()
+
+
+def authenticate_api_key(api_key: str) -> dict[str, Any] | None:
+    """Look up an API key in the database via the data-access service layer.
+
+    Lazy-imports from ``backend.database.service`` to avoid circular
+    dependencies at module-load time.
+    """
+    from backend.database.service import authenticate_api_key as _auth
+
+    return _auth(api_key)

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/1558%2B%20tests-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/1831%20unit%2B94%20integration-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
@@ -81,8 +81,8 @@ udr serve --port 8000
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, Dockerfile, docker-compose.yml, pyproject.toml, Cargo.toml, pom.xml, build.gradle, CMakeLists.txt, install.sh, install.bat, environment.yml, package.json, Gemfile, composer.json, go.mod |
-| 🎛️ **17 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth |
-| 🌐 **45 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🎛️ **18 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index |
+| 🌐 **49 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
 | 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -143,8 +143,8 @@ udr details react -e npm
 ```python
 import asyncio
 from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
+from backend.orchestrator.resolve import create_solver
 
 async def main():
     scanner = SystemScanner()
@@ -156,7 +156,7 @@ async def main():
         include_dependencies=True, include_versions=True,
     )
 
-    resolver = ConflictResolver()
+    resolver = create_solver()
     result = resolver.resolve(
         [{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,
@@ -209,9 +209,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **20** |
-| 🧪 Unit tests passing | **1558** |
-| 🎛️ CLI commands | **17** |
-| 🌐 API endpoints | **45** |
+| 🧪 Unit tests passing | **1831** (+ 94 integration) |
+| 🎛️ CLI commands | **18** |
+| 🌐 API endpoints | **49** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
 | 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |

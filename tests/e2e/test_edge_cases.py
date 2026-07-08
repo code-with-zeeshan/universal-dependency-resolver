@@ -99,9 +99,7 @@ class TestCUDA:
             # CUDA variant should be selected (torch resolves to a +cu variant)
             # But even if not, nvidia deps are still present on Linux
             nvidia_pkgs = [n for n in pkgs if "nvidia" in n.lower() or "cuda" in n.lower()]
-            assert len(nvidia_pkgs) >= 1, (
-                f"Expected nvidia pkgs with CUDA 12.1, got {nvidia_pkgs}"
-            )
+            assert len(nvidia_pkgs) >= 1, f"Expected nvidia pkgs with CUDA 12.1, got {nvidia_pkgs}"
 
     def test_02_device_cpu(self):
         """--device cpu → torch resolved (nvidia deps may still be present on Linux)."""
@@ -205,9 +203,7 @@ class TestUnsatisfiable:
             data = _lock(d, timeout=120)
             pkgs = data.get("packages", {})
             resolved = sum(1 for p in pkgs.values() if p.get("resolved_version"))
-            assert resolved >= 1, (
-                f"Should resolve at least requests: got {list(pkgs.keys())}"
-            )
+            assert resolved >= 1, f"Should resolve at least requests: got {list(pkgs.keys())}"
             assert "requests" in pkgs, "requests should be resolvable"
 
     def test_09_nonexistent_package_no_crash(self):
@@ -219,11 +215,13 @@ class TestUnsatisfiable:
             )
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes"],
-                capture_output=True, text=True, cwd=str(REPO_ROOT), env=ENV, timeout=120,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=120,
             )
-            assert "Traceback" not in result.stderr, (
-                f"No traceback allowed: {result.stderr[:300]}"
-            )
+            assert "Traceback" not in result.stderr, f"No traceback allowed: {result.stderr[:300]}"
             # May resolve requests partially or report error — but no crash
 
 
@@ -288,7 +286,9 @@ class TestCLIWorkflow:
             d = Path(tmpdir)
             (d / "requirements.txt").write_text("requests>=2.28\n")
             _run("lock", "-d", str(d), "-y", timeout=300)
-            result = _run("lock", "-d", str(d), "--export", "requirements.txt", "--dry-run", timeout=60)
+            result = _run(
+                "lock", "-d", str(d), "--export", "requirements.txt", "--dry-run", timeout=60
+            )
             assert result.returncode == 0, f"export --dry-run failed: {result.stderr[:500]}"
             # Should have pinned versions in output
             lines = result.stdout.splitlines()
@@ -316,7 +316,11 @@ class TestJSONOutput:
             (d / "requirements.txt").write_text("requests>=2.28\n")
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes", "--json"],
-                capture_output=True, text=True, cwd=str(REPO_ROOT), env=ENV, timeout=300,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=300,
             )
             assert result.returncode == 0, f"lock json failed: {result.stderr[:500]}"
             data = json.loads(result.stdout)
@@ -378,12 +382,12 @@ class TestManifests:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "Package.swift").write_text(
-                '// swift-tools-version:5.9\nimport PackageDescription\n'
-                'let package = Package(\n'
+                "// swift-tools-version:5.9\nimport PackageDescription\n"
+                "let package = Package(\n"
                 '    name: "MyLibrary",\n'
-                '    dependencies: [\n'
+                "    dependencies: [\n"
                 '        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.8.0"),\n'
-                '    ]\n)\n'
+                "    ]\n)\n"
             )
             data = _lock(d, timeout=60)
             assert len(data) >= 0
@@ -393,7 +397,7 @@ class TestManifests:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "mix.exs").write_text(
-                'defmodule MyApp.MixProject do\n  use Mix.Project\n'
+                "defmodule MyApp.MixProject do\n  use Mix.Project\n"
                 '  def project do\n    [app: :my_app, version: "0.1.0", deps: deps()]\n  end\n'
                 '  defp deps do\n    [{:phoenix, "~> 1.7.7"}]\n  end\nend\n'
             )
@@ -418,7 +422,11 @@ class TestManifests:
             (d / "requirements.txt").write_text("")
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes"],
-                capture_output=True, text=True, cwd=str(REPO_ROOT), env=ENV, timeout=60,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=60,
             )
             assert "Traceback" not in result.stderr, f"traceback: {result.stderr[:200]}"
 
@@ -428,7 +436,11 @@ class TestManifests:
             d = Path(tmpdir)
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes"],
-                capture_output=True, text=True, cwd=str(REPO_ROOT), env=ENV, timeout=60,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=60,
             )
             assert "Traceback" not in result.stderr, f"traceback: {result.stderr[:200]}"
 
@@ -545,6 +557,7 @@ class TestConstraints:
         pkgs = data.get("resolved_packages", {})
         ver = pkgs.get("requests", {}).get("version", "")
         from packaging.version import Version
+
         assert Version(ver) >= Version("2.30"), f"Expected requests >=2.30, got {ver}"
 
     def test_37_combined_constraint(self):
@@ -555,15 +568,18 @@ class TestConstraints:
         pkgs = data.get("resolved_packages", {})
         ver = pkgs.get("numpy", {}).get("version", "")
         from packaging.version import Version
+
         v = Version(ver)
-        assert Version("1.24") <= v < Version("2.0"), (
-            f"Expected numpy 1.24 <= ver < 2.0, got {ver}"
-        )
+        assert Version("1.24") <= v < Version("2.0"), f"Expected numpy 1.24 <= ver < 2.0, got {ver}"
 
     def test_38_cross_ecosystem_constraint(self):
         """Cross-ecosystem resolve with version constraints."""
         result = _run(
-            "resolve", "numpy>=1.24", "express>=4.18@npm", "--format", "json",
+            "resolve",
+            "numpy>=1.24",
+            "express>=4.18@npm",
+            "--format",
+            "json",
             timeout=120,
         )
         assert result.returncode == 0, f"cross-eco constraint failed: {result.stderr[:300]}"
@@ -572,6 +588,7 @@ class TestConstraints:
         assert "numpy" in pkgs, "missing numpy"
         assert "express" in pkgs, "missing express"
         from packaging.version import Version
+
         assert Version(pkgs["express"]["version"]) >= Version("4.18"), (
             f"Expected express >=4.18, got {pkgs['express']['version']}"
         )
@@ -608,8 +625,11 @@ class TestLockStructure:
             (d / "requirements.txt").write_text("requests>=2.28\nflask>=2.0\n")
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes", "--json"],
-                capture_output=True, text=True,
-                cwd=str(REPO_ROOT), env=ENV, timeout=300,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=300,
             )
             assert result.returncode == 0
             data = json.loads(result.stdout)
@@ -623,8 +643,11 @@ class TestLockStructure:
             (d / "requirements.txt").write_text("requests>=2.28\n")
             result = subprocess.run(
                 [*UDR, "lock", "--directory", str(d), "--yes", "--report"],
-                capture_output=True, text=True,
-                cwd=str(REPO_ROOT), env=ENV, timeout=300,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                env=ENV,
+                timeout=300,
             )
             assert result.returncode == 0
             # Report may be named udr-lock.report.txt or udr-lock-report.txt
@@ -675,8 +698,13 @@ class TestResolveEdgeCases:
     def test_45_resolve_multiple_ecosystems(self):
         """Resolve packages across multiple ecosystems."""
         result = _run(
-            "resolve", "requests", "express@npm", "serde@crates",
-            "--format", "json", timeout=120,
+            "resolve",
+            "requests",
+            "express@npm",
+            "serde@crates",
+            "--format",
+            "json",
+            timeout=120,
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -687,7 +715,13 @@ class TestResolveEdgeCases:
     def test_46_resolve_with_cuda_flag(self):
         """Resolve with --cuda flag."""
         result = _run(
-            "resolve", "torch", "--cuda", "12.1", "--format", "json", timeout=180,
+            "resolve",
+            "torch",
+            "--cuda",
+            "12.1",
+            "--format",
+            "json",
+            timeout=180,
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)

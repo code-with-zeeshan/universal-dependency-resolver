@@ -84,9 +84,7 @@ class TestPyPIClient:
         assert "versions" in result
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_pypi_response
-    ):
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_pypi_response):
         with patch.object(
             client,
             "cached_get",
@@ -100,9 +98,7 @@ class TestPyPIClient:
         assert "/pypi/flask/json" in url
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_normalizes_name(
-        self, client, sample_pypi_response
-    ):
+    async def test_get_package_info_async_normalizes_name(self, client, sample_pypi_response):
         with patch.object(
             client,
             "cached_get",
@@ -117,9 +113,7 @@ class TestPyPIClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent-package")
         assert result is None
 
@@ -227,9 +221,7 @@ class TestPyPIClient:
         assert versions == []
 
     @pytest.mark.asyncio
-    async def test_get_versions_includes_metadata(
-        self, client, sample_processed_pypi_response
-    ):
+    async def test_get_versions_includes_metadata(self, client, sample_processed_pypi_response):
         with patch.object(
             client,
             "get_package_info_async",
@@ -245,16 +237,16 @@ class TestPyPIClient:
 
     @pytest.mark.asyncio
     async def test_search_calls_xmlrpc(self, client):
-        with patch.object(
-            client,
-            "_search_xmlrpc",
-            new_callable=AsyncMock,
-            return_value=[{"name": "flask"}],
-        ), patch.object(
-            client, "_search_web_scraping", new_callable=AsyncMock
-        ) as mock_web, patch.object(
-            client, "_search_fallback", new_callable=AsyncMock
-        ) as mock_fallback:
+        with (
+            patch.object(
+                client,
+                "_search_xmlrpc",
+                new_callable=AsyncMock,
+                return_value=[{"name": "flask"}],
+            ),
+            patch.object(client, "_search_web_scraping", new_callable=AsyncMock) as mock_web,
+            patch.object(client, "_search_fallback", new_callable=AsyncMock) as mock_fallback,
+        ):
             results = await client.search("flask")
         assert len(results) == 1
         assert results[0]["name"] == "flask"
@@ -263,28 +255,26 @@ class TestPyPIClient:
 
     @pytest.mark.asyncio
     async def test_search_falls_back_to_web_scraping(self, client):
-        with patch.object(
-            client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]
-        ), patch.object(
-            client,
-            "_search_web_scraping",
-            new_callable=AsyncMock,
-            return_value=[{"name": "flask"}],
-        ), patch.object(
-            client, "_search_fallback", new_callable=AsyncMock
-        ) as mock_fallback:
+        with (
+            patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                client,
+                "_search_web_scraping",
+                new_callable=AsyncMock,
+                return_value=[{"name": "flask"}],
+            ),
+            patch.object(client, "_search_fallback", new_callable=AsyncMock) as mock_fallback,
+        ):
             results = await client.search("flask")
         assert len(results) == 1
         mock_fallback.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_search_returns_empty_on_all_failures(self, client):
-        with patch.object(
-            client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]
-        ), patch.object(
-            client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]
-        ), patch.object(
-            client, "_search_fallback", new_callable=AsyncMock, return_value=[]
+        with (
+            patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]),
+            patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]),
+            patch.object(client, "_search_fallback", new_callable=AsyncMock, return_value=[]),
         ):
             results = await client.search("flask")
         assert results == []
@@ -301,9 +291,7 @@ class TestPyPIClient:
         assert results == []
 
     def test_extract_python_versions_from_wheel(self, client):
-        assert "3.x" in client._extract_python_versions_from_wheel(
-            "Flask-2.3.3-py3-none-any.whl"
-        )
+        assert "3.x" in client._extract_python_versions_from_wheel("Flask-2.3.3-py3-none-any.whl")
         assert "3.9" in client._extract_python_versions_from_wheel(
             "pkg-1.0-cp39-cp39-win_amd64.whl"
         )
@@ -311,13 +299,9 @@ class TestPyPIClient:
 
     def test_extract_platform_from_wheel(self, client):
         assert (
-            client._extract_platform_from_wheel("pkg-1.0-cp39-cp39-win_amd64.whl")
-            == "Windows x64"
+            client._extract_platform_from_wheel("pkg-1.0-cp39-cp39-win_amd64.whl") == "Windows x64"
         )
-        assert (
-            client._extract_platform_from_wheel("pkg-1.0-cp39-cp39-manylinux.whl")
-            == "Linux"
-        )
+        assert client._extract_platform_from_wheel("pkg-1.0-cp39-cp39-manylinux.whl") == "Linux"
         assert client._extract_platform_from_wheel("pkg-1.0.tar.gz") is None
 
     def test_parse_keywords(self, client):
@@ -335,31 +319,22 @@ class TestPyPIClient:
             "Development Status :: 5 - Production/Stable",
             "License :: OSI Approved :: MIT",
         ]
-        assert (
-            client._extract_development_status(classifiers) == "5 - Production/Stable"
-        )
+        assert client._extract_development_status(classifiers) == "5 - Production/Stable"
         assert client._extract_development_status([]) is None
 
     def test_extract_repository_url(self, client):
         info = {"project_urls": {"Source": "https://github.com/pallets/flask"}}
-        assert (
-            client._extract_repository_url(info) == "https://github.com/pallets/flask"
-        )
+        assert client._extract_repository_url(info) == "https://github.com/pallets/flask"
 
         info = {"home_page": "https://github.com/pallets/flask"}
-        assert (
-            client._extract_repository_url(info) == "https://github.com/pallets/flask"
-        )
+        assert client._extract_repository_url(info) == "https://github.com/pallets/flask"
 
         info = {"home_page": "https://example.com"}
         assert client._extract_repository_url(info) is None
 
     def test_extract_documentation_url(self, client):
         info = {"project_urls": {"Documentation": "https://flask.palletsprojects.com/"}}
-        assert (
-            client._extract_documentation_url(info)
-            == "https://flask.palletsprojects.com/"
-        )
+        assert client._extract_documentation_url(info) == "https://flask.palletsprojects.com/"
 
         info = {}
         assert client._extract_documentation_url(info) is None
@@ -493,8 +468,10 @@ class TestPyPIClient:
         data = {"info": {"name": "broken"}, "releases": {}, "urls": []}
         with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=data):
             with patch.object(
-                client, "_process_package_data_enhanced",
-                new_callable=AsyncMock, side_effect=ValueError("bad data"),
+                client,
+                "_process_package_data_enhanced",
+                new_callable=AsyncMock,
+                side_effect=ValueError("bad data"),
             ):
                 result = await client.get_package_info_async("broken")
         assert result is None
@@ -507,12 +484,8 @@ class TestPyPIClient:
                 "3.0.0a1": [
                     {"filename": "pkg-3.0.0a1.tar.gz", "packagetype": "sdist", "size": 100}
                 ],
-                "2.0.0": [
-                    {"filename": "pkg-2.0.0.tar.gz", "packagetype": "sdist", "size": 90}
-                ],
-                "1.0.0": [
-                    {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 80}
-                ],
+                "2.0.0": [{"filename": "pkg-2.0.0.tar.gz", "packagetype": "sdist", "size": 90}],
+                "1.0.0": [{"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 80}],
             },
             "urls": [],
         }
@@ -540,7 +513,11 @@ class TestPyPIClient:
             "releases": {
                 "1.0.0": [
                     {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 100},
-                    {"filename": "pkg-1.0.0-py3-none-any.whl", "packagetype": "bdist_wheel", "size": 50},
+                    {
+                        "filename": "pkg-1.0.0-py3-none-any.whl",
+                        "packagetype": "bdist_wheel",
+                        "size": 50,
+                    },
                 ]
             },
             "urls": [],
@@ -614,7 +591,14 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_extract_dependencies_enhanced_no_requires(self, client):
         result = await client._extract_dependencies_enhanced([], None)
-        assert result == {"required": {}, "optional": {}, "dev": {}, "test": {}, "docs": {}, "extras": {}}
+        assert result == {
+            "required": {},
+            "optional": {},
+            "dev": {},
+            "test": {},
+            "docs": {},
+            "extras": {},
+        }
 
     @pytest.mark.asyncio
     async def test_get_dependencies_success(self, client):
@@ -649,6 +633,7 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_cache_hit(self, client):
         from datetime import datetime
+
         client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now())
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock) as mock_xml:
             results = await client.search("flask")
@@ -659,15 +644,30 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_cache_expired(self, client):
         from datetime import datetime, timedelta
-        client._search_cache["search:flask:20"] = ([{"name": "flask"}], datetime.now() - timedelta(seconds=9999))
-        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[{"name": "new"}]):
+
+        client._search_cache["search:flask:20"] = (
+            [{"name": "flask"}],
+            datetime.now() - timedelta(seconds=9999),
+        )
+        with patch.object(
+            client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[{"name": "new"}]
+        ):
             results = await client.search("flask")
         assert results[0]["name"] == "new"
 
     @pytest.mark.asyncio
     async def test_search_xmlrpc_success(self, client):
         results = [
-            MagicMock(**{"get.side_effect": lambda k, d=None: {"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}.get(k, d)})
+            MagicMock(
+                **{
+                    "get.side_effect": lambda k, d=None: {
+                        "name": "flask",
+                        "version": "2.0",
+                        "summary": "desc",
+                        "_pypi_ordering": 10,
+                    }.get(k, d)
+                }
+            )
         ]
         with patch.object(client, "_search_xmlrpc", wraps=client._search_xmlrpc):
             with patch("xmlrpc.client.ServerProxy") as mock_proxy:
@@ -676,8 +676,12 @@ class TestPyPIClient:
                     mock_loop.return_value.run_in_executor = AsyncMock(return_value=results)
                     # Need to call through search which calls _search_xmlrpc
         # Actually let me test _search_xmlrpc directly
-        xmlrpc_results = [{"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}]
-        with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=xmlrpc_results):
+        xmlrpc_results = [
+            {"name": "flask", "version": "2.0", "summary": "desc", "_pypi_ordering": 10}
+        ]
+        with patch.object(
+            client, "_search_xmlrpc", new_callable=AsyncMock, return_value=xmlrpc_results
+        ):
             with patch.object(client, "_search_web_scraping", new_callable=AsyncMock):
                 with patch.object(client, "_search_fallback", new_callable=AsyncMock):
                     results = await client.search("flask")
@@ -688,8 +692,15 @@ class TestPyPIClient:
     async def test_search_fallback_exact_match(self, client):
         match_info = {"name": "flask", "version": "2.0", "description": "web framework"}
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
-            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value=match_info):
+            with patch.object(
+                client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]
+            ):
+                with patch.object(
+                    client,
+                    "get_package_info_async",
+                    new_callable=AsyncMock,
+                    return_value=match_info,
+                ):
                     results = await client.search("flask")
         assert len(results) == 1
         assert results[0]["name"] == "flask"
@@ -697,9 +708,12 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_fallback_variations(self, client):
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
-            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+            with patch.object(
+                client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]
+            ):
                 with patch.object(
-                    client, "get_package_info_async",
+                    client,
+                    "get_package_info_async",
                     new_callable=AsyncMock,
                     side_effect=[
                         None,
@@ -714,9 +728,12 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_fallback_returns_up_to_limit(self, client):
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
-            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
+            with patch.object(
+                client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]
+            ):
                 with patch.object(
-                    client, "get_package_info_async",
+                    client,
+                    "get_package_info_async",
                     new_callable=AsyncMock,
                     return_value={"name": "match", "version": "1.0", "description": "desc"},
                 ):
@@ -726,8 +743,12 @@ class TestPyPIClient:
     @pytest.mark.asyncio
     async def test_search_all_methods_fail(self, client):
         with patch.object(client, "_search_xmlrpc", new_callable=AsyncMock, return_value=[]):
-            with patch.object(client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "_search_fallback", new_callable=AsyncMock, return_value=[]):
+            with patch.object(
+                client, "_search_web_scraping", new_callable=AsyncMock, return_value=[]
+            ):
+                with patch.object(
+                    client, "_search_fallback", new_callable=AsyncMock, return_value=[]
+                ):
                     results = await client.search("nonexistent-xyzzy")
         assert results == []
 
@@ -737,11 +758,31 @@ class TestPyPIClient:
             "name": "pkg",
             "version": "1.0.0",
             "versions": [
-                {"version": "1.0.0", "upload_time": None, "requires_python": None, "python_versions": [], "has_binary_wheel": False, "has_source": False, "yanked": False, "platforms": []},
-                {"version": "2.0.0", "upload_time": None, "requires_python": None, "python_versions": [], "has_binary_wheel": False, "has_source": False, "yanked": False, "platforms": []},
+                {
+                    "version": "1.0.0",
+                    "upload_time": None,
+                    "requires_python": None,
+                    "python_versions": [],
+                    "has_binary_wheel": False,
+                    "has_source": False,
+                    "yanked": False,
+                    "platforms": [],
+                },
+                {
+                    "version": "2.0.0",
+                    "upload_time": None,
+                    "requires_python": None,
+                    "python_versions": [],
+                    "has_binary_wheel": False,
+                    "has_source": False,
+                    "yanked": False,
+                    "platforms": [],
+                },
             ],
         }
-        with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value=response):
+        with patch.object(
+            client, "get_package_info_async", new_callable=AsyncMock, return_value=response
+        ):
             versions = await client.get_versions("pkg")
         assert versions[0]["version"] == "2.0.0"
         assert versions[1]["version"] == "1.0.0"
@@ -789,7 +830,12 @@ class TestPyPIClient:
         assert "x86_64" in result["architecture"]["supported"]
 
     def test_extract_system_requirements_enhanced_with_libraries(self, client):
-        info = {"name": "pkg", "description": "requires openssl and hdf5", "summary": "", "classifiers": []}
+        info = {
+            "name": "pkg",
+            "description": "requires openssl and hdf5",
+            "summary": "",
+            "classifiers": [],
+        }
         result = client._extract_system_requirements_enhanced(info, [])
         assert "system_libraries" in result
         names = [lib["name"] for lib in result["system_libraries"]]
@@ -804,7 +850,9 @@ class TestPyPIClient:
         assert result["compiler"]["c"] is True
 
     def test_is_compatible_with_python_requires(self, client):
-        assert client._is_compatible_with_python_requires('python_version < "3.10"', ">=3.8") is True
+        assert (
+            client._is_compatible_with_python_requires('python_version < "3.10"', ">=3.8") is True
+        )
 
     def test_extract_min_python_version_no_match(self, client):
         assert client._extract_min_python_version("<3.8") is None
@@ -815,7 +863,12 @@ class TestPyPIClient:
             "info": {"name": "pkg", "version": "1.0.0"},
             "releases": {
                 "1.0.0": [
-                    {"filename": "pkg-1.0.0.tar.gz", "packagetype": "sdist", "size": 100, "yanked": True},
+                    {
+                        "filename": "pkg-1.0.0.tar.gz",
+                        "packagetype": "sdist",
+                        "size": 100,
+                        "yanked": True,
+                    },
                 ]
             },
             "urls": [],

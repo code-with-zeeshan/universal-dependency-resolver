@@ -25,6 +25,7 @@ def mock_aggregator():
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient
+
     with TestClient(app) as c:
         yield c
 
@@ -55,21 +56,27 @@ SAMPLE_LOCK_DATA = {
 
 class TestGenerateLock:
     def test_generate_lock_pre_parsed_mode(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "packages": [
-                {"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"}
-            ],
-            "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "packages": [
+                    {"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"}
+                ],
+                "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert data["lock_data"]["packages"]["requests"]["resolved_version"] == "2.31.0"
 
     def test_generate_lock_manifest_contents_not_found(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "manifest_contents": {"unknown.txt": "some content"},
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "manifest_contents": {"unknown.txt": "some content"},
+            },
+        )
         assert response.status_code == 400
         data = response.json()
         err = data.get("error") or data.get("detail") or data
@@ -84,13 +91,16 @@ class TestGenerateLock:
         assert response.status_code in (400, 422)
 
     def test_generate_lock_pre_parsed_multi_package(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "packages": [
-                {"name": "flask", "ecosystem": "pypi", "resolved_version": "3.0.0"},
-                {"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"},
-            ],
-            "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "packages": [
+                    {"name": "flask", "ecosystem": "pypi", "resolved_version": "3.0.0"},
+                    {"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"},
+                ],
+                "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         pkgs = data["lock_data"]["packages"]
@@ -98,24 +108,26 @@ class TestGenerateLock:
         assert pkgs["requests"]["resolved_version"] == "2.31.0"
 
     def test_generate_lock_pre_parsed_with_system(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "packages": [
-                {"name": "torch", "ecosystem": "pypi", "resolved_version": "2.3.0"}
-            ],
-            "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
-            "system": {"gpu": {"available": True, "cuda": "12.1"}},
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "packages": [{"name": "torch", "ecosystem": "pypi", "resolved_version": "2.3.0"}],
+                "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
+                "system": {"gpu": {"available": True, "cuda": "12.1"}},
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["lock_data"]["system"]["cuda"] == "12.1"
 
     def test_generate_lock_lock_data_structure(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "packages": [
-                {"name": "click", "ecosystem": "pypi", "resolved_version": "8.1.7"}
-            ],
-            "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "packages": [{"name": "click", "ecosystem": "pypi", "resolved_version": "8.1.7"}],
+                "manifests": [{"filename": "requirements.txt", "ecosystem": "pypi"}],
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         ld = data["lock_data"]
@@ -127,31 +139,42 @@ class TestGenerateLock:
         assert "packages" in ld
 
     def test_generate_lock_manifest_contents_with_filter(self, client):
-        response = client.post("/api/v1/generate-lock", json={
-            "manifest_contents": {"requirements.txt": "flask>=3.0"},
-            "manifest_filter": "requirements.txt",
-        })
+        response = client.post(
+            "/api/v1/generate-lock",
+            json={
+                "manifest_contents": {"requirements.txt": "flask>=3.0"},
+                "manifest_filter": "requirements.txt",
+            },
+        )
         assert response.status_code in (200, 400)
         data = response.json()
         if response.status_code == 200:
             assert data["status"] == "success"
         else:
             err = data.get("error") or data.get("detail") or data
-            msg = err.get("message", str(err)).lower() if isinstance(err, dict) else str(err).lower()
+            msg = (
+                err.get("message", str(err)).lower() if isinstance(err, dict) else str(err).lower()
+            )
             assert any(x in msg for x in ["no_manifest", "lock_generation_failed"])
 
     def test_generate_lock_rejects_non_json(self, client):
-        response = client.post("/api/v1/generate-lock", data="not json", headers={"Content-Type": "text/plain"})
+        response = client.post(
+            "/api/v1/generate-lock", data="not json", headers={"Content-Type": "text/plain"}
+        )
         assert response.status_code in (415, 422)
 
     def test_generate_lock_rejects_oversized_body(self, client):
         big_content = "x" * (11 * 1024 * 1024)
-        response = client.post("/api/v1/generate-lock", json={"manifest_contents": {"big.txt": big_content}})
+        response = client.post(
+            "/api/v1/generate-lock", json={"manifest_contents": {"big.txt": big_content}}
+        )
         assert response.status_code in (413, 422)
 
     def test_generate_lock_validates_too_many_manifests(self, client):
         manifest_contents = {f"f{i}.txt": "content" for i in range(51)}
-        response = client.post("/api/v1/generate-lock", json={"manifest_contents": manifest_contents})
+        response = client.post(
+            "/api/v1/generate-lock", json={"manifest_contents": manifest_contents}
+        )
         assert response.status_code == 422
 
 
@@ -167,12 +190,14 @@ class TestVerify:
     def test_verify_all_ok(self, client):
         with patch("backend.api.routes.lock.DataAggregator") as MockAgg:
             agg = MagicMock()
+
             async def get_pkg_info(name, **kw):
                 versions = {
                     "requests": ["2.31.0"],
                     "urllib3": ["2.0.7"],
                 }
                 return {"versions": {"pypi": [{"version": v} for v in versions.get(name, [])]}}
+
             agg.get_package_info = get_pkg_info
             MockAgg.return_value = agg
             response = client.post("/api/v1/verify", json={"lock_data": SAMPLE_LOCK_DATA})
@@ -184,8 +209,10 @@ class TestVerify:
     def test_verify_version_missing(self, client):
         with patch("backend.api.routes.lock.DataAggregator") as MockAgg:
             agg = MagicMock()
+
             async def get_pkg_info(name, **kw):
                 return {"versions": {"pypi": [{"version": "2.30.0"}]}}
+
             agg.get_package_info = get_pkg_info
             MockAgg.return_value = agg
             response = client.post("/api/v1/verify", json={"lock_data": SAMPLE_LOCK_DATA})
@@ -250,7 +277,9 @@ class TestRestoreCommands:
 
 class TestWhy:
     def test_why_direct_package(self, client):
-        response = client.post("/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "requests"})
+        response = client.post(
+            "/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "requests"}
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["package"] == "requests"
@@ -258,23 +287,30 @@ class TestWhy:
         assert data["version"] == "2.31.0"
 
     def test_why_transitive_package(self, client):
-        response = client.post("/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "urllib3"})
+        response = client.post(
+            "/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "urllib3"}
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["package"] == "urllib3"
         assert data["direct"] is False
 
     def test_why_missing_package(self, client):
-        response = client.post("/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "nonexistent"})
+        response = client.post(
+            "/api/v1/why", json={"lock_data": SAMPLE_LOCK_DATA, "package": "nonexistent"}
+        )
         assert response.status_code == 404
 
 
 class TestDiff:
     def test_diff_identical(self, client):
-        response = client.post("/api/v1/diff", json={
-            "lock_a": SAMPLE_LOCK_DATA,
-            "lock_b": SAMPLE_LOCK_DATA,
-        })
+        response = client.post(
+            "/api/v1/diff",
+            json={
+                "lock_a": SAMPLE_LOCK_DATA,
+                "lock_b": SAMPLE_LOCK_DATA,
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["unchanged_count"] == 2
@@ -289,33 +325,45 @@ class TestDiff:
                 "newpkg": {"ecosystem": "pypi", "resolved_version": "1.0.0"},
             }
         }
-        response = client.post("/api/v1/diff", json={
-            "lock_a": SAMPLE_LOCK_DATA,
-            "lock_b": lock_b,
-        })
+        response = client.post(
+            "/api/v1/diff",
+            json={
+                "lock_a": SAMPLE_LOCK_DATA,
+                "lock_b": lock_b,
+            },
+        )
         data = response.json()
         assert len(data["added"]) == 1
         assert data["added"][0]["name"] == "newpkg"
 
     def test_diff_removed_package(self, client):
         lock_b = {"packages": {}}
-        response = client.post("/api/v1/diff", json={
-            "lock_a": SAMPLE_LOCK_DATA,
-            "lock_b": lock_b,
-        })
+        response = client.post(
+            "/api/v1/diff",
+            json={
+                "lock_a": SAMPLE_LOCK_DATA,
+                "lock_b": lock_b,
+            },
+        )
         data = response.json()
         assert len(data["removed"]) == 2
 
     def test_diff_changed_version(self, client):
         lock_b = {
             "packages": {
-                "requests": {**SAMPLE_LOCK_DATA["packages"]["requests"], "resolved_version": "3.0.0"},
+                "requests": {
+                    **SAMPLE_LOCK_DATA["packages"]["requests"],
+                    "resolved_version": "3.0.0",
+                },
             }
         }
-        response = client.post("/api/v1/diff", json={
-            "lock_a": SAMPLE_LOCK_DATA,
-            "lock_b": lock_b,
-        })
+        response = client.post(
+            "/api/v1/diff",
+            json={
+                "lock_a": SAMPLE_LOCK_DATA,
+                "lock_b": lock_b,
+            },
+        )
         data = response.json()
         assert len(data["changed"]) == 1
         assert data["changed"][0]["name"] == "requests"
@@ -330,7 +378,9 @@ class TestGenerateLockExportFormat:
         response = client.post(
             "/api/v1/generate-lock?export_format=requirements.txt",
             json={
-                "packages": [{"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"}],
+                "packages": [
+                    {"name": "requests", "ecosystem": "pypi", "resolved_version": "2.31.0"}
+                ],
                 "manifests": [],
                 "system": {},
                 "resolution": {

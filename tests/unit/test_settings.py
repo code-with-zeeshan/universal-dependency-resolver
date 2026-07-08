@@ -12,11 +12,13 @@ BASE_TEST_ENV = {
 class TestValidateSettings:
     def _reload_settings(self):
         import backend.settings
+
         importlib.reload(backend.settings)
         return backend.settings
 
     def teardown_method(self):
         import backend.settings
+
         importlib.reload(backend.settings)
 
     def test_returns_empty_list_when_config_ok(self):
@@ -26,7 +28,8 @@ class TestValidateSettings:
             assert result == []
 
     def test_warns_on_default_secret_key(self):
-        env = {**BASE_TEST_ENV,
+        env = {
+            **BASE_TEST_ENV,
             "SECRET_KEY": "your-secret-key-here-change-in-production",
             "ENV": "development",
             "DATABASE_URL": "postgresql://localhost:5432/db",
@@ -37,7 +40,8 @@ class TestValidateSettings:
             assert any("SECRET_KEY" in w for w in result)
 
     def test_warns_on_sqlite_in_production(self):
-        env = {**BASE_TEST_ENV,
+        env = {
+            **BASE_TEST_ENV,
             "ENV": "production",
             "DATABASE_URL": "sqlite:///./test.db",
         }

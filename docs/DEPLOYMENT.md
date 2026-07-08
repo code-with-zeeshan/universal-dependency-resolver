@@ -36,7 +36,7 @@ graph TB
         PYPI_REG["PyPI"]
         NPM_REG["npm"]
         CRATES_REG["Crates.io"]
-        MORE_REG["+ 15 more registries"]
+        MORE_REG["+ 13 more registries"]
     end
 
     DEV -->|"direct CLI"| API
@@ -99,10 +99,9 @@ export DATABASE_URL=postgresql://user:password@host:5432/udr
 
 ### Authentication
 
-Auth is disabled by default. To enable:
+Auth is enabled by default (ENABLE_AUTH=true). To disable: set ENABLE_AUTH=false.
 
 ```bash
-export ENABLE_AUTH=true
 export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
 ```
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from rich import box
 from rich.table import Table
 
-from ..shared import _read_lock_file, console
+from ..shared import _read_lock_file, _resolve_lock_path, console
 
 
 def _build_reverse_deps(packages: dict) -> dict[str, list[tuple[str, str, str]]]:
@@ -169,7 +169,12 @@ def _explain_package_json(
 
 def cmd_why(args):
     """Cmd why."""
-    lock_path = Path(args.directory).resolve() / "udr.lock"
+    directory = Path(args.directory).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    ).resolve()
     if not lock_path.is_file():
         console.print(f"[red]Lock file not found:[/red] {lock_path}")
         sys.exit(1)

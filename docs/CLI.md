@@ -86,6 +86,8 @@ udr check --deps                       # also show project's core dependencies
 udr check --json                       # raw JSON output, then exit
 udr check --cuda 12.1                  # simulate check for specific CUDA version
 udr check --device cuda                # simulate check for specific compute device
+udr check --cve                        # check lock file for known CVEs
+udr check --license                    # check lock file for license compliance
 ```
 
 **Flags:**
@@ -97,6 +99,11 @@ udr check --device cuda                # simulate check for specific compute dev
 | `--json` | `False` | Output full system info as JSON to stdout, then exit |
 | `--cuda` | `None` | Target CUDA version (e.g. 12.1) — auto-detected if omitted |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
+| `--cve` | `False` | Check lock file packages against OSV vulnerability database |
+| `--license` | `False` | Check lock file packages for license compliance |
+| `-d, --directory` | `.` | Project directory with lock file (for `--cve`/`--license`) |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -133,6 +140,11 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 | `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`). Auto-detected if omitted |
 | `--device` | `None` | Target compute device: `cpu`, `cuda` (NVIDIA GPU), or `mps` (Apple Silicon). Auto-detected if omitted |
 | `--timeout` | `None` | Resolution timeout in seconds (default: 120, from `SOLVER_TIMEOUT` env var) |
+| `--extras` | `None` | Comma-separated extras groups to activate (e.g. `dotenv,speedups`) |
+| `--pin` | `None` | Pin a package to an exact version (`name==version`). Repeatable |
+| `--pin-mode` | `none` | Global pinning strategy: `none`, `patch`, `minor`, `exact` |
+| `--block` | `None` | Block a package from resolution. Repeatable |
+| `--freeze` | `False` | Freeze all packages at their lock-file versions |
 
 **Package spec syntax:**
 
@@ -154,7 +166,7 @@ name@ecosystem                → name, specific ecosystem
 
 ## `lock`
 
-Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run SAT resolution, and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
+Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run SAT/PubGrub resolution, and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
 
 **Usage:**
 
@@ -185,6 +197,16 @@ udr lock --cuda 12.1                         # override CUDA detection
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps`. Auto-detected if omitted |
 | `--json` | `False` | Output lock data as JSON to stdout instead of writing file |
 | `-r, --report` | `False` | Write readable report file (`udr-lock-report.txt`) alongside lock file |
+| `--timeout` | `None` | Resolution timeout in seconds (default: 120, from `SOLVER_TIMEOUT` env var) |
+| `--include-dev` | `False` | Include manifests from examples, test, docs directories |
+| `--workspace` | `None` | Workspace name for monorepo support — lock file becomes `udr-{workspace}.lock` |
+| `--prefix` | `None` | Prefix package names in lock file (e.g. `backend/` for monorepo scoping) |
+| `--force`, `-f` | `False` | Force full re-resolution, ignoring existing lock file cache |
+| `--pin` | `None` | Pin a package to an exact version (`name==version`). Repeatable |
+| `--pin-mode` | `none` | Global pinning strategy: `none`, `patch`, `minor`, `exact` |
+| `--block` | `None` | Block a package from resolution. Repeatable |
+| `--freeze` | `False` | Freeze all packages at their lock-file versions |
+| `--extras` | `None` | Comma-separated extras groups to activate (e.g. `dotenv,speedups`) |
 
 **Exit codes:**
 
@@ -367,7 +389,8 @@ Validate a lock file — checks that every pinned version still exists in its re
 **Usage:**
 
 ```bash
-udr verify                              # uses udr.lock in current dir
+udr verify                              # auto-detects lock file in current dir
+udr verify --workspace backend          # verify udr-backend.lock
 udr verify path/to/custom-lock.json     # specific lock file
 ```
 
@@ -375,8 +398,10 @@ udr verify path/to/custom-lock.json     # specific lock file
 
 | Argument/Flag | Default | Description |
 |---|---|---|
-| `lock_file` | `udr.lock` | Path to lock file (positional, optional) |
+| `lock_file` | `None` | Path to lock file (positional, optional; overrides directory/workspace) |
 | `--json` | `False` | Output as JSON |
+| `-d, --directory` | `.` | Project directory with lock file |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 
 **Exit codes:**
 
@@ -461,6 +486,8 @@ udr update flask -d /path/to/project    # specific project
 udr update flask -i                     # interactive conflict resolution
 udr update torch --cuda 12.1            # update with CUDA override
 udr update flask --dry-run              # preview changes without writing
+udr update flask --workspace backend    # update in udr-backend.lock
+udr update flask -l /path/to/lock.json  # update in explicit lock file
 ```
 
 **Flags:**
@@ -473,6 +500,8 @@ udr update flask --dry-run              # preview changes without writing
 | `--dry-run` | `False` | Show what would be updated without modifying the lock file |
 | `--cuda` | `None` | Target CUDA version — auto-detected if omitted |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -599,6 +628,7 @@ Install all **direct** dependencies from the lock file using their native packag
 udr install                              # install all direct deps from udr.lock
 udr install -d /path/to/project          # project directory with lock file
 udr install --lock-file path/to/lock.json  # custom lock file path
+udr install --workspace backend           # install from udr-backend.lock
 udr install -e npm                       # only install npm packages
 udr install --dry-run                    # show install plan without executing
 udr install -y                           # skip confirmation prompt
@@ -611,6 +641,7 @@ udr install --restore                    # restore mode (all packages)
 |---|---|---|
 | `-d, --directory` | `.` | Project directory containing `udr.lock` |
 | `-l, --lock-file` | `None` | Path to lock file (default: `<directory>/udr.lock`) |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-e, --ecosystem` | `None` | Only install packages from this ecosystem; all ecosystems if omitted |
 | `-n, --dry-run` | `False` | Show install plan without running commands |
 | `-y, --yes` | `False` | Skip confirmation prompt |
@@ -657,6 +688,8 @@ udr why flask -d /path/to/project      # specific project
 udr why flask --json                   # JSON output
 udr why --all                          # explain all packages
 udr why --all --json                   # all packages as JSON array
+udr why --workspace backend            # use udr-backend.lock
+udr why flask -l /path/to/lock.json    # explicit lock file
 ```
 
 **Flags:**
@@ -667,6 +700,8 @@ udr why --all --json                   # all packages as JSON array
 | `-a, --all` | `false` | Show info for all packages |
 | `-d, --directory` | `.` | Project directory with lock file |
 | `--json` | `False` | Output as JSON |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -688,6 +723,8 @@ udr outdated                           # check all packages in current project
 udr outdated -d /path/to/project       # specific project
 udr outdated --json                    # JSON output
 udr outdated -e npm                    # only check npm packages
+udr outdated --workspace backend       # check udr-backend.lock
+udr outdated -l /path/to/lock.json     # explicit lock file
 ```
 
 **Flags:**
@@ -697,6 +734,8 @@ udr outdated -e npm                    # only check npm packages
 | `-d, --directory` | `.` | Project directory with lock file |
 | `--json` | `False` | Output as JSON |
 | `-e, --ecosystem` | `None` | Only check packages from this ecosystem; all ecosystems if omitted |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -716,15 +755,18 @@ Compare two lock files and show version differences.
 ```bash
 udr diff old.lock new.lock             # compare two lock files
 udr diff old.lock new.lock --json      # JSON output
+udr diff --workspace backend           # compare udr.lock vs udr-backend.lock
 ```
 
 **Flags:**
 
 | Argument/Flag | Default | Description |
 |---|---|---|
-| `lock_file_a` | (required) | First lock file path |
-| `lock_file_b` | (required) | Second lock file path |
+| `lock_file_a` | `None` | First lock file path (optional with `--workspace`) |
+| `lock_file_b` | `None` | Second lock file path (optional with `--workspace`) |
 | `--json` | `False` | Output as JSON |
+| `-d, --directory` | `.` | Project directory with lock files |
+| `--workspace` | `None` | Compare `udr.lock` vs `udr-{workspace}.lock` |
 
 **Exit codes:**
 
@@ -880,10 +922,14 @@ Running `udr lock` on a GPU machine records GPU info. Running the lock file on a
 
 Every CLI subcommand has a corresponding REST API endpoint when `udr serve` is running:
 
+All **18 CLI subcommands** have corresponding API endpoints when `udr serve` is running:
+
 | CLI Command | API Endpoint | Method | Notes |
 |---|---|---|---|
 | `udr serve` | — | — | Starts the API server itself |
 | `udr check` | `/api/v1/system/info` | GET | System info + health check |
+| `udr check --cve` | `/api/v1/cve` | POST | CVE check against OSV database |
+| `udr check --license` | (CLI-only) | — | License compliance check |
 | `udr resolve` | `/api/v1/packages/resolve` | POST | Same request/response shape |
 | `udr lock` | `/api/v1/generate-lock` | POST | API requires pre-processed package list |
 | `udr lock --json` | `/api/v1/generate-lock` | POST | Same output shape |

@@ -28,13 +28,17 @@ class TestGradleClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             result = await client.get_package_info("com.example:broken")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_get_package_info_splits_colon(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"versions": ["2.0.0"]}) as mock_get:
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"versions": ["2.0.0"]}
+        ) as mock_get:
             result = await client.get_package_info("org.gradle:plugin")
         assert result is not None
         mock_get.assert_called_once()
@@ -44,7 +48,9 @@ class TestGradleClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_no_colon_uses_name_as_both(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"versions": ["1.0.0"]}):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"versions": ["1.0.0"]}
+        ):
             result = await client.get_package_info("simple")
         assert result is not None
         assert result["name"] == "simple"
@@ -65,7 +71,9 @@ class TestGradleClient:
 
     @pytest.mark.asyncio
     async def test_get_package_versions_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             versions = await client.get_package_versions("com.example:broken")
         assert versions == []
 

@@ -523,11 +523,14 @@ class NuGetClient(BaseDataSourceClient):
                 )
 
         min_client = pkg_data.get("system_requirements", {}).get("min_client_version")
-        if min_client and "nuget_version" in system_info:
-            if not self._check_nuget_version_compatibility(
+        if (
+            min_client
+            and "nuget_version" in system_info
+            and not self._check_nuget_version_compatibility(
                 system_info["nuget_version"], min_client
-            ):
-                errors.append(f"Requires NuGet client version {min_client} or higher")
+            )
+        ):
+            errors.append(f"Requires NuGet client version {min_client} or higher")
 
         if pkg_data.get("system_requirements", {}).get("development_dependency"):
             warnings.append("This is a development dependency - not needed at runtime")

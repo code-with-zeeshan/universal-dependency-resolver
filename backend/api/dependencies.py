@@ -6,11 +6,11 @@ import os
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
 from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import CompatibilityDB
+from backend.orchestrator.resolve import create_solver
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +31,9 @@ def get_data_aggregator() -> DataAggregator:
     return DataAggregator()
 
 
-def get_conflict_resolver() -> ConflictResolver:
-    """Get conflict resolver."""
-    return ConflictResolver()
+def get_conflict_resolver():
+    """Get conflict resolver (Z3 or PubGrub based on USE_PUBGRUB_SOLVER)."""
+    return create_solver()
 
 
 def get_export_generator() -> ExportGenerator:

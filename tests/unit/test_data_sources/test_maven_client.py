@@ -27,7 +27,18 @@ class TestMavenClient:
 
     @pytest.fixture
     def sample_search_response(self):
-        return {"response": {"docs": [{"g": "com.google.guava", "a": "guava", "latestVersion": "32.1.3-jre", "text": ["Google core libraries for Java"]}]}}
+        return {
+            "response": {
+                "docs": [
+                    {
+                        "g": "com.google.guava",
+                        "a": "guava",
+                        "latestVersion": "32.1.3-jre",
+                        "text": ["Google core libraries for Java"],
+                    }
+                ]
+            }
+        }
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_search_response):
@@ -42,9 +53,7 @@ class TestMavenClient:
         assert results[0]["name"] == "com.google.guava:guava"
 
     @pytest.mark.asyncio
-    async def test_search_packages_calls_correct_url(
-        self, client, sample_search_response
-    ):
+    async def test_search_packages_calls_correct_url(self, client, sample_search_response):
         with patch.object(
             client,
             "_make_request",
@@ -64,7 +73,16 @@ class TestMavenClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_success(self, client):
-        mock_docs = [{"g": "com.google.guava", "a": "guava", "latestVersion": "32.1.3-jre", "versionCount": 10, "repositoryCount": 1, "timestamp": "2023-01-01"}]
+        mock_docs = [
+            {
+                "g": "com.google.guava",
+                "a": "guava",
+                "latestVersion": "32.1.3-jre",
+                "versionCount": 10,
+                "repositoryCount": 1,
+                "timestamp": "2023-01-01",
+            }
+        ]
         mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"response": {"docs": mock_docs}})
@@ -161,9 +179,7 @@ class TestMavenClient:
                 ]
             },
         ):
-            deps = await client.get_dependencies(
-                "com.google.guava", "guava", "32.1.3-jre"
-            )
+            deps = await client.get_dependencies("com.google.guava", "guava", "32.1.3-jre")
         assert len(deps) == 1
         assert deps[0]["artifact_id"] == "failureaccess"
 
@@ -181,7 +197,12 @@ class TestMavenClient:
     @pytest.mark.asyncio
     async def test_check_compatibility_returns_result(self, client):
         with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=None):
-            with patch.object(client, "_fetch_and_parse_pom_hierarchy", new_callable=AsyncMock, return_value={"dependencies": []}):
+            with patch.object(
+                client,
+                "_fetch_and_parse_pom_hierarchy",
+                new_callable=AsyncMock,
+                return_value={"dependencies": []},
+            ):
                 result = await client.check_compatibility(
                     "com.google.guava", "guava", "32.1.3-jre", {}
                 )
@@ -219,7 +240,9 @@ class TestMavenClient:
             "_fetch_and_parse_pom_hierarchy",
             new_callable=AsyncMock,
         ) as mock_fetch:
-            await client.get_effective_pom("com.google.guava", "guava", "32.1.3-jre", repositories=[])
+            await client.get_effective_pom(
+                "com.google.guava", "guava", "32.1.3-jre", repositories=[]
+            )
         args, _ = mock_fetch.call_args
         repos = args[3]
         assert any(repo["id"] == "central" for repo in repos)
@@ -240,12 +263,15 @@ class TestMavenClient:
             "min_inclusive": True,
             "max_inclusive": True,
         }
-        with patch.object(
-            client,
-            "get_package_versions",
-            new_callable=AsyncMock,
-            return_value=[{"version": v} for v in ("1.0.0", "2.0.0", "3.0.0")],
-        ), patch.object(client, "_version_matches_range", side_effect=lambda v, r: True):
+        with (
+            patch.object(
+                client,
+                "get_package_versions",
+                new_callable=AsyncMock,
+                return_value=[{"version": v} for v in ("1.0.0", "2.0.0", "3.0.0")],
+            ),
+            patch.object(client, "_version_matches_range", side_effect=lambda v, r: True),
+        ):
             result = await client.resolve_version_from_range("g", "a", range_info)
         assert result == "3.0.0"
 
@@ -258,12 +284,15 @@ class TestMavenClient:
             "min_inclusive": True,
             "max_inclusive": True,
         }
-        with patch.object(
-            client,
-            "get_package_versions",
-            new_callable=AsyncMock,
-            return_value=[{"version": "1.0.0"}, {"version": "2.0.0"}],
-        ), patch.object(client, "_version_matches_range", return_value=False):
+        with (
+            patch.object(
+                client,
+                "get_package_versions",
+                new_callable=AsyncMock,
+                return_value=[{"version": "1.0.0"}, {"version": "2.0.0"}],
+            ),
+            patch.object(client, "_version_matches_range", return_value=False),
+        ):
             result = await client.resolve_version_from_range("g", "a", range_info)
         assert result is None
 
@@ -377,9 +406,7 @@ class TestMavenClient:
             new_callable=AsyncMock,
             return_value=mock_deps,
         ):
-            result = await client.get_dependency_tree(
-                "com.google.guava", "guava", "32.1.3-jre"
-            )
+            result = await client.get_dependency_tree("com.google.guava", "guava", "32.1.3-jre")
         assert result["dependencies"] == []
 
     def test_is_maven_version(self, client):
@@ -406,7 +433,6 @@ class TestMavenClient:
         assert parsed[1] in (0, 1)
 
     def test_sort_maven_version_unparseable(self, client):
-
         parsed = client._sort_maven_version("abc")
         assert parsed[1] == 2
         assert parsed[2] == "abc"
@@ -452,19 +478,39 @@ class TestMavenClient:
         assert result["max_inclusive"] is True
 
     def test_version_matches_range_inside(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("2.0.0", range_info) is True
 
     def test_version_matches_range_below(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("0.9.0", range_info) is False
 
     def test_version_matches_range_above(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("4.0.0", range_info) is False
 
     def test_version_matches_range_exclusive_bounds(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": False, "max_inclusive": False}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": False,
+            "max_inclusive": False,
+        }
         assert client._version_matches_range("1.0.0", range_info) is False
         assert client._version_matches_range("3.0.0", range_info) is False
         assert client._version_matches_range("2.0.0", range_info) is True
@@ -767,9 +813,7 @@ class TestMavenClient:
     # === New test: _fetch_pom_from_repos all repos fail returns None
     @pytest.mark.asyncio
     async def test_fetch_pom_from_repos_all_fail(self, client):
-        with patch.object(
-            client, "_fetch_pom_content", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_fetch_pom_content", new_callable=AsyncMock, return_value=None):
             result = await client._fetch_pom_from_repos(
                 "g", "a", "1.0", [{"id": "test", "url": "https://test.repo"}]
             )
@@ -805,9 +849,7 @@ class TestMavenClient:
             "profiles": {
                 "test-profile": {
                     "properties": {"java.version": "11"},
-                    "dependencies": [
-                        {"group_id": "g", "artifact_id": "a", "version": "1.0"}
-                    ],
+                    "dependencies": [{"group_id": "g", "artifact_id": "a", "version": "1.0"}],
                     "dependency_management": {"g:a": {"version": "1.0"}},
                     "repositories": [{"id": "custom", "url": "https://custom.repo"}],
                     "plugins": [
@@ -817,9 +859,7 @@ class TestMavenClient:
                         }
                     ],
                     "plugin_management": {
-                        "org.apache.maven.plugins:maven-compiler-plugin": {
-                            "version": "3.8.1"
-                        }
+                        "org.apache.maven.plugins:maven-compiler-plugin": {"version": "3.8.1"}
                     },
                 }
             },
@@ -862,9 +902,7 @@ class TestMavenClient:
                 "default-profile": {
                     "activeByDefault": True,
                     "properties": {"java.version": "17"},
-                    "dependencies": [
-                        {"group_id": "g", "artifact_id": "a", "version": "1.0"}
-                    ],
+                    "dependencies": [{"group_id": "g", "artifact_id": "a", "version": "1.0"}],
                     "dependency_management": {},
                     "repositories": [],
                     "plugins": [],
@@ -889,9 +927,7 @@ class TestMavenClient:
                 "default-profile": {
                     "activeByDefault": True,
                     "properties": {"java.version": "17"},
-                    "dependencies": [
-                        {"group_id": "g", "artifact_id": "a", "version": "1.0"}
-                    ],
+                    "dependencies": [{"group_id": "g", "artifact_id": "a", "version": "1.0"}],
                     "dependency_management": {},
                     "repositories": [],
                     "plugins": [],
@@ -975,9 +1011,7 @@ class TestMavenClient:
             "min_inclusive": True,
             "max_inclusive": True,
         }
-        with patch.object(
-            client, "get_package_versions", new_callable=AsyncMock, return_value=[]
-        ):
+        with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[]):
             result = await client.resolve_version_from_range("g", "a", range_info)
         assert result is None
 
@@ -1025,13 +1059,16 @@ class TestMavenClient:
             "modules": [],
         }
         repos = [{"id": "central", "url": "https://repo1.maven.org/maven2"}]
-        with patch.object(
-            client,
-            "_fetch_pom_from_repos",
-            new_callable=AsyncMock,
-            return_value="<project></project>",
-        ) as mock_fetch, patch.object(
-            client._pom_parser, "_parse_pom_comprehensive", return_value=mock_pom_data
+        with (
+            patch.object(
+                client,
+                "_fetch_pom_from_repos",
+                new_callable=AsyncMock,
+                return_value="<project></project>",
+            ) as mock_fetch,
+            patch.object(
+                client._pom_parser, "_parse_pom_comprehensive", return_value=mock_pom_data
+            ),
         ):
             result1 = await client.get_transitive_dependencies(
                 "com.google.guava", "guava", "32.1.3-jre", repositories=repos
@@ -1051,12 +1088,8 @@ class TestMavenClient:
     <maven.compiler.source>11</maven.compiler.source>
   </properties>
 </project>"""
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
-        ):
-            result = await client.check_compatibility(
-                "g", "a", "1.0", {"java_version": "17"}
-            )
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml):
+            result = await client.check_compatibility("g", "a", "1.0", {"java_version": "17"})
         assert result["compatible"] is True
         assert "java_version" in result["details"]
 
@@ -1068,12 +1101,8 @@ class TestMavenClient:
     <maven.compiler.source>17</maven.compiler.source>
   </properties>
 </project>"""
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
-        ):
-            result = await client.check_compatibility(
-                "g", "a", "1.0", {"java_version": "11"}
-            )
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml):
+            result = await client.check_compatibility("g", "a", "1.0", {"java_version": "11"})
         assert result["compatible"] is False
         assert len(result["errors"]) > 0
         assert "Java" in result["errors"][0]
@@ -1081,12 +1110,8 @@ class TestMavenClient:
     # === New test: check_compatibility with no POM returns default
     @pytest.mark.asyncio
     async def test_check_compatibility_no_pom(self, client):
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=None
-        ):
-            result = await client.check_compatibility(
-                "g", "a", "1.0", {"java_version": "11"}
-            )
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=None):
+            result = await client.check_compatibility("g", "a", "1.0", {"java_version": "11"})
         assert result["compatible"] is True
         # When no POM, details dict stays empty (no xml to parse)
         assert result["details"] == {}
@@ -1107,9 +1132,7 @@ class TestMavenClient:
     </profile>
   </profiles>
 </project>"""
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
-        ):
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml):
             result = await client.check_compatibility(
                 "g", "a", "1.0", {"java_version": "11", "os_name": "Linux"}
             )
@@ -1125,9 +1148,7 @@ class TestMavenClient:
     <maven.compiler.source>11</maven.compiler.source>
   </properties>
 </project>"""
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
-        ):
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml):
             result = await client.check_compatibility("g", "a", "1.0", {})
         assert result["compatible"] is True
 
@@ -1146,9 +1167,7 @@ class TestMavenClient:
     </profile>
   </profiles>
 </project>"""
-        with patch.object(
-            client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml
-        ):
+        with patch.object(client, "_fetch_pom", new_callable=AsyncMock, return_value=pom_xml):
             result = await client.check_compatibility(
                 "g", "a", "1.0", {"java_version": "11", "os_name": "Linux"}
             )
@@ -1195,23 +1214,17 @@ class TestMavenClient:
 
     # === New test: _substitute_properties simple replacement
     def test_substitute_properties_simple(self, client):
-        result = client._substitute_properties(
-            "${java.version}", {"java.version": "11"}
-        )
+        result = client._substitute_properties("${java.version}", {"java.version": "11"})
         assert result == "11"
 
     # === New test: _substitute_properties no substitution needed
     def test_substitute_properties_no_substitution(self, client):
-        result = client._substitute_properties(
-            "plain string", {"java.version": "11"}
-        )
+        result = client._substitute_properties("plain string", {"java.version": "11"})
         assert result == "plain string"
 
     # === New test: _substitute_properties unresolvable keeps original
     def test_substitute_properties_unresolved(self, client):
-        result = client._substitute_properties(
-            "${unknown.prop}", {"java.version": "11"}
-        )
+        result = client._substitute_properties("${unknown.prop}", {"java.version": "11"})
         assert result == "${unknown.prop}"
 
     # === New test: _substitute_properties recursive resolution
@@ -1227,9 +1240,7 @@ class TestMavenClient:
 
     # === New test: _substitute_properties with nested curly braces
     def test_substitute_properties_nested(self, client):
-        result = client._substitute_properties(
-            "${project.version}", {"project.version": "2.0.0"}
-        )
+        result = client._substitute_properties("${project.version}", {"project.version": "2.0.0"})
         assert result == "2.0.0"
 
     # === New test: _substitute_properties with empty value
@@ -1409,9 +1420,7 @@ class TestMavenClient:
     def test_merge_poms_parent_dep_with_management(self, client):
         parent = {
             "properties": {},
-            "dependency_management": {
-                "g:a": {"version": "2.0", "scope": "runtime"}
-            },
+            "dependency_management": {"g:a": {"version": "2.0", "scope": "runtime"}},
             "dependencies": [
                 {
                     "group_id": "g",
@@ -1491,9 +1500,7 @@ class TestMavenClient:
             "dependency_management": {},
             "dependencies": [],
             "repositories": [],
-            "plugin_repositories": [
-                {"id": "central", "url": "https://repo1.maven.org"}
-            ],
+            "plugin_repositories": [{"id": "central", "url": "https://repo1.maven.org"}],
             "plugins": [],
             "plugin_management": {},
             "profiles": {},
@@ -1504,9 +1511,7 @@ class TestMavenClient:
             "dependency_management": {},
             "dependencies": [],
             "repositories": [],
-            "plugin_repositories": [
-                {"id": "custom", "url": "https://custom.repo"}
-            ],
+            "plugin_repositories": [{"id": "custom", "url": "https://custom.repo"}],
             "plugins": [],
             "plugin_management": {},
             "profiles": {},
@@ -1597,25 +1602,28 @@ class TestMavenClient:
     # === New test: get_dependencies without version fetches latest
     @pytest.mark.asyncio
     async def test_get_dependencies_without_version(self, client):
-        with patch.object(
-            client,
-            "get_package_versions",
-            new_callable=AsyncMock,
-            return_value=[{"version": "2.0.0"}, {"version": "1.0.0"}],
-        ), patch.object(
-            client,
-            "get_effective_pom",
-            new_callable=AsyncMock,
-            return_value={
-                "dependencies": [
-                    {
-                        "group_id": "g",
-                        "artifact_id": "a",
-                        "version": "1.0",
-                        "scope": "compile",
-                    }
-                ]
-            },
+        with (
+            patch.object(
+                client,
+                "get_package_versions",
+                new_callable=AsyncMock,
+                return_value=[{"version": "2.0.0"}, {"version": "1.0.0"}],
+            ),
+            patch.object(
+                client,
+                "get_effective_pom",
+                new_callable=AsyncMock,
+                return_value={
+                    "dependencies": [
+                        {
+                            "group_id": "g",
+                            "artifact_id": "a",
+                            "version": "1.0",
+                            "scope": "compile",
+                        }
+                    ]
+                },
+            ),
         ):
             result = await client.get_dependencies("g", "a")
         assert len(result) == 1
@@ -1807,7 +1815,16 @@ class TestMavenClient:
     # === New test: get_package_info returns info struct with no dependencies key
     @pytest.mark.asyncio
     async def test_get_package_info_dep_exception(self, client):
-        mock_docs = [{"g": "g", "a": "a", "latestVersion": "1.0", "versionCount": 1, "repositoryCount": 0, "timestamp": "2023-01-01"}]
+        mock_docs = [
+            {
+                "g": "g",
+                "a": "a",
+                "latestVersion": "1.0",
+                "versionCount": 1,
+                "repositoryCount": 0,
+                "timestamp": "2023-01-01",
+            }
+        ]
         mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"response": {"docs": mock_docs}})
@@ -1816,8 +1833,15 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.return_value = mock_cm
         with patch.object(client, "_get_session", return_value=mock_session):
-            with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "get_dependencies", new_callable=AsyncMock, side_effect=Exception("fail")):
+            with patch.object(
+                client, "get_package_versions", new_callable=AsyncMock, return_value=[]
+            ):
+                with patch.object(
+                    client,
+                    "get_dependencies",
+                    new_callable=AsyncMock,
+                    side_effect=Exception("fail"),
+                ):
                     result = await client.get_package_info("g", "a")
         # get_package_info does not include dependencies — just info struct
         assert result["name"] == "g:a"
@@ -1826,22 +1850,42 @@ class TestMavenClient:
 
     # === New test: _version_matches_range with SNAPSHOT version
     def test_version_matches_range_snapshot(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("2.0.0-SNAPSHOT", range_info) is True
 
     # === New test: _version_matches_range with SNAPSHOT and unparseable base
     def test_version_matches_range_snapshot_unparseable(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("SNAPSHOT", range_info) is False
 
     # === New test: _version_matches_range with unparseable max bound
     def test_version_matches_range_unparseable_max(self, client):
-        range_info = {"min_version": "1.0.0", "max_version": "not-a-version", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "1.0.0",
+            "max_version": "not-a-version",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("2.0.0", range_info) is False
 
     # === New test: _version_matches_range with unparseable min bound
     def test_version_matches_range_unparseable_min(self, client):
-        range_info = {"min_version": "not-a-version", "max_version": "3.0.0", "min_inclusive": True, "max_inclusive": True}
+        range_info = {
+            "min_version": "not-a-version",
+            "max_version": "3.0.0",
+            "min_inclusive": True,
+            "max_inclusive": True,
+        }
         assert client._version_matches_range("2.0.0", range_info) is False
 
     # === New test: get_transitive_dependencies filters excluded scope
@@ -1852,7 +1896,9 @@ class TestMavenClient:
                 {"group_id": "g", "artifact_id": "test-dep", "version": "1.0", "scope": "test"}
             ]
         }
-        with patch.object(client, "get_effective_pom", new_callable=AsyncMock, return_value=mock_pom):
+        with patch.object(
+            client, "get_effective_pom", new_callable=AsyncMock, return_value=mock_pom
+        ):
             result = await client.get_transitive_dependencies("g", "a", "1.0")
         assert result == []
 
@@ -1860,17 +1906,30 @@ class TestMavenClient:
     @pytest.mark.asyncio
     async def test_get_transitive_dependencies_recursive(self, client):
         call_count = [0]
+
         async def mock_pom(g, a, v, *args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return {
-                    "dependencies": [{"group_id": "g", "artifact_id": "inner", "version": "2.0", "scope": "compile"}],
+                    "dependencies": [
+                        {
+                            "group_id": "g",
+                            "artifact_id": "inner",
+                            "version": "2.0",
+                            "scope": "compile",
+                        }
+                    ],
                     "repositories": [],
                 }
             return {"dependencies": [], "repositories": []}
-        with patch.object(client, "get_effective_pom", new_callable=AsyncMock, side_effect=mock_pom):
+
+        with patch.object(
+            client, "get_effective_pom", new_callable=AsyncMock, side_effect=mock_pom
+        ):
             repos = [{"id": "central", "url": "https://repo"}]
-            result = await client.get_transitive_dependencies("g", "outer", "1.0", repositories=repos)
+            result = await client.get_transitive_dependencies(
+                "g", "outer", "1.0", repositories=repos
+            )
         assert len(result) == 1
         assert result[0]["artifact_id"] == "inner"
         assert call_count[0] == 2
@@ -1882,63 +1941,91 @@ class TestMavenClient:
     # === New test: delegation methods coverage
     def test_delegation_parse_repositories(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><repositories><repository><id>c</id><url>u</url></repository></repositories></project>')
+
+        root = ET.fromstring(
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><repositories><repository><id>c</id><url>u</url></repository></repositories></project>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert len(client._parse_repositories(root, N, {})) == 1
 
     def test_delegation_parse_plugin_repositories(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><pluginRepositories><pluginRepository><id>c</id><url>u</url></pluginRepository></pluginRepositories></project>')
+
+        root = ET.fromstring(
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><pluginRepositories><pluginRepository><id>c</id><url>u</url></pluginRepository></pluginRepositories></project>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert len(client._parse_plugin_repositories(root, N, {})) == 1
 
     def test_delegation_parse_dependency_management(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies><dependency><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency></dependencies></dependencyManagement></project>')
+
+        root = ET.fromstring(
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies><dependency><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency></dependencies></dependencyManagement></project>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert "g:a" in client._parse_dependency_management(root, N, {})
 
     def test_delegation_parse_plugin_management(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><build><pluginManagement><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></pluginManagement></build></project>')
+
+        root = ET.fromstring(
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><build><pluginManagement><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></pluginManagement></build></project>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert "g:p" in client._parse_plugin_management(root, N, {})
 
     def test_delegation_parse_profiles(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><profiles><profile><id>test</id></profile></profiles></project>')
+
+        root = ET.fromstring(
+            '<project xmlns="http://maven.apache.org/POM/4.0.0"><profiles><profile><id>test</id></profile></profiles></project>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert "test" in client._parse_profiles(root, N, {})
 
     def test_delegation_extract_dependency_info(self, client):
         import xml.etree.ElementTree as ET
-        dep = ET.fromstring('<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>')
+
+        dep = ET.fromstring(
+            '<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         info = client._extract_dependency_info(dep, N, {}, {})
         assert info["artifact_id"] == "a"
 
     def test_delegation_extract_dependency_info_with_exclusions(self, client):
         import xml.etree.ElementTree as ET
-        dep = ET.fromstring('<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>')
+
+        dep = ET.fromstring(
+            '<dependency xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         info = client._extract_dependency_info_with_exclusions(dep, N, {}, {})
         assert info["artifact_id"] == "a"
 
     def test_delegation_parse_plugins_section(self, client):
         import xml.etree.ElementTree as ET
-        root = ET.fromstring('<build xmlns="http://maven.apache.org/POM/4.0.0"><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></build>')
+
+        root = ET.fromstring(
+            '<build xmlns="http://maven.apache.org/POM/4.0.0"><plugins><plugin><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin></plugins></build>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         assert len(client._parse_plugins_section(root, N, {}, {})) == 1
 
     def test_delegation_extract_plugin_info(self, client):
         import xml.etree.ElementTree as ET
-        plugin = ET.fromstring('<plugin xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin>')
+
+        plugin = ET.fromstring(
+            '<plugin xmlns="http://maven.apache.org/POM/4.0.0"><groupId>g</groupId><artifactId>p</artifactId><version>1</version></plugin>'
+        )
         N = {"maven": "http://maven.apache.org/POM/4.0.0"}
         info = client._extract_plugin_info(plugin, N, {}, {})
         assert info["artifact_id"] == "p"
 
     def test_delegation_parse_configuration(self, client):
         import xml.etree.ElementTree as ET
+
         config = ET.fromstring("<configuration><source>1.8</source></configuration>")
         result = client._parse_configuration(config, {})
         assert result["source"] == "1.8"
@@ -1953,6 +2040,7 @@ class TestMavenClient:
     @pytest.mark.asyncio
     async def test_fetch_and_parse_pom_hierarchy_with_parent(self, client):
         client._pom_cache = {}
+
         async def mock_fetch_pom(*args, **kwargs):
             return '<project xmlns="http://maven.apache.org/POM/4.0.0"><parent><groupId>parent.g</groupId><artifactId>parent.a</artifactId><version>1.0</version></parent></project>'
 
@@ -1960,26 +2048,115 @@ class TestMavenClient:
             return '<project xmlns="http://maven.apache.org/POM/4.0.0"></project>'
 
         with patch.object(client, "_fetch_pom_from_repos", side_effect=mock_fetch_pom):
-            with patch.object(client._pom_parser, "_parse_pom_comprehensive", side_effect=[
-                {"parent": {"group_id": "parent.g", "artifact_id": "parent.a", "version": "1.0"}, "properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []},
-                {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []},
-            ]):
-                with patch.object(client._pom_parser, "_merge_poms", side_effect=lambda a, b: {**a, **b}):
-                    result = await client._fetch_and_parse_pom_hierarchy("g", "a", "1.0", [{"id": "central", "url": "https://repo"}])
+            with patch.object(
+                client._pom_parser,
+                "_parse_pom_comprehensive",
+                side_effect=[
+                    {
+                        "parent": {
+                            "group_id": "parent.g",
+                            "artifact_id": "parent.a",
+                            "version": "1.0",
+                        },
+                        "properties": {},
+                        "dependency_management": {},
+                        "dependencies": [],
+                        "repositories": [],
+                        "plugin_repositories": [],
+                        "plugins": [],
+                        "plugin_management": {},
+                        "profiles": {},
+                        "modules": [],
+                    },
+                    {
+                        "properties": {},
+                        "dependency_management": {},
+                        "dependencies": [],
+                        "repositories": [],
+                        "plugin_repositories": [],
+                        "plugins": [],
+                        "plugin_management": {},
+                        "profiles": {},
+                        "modules": [],
+                    },
+                ],
+            ):
+                with patch.object(
+                    client._pom_parser, "_merge_poms", side_effect=lambda a, b: {**a, **b}
+                ):
+                    result = await client._fetch_and_parse_pom_hierarchy(
+                        "g", "a", "1.0", [{"id": "central", "url": "https://repo"}]
+                    )
         assert result is not None
 
     # === New test: _fetch_and_parse_pom_hierarchy with child_pom_data
     @pytest.mark.asyncio
     async def test_fetch_and_parse_pom_hierarchy_no_parent(self, client):
         client._pom_cache = {}
-        with patch.object(client, "_fetch_pom_from_repos", new_callable=AsyncMock, return_value='<project xmlns="http://maven.apache.org/POM/4.0.0"></project>'):
-            with patch.object(client._pom_parser, "_parse_pom_comprehensive", return_value={"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []}):
-                result = await client._fetch_and_parse_pom_hierarchy("g", "a", "1.0", [{"id": "central", "url": "https://repo"}], child_pom_data={"properties": {}, "dependency_management": {}, "dependencies": [{"group_id": "g", "artifact_id": "b", "version": "2.0"}], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []})
+        with patch.object(
+            client,
+            "_fetch_pom_from_repos",
+            new_callable=AsyncMock,
+            return_value='<project xmlns="http://maven.apache.org/POM/4.0.0"></project>',
+        ):
+            with patch.object(
+                client._pom_parser,
+                "_parse_pom_comprehensive",
+                return_value={
+                    "properties": {},
+                    "dependency_management": {},
+                    "dependencies": [],
+                    "repositories": [],
+                    "plugin_repositories": [],
+                    "plugins": [],
+                    "plugin_management": {},
+                    "profiles": {},
+                    "modules": [],
+                },
+            ):
+                result = await client._fetch_and_parse_pom_hierarchy(
+                    "g",
+                    "a",
+                    "1.0",
+                    [{"id": "central", "url": "https://repo"}],
+                    child_pom_data={
+                        "properties": {},
+                        "dependency_management": {},
+                        "dependencies": [{"group_id": "g", "artifact_id": "b", "version": "2.0"}],
+                        "repositories": [],
+                        "plugin_repositories": [],
+                        "plugins": [],
+                        "plugin_management": {},
+                        "profiles": {},
+                        "modules": [],
+                    },
+                )
         assert len(result["dependencies"]) == 1
 
     # === New test: merge_poms with extra keys from child
     def test_merge_poms_extra_keys(self, client):
-        parent = {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": []}
-        child = {"properties": {}, "dependency_management": {}, "dependencies": [], "repositories": [], "plugin_repositories": [], "plugins": [], "plugin_management": {}, "profiles": {}, "modules": [], "extraKey": "extraValue"}
+        parent = {
+            "properties": {},
+            "dependency_management": {},
+            "dependencies": [],
+            "repositories": [],
+            "plugin_repositories": [],
+            "plugins": [],
+            "plugin_management": {},
+            "profiles": {},
+            "modules": [],
+        }
+        child = {
+            "properties": {},
+            "dependency_management": {},
+            "dependencies": [],
+            "repositories": [],
+            "plugin_repositories": [],
+            "plugins": [],
+            "plugin_management": {},
+            "profiles": {},
+            "modules": [],
+            "extraKey": "extraValue",
+        }
         merged = client._merge_poms(parent, child)
         assert merged["extraKey"] == "extraValue"

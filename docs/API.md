@@ -116,10 +116,12 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 | **Completion** | | | | |
 | 43 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
 | **Infrastructure** | | | | |
-| 44 | GET | `/metrics` | No | none |
-| 45 | GET | `/api/v1/docs` | No | none |
-| 46 | GET | `/api/v1/redoc` | No | none |
-| 47 | GET | `/api/v1/openapi.json` | No | none |
+| 44 | GET | `/healthz` | No | none |
+| 45 | GET | `/readyz` | No | none |
+| 46 | GET | `/metrics` | No | none |
+| 47 | GET | `/api/v1/docs` | No | none |
+| 48 | GET | `/api/v1/redoc` | No | none |
+| 49 | GET | `/api/v1/openapi.json` | No | none |
 
 ---
 
@@ -1965,7 +1967,7 @@ Every API endpoint maps to a CLI command when `udr serve` is running:
 
 **API-only endpoints** (no CLI equivalent): `/api/v1/packages/{eco}/{name}/versions`, `/api/v1/packages/{eco}/{name}/dependencies`, `/api/v1/packages/{eco}/{name}/compatibility`, `/api/v1/packages/export-formats`, `/api/v1/system/check-compatibility`, auth endpoints.
 
-**CLI-only features** (no API equivalent): `udr serve` (starts the API), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`).
+**CLI-only features** (no API equivalent): `udr serve` (starts the API), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`), `check --cve`, `check --license`.
 
 ---
 

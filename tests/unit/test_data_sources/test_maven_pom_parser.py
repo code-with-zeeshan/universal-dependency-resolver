@@ -1,4 +1,5 @@
 """Tests for Maven POM parser deep XML parsing."""
+
 import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
@@ -19,9 +20,7 @@ NAMESPACES = {"maven": "http://maven.apache.org/POM/4.0.0"}
 
 
 def _pom_xml(body: str) -> ET.Element:
-    return ET.fromstring(
-        f'<project xmlns="http://maven.apache.org/POM/4.0.0">{body}</project>'
-    )
+    return ET.fromstring(f'<project xmlns="http://maven.apache.org/POM/4.0.0">{body}</project>')
 
 
 class TestParseRepositories:
@@ -86,7 +85,9 @@ class TestParseRepositories:
                 </repository>
             </repositories>
         """)
-        repos = parser._parse_repositories(root, NAMESPACES, {"repo.id": "myrepo", "repo.url": "https://my.repo"})
+        repos = parser._parse_repositories(
+            root, NAMESPACES, {"repo.id": "myrepo", "repo.url": "https://my.repo"}
+        )
         assert repos[0]["id"] == "myrepo"
         assert repos[0]["url"] == "https://my.repo"
 
@@ -588,7 +589,9 @@ class TestParsePomComprehensive:
     </profile>
   </profiles>
 </project>"""
-        result = parser._parse_pom_comprehensive(pom_xml, "g", "a", "1.0", active_profiles=["test-profile"])
+        result = parser._parse_pom_comprehensive(
+            pom_xml, "g", "a", "1.0", active_profiles=["test-profile"]
+        )
         assert result["parent"]["group_id"] == "parent.g"
         assert "com.example:managed-lib" in result["dependency_management"]
         assert len(result["dependencies"]) == 1
@@ -715,9 +718,7 @@ class TestApplyFinalPropertySubstitution:
     def test_substitute_no_properties_match(self, parser):
         pom_data = {
             "properties": {},
-            "dependencies": [
-                {"group_id": "com.example", "artifact_id": "lib", "version": "1.0"}
-            ],
+            "dependencies": [{"group_id": "com.example", "artifact_id": "lib", "version": "1.0"}],
             "dependency_management": {},
             "repositories": [],
             "plugins": [],

@@ -280,15 +280,19 @@ class TestCacheKeyDecorator:
         deco = cache_key(ttl=300)
         wrapped = deco(FakeService.fetch)
 
-        with patch.object(cache_manager, "_generate_key", return_value="test_key"), \
-             patch.object(cache_manager, "get", return_value=None), \
-             patch.object(cache_manager, "set", AsyncMock()) as mock_set:
+        with (
+            patch.object(cache_manager, "_generate_key", return_value="test_key"),
+            patch.object(cache_manager, "get", return_value=None),
+            patch.object(cache_manager, "set", AsyncMock()) as mock_set,
+        ):
             result = await wrapped(svc, 5)
             assert result == 10
             mock_set.assert_awaited_once()
 
-        with patch.object(cache_manager, "_generate_key", return_value="test_key2"), \
-             patch.object(cache_manager, "get", return_value="cached_val"):
+        with (
+            patch.object(cache_manager, "_generate_key", return_value="test_key2"),
+            patch.object(cache_manager, "get", return_value="cached_val"),
+        ):
             result = await wrapped(svc, 5)
             assert result == "cached_val"
 
@@ -304,16 +308,20 @@ class TestCachedDecorator:
             call_count += 1
             return n * 2
 
-        with patch.object(cache_manager, "_generate_key", return_value="ck"), \
-             patch.object(cache_manager, "get", return_value=None), \
-             patch.object(cache_manager, "set", AsyncMock()) as mock_set:
+        with (
+            patch.object(cache_manager, "_generate_key", return_value="ck"),
+            patch.object(cache_manager, "get", return_value=None),
+            patch.object(cache_manager, "set", AsyncMock()) as mock_set,
+        ):
             result = await compute(3)
             assert result == 6
             assert call_count == 1
             mock_set.assert_awaited_once_with("ck", 6, 300)
 
-        with patch.object(cache_manager, "_generate_key", return_value="ck2"), \
-             patch.object(cache_manager, "get", return_value="cached"):
+        with (
+            patch.object(cache_manager, "_generate_key", return_value="ck2"),
+            patch.object(cache_manager, "get", return_value="cached"),
+        ):
             result = await compute(3)
             assert result == "cached"
             assert call_count == 1

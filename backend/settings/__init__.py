@@ -26,6 +26,33 @@ else:
     logger.info("Generated random API key for this session (set API_KEY env var to persist)")
 
 # =============================================================================
+# Registry Authentication Configuration
+# =============================================================================
+# Per-ecosystem auth env vars follow: {PREFIX}_AUTH_TOKEN, {PREFIX}_AUTH_TYPE,
+# {PREFIX}_AUTH_USERNAME, {PREFIX}_AUTH_PASSWORD.
+# Supported auth types: bearer (default), basic, header.
+ECOSYSTEM_AUTH_ENV_PREFIXES = {
+    "pypi": "PYPI",
+    "npm": "NPM",
+    "crates": "CRATES",
+    "gomodules": "GOMODULES",
+    "maven": "MAVEN",
+    "nuget": "NUGET",
+    "rubygems": "RUBYGEMS",
+    "conda": "CONDA",
+    "packagist": "PACKAGIST",
+    "pub": "PUB",
+    "gradle": "GRADLE",
+    "swift": "SWIFT",
+    "hex": "HEX",
+    "haskell": "HASKELL",
+    "cocoapods": "COCOAPODS",
+    "homebrew": "HOMEBREW",
+    "apt": "APT",
+    "apk": "APK",
+}
+
+# =============================================================================
 # HTTP Client Configuration
 # =============================================================================
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 3))
@@ -41,9 +68,26 @@ RATE_LIMITS = {
     "maven": int(os.getenv("MAVEN_RATE_LIMIT", 300)),
     "crates": int(os.getenv("CRATES_RATE_LIMIT", 300)),
     "github": int(os.getenv("GITHUB_RATE_LIMIT", 60)),
+    "rubygems": int(os.getenv("RUBYGEMS_RATE_LIMIT", 100)),
+    "nuget": int(os.getenv("NUGET_RATE_LIMIT", 100)),
+    "packagist": int(os.getenv("PACKAGIST_RATE_LIMIT", 100)),
+    "homebrew": int(os.getenv("HOMEBREW_RATE_LIMIT", 60)),
+    "cocoapods": int(os.getenv("COCOAPODS_RATE_LIMIT", 60)),
+    "pub": int(os.getenv("PUB_RATE_LIMIT", 60)),
+    "gradle": int(os.getenv("GRADLE_RATE_LIMIT", 60)),
+    "swift": int(os.getenv("SWIFT_RATE_LIMIT", 60)),
+    "hex": int(os.getenv("HEX_RATE_LIMIT", 60)),
+    "haskell": int(os.getenv("HASKELL_RATE_LIMIT", 60)),
+    "apt": int(os.getenv("APT_RATE_LIMIT", 300)),
+    "apk": int(os.getenv("APK_RATE_LIMIT", 300)),
+    "gomodules": int(os.getenv("GOMODULES_RATE_LIMIT", 600)),
 }
 
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 30))
+DETECT_ECOSYSTEMS_TIMEOUT = int(os.getenv("DETECT_ECOSYSTEMS_TIMEOUT", 15))
+
+# NPM concurrency: max simultaneous requests to the npm registry
+NPM_CONCURRENCY = int(os.getenv("NPM_CONCURRENCY", "10"))
 
 USER_AGENTS = {
     "default": os.getenv("DEFAULT_USER_AGENT", "UniversalDependencyResolver/1.0"),
@@ -185,6 +229,8 @@ FEATURES = {
     "ENABLE_CSRF": os.getenv("ENABLE_CSRF", "true").lower() == "true",
 }
 
+USE_PUBGRUB_SOLVER = os.getenv("USE_PUBGRUB_SOLVER", "false").lower() == "true"
+
 ENV = os.getenv("ENV", "development")
 
 if os.getenv("DEBUG", "false").lower() == "true" or ENV == "development":
@@ -305,9 +351,10 @@ def get_ecosystem_config(ecosystem: str) -> dict[str, Any]:
             "rate_limit": 300,
         },
         "swift": {
-            "url": "",
+            "url": "https://api.github.com",
             "cache_ttl": CACHE_TTL,
-            "rate_limit": 300,
+            "rate_limit": 60,  # GitHub unauthenticated: 60 req/hr
+            "note": "Uses GitHub API by default (60 req/hr). Set SWIFT_REGISTRY_URL env var for SE-0292 registry.",
         },
         "hex": {
             "url": "https://hex.pm/api",

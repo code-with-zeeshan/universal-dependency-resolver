@@ -9,6 +9,7 @@ from typing import Any
 import aiohttp
 
 from backend.core.cache import DictCache
+from backend.core.registry_auth import resolve_auth_headers
 from backend.settings import (
     CACHE_TTL,
     CIRCUIT_BREAKER_FAILURE_THRESHOLD,
@@ -48,6 +49,7 @@ class BaseDataSourceClient:
         rate_limit: int | None = None,
         timeout: int = REQUEST_TIMEOUT,
         max_retries: int = MAX_RETRIES,
+        auth_headers: dict[str, str] | None = None,
     ):
         self.ecosystem = ecosystem
         self.base_url = base_url
@@ -59,6 +61,11 @@ class BaseDataSourceClient:
         self.rate_limit = rate_limit or RATE_LIMITS.get(ecosystem, 600)
         self.timeout = timeout
         self.max_retries = max_retries
+        self._auth_headers: dict[str, str] = resolve_auth_headers(
+            ecosystem=ecosystem,
+            registry_url=base_url,
+            explicit_headers=auth_headers,
+        )
         self._request_timestamps: list = []
         self._circuit_state = "CLOSED"
         self._circuit_failure_count = 0
@@ -121,6 +128,7 @@ class BaseDataSourceClient:
         session = self._get_session()
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self.user_agent)
+        headers.update(self._auth_headers)
 
         last_error = None
         for attempt in range(self.max_retries):
@@ -220,6 +228,7 @@ class BaseDataSourceClient:
         session = self._get_session()
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self.user_agent)
+        headers.update(self._auth_headers)
         try:
             async with session.request(
                 "GET",
@@ -236,26 +245,98 @@ class BaseDataSourceClient:
             logger.debug("_get_text failed for %s: %s", url, e)
             return None
 
-    async def cached_get(self, cache_key: str, url: str, ttl: int | None = None) -> dict | None:
+    async def cached_get(
+        self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
+    ) -> dict | None:
         import os as _os
+        import time as _time
 
         cached = await self._cache_get(cache_key)
         if cached is not None:
+            if isinstance(cached, dict) and cached.get("__etag_wrapped__"):
+                data = cached.get("data")
+                etag = cached.get("etag")
+                expires = cached.get("expires")
+                if expires and _time.time() < expires:
+                    return data
+                if etag:
+                    session = self._get_session()
+                    req_headers = {"User-Agent": self.user_agent, "If-None-Match": etag}
+                    req_headers.update(self._auth_headers)
+                    if headers:
+                        req_headers.update(headers)
+                    try:
+                        async with session.request(
+                            "GET",
+                            url,
+                            headers=req_headers,
+                            timeout=aiohttp.ClientTimeout(connect=10, sock_read=self.timeout),
+                        ) as resp:
+                            if resp.status == 304:
+                                new_expiry = _time.time() + (ttl or self._cache_ttl)
+                                cached["expires"] = new_expiry
+                                await self._cache_set(cache_key, cached)
+                                return data
+                            if resp.status == 200:
+                                new_data = await resp.json()
+                                new_etag = resp.headers.get("ETag")
+                                new_expiry = _time.time() + (ttl or self._cache_ttl)
+                                wrapped = {
+                                    "__etag_wrapped__": True,
+                                    "data": new_data,
+                                    "etag": new_etag,
+                                    "expires": new_expiry,
+                                }
+                                await self._cache_set(cache_key, wrapped)
+                                return new_data
+                    except Exception:
+                        pass
+                    return data
+                return data
             return cached
 
         if _os.environ.get("UDR_OFFLINE", "").lower() == "true":
             logger.warning(f"Offline mode: skipping network request for {url}")
             return None
 
-        data = await self._get(url)
-        if data is not None:
-            orig_ttl = self._cache_ttl
-            if ttl is not None:
-                self._cache_ttl = ttl
-            await self._cache_set(cache_key, data)
-            if ttl is not None:
-                self._cache_ttl = orig_ttl
-        return data
+        await self._throttle()
+        session = self._get_session()
+        req_headers = {"User-Agent": self.user_agent}
+        req_headers.update(self._auth_headers)
+        if headers:
+            req_headers.update(headers)
+        try:
+            async with session.request(
+                "GET",
+                url,
+                headers=req_headers,
+                timeout=aiohttp.ClientTimeout(connect=10, sock_read=self.timeout),
+            ) as resp:
+                if resp.status == 404:
+                    return None
+                resp.raise_for_status()
+                data = await resp.json()
+                etag = resp.headers.get("ETag")
+                expiry = _time.time() + (ttl or self._cache_ttl)
+                if etag:
+                    wrapped = {
+                        "__etag_wrapped__": True,
+                        "data": data,
+                        "etag": etag,
+                        "expires": expiry,
+                    }
+                    await self._cache_set(cache_key, wrapped)
+                else:
+                    orig_ttl = self._cache_ttl
+                    if ttl is not None:
+                        self._cache_ttl = ttl
+                    await self._cache_set(cache_key, data)
+                    if ttl is not None:
+                        self._cache_ttl = orig_ttl
+                return data
+        except (TimeoutError, aiohttp.ClientError) as e:
+            logger.error(f"{self.ecosystem} cached_get failed for {url}: {e}")
+            return None
 
     @property
     def circuit_state(self) -> str:

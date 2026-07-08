@@ -171,7 +171,7 @@ async def api_key_middleware(request: Request, call_next):
 
     # 2. Check against database-backed API keys
     try:
-        from backend.database.service import authenticate_api_key
+        from backend.orchestrator.db_service import authenticate_api_key
 
         result = authenticate_api_key(api_key)
         if result is not None:

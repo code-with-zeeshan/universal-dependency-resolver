@@ -11,14 +11,19 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from ..shared import _read_lock_file, console, err_console
+from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
 
 
 async def _cmd_verify_async(args):
     """Cmd verify async."""
     from backend.core import DataAggregator
 
-    lock_path = Path(args.lock_file)
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None) or args.lock_file,
+    ).resolve()
     lock_data = _read_lock_file(lock_path)
     aggregator = DataAggregator()
 

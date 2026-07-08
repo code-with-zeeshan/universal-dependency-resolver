@@ -266,15 +266,11 @@ class TestUserAndAPIKey:
         assert saved.is_active is True
 
     def test_unique_username(self, db_session):
-        db_session.add(
-            User(username="unique_user", email="a@b.com", hashed_password="pw")
-        )
+        db_session.add(User(username="unique_user", email="a@b.com", hashed_password="pw"))
         db_session.commit()
 
         with pytest.raises(IntegrityError):
-            db_session.add(
-                User(username="unique_user", email="c@d.com", hashed_password="pw2")
-            )
+            db_session.add(User(username="unique_user", email="c@d.com", hashed_password="pw2"))
             db_session.commit()
         db_session.rollback()
 
@@ -313,9 +309,7 @@ class TestResolutionCache:
         db_session.add(entry)
         db_session.commit()
 
-        saved = (
-            db_session.query(ResolutionCache).filter_by(request_hash="abc123").first()
-        )
+        saved = db_session.query(ResolutionCache).filter_by(request_hash="abc123").first()
         assert saved is not None
         assert saved.success is True
         assert saved.resolution_time_ms == 150
@@ -328,7 +322,6 @@ class TestResolutionCache:
             db_session.add(ResolutionCache(request_hash="dup_hash"))
             db_session.commit()
         db_session.rollback()
-
 
 
 class TestBulkOperations:
@@ -350,9 +343,7 @@ class TestBulkOperations:
         db_session.add(pkg)
         db_session.commit()
 
-        versions = [
-            PackageVersion(package_id=pkg.id, version=f"0.{i}.0") for i in range(50)
-        ]
+        versions = [PackageVersion(package_id=pkg.id, version=f"0.{i}.0") for i in range(50)]
         db_session.add_all(versions)
         db_session.commit()
 
@@ -373,9 +364,7 @@ class TestBulkOperations:
         db_session.commit()
 
         version_count_before = (
-            db_session.query(PackageVersion)
-            .filter(PackageVersion.package_id == pkg.id)
-            .count()
+            db_session.query(PackageVersion).filter(PackageVersion.package_id == pkg.id).count()
         )
         assert version_count_before == 2
 
@@ -387,9 +376,7 @@ class TestBulkOperations:
 
     def test_query_by_ecosystem(self, db_session):
         ecosystems = ["pypi", "npm", "pypi", "conda", "npm"]
-        packages = [
-            Package(name=f"pkg-{i}", ecosystem=eco) for i, eco in enumerate(ecosystems)
-        ]
+        packages = [Package(name=f"pkg-{i}", ecosystem=eco) for i, eco in enumerate(ecosystems)]
         db_session.add_all(packages)
         db_session.commit()
 
@@ -429,9 +416,7 @@ class TestHealthCheck:
     @pytest.mark.requires_postgres
     def test_table_count(self, db_session):
         result = db_session.execute(
-            text(
-                "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
-            )
+            text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
         )
         count = result.scalar()
         assert count >= 9

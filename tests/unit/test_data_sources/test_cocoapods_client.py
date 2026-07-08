@@ -30,10 +30,37 @@ class TestCocoaPodsClient:
     @pytest.mark.asyncio
     async def test_get_package_info_async_success(self, client, sample_pod_data):
         with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value={"name": "Alamofire", "version": "5.7.1", "summary": "Elegant HTTP Networking in Swift", "homepage": "https://github.com/Alamofire/Alamofire", "license": "MIT", "authors": "Alamofire Software Foundation", "source": {"git": "https://github.com/Alamofire/Alamofire.git", "tag": "5.7.1"}, "platforms": {"ios": "10.0", "osx": "10.12"}, "swift_versions": ["5.3", "5.4", "5.5"], "versions": ["5.7.1", "5.7.0"]}
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value={
+                "name": "Alamofire",
+                "version": "5.7.1",
+                "summary": "Elegant HTTP Networking in Swift",
+                "homepage": "https://github.com/Alamofire/Alamofire",
+                "license": "MIT",
+                "authors": "Alamofire Software Foundation",
+                "source": {"git": "https://github.com/Alamofire/Alamofire.git", "tag": "5.7.1"},
+                "platforms": {"ios": "10.0", "osx": "10.12"},
+                "swift_versions": ["5.3", "5.4", "5.5"],
+                "versions": ["5.7.1", "5.7.0"],
+            },
         ):
             with patch.object(
-                client, "_get_podspec", new_callable=AsyncMock, return_value={"name": "Alamofire", "version": "5.7.1", "description": "Elegant HTTP Networking in Swift", "homepage": "https://github.com/Alamofire/Alamofire", "source": {"git": "https://github.com/Alamofire/Alamofire.git", "tag": "5.7.1"}, "license": "MIT", "authors": {"Alamofire Software Foundation": ""}, "platforms": {"ios": "10.0", "osx": "10.12"}, "swift_versions": ["5.3", "5.4", "5.5"]}
+                client,
+                "_get_podspec",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "Alamofire",
+                    "version": "5.7.1",
+                    "description": "Elegant HTTP Networking in Swift",
+                    "homepage": "https://github.com/Alamofire/Alamofire",
+                    "source": {"git": "https://github.com/Alamofire/Alamofire.git", "tag": "5.7.1"},
+                    "license": "MIT",
+                    "authors": {"Alamofire Software Foundation": ""},
+                    "platforms": {"ios": "10.0", "osx": "10.12"},
+                    "swift_versions": ["5.3", "5.4", "5.5"],
+                },
             ):
                 result = await client.get_package_info_async("Alamofire")
         assert result is not None
@@ -41,13 +68,12 @@ class TestCocoaPodsClient:
         assert result["version"] == "5.7.1"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_pod_data
-    ):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_pod_data
-        ) as mock_get, patch.object(
-            client, "_get_podspec", new_callable=AsyncMock, return_value={}
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_pod_data):
+        with (
+            patch.object(
+                client, "_get", new_callable=AsyncMock, return_value=sample_pod_data
+            ) as mock_get,
+            patch.object(client, "_get_podspec", new_callable=AsyncMock, return_value={}),
         ):
             await client.get_package_info_async("Alamofire")
         mock_get.assert_called()
@@ -56,9 +82,7 @@ class TestCocoaPodsClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent")
         assert result is None
 
@@ -100,25 +124,19 @@ class TestCocoaPodsClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_pod_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=[sample_pod_data]
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=[sample_pod_data]):
             results = await client.search_packages("Alamofire", limit=10)
         assert len(results) >= 1
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=[]
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=[]):
             results = await client.search_packages("nonexistent")
         assert results == []
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_exception(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")):
             results = await client.search_packages("Alamofire")
         assert results == []
 
@@ -136,9 +154,7 @@ class TestCocoaPodsClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_empty_when_no_package(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             versions = await client.get_versions("nonexistent")
         assert versions == []
 
@@ -148,7 +164,10 @@ class TestCocoaPodsClient:
             client, "get_package_info_async", new_callable=AsyncMock, return_value=sample_pod_data
         ):
             with patch.object(
-                client, "_get_podspec", new_callable=AsyncMock, return_value={"dependencies": {"UIKit": ["~> 1.0"]}}
+                client,
+                "_get_podspec",
+                new_callable=AsyncMock,
+                return_value={"dependencies": {"UIKit": ["~> 1.0"]}},
             ):
                 deps = await client.get_dependencies("Alamofire", "5.7.1")
         assert isinstance(deps, dict)
@@ -164,10 +183,16 @@ class TestCocoaPodsClient:
     @pytest.mark.asyncio
     async def test_get_dependencies_without_version_fetches_info(self, client):
         with patch.object(
-            client, "get_package_info_async", new_callable=AsyncMock, return_value={"name": "Alamofire", "version": "5.7.1"}
+            client,
+            "get_package_info_async",
+            new_callable=AsyncMock,
+            return_value={"name": "Alamofire", "version": "5.7.1"},
         ):
             with patch.object(
-                client, "_get_podspec", new_callable=AsyncMock, return_value={"dependencies": {"UIKit": ["~> 1.0"]}}
+                client,
+                "_get_podspec",
+                new_callable=AsyncMock,
+                return_value={"dependencies": {"UIKit": ["~> 1.0"]}},
             ):
                 deps = await client.get_dependencies("Alamofire")
         assert isinstance(deps, dict)
@@ -190,9 +215,7 @@ class TestCocoaPodsClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_no_versions_key(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value={"name": "Foo"}
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"name": "Foo"}):
             result = await client.get_package_info_async("Foo")
         assert result is None
 
@@ -236,7 +259,9 @@ class TestCocoaPodsClient:
         assert client._parse_version_spec([">= 1.0", "< 2.0"]) == ">= 1.0, < 2.0"
 
     def test_parse_version_spec_dict(self, client):
-        assert client._parse_version_spec({"git": "https://example.com"}) == str({"git": "https://example.com"})
+        assert client._parse_version_spec({"git": "https://example.com"}) == str(
+            {"git": "https://example.com"}
+        )
 
     def test_parse_version_spec_else(self, client):
         assert client._parse_version_spec(42) == ""

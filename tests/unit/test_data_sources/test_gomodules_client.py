@@ -26,15 +26,19 @@ class TestGoModulesClient:
             ),
         }
 
-        with patch.object(
-            client,
-            "_get_versions_list",
-            new_callable=AsyncMock,
-            return_value=versions_list,
-        ), patch.object(
-            client, "_get_latest_version", new_callable=AsyncMock, return_value="v1.2.0"
-        ), patch.object(
-            client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
+        with (
+            patch.object(
+                client,
+                "_get_versions_list",
+                new_callable=AsyncMock,
+                return_value=versions_list,
+            ),
+            patch.object(
+                client, "_get_latest_version", new_callable=AsyncMock, return_value="v1.2.0"
+            ),
+            patch.object(
+                client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
+            ),
         ):
             result = await client.get_package_info_async("github.com/example/mymodule")
 
@@ -50,36 +54,37 @@ class TestGoModulesClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_no_versions(self, client):
-        with patch.object(
-            client, "_get_versions_list", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get_versions_list", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("github.com/example/mymodule-noversions")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_no_latest(self, client):
-        with patch.object(
-            client,
-            "_get_versions_list",
-            new_callable=AsyncMock,
-            return_value=["v1.0.0"],
-        ), patch.object(
-            client, "_get_latest_version", new_callable=AsyncMock, return_value=None
+        with (
+            patch.object(
+                client,
+                "_get_versions_list",
+                new_callable=AsyncMock,
+                return_value=["v1.0.0"],
+            ),
+            patch.object(client, "_get_latest_version", new_callable=AsyncMock, return_value=None),
         ):
             result = await client.get_package_info_async("github.com/example/mymodule-nolatest")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_no_module_info(self, client):
-        with patch.object(
-            client,
-            "_get_versions_list",
-            new_callable=AsyncMock,
-            return_value=["v1.0.0"],
-        ), patch.object(
-            client, "_get_latest_version", new_callable=AsyncMock, return_value="v1.0.0"
-        ), patch.object(
-            client, "_get_module_info", new_callable=AsyncMock, return_value=None
+        with (
+            patch.object(
+                client,
+                "_get_versions_list",
+                new_callable=AsyncMock,
+                return_value=["v1.0.0"],
+            ),
+            patch.object(
+                client, "_get_latest_version", new_callable=AsyncMock, return_value="v1.0.0"
+            ),
+            patch.object(client, "_get_module_info", new_callable=AsyncMock, return_value=None),
         ):
             result = await client.get_package_info_async("github.com/example/mymodule-nomodinfo")
         assert result is None
@@ -147,9 +152,7 @@ class TestGoModulesClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_empty(self, client):
-        with patch.object(
-            client, "_get_versions_list", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get_versions_list", new_callable=AsyncMock, return_value=None):
             versions = await client.get_versions("github.com/example/mymodule")
         assert versions == []
 
@@ -182,9 +185,7 @@ class TestGoModulesClient:
         with patch.object(
             client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
         ):
-            result = await client.get_package_version(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+            result = await client.get_package_version("github.com/example/mymodule", "v1.0.0")
         assert result is not None
         assert result["version"] == "1.0.0"
         assert "dependencies" in result
@@ -209,12 +210,8 @@ class TestGoModulesClient:
 
     @pytest.mark.asyncio
     async def test_get_package_version_not_found(self, client):
-        with patch.object(
-            client, "_get_module_info", new_callable=AsyncMock, return_value=None
-        ):
-            result = await client.get_package_version(
-                "github.com/example/mymodule", "v99.99.99"
-            )
+        with patch.object(client, "_get_module_info", new_callable=AsyncMock, return_value=None):
+            result = await client.get_package_version("github.com/example/mymodule", "v99.99.99")
         assert result is None
 
     @pytest.mark.asyncio
@@ -233,9 +230,7 @@ class TestGoModulesClient:
         with patch.object(
             client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
         ):
-            deps = await client.get_dependencies(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+            deps = await client.get_dependencies("github.com/example/mymodule", "v1.0.0")
         assert "required" in deps
         assert "github.com/pkg/errors" in deps["required"]
         assert "github.com/gorilla/mux" in deps["required"]
@@ -254,9 +249,7 @@ class TestGoModulesClient:
         with patch.object(
             client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
         ):
-            deps = await client.get_dependencies(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+            deps = await client.get_dependencies("github.com/example/mymodule", "v1.0.0")
         assert "github.com/pkg/errors" in deps["required"]
 
     @pytest.mark.asyncio
@@ -273,20 +266,14 @@ class TestGoModulesClient:
         with patch.object(
             client, "_get_module_info", new_callable=AsyncMock, return_value=module_info
         ):
-            deps = await client.get_dependencies(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+            deps = await client.get_dependencies("github.com/example/mymodule", "v1.0.0")
         assert "replace" in deps
         assert "github.com/pkg/errors" in deps["replace"]
 
     @pytest.mark.asyncio
     async def test_get_dependencies_returns_empty_on_no_module_info(self, client):
-        with patch.object(
-            client, "_get_module_info", new_callable=AsyncMock, return_value=None
-        ):
-            deps = await client.get_dependencies(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+        with patch.object(client, "_get_module_info", new_callable=AsyncMock, return_value=None):
+            deps = await client.get_dependencies("github.com/example/mymodule", "v1.0.0")
         assert deps == {}
 
     def test_extract_go_version(self, client):
@@ -298,15 +285,10 @@ class TestGoModulesClient:
         assert client._extract_go_version(module_info) is None
 
     def test_normalize_go_module_path_github(self, client):
-        assert (
-            client._normalize_go_module_path("github.com/user/repo")
-            == "github.com/user/repo"
-        )
+        assert client._normalize_go_module_path("github.com/user/repo") == "github.com/user/repo"
 
     def test_normalize_go_module_path_golang_org(self, client):
-        assert (
-            client._normalize_go_module_path("golang.org/x/net") == "golang.org/x/net"
-        )
+        assert client._normalize_go_module_path("golang.org/x/net") == "golang.org/x/net"
 
     def test_normalize_go_module_path_short_name(self, client):
         result = client._normalize_go_module_path("mymodule")
@@ -389,9 +371,7 @@ class TestGoModulesClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_list_none(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
             versions = await client._get_versions_list("github.com/example/mymodule")
         assert versions is None
 
@@ -408,9 +388,7 @@ class TestGoModulesClient:
 
     @pytest.mark.asyncio
     async def test_get_latest_version_not_found(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
             version = await client._get_latest_version("github.com/example/mymodule")
         assert version is None
 
@@ -418,25 +396,17 @@ class TestGoModulesClient:
     async def test_get_module_info_success(self, client):
         info_data = {"Version": "v1.0.0", "Time": "2023-01-01T00:00:00Z"}
         mod_data = "module github.com/example/mymodule\ngo 1.19\n"
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock
-        ) as mock_request:
+        with patch.object(client, "_make_request", new_callable=AsyncMock) as mock_request:
             mock_request.side_effect = [info_data, mod_data]
-            result = await client._get_module_info(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+            result = await client._get_module_info("github.com/example/mymodule", "v1.0.0")
         assert result is not None
         assert result["info"] == info_data
         assert result["go_mod"] == mod_data
 
     @pytest.mark.asyncio
     async def test_get_module_info_fails(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
-            result = await client._get_module_info(
-                "github.com/example/mymodule", "v1.0.0"
-            )
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
+            result = await client._get_module_info("github.com/example/mymodule", "v1.0.0")
         assert result is None
 
     @pytest.mark.asyncio

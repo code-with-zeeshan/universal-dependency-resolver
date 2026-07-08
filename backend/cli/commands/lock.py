@@ -14,6 +14,7 @@ from rich.table import Table
 
 from ..shared import (
     _aggregator_to_resolver_input,
+    _build_pinning_policy,
     _extract_severity,
     _get_manifest_updater,
     _output_json,
@@ -48,9 +49,11 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
 
 def cmd_lock(args):
     """Cmd lock."""
-    from backend.core import ConflictResolver, DataAggregator, SystemScanner
+    from backend.core import DataAggregator, SystemScanner
+    from backend.core.conflict_resolver import ConflictResolver
     from backend.core.export_generator import ExportGenerator
     from backend.manifest_detector import ManifestDetector
+    from backend.orchestrator.resolve import create_solver
 
     from ..shared import _read_lock_file
 
@@ -63,11 +66,14 @@ def cmd_lock(args):
 
         detector = ManifestDetector(str(directory))
         aggregator = DataAggregator()
-        resolver = ConflictResolver()
+        resolver = create_solver()
         scanner = SystemScanner()
         exporter = ExportGenerator()
 
-        lock_path = directory / "udr.lock"
+        workspace = getattr(args, "workspace", None)
+        prefix = getattr(args, "prefix", None)
+        lock_filename = f"udr-{workspace}.lock" if workspace else "udr.lock"
+        lock_path = directory / lock_filename
         existing_lock = None
         if lock_path.is_file() and not getattr(args, "force", False):
             try:
@@ -221,7 +227,18 @@ def cmd_lock(args):
                             "pinned_version": constraint,
                         }
                     else:
-                        rinput = _aggregator_to_resolver_input(data, eco, constraint=constraint)
+                        pkg_extras = pkg.get("extras")
+                        if args.extras and pkg_extras is not None:
+                            combined = list(set(pkg_extras + args.extras))
+                        elif args.extras:
+                            combined = args.extras
+                        elif pkg_extras is not None:
+                            combined = pkg_extras
+                        else:
+                            combined = None
+                        rinput = _aggregator_to_resolver_input(
+                            data, eco, constraint=constraint, extras=combined
+                        )
                     resolver_inputs.append(rinput)
                 progress.advance(fetch_task)
 
@@ -305,6 +322,7 @@ def cmd_lock(args):
                     timeout=getattr(args, "timeout", None)
                     or int(os.environ.get("SOLVER_TIMEOUT", 120)),
                     lock_tree_data=lock_tree if lock_tree else None,
+                    pinning_policy=_build_pinning_policy(args),
                 )
 
             sat_pkgs = resolved.get("resolved_packages", {})
@@ -341,6 +359,14 @@ def cmd_lock(args):
             "packages": {},
             "warnings": resolved.get("warnings", []),
         }
+        if workspace:
+            lock_data["workspace"] = workspace
+
+        pp = _build_pinning_policy(args)
+        if pp:
+            from dataclasses import asdict
+
+            lock_data["pinning_policy"] = {k: v for k, v in asdict(pp).items() if v}
 
         manifest_pkg_info = {}
         for p in packages:
@@ -363,6 +389,7 @@ def cmd_lock(args):
                 "cuda_version": rp.get("cuda_version"),
                 "original_constraint": manifest_info.get("constraint", "*"),
                 "source": manifest_info.get("source", "transitive"),
+                "license": pkg_detail.get("unified_data", {}).get("license"),
                 "vulnerabilities": [
                     {
                         "id": v.get("id", ""),
@@ -404,6 +431,20 @@ def cmd_lock(args):
                     rinput.get("dependencies", {}),
                     system_info,
                 )
+
+        if prefix:
+            prefixed_packages = {}
+            for pkg_name, pkg_info in lock_data["packages"].items():
+                prefixed_name = f"{prefix}{pkg_name}"
+                pkg_info["name"] = prefixed_name
+                prefixed_packages[prefixed_name] = pkg_info
+                if "depends_on" in pkg_info:
+                    pkg_info["depends_on"] = {
+                        f"{prefix}{d}" if d in lock_data["packages"] else d: c
+                        for d, c in pkg_info["depends_on"].items()
+                    }
+            lock_data["packages"] = prefixed_packages
+            lock_data["package_prefix"] = prefix
 
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
 

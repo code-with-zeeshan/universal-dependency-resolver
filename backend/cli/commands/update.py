@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..shared import (
     _fetch_package_data_async,
     _read_lock_file,
+    _resolve_lock_path,
     _run_resolution,
     console,
     err_console,
@@ -23,12 +24,19 @@ def cmd_update(args):
 
     async def _update():
         """Update."""
-        from backend.core import ConflictResolver, DataAggregator, SystemScanner
+        from backend.core import DataAggregator, SystemScanner
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import create_solver
 
-        lock_path = Path(args.directory) / "udr.lock"
+        directory = Path(args.directory).resolve()
+        lock_path = _resolve_lock_path(
+            directory,
+            workspace=getattr(args, "workspace", None),
+            lock_file=getattr(args, "lock_file", None),
+        ).resolve()
         lock_data = _read_lock_file(lock_path)
         aggregator = DataAggregator()
-        resolver = ConflictResolver()
+        resolver = create_solver()
         scanner = SystemScanner()
 
         package_name = args.package

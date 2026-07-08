@@ -21,7 +21,9 @@ from backend.orchestrator import (
     _normalize_cuda,  # noqa: F401 — re-exported via __init__.py
     _parse_package_spec,  # noqa: F401 — re-exported via __init__.py
     _resolve_transitive,
-    _select_best_cuda_variant,
+)
+from backend.orchestrator import (
+    _apply_cuda_variants as _orchestrator_apply_cuda_variants,
 )
 from backend.orchestrator import (
     _generate_install_command as _orchestrator_generate_install_command,
@@ -69,12 +71,23 @@ async def _run_resolution(
     lock_data: dict | None = None,
     timeout: int | None = None,
     lock_tree_data: dict[str, dict[str, dict]] | None = None,
+    pinning_policy: Any = None,
 ) -> dict:
     """Run resolution."""
+    from backend.core.pinning import PinningPolicy, apply_pinning_policy, freeze_from_lock
+
+    if pinning_policy is not None and not isinstance(pinning_policy, PinningPolicy):
+        pinning_policy = (
+            PinningPolicy(**pinning_policy) if isinstance(pinning_policy, dict) else None
+        )
+
+    if pinning_policy and pinning_policy.freeze and lock_data:
+        resolver_inputs = freeze_from_lock(resolver_inputs, lock_data)
+    resolver_inputs = apply_pinning_policy(resolver_inputs, pinning_policy)
+
     if timeout is None:
         timeout = int(os.environ.get("SOLVER_TIMEOUT", 120))
-    # Reserve up to 120s for BFS; remainder goes to Z3 solver (in ms), min 10s
-    bfs_budget = min(120, int(timeout * 0.5))
+    bfs_budget = min(240, int(timeout * 0.75))
     solver_timeout = max(10000, int((timeout - bfs_budget) * 1000))
     try:
         resolved = await asyncio.wait_for(
@@ -86,18 +99,25 @@ async def _run_resolution(
                 lock_data=lock_data,
                 solver_timeout=solver_timeout,
                 lock_tree_data=lock_tree_data,
+                bfs_timeout=bfs_budget,
             ),
             timeout=timeout,
         )
     except (TimeoutError, Exception) as exc:
         logger.warning("Transitive resolution %s: falling back to alternatives", exc)
-        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
-        resolved["resolved_packages"] = resolved.pop("packages", {})
+        if hasattr(resolver, "_resolve_with_alternatives"):
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            resolved["resolved_packages"] = resolved.pop("packages", {})
+        else:
+            resolved = resolved or {}
 
     if "packages" in resolved and "resolved_packages" not in resolved:
         resolved["resolved_packages"] = resolved.pop("packages")
 
-    resolved = _apply_cuda_variants(resolved, package_details, system_info)
+    resolved = _orchestrator_apply_cuda_variants(resolved, package_details, system_info)
+
+    if resolved.get("resolved_packages"):
+        _emit_cuda_notifications(resolved, package_details, system_info)
 
     if interactive and resolved.get("status") == "unsatisfiable":
         err_console.print(
@@ -107,17 +127,47 @@ async def _run_resolution(
                 title="Conflict Detected",
             )
         )
-        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
-        resolved["resolved_packages"] = resolved.pop("packages", {})
-        resolved = _apply_cuda_variants(resolved, package_details, system_info)
+        if hasattr(resolver, "_resolve_with_alternatives"):
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            resolved["resolved_packages"] = resolved.pop("packages", {})
+        resolved = _orchestrator_apply_cuda_variants(resolved, package_details, system_info)
+        _emit_cuda_notifications(resolved, package_details, system_info)
 
     return resolved
 
 
-def _apply_cuda_variants(
+def _build_pinning_policy(args) -> Any:
+    """Convert CLI args to a PinningPolicy (or None if no pinning flags set)."""
+    from backend.core.pinning import PinningPolicy
+
+    pinned: dict[str, str] = {}
+    if getattr(args, "pin", None):
+        for entry in args.pin:
+            if "==" in entry:
+                name, ver = entry.split("==", 1)
+                pinned[name.strip()] = ver.strip()
+            else:
+                logger.warning("Invalid --pin format '%s' — expected name==version", entry)
+
+    blocked = getattr(args, "block", None) or []
+    pin_mode = getattr(args, "pin_mode", "none")
+    freeze = getattr(args, "freeze", False)
+
+    if not pinned and pin_mode == "none" and not blocked and not freeze:
+        return None
+
+    return PinningPolicy(
+        pin_mode=pin_mode,
+        pinned=pinned,
+        blocked=blocked,
+        freeze=freeze,
+    )
+
+
+def _emit_cuda_notifications(
     resolved: dict, package_details: dict[str, dict], system_info: dict
-) -> dict:
-    """Apply cuda variants."""
+) -> None:
+    """Print CLI-specific CUDA notifications to stderr."""
     resolved_pkgs = resolved.get("resolved_packages", {})
     system_cuda = None
     if system_info and "gpu" in system_info:
@@ -130,38 +180,37 @@ def _apply_cuda_variants(
         base_version = pkg_info.get("version", "")
         if not base_version:
             continue
-
-        details = package_details.get(pkg_name, {})
-        raw_versions = details.get("versions", {}).get("pypi", [])
-        if not raw_versions:
-            raw_versions = details.get("versions", {}).get(pkg_info.get("ecosystem", ""), [])
-
-        cuda_variants = _extract_cuda_variants(raw_versions, base_version)
-        if cuda_variants:
+        if pkg_info.get("cuda_variant"):
             has_cuda_variants = True
-            if not system_cuda:
-                err_console.print(
-                    f"  [yellow]⚠ CUDA variant available for {pkg_name} but no GPU detected[/yellow]"
-                )
-                err_console.print("     Use --cuda <version> to target a specific CUDA version")
-                continue
-            best = _select_best_cuda_variant(cuda_variants, system_cuda)
-            if best and best != base_version:
-                resolved_pkgs[pkg_name]["version"] = best
-                resolved_pkgs[pkg_name]["cuda_variant"] = True
-                resolved_pkgs[pkg_name]["cuda_version"] = next(
-                    (v["cuda_version"] for v in cuda_variants if v["version"] == best),
-                    None,
-                )
 
     if has_cuda_variants and not system_cuda:
         err_console.print(
             "  [yellow]⚠ CUDA variants exist but were not selected — resolution is CPU-only[/yellow]"
         )
 
-    if resolved_pkgs:
-        resolved["resolved_packages"] = resolved_pkgs
-    return resolved
+    for pkg_name, pkg_info in resolved_pkgs.items():
+        if pkg_info.get("ecosystem") != "pypi":
+            continue
+        details = package_details.get(pkg_name, {})
+        raw_versions = _get_raw_versions(details, pkg_info)
+        if not raw_versions:
+            continue
+        cuda_variants = _extract_cuda_variants(raw_versions, pkg_info.get("version", ""))
+        if cuda_variants and not system_cuda:
+            err_console.print(
+                f"  [yellow]⚠ CUDA variant available for {pkg_name} but no GPU detected[/yellow]"
+            )
+            err_console.print("     Use --cuda <version> to target a specific CUDA version")
+
+
+def _get_raw_versions(details: dict, pkg_info: dict) -> list:
+    versions_data = details.get("versions", {})
+    if isinstance(versions_data, list):
+        return versions_data
+    raw = versions_data.get("pypi", [])
+    if not raw:
+        raw = versions_data.get(pkg_info.get("ecosystem", ""), [])
+    return raw
 
 
 def _fetch_package_data(
@@ -172,7 +221,7 @@ def _fetch_package_data(
 
 
 async def _fetch_package_data_async(
-    aggregator, specs: list[tuple[str, str, str | None]]
+    aggregator, specs: list[tuple[str, str, str | None]], extras: list[str] | None = None
 ) -> tuple[list[dict], dict[str, dict]]:
     """Fetch package data async."""
     resolver_inputs = []
@@ -190,7 +239,7 @@ async def _fetch_package_data_async(
                 include_versions=True,
             )
             if data:
-                rinput = _aggregator_to_resolver_input(data, eco, constraint)
+                rinput = _aggregator_to_resolver_input(data, eco, constraint, extras=extras)
                 return (rinput, data)
         except Exception as exc:
             err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")
@@ -234,6 +283,25 @@ def _output_json(data: Any, args) -> None:
     json.dump(data, sys.stdout, indent=2, default=str)
     print()
     raise SystemExit(0)
+
+
+def _resolve_lock_path(
+    directory: Path,
+    workspace: str | None = None,
+    lock_file: str | None = None,
+) -> Path:
+    """Resolve lock file path from directory, optional workspace, and optional explicit path.
+
+    Priority:
+      1. Explicit lock_file path (resolved relative to cwd if not absolute)
+      2. directory / udr-{workspace}.lock  (if workspace is set)
+      3. directory / udr.lock
+    """
+    if lock_file:
+        p = Path(lock_file)
+        return p if p.is_absolute() else Path.cwd() / p
+    filename = f"udr-{workspace}.lock" if workspace else "udr.lock"
+    return directory / filename
 
 
 def _read_lock_file(lock_path: Path) -> dict:

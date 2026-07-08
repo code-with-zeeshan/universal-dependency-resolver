@@ -132,7 +132,7 @@ sequenceDiagram
     participant CLI as 🖥️ CLI
     participant Agg as 📊 DataAggregator
     participant Scanner as 🔍 SystemScanner
-    participant Solver as 🧠 ConflictResolver
+    participant Solver as 🧠 Solver (Z3/PubGrub)
     participant Export as 📤 ExportGenerator
 
     User->>CLI: udr resolve flask>=2.0 react@npm
@@ -148,7 +148,7 @@ sequenceDiagram
     Scanner-->>CLI: OS, CPU, GPU, CUDA, runtimes
     Note over CLI,Solver: Step 3 — SAT resolution
     CLI->>Solver: resolve(packages, system_info)
-    Solver->>Solver: Z3 solver optimizes<br/>cross-ecosystem constraints
+    Solver->>Solver: Solve cross-ecosystem<br/>constraints (Z3 / PubGrub)
     Solver-->>CLI: compatible versions
     Note over CLI,Export: Step 4 — Export / Lock
     CLI->>Export: export(packages, "requirements.txt")
@@ -160,7 +160,7 @@ sequenceDiagram
 
 1. **Metadata fetch** — Queries registry APIs (PyPI, npmjs.org, crates.io, etc.) for each package's versions, dependencies, and system requirements
 2. **System scan** — Detects OS, CPU, GPU, CUDA version, Python version, Node.js, GCC, Java
-3. **SAT resolution** — Z3 solver finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
+3. **SAT resolution** — Z3 (default) or PubGrub (via `USE_PUBGRUB_SOLVER=true`) solver finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
 4. **Export / Lock** — Writes `udr.lock` or exports to any of 15 formats
 
 ### Architecture overview
@@ -177,7 +177,7 @@ graph TB
     end
 
     subgraph CoreLayer["🧠 Core Logic"]
-        CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]
+        CR["<code>conflict_resolver.py</code><br/>Z3 / PubGrub solver"]
         DA["<code>data_aggregator.py</code><br/>Async aggregation"]
         EG["<code>export_generator.py</code><br/>15 export formats"]
         SS["<code>system_scanner.py</code><br/>OS · GPU · CUDA · runtimes"]
@@ -389,7 +389,7 @@ curl -X POST http://localhost:8000/api/v1/packages/resolve \
 ```python
 import asyncio
 from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
+from backend.orchestrator import create_solver
 from backend.core.system_scanner import SystemScanner
 
 async def main():
@@ -402,7 +402,7 @@ async def main():
         include_dependencies=True, include_versions=True,
     )
 
-    resolver = ConflictResolver()
+    resolver = create_solver()
     result = resolver.resolve(
         [{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,

@@ -36,22 +36,30 @@ class TestPackagistClient:
             new_callable=AsyncMock,
             return_value={"package": sample_package_data},
         ):
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 result = await client.get_package_info_async("laravel/laravel")
         assert result is not None
         assert result["name"] == "laravel/laravel"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_package_data
-    ):
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_package_data):
         with patch.object(
             client,
             "_get",
             new_callable=AsyncMock,
             return_value={"package": sample_package_data},
         ) as mock_get:
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 await client.get_package_info_async("laravel/laravel")
         mock_get.assert_called()
         url = mock_get.call_args[0][0]
@@ -59,9 +67,7 @@ class TestPackagistClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent/pkg")
         assert result is None
 
@@ -128,9 +134,7 @@ class TestPackagistClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value={"results": []}
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"results": []}):
             results = await client.search_packages("nonexistent")
         assert results == []
 
@@ -147,16 +151,19 @@ class TestPackagistClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_success(self, client, sample_package_data):
-        with patch.object(
-            client,
-            "_get",
-            new_callable=AsyncMock,
-            return_value={"package": sample_package_data},
-        ), patch.object(
-            client,
-            "_get_download_stats",
-            new_callable=AsyncMock,
-            return_value={"daily": 0, "monthly": 0, "total": 0},
+        with (
+            patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value={"package": sample_package_data},
+            ),
+            patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ),
         ):
             result = await client.get_versions("laravel/laravel")
         assert len(result) >= 1
@@ -172,16 +179,19 @@ class TestPackagistClient:
 
     @pytest.mark.asyncio
     async def test_get_package_version_success(self, client, sample_package_data):
-        with patch.object(
-            client,
-            "_get",
-            new_callable=AsyncMock,
-            return_value={"package": sample_package_data},
-        ), patch.object(
-            client,
-            "_get_download_stats",
-            new_callable=AsyncMock,
-            return_value={"daily": 0, "monthly": 0, "total": 0},
+        with (
+            patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value={"package": sample_package_data},
+            ),
+            patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ),
         ):
             result = await client.get_package_version("laravel/laravel", "11.0.0")
         assert result is not None
@@ -192,9 +202,7 @@ class TestPackagistClient:
             client,
             "_get",
             new_callable=AsyncMock,
-            return_value={
-                "package": {"versions": {"1.0": {"require": {"php": ">=8.0"}}}}
-            },
+            return_value={"package": {"versions": {"1.0": {"require": {"php": ">=8.0"}}}}},
         ):
             deps = await client.get_dependencies("vendor/pkg", "1.0")
         assert isinstance(deps, dict)
@@ -211,13 +219,9 @@ class TestPackagistClient:
             client,
             "_get",
             new_callable=AsyncMock,
-            return_value={
-                "package": {"versions": {"1.0": {"require": {"php": ">=8.0"}}}}
-            },
+            return_value={"package": {"versions": {"1.0": {"require": {"php": ">=8.0"}}}}},
         ):
-            result = await client.check_compatibility(
-                "vendor/pkg", "1.0", {"php": "8.2.0"}
-            )
+            result = await client.check_compatibility("vendor/pkg", "1.0", {"php": "8.2.0"})
         assert isinstance(result, dict)
 
 
@@ -230,7 +234,9 @@ class TestPackagistClientCoverage:
 
     @pytest.mark.asyncio
     async def test_search_packages_with_package_type(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"results": []}) as mock_get:
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"results": []}
+        ) as mock_get:
             results = await client.search_packages("laravel", package_type="library")
         assert results == []
         params = mock_get.call_args[1]["params"]
@@ -257,7 +263,12 @@ class TestPackagistClientCoverage:
             }
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=info):
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 result = await client.get_package_version("vendor/pkg", "2.0.0")
         assert result is None
 
@@ -273,7 +284,12 @@ class TestPackagistClientCoverage:
             }
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=info):
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 result = await client.get_versions("vendor/pkg", include_dev=False)
         assert len(result) == 1
         assert result[0]["version"] == "1.0.0"
@@ -292,7 +308,12 @@ class TestPackagistClientCoverage:
             }
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=info):
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 result = await client.get_dependencies("vendor/pkg")
         assert isinstance(result, dict)
 
@@ -311,13 +332,23 @@ class TestPackagistClientCoverage:
             }
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=info):
-            with patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={"daily": 0, "monthly": 0, "total": 0}):
+            with patch.object(
+                client,
+                "_get_download_stats",
+                new_callable=AsyncMock,
+                return_value={"daily": 0, "monthly": 0, "total": 0},
+            ):
                 result = await client.get_dependencies("vendor/pkg", "1.0.0", include_dev=False)
         assert "require-dev" not in result
 
     @pytest.mark.asyncio
     async def test_get_download_stats_success(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={"package": {"daily": 100, "monthly": 3000, "total": 90000}}):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value={"package": {"daily": 100, "monthly": 3000, "total": 90000}},
+        ):
             result = await client._get_download_stats("vendor/pkg")
         assert result["daily"] == 100
         assert result["total"] == 90000
@@ -452,46 +483,100 @@ class TestPackagistClientCoverage:
 
     @pytest.mark.asyncio
     async def test_check_compatibility_php_mismatch(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "system_requirements": {"php": ">=8.1.0", "extensions": [], "platform": {}, "composer": None},
-        }):
-            result = await client.check_compatibility("vendor/pkg", "1.0.0", {"php_version": "7.4.0"})
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "system_requirements": {
+                    "php": ">=8.1.0",
+                    "extensions": [],
+                    "platform": {},
+                    "composer": None,
+                },
+            },
+        ):
+            result = await client.check_compatibility(
+                "vendor/pkg", "1.0.0", {"php_version": "7.4.0"}
+            )
         assert result["compatible"] is False
         assert any("PHP" in e for e in result["errors"])
 
     @pytest.mark.asyncio
     async def test_check_compatibility_missing_extension(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "system_requirements": {"php": None, "extensions": [{"name": "json", "version": "*"}], "platform": {}, "composer": None},
-        }):
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "system_requirements": {
+                    "php": None,
+                    "extensions": [{"name": "json", "version": "*"}],
+                    "platform": {},
+                    "composer": None,
+                },
+            },
+        ):
             result = await client.check_compatibility("vendor/pkg", "1.0.0", {"php_extensions": []})
         assert result["compatible"] is False
         assert any("extension" in e for e in result["errors"])
 
     @pytest.mark.asyncio
     async def test_check_compatibility_composer_warning(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "system_requirements": {"php": None, "extensions": [], "platform": {}, "composer": "^2.5.0"},
-        }):
-            result = await client.check_compatibility("vendor/pkg", "1.0.0", {"composer_version": "2.0.0"})
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "system_requirements": {
+                    "php": None,
+                    "extensions": [],
+                    "platform": {},
+                    "composer": "^2.5.0",
+                },
+            },
+        ):
+            result = await client.check_compatibility(
+                "vendor/pkg", "1.0.0", {"composer_version": "2.0.0"}
+            )
         assert any("Composer" in w for w in result["warnings"])
 
     @pytest.mark.asyncio
     async def test_check_compatibility_abandoned_with_replacement(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "system_requirements": {"php": None, "extensions": [], "platform": {}, "composer": None},
-            "abandoned": True,
-            "replacement": "new-vendor/new-pkg",
-        }):
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "system_requirements": {
+                    "php": None,
+                    "extensions": [],
+                    "platform": {},
+                    "composer": None,
+                },
+                "abandoned": True,
+                "replacement": "new-vendor/new-pkg",
+            },
+        ):
             result = await client.check_compatibility("vendor/pkg", "1.0.0", {})
         assert any("Consider using" in w for w in result["warnings"])
 
     @pytest.mark.asyncio
     async def test_check_compatibility_abandoned_without_replacement(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "system_requirements": {"php": None, "extensions": [], "platform": {}, "composer": None},
-            "abandoned": True,
-        }):
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "system_requirements": {
+                    "php": None,
+                    "extensions": [],
+                    "platform": {},
+                    "composer": None,
+                },
+                "abandoned": True,
+            },
+        ):
             result = await client.check_compatibility("vendor/pkg", "1.0.0", {})
         assert any("abandoned" in w for w in result["warnings"])
 
@@ -514,5 +599,3 @@ class TestPackagistClientCoverage:
         with patch("backend.data_sources.packagist_client.parse_version") as mock_pv:
             mock_pv.side_effect = [object(), None]
             assert client._check_php_compatibility("7.4.0", "7.4.0") is True
-
-

@@ -113,9 +113,7 @@ class TestNPMClient:
         assert len(results) == 1
         assert results[0]["name"] == "express"
         assert results[0]["version"] == "4.18.2"
-        assert (
-            results[0]["description"] == "Fast, unopinionated, minimalist web framework"
-        )
+        assert results[0]["description"] == "Fast, unopinionated, minimalist web framework"
         assert results[0]["license"] == "MIT"
         assert "score" in results[0]
 
@@ -141,16 +139,12 @@ class TestNPMClient:
             return_value=sample_search_response,
         ) as mock_request:
             await client.search_packages("react", limit=5)
-        _url, params = mock_request.call_args[0][0], mock_request.call_args[1].get(
-            "params", {}
-        )
+        _url, params = mock_request.call_args[0][0], mock_request.call_args[1].get("params", {})
         assert params.get("text") == "react"
         assert params.get("size") == 5
 
     @pytest.mark.asyncio
-    async def test_search_packages_with_quality_filter(
-        self, client, sample_search_response
-    ):
+    async def test_search_packages_with_quality_filter(self, client, sample_search_response):
         with patch.object(
             client,
             "_make_request",
@@ -161,9 +155,7 @@ class TestNPMClient:
         assert len(results) == 1
 
     @pytest.mark.asyncio
-    async def test_search_packages_quality_filter_excludes(
-        self, client, sample_search_response
-    ):
+    async def test_search_packages_quality_filter_excludes(self, client, sample_search_response):
         with patch.object(
             client,
             "_make_request",
@@ -174,9 +166,7 @@ class TestNPMClient:
         assert len(results) == 0
 
     @pytest.mark.asyncio
-    async def test_search_packages_popularity_filter(
-        self, client, sample_search_response
-    ):
+    async def test_search_packages_popularity_filter(self, client, sample_search_response):
         with patch.object(
             client,
             "_make_request",
@@ -187,9 +177,7 @@ class TestNPMClient:
         assert len(results) == 1
 
     @pytest.mark.asyncio
-    async def test_search_packages_maintenance_filter(
-        self, client, sample_search_response
-    ):
+    async def test_search_packages_maintenance_filter(self, client, sample_search_response):
         with patch.object(
             client,
             "_make_request",
@@ -201,9 +189,7 @@ class TestNPMClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_returns_empty_on_no_data(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
             results = await client.search_packages("nonexistent")
         assert results == []
 
@@ -233,20 +219,20 @@ class TestNPMClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_success(self, client, sample_package_response):
-        with patch.object(
-            client,
-            "_make_request",
-            new_callable=AsyncMock,
-            return_value=sample_package_response,
-        ), patch.object(
-            client,
-            "_check_typescript_support",
-            new_callable=AsyncMock,
-            return_value=None,
-        ), patch.object(
-            client, "_get_download_stats", new_callable=AsyncMock, return_value={}
-        ), patch.object(
-            client, "_check_vulnerabilities", new_callable=AsyncMock, return_value=[]
+        with (
+            patch.object(
+                client,
+                "cached_get",
+                new_callable=AsyncMock,
+                return_value=sample_package_response,
+            ),
+            patch.object(
+                client,
+                "_check_typescript_support",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={}),
         ):
             result = await client.get_package_info("express")
         assert result is not None
@@ -259,9 +245,7 @@ class TestNPMClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_handles_404(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info("nonexistent-package")
         assert result is None
 
@@ -287,58 +271,53 @@ class TestNPMClient:
             },
             "license": "MIT",
         }
-        with patch.object(
-            client,
-            "_make_request",
-            new_callable=AsyncMock,
-            return_value=scoped_response,
-        ) as mock_request, patch.object(
-            client,
-            "_check_typescript_support",
-            new_callable=AsyncMock,
-            return_value=None,
-        ), patch.object(
-            client, "_get_download_stats", new_callable=AsyncMock, return_value={}
-        ), patch.object(
-            client, "_check_vulnerabilities", new_callable=AsyncMock, return_value=[]
+        with (
+            patch.object(
+                client,
+                "cached_get",
+                new_callable=AsyncMock,
+                return_value=scoped_response,
+            ) as mock_cached,
+            patch.object(
+                client,
+                "_check_typescript_support",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={}),
         ):
             result = await client.get_package_info("@scope/test-package")
         assert result is not None
         assert result["name"] == "@scope/test-package"
-        mock_request.assert_called_once()
-        url = mock_request.call_args[0][1]
-        assert "@scope/test-package" in url
+        mock_cached.assert_called_once()
+        args, _ = mock_cached.call_args
+        cache_key = args[0]
+        assert "@scope/test-package" in cache_key
 
     @pytest.mark.asyncio
-    async def test_get_package_info_no_latest_tag(
-        self, client, sample_package_response
-    ):
+    async def test_get_package_info_no_latest_tag(self, client, sample_package_response):
         no_tag = dict(sample_package_response)
         no_tag["dist-tags"] = {}
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=no_tag
-        ):
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=no_tag):
             result = await client.get_package_info("express")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_package_info_includes_versions(
-        self, client, sample_package_response
-    ):
-        with patch.object(
-            client,
-            "_make_request",
-            new_callable=AsyncMock,
-            return_value=sample_package_response,
-        ), patch.object(
-            client,
-            "_check_typescript_support",
-            new_callable=AsyncMock,
-            return_value=None,
-        ), patch.object(
-            client, "_get_download_stats", new_callable=AsyncMock, return_value={}
-        ), patch.object(
-            client, "_check_vulnerabilities", new_callable=AsyncMock, return_value=[]
+    async def test_get_package_info_includes_versions(self, client, sample_package_response):
+        with (
+            patch.object(
+                client,
+                "cached_get",
+                new_callable=AsyncMock,
+                return_value=sample_package_response,
+            ),
+            patch.object(
+                client,
+                "_check_typescript_support",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={}),
         ):
             result = await client.get_package_info("express", include_versions=True)
         assert len(result["versions"]) == 2
@@ -367,9 +346,7 @@ class TestNPMClient:
 
     @pytest.mark.asyncio
     async def test_get_package_version_not_found(self, client):
-        with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_version("express", "99.99.99")
         assert result is None
 
@@ -406,9 +383,7 @@ class TestNPMClient:
         ]
 
     @pytest.fixture
-    def sample_package_info_response(
-        self, sample_package_response, sample_versions_list
-    ):
+    def sample_package_info_response(self, sample_package_response, sample_versions_list):
         response = {k: v for k, v in sample_package_response.items() if k != "versions"}
         response["versions"] = sample_versions_list
         response["latest_version_info"] = {
@@ -436,16 +411,12 @@ class TestNPMClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_empty_when_no_package(self, client):
-        with patch.object(
-            client, "get_package_info", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
             versions = await client.get_versions("nonexistent")
         assert versions == []
 
     @pytest.mark.asyncio
-    async def test_get_versions_filters_prereleases(
-        self, client, sample_package_info_response
-    ):
+    async def test_get_versions_filters_prereleases(self, client, sample_package_info_response):
         with patch.object(
             client,
             "get_package_info",
@@ -456,9 +427,7 @@ class TestNPMClient:
         assert all("beta" not in v["version"] for v in versions)
 
     @pytest.mark.asyncio
-    async def test_get_versions_includes_prereleases(
-        self, client, sample_package_info_response
-    ):
+    async def test_get_versions_includes_prereleases(self, client, sample_package_info_response):
         with patch.object(
             client,
             "get_package_info",
@@ -470,19 +439,16 @@ class TestNPMClient:
         assert "5.0.0-beta.1" in version_strings
 
     @pytest.mark.asyncio
-    async def test_make_request_tries_mirrors(self, client):
-        client.mirror_urls = ["https://mirror.example.com"]
+    async def test_make_request_uses_semaphore(self, client):
         client.registry_url = "https://registry.npmjs.org"
 
         with patch.object(
             client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock
         ) as mock_base:
-            mock_base.side_effect = [None, {"result": "from_mirror"}]
-            result = await client._make_request(
-                "GET", "https://registry.npmjs.org/package/test"
-            )
-        assert result == {"result": "from_mirror"}
-        assert mock_base.call_count == 2
+            mock_base.return_value = {"result": "ok"}
+            result = await client._make_request("GET", "https://registry.npmjs.org/package/test")
+        assert result == {"result": "ok"}
+        assert mock_base.call_count == 1
 
     @pytest.mark.asyncio
     async def test_make_request_returns_first_success(self, client):
@@ -490,9 +456,7 @@ class TestNPMClient:
             client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock
         ) as mock_base:
             mock_base.side_effect = [{"result": "primary"}]
-            result = await client._make_request(
-                "GET", "https://registry.npmjs.org/package/test"
-            )
+            result = await client._make_request("GET", "https://registry.npmjs.org/package/test")
         assert result == {"result": "primary"}
         assert mock_base.call_count == 1
 
@@ -505,9 +469,7 @@ class TestNPMClient:
         with patch.object(
             client.__class__.__mro__[1], "_make_request", new_callable=AsyncMock, return_value=None
         ):
-            result = await client._make_request(
-                "GET", "https://registry.npmjs.org/package/test"
-            )
+            result = await client._make_request("GET", "https://registry.npmjs.org/package/test")
         assert result is None
 
     @pytest.mark.asyncio
@@ -550,14 +512,22 @@ class TestNPMClient:
     # === New test: resolve_version finds best matching version
     @pytest.mark.asyncio
     async def test_resolve_version_finds_best_match(self, client):
-        with patch.object(
-            client, "get_versions", new_callable=AsyncMock, return_value=[
-                {"version": "4.17.0", "deprecated": None},
-                {"version": "4.18.0", "deprecated": None},
-                {"version": "4.18.2", "deprecated": None},
-            ],
-        ), patch.object(
-            client, "_version_matches_requirement", side_effect=lambda v, r: v in ("4.18.0", "4.18.2")
+        with (
+            patch.object(
+                client,
+                "get_versions",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"version": "4.17.0", "deprecated": None},
+                    {"version": "4.18.0", "deprecated": None},
+                    {"version": "4.18.2", "deprecated": None},
+                ],
+            ),
+            patch.object(
+                client,
+                "_version_matches_requirement",
+                side_effect=lambda v, r: v in ("4.18.0", "4.18.2"),
+            ),
         ):
             result = await client.resolve_version("lodash", "^4.18.0")
         assert result == "4.18.2"
@@ -565,22 +535,24 @@ class TestNPMClient:
     # === New test: resolve_version returns None when no versions exist
     @pytest.mark.asyncio
     async def test_resolve_version_no_versions(self, client):
-        with patch.object(
-            client, "get_versions", new_callable=AsyncMock, return_value=[]
-        ):
+        with patch.object(client, "get_versions", new_callable=AsyncMock, return_value=[]):
             result = await client.resolve_version("unknown", "^1.0.0")
         assert result is None
 
     # === New test: resolve_version returns None when no version matches
     @pytest.mark.asyncio
     async def test_resolve_version_no_matching_versions(self, client):
-        with patch.object(
-            client, "get_versions", new_callable=AsyncMock, return_value=[
-                {"version": "1.0.0", "deprecated": None},
-                {"version": "1.0.1", "deprecated": None},
-            ],
-        ), patch.object(
-            client, "_version_matches_requirement", return_value=False
+        with (
+            patch.object(
+                client,
+                "get_versions",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"version": "1.0.0", "deprecated": None},
+                    {"version": "1.0.1", "deprecated": None},
+                ],
+            ),
+            patch.object(client, "_version_matches_requirement", return_value=False),
         ):
             result = await client.resolve_version("pkg", "^2.0.0")
         assert result is None
@@ -590,15 +562,24 @@ class TestNPMClient:
     async def test_resolve_transitive_dependencies_basic(self, client):
         deps = {"sub-pkg": "^1.0.0"}
         visited: set = set()
-        with patch.object(
-            client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0",
-        ), patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value={
-                "dependencies": {
-                    "dependencies": {"nested-dep": "^2.0.0"},
+        with (
+            patch.object(
+                client,
+                "resolve_version",
+                new_callable=AsyncMock,
+                return_value="1.0.0",
+            ),
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "dependencies": {
+                        "dependencies": {"nested-dep": "^2.0.0"},
+                    },
+                    "engines": {},
                 },
-                "engines": {},
-            },
+            ),
         ):
             result = await client._resolve_transitive_dependencies(deps, visited, 3)
         assert "sub-pkg" in result
@@ -614,13 +595,21 @@ class TestNPMClient:
     # === New test: check_compatibility with node engine mismatch
     @pytest.mark.asyncio
     async def test_check_compatibility_node_mismatch(self, client):
-        with patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value={
-                "engines": {"node": ">=18.0.0"},
-                "dependencies": {},
-            },
-        ), patch.object(
-            client, "_check_node_compatibility", return_value=False,
+        with (
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "engines": {"node": ">=18.0.0"},
+                    "dependencies": {},
+                },
+            ),
+            patch.object(
+                client,
+                "_check_node_compatibility",
+                return_value=False,
+            ),
         ):
             result = await client.check_compatibility("pkg", "1.0.0", {"node_version": "16.0.0"})
         assert not result["compatible"]
@@ -629,14 +618,22 @@ class TestNPMClient:
     # === New test: check_compatibility with npm warning and native deps warning
     @pytest.mark.asyncio
     async def test_check_compatibility_npm_and_native_warnings(self, client):
-        with patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value={
-                "engines": {"npm": ">=8.0.0"},
-                "dependencies": {},
-                "gypfile": True,
-            },
-        ), patch.object(
-            client, "_check_npm_compatibility", return_value=False,
+        with (
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "engines": {"npm": ">=8.0.0"},
+                    "dependencies": {},
+                    "gypfile": True,
+                },
+            ),
+            patch.object(
+                client,
+                "_check_npm_compatibility",
+                return_value=False,
+            ),
         ):
             result = await client.check_compatibility("pkg", "1.0.0", {"npm_version": "6.0.0"})
         assert result["compatible"]
@@ -646,26 +643,45 @@ class TestNPMClient:
     # === New test: check_compatibility fully compatible (no errors or warnings)
     @pytest.mark.asyncio
     async def test_check_compatibility_fully_compatible(self, client):
-        with patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value={
-                "engines": {"node": ">=14.0.0", "npm": ">=6.0.0"},
-                "dependencies": {},
-            },
-        ), patch.object(
-            client, "_check_node_compatibility", return_value=True,
-        ), patch.object(
-            client, "_check_npm_compatibility", return_value=True,
+        with (
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "engines": {"node": ">=14.0.0", "npm": ">=6.0.0"},
+                    "dependencies": {},
+                },
+            ),
+            patch.object(
+                client,
+                "_check_node_compatibility",
+                return_value=True,
+            ),
+            patch.object(
+                client,
+                "_check_npm_compatibility",
+                return_value=True,
+            ),
         ):
-            result = await client.check_compatibility("pkg", "1.0.0", {
-                "node_version": "20.0.0", "npm_version": "10.0.0",
-            })
+            result = await client.check_compatibility(
+                "pkg",
+                "1.0.0",
+                {
+                    "node_version": "20.0.0",
+                    "npm_version": "10.0.0",
+                },
+            )
         assert result["compatible"]
 
     # === New test: check_compatibility package not found
     @pytest.mark.asyncio
     async def test_check_compatibility_package_not_found(self, client):
         with patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value=None,
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value=None,
         ):
             result = await client.check_compatibility("missing", "1.0.0", {})
         assert not result["compatible"]
@@ -698,7 +714,10 @@ class TestNPMClient:
             "vulnerabilities": [],
         }
         with patch.object(
-            client, "get_package_info", new_callable=AsyncMock, return_value=modified,
+            client,
+            "get_package_info",
+            new_callable=AsyncMock,
+            return_value=modified,
         ):
             result = await client.get_dependencies(
                 "express",
@@ -722,12 +741,21 @@ class TestNPMClient:
             "typescript": None,
             "vulnerabilities": [],
         }
-        with patch.object(
-            client, "get_package_info", new_callable=AsyncMock, return_value=modified,
-        ), patch.object(
-            client, "_resolve_transitive_dependencies", new_callable=AsyncMock, return_value={
-                "accepts": {"version": "1.3.8", "dependencies": {}},
-            },
+        with (
+            patch.object(
+                client,
+                "get_package_info",
+                new_callable=AsyncMock,
+                return_value=modified,
+            ),
+            patch.object(
+                client,
+                "_resolve_transitive_dependencies",
+                new_callable=AsyncMock,
+                return_value={
+                    "accepts": {"version": "1.3.8", "dependencies": {}},
+                },
+            ),
         ):
             result = await client.get_dependencies("express", include_transitive=True)
         assert "accepts" in result["transitive"]
@@ -746,7 +774,10 @@ class TestNPMClient:
             "dependencies": {"node-gyp": "^9.0.0"},
         }
         with patch.object(
-            client, "_make_request", new_callable=AsyncMock, return_value=version_data,
+            client,
+            "_make_request",
+            new_callable=AsyncMock,
+            return_value=version_data,
         ):
             result = await client.get_package_version("native-pkg", "1.0.0")
         assert result is not None
@@ -759,15 +790,23 @@ class TestNPMClient:
     @pytest.mark.asyncio
     async def test_build_dependency_tree_basic(self, client):
         visited: set = set()
-        with patch.object(
-            client, "get_package_version", new_callable=AsyncMock, return_value={
-                "dependencies": {
-                    "dependencies": {"dep1": "^1.0.0", "dep2": "^2.0.0"},
+        with (
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "dependencies": {
+                        "dependencies": {"dep1": "^1.0.0", "dep2": "^2.0.0"},
+                    },
                 },
-            },
-        ), patch.object(
-            client, "resolve_version", new_callable=AsyncMock,
-            side_effect=lambda n, s: "1.0.0" if "dep1" in n else "2.0.0",
+            ),
+            patch.object(
+                client,
+                "resolve_version",
+                new_callable=AsyncMock,
+                side_effect=lambda n, s: "1.0.0" if "dep1" in n else "2.0.0",
+            ),
         ):
             result = await client._build_dependency_tree("root", "1.0.0", visited, 3)
         assert "dep1" in result
@@ -797,25 +836,36 @@ class TestNPMClient:
     # === search_packages: popularity filter excludes (line 105)
     @pytest.mark.asyncio
     async def test_search_packages_popularity_filter_excludes(self, client, sample_search_response):
-        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response):
+        with patch.object(
+            client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response
+        ):
             results = await client.search_packages("express", popularity=0.995)
         assert len(results) == 0
 
     # === search_packages: maintenance filter excludes (line 107)
     @pytest.mark.asyncio
-    async def test_search_packages_maintenance_filter_excludes(self, client, sample_search_response):
-        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response):
+    async def test_search_packages_maintenance_filter_excludes(
+        self, client, sample_search_response
+    ):
+        with patch.object(
+            client, "_make_request", new_callable=AsyncMock, return_value=sample_search_response
+        ):
             results = await client.search_packages("express", maintenance=0.98)
         assert len(results) == 0
 
     # === get_dependencies with version param (line 307)
     @pytest.mark.asyncio
     async def test_get_dependencies_with_version(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "dependencies": {
-                "dependencies": {"accepts": "~1.3.8"},
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "dependencies": {
+                    "dependencies": {"accepts": "~1.3.8"},
+                },
             },
-        }):
+        ):
             result = await client.get_dependencies("express", version="4.18.2")
         assert "direct" in result
         assert "dependencies" in result["direct"]
@@ -837,14 +887,20 @@ class TestNPMClient:
     # === get_dependencies with version and types filter
     @pytest.mark.asyncio
     async def test_get_dependencies_with_version_and_types(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "dependencies": {
-                "dependencies": {"accepts": "~1.3.8"},
-                "devDependencies": {"mocha": "^10.0.0"},
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "dependencies": {
+                    "dependencies": {"accepts": "~1.3.8"},
+                    "devDependencies": {"mocha": "^10.0.0"},
+                },
             },
-        }):
-            result = await client.get_dependencies("express", version="4.18.2",
-                types=[DependencyType.DEV_DEPENDENCIES])
+        ):
+            result = await client.get_dependencies(
+                "express", version="4.18.2", types=[DependencyType.DEV_DEPENDENCIES]
+            )
         assert "devDependencies" in result["direct"]
         assert "dependencies" not in result["direct"]
 
@@ -858,19 +914,26 @@ class TestNPMClient:
     # === _resolve_transitive_dependencies: dep_info is None (line 364)
     @pytest.mark.asyncio
     async def test_resolve_transitive_deps_skip_when_no_dep_info(self, client):
-        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+        with (
+            patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"),
+            patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None),
+        ):
             result = await client._resolve_transitive_dependencies({"sub": "^1.0.0"}, set(), 3)
         assert result == {}
 
     # === check_compatibility: OS mismatch (lines 415-416)
     @pytest.mark.asyncio
     async def test_check_compatibility_os_mismatch(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "engines": {},
-            "dependencies": {},
-            "os": ["linux"],
-        }):
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "engines": {},
+                "dependencies": {},
+                "os": ["linux"],
+            },
+        ):
             result = await client.check_compatibility("pkg", "1.0.0", {"os": "win32"})
         assert not result["compatible"]
         assert any("OS" in e for e in result["errors"])
@@ -878,11 +941,16 @@ class TestNPMClient:
     # === check_compatibility: CPU mismatch (lines 420-421)
     @pytest.mark.asyncio
     async def test_check_compatibility_cpu_mismatch(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "engines": {},
-            "dependencies": {},
-            "cpu": ["x64"],
-        }):
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "engines": {},
+                "dependencies": {},
+                "cpu": ["x64"],
+            },
+        ):
             result = await client.check_compatibility("pkg", "1.0.0", {"cpu": "arm64"})
         assert not result["compatible"]
         assert any("CPU" in e for e in result["errors"])
@@ -890,12 +958,17 @@ class TestNPMClient:
     # === check_compatibility: peer dep missing (lines 433-437)
     @pytest.mark.asyncio
     async def test_check_compatibility_peer_dep_missing(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "engines": {},
-            "dependencies": {
-                "peerDependencies": {"react": "^18.0.0"},
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "engines": {},
+                "dependencies": {
+                    "peerDependencies": {"react": "^18.0.0"},
+                },
             },
-        }):
+        ):
             result = await client.check_compatibility("pkg", "1.0.0", {"installed_packages": {}})
         assert result["compatible"]
         assert any("missing" in w.lower() for w in result["warnings"])
@@ -903,24 +976,38 @@ class TestNPMClient:
     # === check_compatibility: peer dep version mismatch (lines 438-441)
     @pytest.mark.asyncio
     async def test_check_compatibility_peer_dep_version_mismatch(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "engines": {},
-            "dependencies": {
-                "peerDependencies": {"react": "^18.0.0"},
+        with patch.object(
+            client,
+            "get_package_version",
+            new_callable=AsyncMock,
+            return_value={
+                "engines": {},
+                "dependencies": {
+                    "peerDependencies": {"react": "^18.0.0"},
+                },
             },
-        }):
-            result = await client.check_compatibility("pkg", "1.0.0", {"installed_packages": {"react": "17.0.0"}})
+        ):
+            result = await client.check_compatibility(
+                "pkg", "1.0.0", {"installed_packages": {"react": "17.0.0"}}
+            )
         assert result["compatible"]
         assert any("mismatch" in w.lower() for w in result["warnings"])
 
     # === get_dependency_tree basic (lines 455-476)
     @pytest.mark.asyncio
     async def test_get_dependency_tree_basic(self, client):
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={
-            "version": "1.0.0",
-            "latest_version_info": {"dependencies": {}},
-        }), \
-             patch.object(client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}):
+        with (
+            patch.object(
+                client,
+                "get_package_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "version": "1.0.0",
+                    "latest_version_info": {"dependencies": {}},
+                },
+            ),
+            patch.object(client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}),
+        ):
             result = await client.get_dependency_tree("express")
         assert result["name"] == "express"
         assert result["version"] == "1.0.0"
@@ -928,7 +1015,9 @@ class TestNPMClient:
     # === get_dependency_tree with version param
     @pytest.mark.asyncio
     async def test_get_dependency_tree_with_version(self, client):
-        with patch.object(client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}):
+        with patch.object(
+            client, "_build_dependency_tree", new_callable=AsyncMock, return_value={}
+        ):
             result = await client.get_dependency_tree("express", version="4.18.2")
         assert result["name"] == "express"
         assert result["version"] == "4.18.2"
@@ -951,10 +1040,17 @@ class TestNPMClient:
     # === _build_dependency_tree: resolve_version fails (lines 509-510)
     @pytest.mark.asyncio
     async def test_build_dep_tree_unresolved_dep(self, client):
-        with patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={
-            "dependencies": {"dependencies": {"missing": "^99.0.0"}},
-        }), \
-             patch.object(client, "resolve_version", new_callable=AsyncMock, return_value=None):
+        with (
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={
+                    "dependencies": {"dependencies": {"missing": "^99.0.0"}},
+                },
+            ),
+            patch.object(client, "resolve_version", new_callable=AsyncMock, return_value=None),
+        ):
             result = await client._build_dependency_tree("root", "1.0.0", set(), 3)
         assert "missing" in result
         assert result["missing"]["resolved"] is False
@@ -962,7 +1058,12 @@ class TestNPMClient:
     # === get_versions with include_deprecated
     @pytest.mark.asyncio
     async def test_get_versions_include_deprecated(self, client, sample_package_info_response):
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=sample_package_info_response):
+        with patch.object(
+            client,
+            "get_package_info",
+            new_callable=AsyncMock,
+            return_value=sample_package_info_response,
+        ):
             versions = await client.get_versions("express", include_deprecated=True)
         version_strings = [v["version"] for v in versions]
         assert "4.18.1" in version_strings
@@ -971,8 +1072,11 @@ class TestNPMClient:
     @pytest.mark.asyncio
     async def test_analyze_package_basic(self, client):
         info = {
-            "name": "webpack", "version": "5.0.0", "description": "A bundler",
-            "license": "MIT", "author": {"name": "Tobias"},
+            "name": "webpack",
+            "version": "5.0.0",
+            "description": "A bundler",
+            "license": "MIT",
+            "author": {"name": "Tobias"},
             "homepage": "https://webpack.js.org",
             "repository": {"url": "https://github.com/webpack"},
             "readme": "# Webpack",
@@ -995,9 +1099,15 @@ class TestNPMClient:
             "dist": {"unpackedSize": 1000000, "fileCount": 50},
             "scripts": {"test": "jest"},
         }
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=info), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=pkg_data), \
-             patch.object(client, "_has_deprecated_dependencies", new_callable=AsyncMock, return_value=False):
+        with (
+            patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=info),
+            patch.object(
+                client, "get_package_version", new_callable=AsyncMock, return_value=pkg_data
+            ),
+            patch.object(
+                client, "_has_deprecated_dependencies", new_callable=AsyncMock, return_value=False
+            ),
+        ):
             result = await client.analyze_package("webpack")
         assert result["name"] == "webpack"
         assert result["quality_score"] > 0
@@ -1012,8 +1122,15 @@ class TestNPMClient:
     # === analyze_package: no pkg_data (line 539)
     @pytest.mark.asyncio
     async def test_analyze_package_no_pkg_data(self, client):
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"name": "pkg", "version": "1.0.0", "versions": []}), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+        with (
+            patch.object(
+                client,
+                "get_package_info",
+                new_callable=AsyncMock,
+                return_value={"name": "pkg", "version": "1.0.0", "versions": []},
+            ),
+            patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None),
+        ):
             result = await client.analyze_package("pkg")
         assert result == {}
 
@@ -1030,6 +1147,7 @@ class TestNPMClient:
             if "last-year" in url:
                 return {"downloads": 36000}
             return None
+
         with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=side_effect):
             stats = await client._get_download_stats("express")
         assert stats["daily"] == 100
@@ -1041,10 +1159,12 @@ class TestNPMClient:
     @pytest.mark.asyncio
     async def test_get_download_stats_partial_data(self, client):
         calls = 0
+
         def side_effect(method, url, **kwargs):
             nonlocal calls
             calls += 1
             return None if calls == 1 else {"downloads": 50}
+
         with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=side_effect):
             stats = await client._get_download_stats("express")
         assert stats["daily"] == 0
@@ -1052,7 +1172,9 @@ class TestNPMClient:
     # === _get_download_stats exception (lines 618-619)
     @pytest.mark.asyncio
     async def test_get_download_stats_exception(self, client):
-        with patch.object(client, "_make_request", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_make_request", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             stats = await client._get_download_stats("express")
         assert stats == {"daily": 0, "weekly": 0, "monthly": 0, "yearly": 0}
 
@@ -1088,7 +1210,9 @@ class TestNPMClient:
     # === _package_exists returns True (lines 644-648)
     @pytest.mark.asyncio
     async def test_package_exists_true(self, client):
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"name": "express"}):
+        with patch.object(
+            client, "get_package_info", new_callable=AsyncMock, return_value={"name": "express"}
+        ):
             assert await client._package_exists("express") is True
 
     # === _package_exists returns False
@@ -1097,18 +1221,19 @@ class TestNPMClient:
         with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value=None):
             assert await client._package_exists("nonexistent") is False
 
-    # === _check_vulnerabilities (lines 653-654)
-    @pytest.mark.asyncio
-    async def test_check_vulnerabilities(self, client):
-        result = await client._check_vulnerabilities("express", "1.0.0")
-        assert result == []
-
     # === _has_deprecated_dependencies: True (lines 657-666)
     @pytest.mark.asyncio
     async def test_has_deprecated_dependencies_true(self, client):
         pkg_data = {"dependencies": {"dependencies": {"old-pkg": "^1.0.0"}}}
-        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={"deprecated": "This is deprecated"}):
+        with (
+            patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"),
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={"deprecated": "This is deprecated"},
+            ),
+        ):
             result = await client._has_deprecated_dependencies(pkg_data)
         assert result is True
 
@@ -1116,8 +1241,15 @@ class TestNPMClient:
     @pytest.mark.asyncio
     async def test_has_deprecated_dependencies_false(self, client):
         pkg_data = {"dependencies": {"dependencies": {"good-pkg": "^1.0.0"}}}
-        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value={"deprecated": None}):
+        with (
+            patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"),
+            patch.object(
+                client,
+                "get_package_version",
+                new_callable=AsyncMock,
+                return_value={"deprecated": None},
+            ),
+        ):
             result = await client._has_deprecated_dependencies(pkg_data)
         assert result is False
 
@@ -1133,8 +1265,10 @@ class TestNPMClient:
     @pytest.mark.asyncio
     async def test_has_deprecated_dependencies_skip_no_dep_info(self, client):
         pkg_data = {"dependencies": {"dependencies": {"pkg": "^1.0.0"}}}
-        with patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"), \
-             patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None):
+        with (
+            patch.object(client, "resolve_version", new_callable=AsyncMock, return_value="1.0.0"),
+            patch.object(client, "get_package_version", new_callable=AsyncMock, return_value=None),
+        ):
             result = await client._has_deprecated_dependencies(pkg_data)
         assert result is False
 
@@ -1407,12 +1541,15 @@ class TestNPMClient:
     # === _version_matches_requirement: ^ with req_v parse fail (line 886)
     def test_version_matches_requirement_caret_parse_fail(self, client):
         from packaging import version as pv
+
         call_count = [0]
+
         def mock_parse(v):
             call_count[0] += 1
             if call_count[0] == 2:
                 return None
             return pv.parse(v)
+
         with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
             req = client._parse_version_requirement("^1.0.0")
             result = client._version_matches_requirement("1.0.0", req)
@@ -1421,12 +1558,15 @@ class TestNPMClient:
     # === _version_matches_requirement: ~ with req_v parse fail (line 908)
     def test_version_matches_requirement_tilde_parse_fail(self, client):
         from packaging import version as pv
+
         call_count = [0]
+
         def mock_parse(v):
             call_count[0] += 1
             if call_count[0] == 2:
                 return None
             return pv.parse(v)
+
         with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
             req = client._parse_version_requirement("~1.0.0")
             result = client._version_matches_requirement("1.0.0", req)
@@ -1435,12 +1575,15 @@ class TestNPMClient:
     # === _version_matches_requirement: >= with req_v parse fail (line 918)
     def test_version_matches_requirement_gte_parse_fail(self, client):
         from packaging import version as pv
+
         call_count = [0]
+
         def mock_parse(v):
             call_count[0] += 1
             if call_count[0] == 2:
                 return None
             return pv.parse(v)
+
         with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
             req = client._parse_version_requirement(">=1.0.0")
             result = client._version_matches_requirement("2.0.0", req)
@@ -1449,12 +1592,15 @@ class TestNPMClient:
     # === _version_matches_requirement: <= with req_v parse fail (line 927)
     def test_version_matches_requirement_lte_parse_fail(self, client):
         from packaging import version as pv
+
         call_count = [0]
+
         def mock_parse(v):
             call_count[0] += 1
             if call_count[0] == 2:
                 return None
             return pv.parse(v)
+
         with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
             req = client._parse_version_requirement("<=2.0.0")
             result = client._version_matches_requirement("1.0.0", req)
@@ -1463,12 +1609,15 @@ class TestNPMClient:
     # === _version_matches_requirement: exact with req_v parse fail (line 936)
     def test_version_matches_requirement_exact_parse_fail(self, client):
         from packaging import version as pv
+
         call_count = [0]
+
         def mock_parse(v):
             call_count[0] += 1
             if call_count[0] == 2:
                 return None
             return pv.parse(v)
+
         with patch("backend.data_sources.npm_client.parse_version", side_effect=mock_parse):
             req = client._parse_version_requirement("1.0.0")
             result = client._version_matches_requirement("1.0.0", req)

@@ -76,9 +76,7 @@ class TestSystemScanner:
     @patch("backend.core.system_scanner.HAS_PSUTIL", True)
     @patch("backend.core.system_scanner.psutil.cpu_count")
     @patch("backend.core.system_scanner.psutil.cpu_freq")
-    def test_detect_cpu_info_with_cpuinfo(
-        self, mock_cpu_freq, mock_cpu_count, scanner
-    ):
+    def test_detect_cpu_info_with_cpuinfo(self, mock_cpu_freq, mock_cpu_count, scanner):
         mock_cpu_count.side_effect = [8, 8]
         mock_freq = MagicMock()
         mock_freq.max = 3.5
@@ -102,9 +100,7 @@ class TestSystemScanner:
     @patch("backend.core.system_scanner.HAS_PSUTIL", True)
     @patch("backend.core.system_scanner.psutil.cpu_count")
     @patch("backend.core.system_scanner.psutil.cpu_freq")
-    def test_detect_cpu_info_with_psutil(
-        self, mock_cpu_freq, mock_cpu_count, scanner
-    ):
+    def test_detect_cpu_info_with_psutil(self, mock_cpu_freq, mock_cpu_count, scanner):
         mock_cpu_count.side_effect = [4, 8]
         mock_freq = MagicMock()
         mock_freq.max = 3.5
@@ -121,19 +117,19 @@ class TestSystemScanner:
     @patch("psutil.virtual_memory")
     def test_detect_memory_info(self, mock_virtual_memory, scanner):
         mock_mem = MagicMock()
-        mock_mem.total = 16 * 1024 ** 3
-        mock_mem.available = 8 * 1024 ** 3
-        mock_mem.used = 8 * 1024 ** 3
-        mock_mem.free = 8 * 1024 ** 3
+        mock_mem.total = 16 * 1024**3
+        mock_mem.available = 8 * 1024**3
+        mock_mem.used = 8 * 1024**3
+        mock_mem.free = 8 * 1024**3
         mock_mem.percent = 50.0
         mock_virtual_memory.return_value = mock_mem
 
         memory_info = scanner.detect_memory_info()
 
         assert isinstance(memory_info, dict)
-        assert memory_info["total"] == 16 * 1024 ** 3
-        assert memory_info["available"] == 8 * 1024 ** 3
-        assert memory_info["used"] == 8 * 1024 ** 3
+        assert memory_info["total"] == 16 * 1024**3
+        assert memory_info["available"] == 8 * 1024**3
+        assert memory_info["used"] == 8 * 1024**3
 
     @patch("backend.core.detectors.gpu.GPUtil", create=True)
     @patch("backend.core.detectors.gpu.HAS_GPUTIL", True)
@@ -162,9 +158,7 @@ class TestSystemScanner:
     @patch("backend.core.system_scanner.HAS_PSUTIL", True)
     @patch("psutil.disk_partitions")
     @patch("psutil.disk_usage")
-    def test_detect_disk_info(
-        self, mock_disk_usage, mock_disk_partitions, scanner
-    ):
+    def test_detect_disk_info(self, mock_disk_usage, mock_disk_partitions, scanner):
         mock_partition = MagicMock()
         mock_partition.device = "/dev/sda1"
         mock_partition.mountpoint = "/"
@@ -172,9 +166,9 @@ class TestSystemScanner:
         mock_disk_partitions.return_value = [mock_partition]
 
         mock_usage = MagicMock()
-        mock_usage.total = 500 * 1024 ** 3
-        mock_usage.free = 200 * 1024 ** 3
-        mock_usage.used = 300 * 1024 ** 3
+        mock_usage.total = 500 * 1024**3
+        mock_usage.free = 200 * 1024**3
+        mock_usage.used = 300 * 1024**3
         mock_usage.percent = 60.0
         mock_disk_usage.return_value = mock_usage
 
@@ -183,8 +177,8 @@ class TestSystemScanner:
         assert len(disk_info["partitions"]) == 1
         disk = disk_info["partitions"][0]
         assert disk["mountpoint"] == "/"
-        assert disk["total"] == 500 * 1024 ** 3
-        assert disk["free"] == 200 * 1024 ** 3
+        assert disk["total"] == 500 * 1024**3
+        assert disk["free"] == 200 * 1024**3
 
     def test_detect_runtime_versions_python(self, scanner):
         runtime_info = scanner.detect_runtime_versions()
@@ -195,12 +189,14 @@ class TestSystemScanner:
     @patch("subprocess.check_output")
     def test_detect_runtime_versions_node(self, mock_check_output, mock_arch, scanner):
         mock_arch.return_value = ("64bit", "ELF")
+
         def side_effect(cmd, *args, **kwargs):
             if cmd == ["node", "--version"]:
                 return b"v18.17.0\n"
             if cmd == ["npm", "--version"]:
                 return b"9.6.7\n"
             raise Exception("unexpected call: " + str(cmd))
+
         mock_check_output.side_effect = side_effect
 
         runtime_info = scanner.detect_runtime_versions()
@@ -217,17 +213,20 @@ class TestSystemScanner:
 
     def test_scan_all(self, scanner):
         import asyncio
-        with patch.object(scanner, "detect_platform_info", return_value={}), \
-             patch.object(scanner, "detect_cpu_info", return_value={}), \
-             patch.object(scanner, "detect_memory_info", return_value={}), \
-             patch.object(scanner, "detect_gpu_info", return_value={}), \
-             patch.object(scanner, "detect_disk_info", return_value={}), \
-             patch.object(scanner, "detect_network_info", return_value={}), \
-             patch.object(scanner, "detect_container_info", return_value={}), \
-             patch.object(scanner, "detect_runtime_versions", return_value={}), \
-             patch.object(scanner, "detect_installed_packages", return_value={}), \
-             patch.object(scanner, "get_performance_metrics", return_value={}), \
-             patch.object(scanner, "detect_system_capabilities", return_value={}):
+
+        with (
+            patch.object(scanner, "detect_platform_info", return_value={}),
+            patch.object(scanner, "detect_cpu_info", return_value={}),
+            patch.object(scanner, "detect_memory_info", return_value={}),
+            patch.object(scanner, "detect_gpu_info", return_value={}),
+            patch.object(scanner, "detect_disk_info", return_value={}),
+            patch.object(scanner, "detect_network_info", return_value={}),
+            patch.object(scanner, "detect_container_info", return_value={}),
+            patch.object(scanner, "detect_runtime_versions", return_value={}),
+            patch.object(scanner, "detect_installed_packages", return_value={}),
+            patch.object(scanner, "get_performance_metrics", return_value={}),
+            patch.object(scanner, "detect_system_capabilities", return_value={}),
+        ):
             result = asyncio.run(scanner.scan_all())
 
         assert "platform" in result
@@ -257,10 +256,12 @@ class TestSystemScanner:
         assert "python" in runtime_info
 
     def test_fallback_values(self, scanner):
-        with patch("backend.core.system_scanner.HAS_PSUTIL", False), \
-             patch("backend.core.detectors.gpu.HAS_GPUTIL", False), \
-             patch.dict("sys.modules", {"cpuinfo": None}), \
-             patch("platform.system", return_value="UnknownOS"):
+        with (
+            patch("backend.core.system_scanner.HAS_PSUTIL", False),
+            patch("backend.core.detectors.gpu.HAS_GPUTIL", False),
+            patch.dict("sys.modules", {"cpuinfo": None}),
+            patch("platform.system", return_value="UnknownOS"),
+        ):
             cpu_info = scanner.detect_cpu_info()
             memory_info = scanner.detect_memory_info()
             gpu_info = scanner.detect_gpu_info()

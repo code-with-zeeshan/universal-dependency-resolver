@@ -9,26 +9,26 @@ from backend.api.main import app
 @pytest.fixture
 def mock_scanner():
     scanner = MagicMock()
-    scanner.scan_all = AsyncMock(return_value={
-        "platform": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
-        "cpu": {
-            "brand": "Intel Core i7",
-            "physical_cores": 4,
-            "logical_cores": 8,
-        },
-        "memory": {
-            "total": 16777216000,
-            "available": 8388608000,
-        },
-        "gpu": {
-            "available": True,
-            "devices": [{"name": "NVIDIA GTX 1060", "memory_mb": 6144}],
-            "cuda": "11.8",
-        },
-        "runtime_versions": {
-            "python": {"version": "3.9.16", "location": "/usr/bin/python3"}
-        },
-    })
+    scanner.scan_all = AsyncMock(
+        return_value={
+            "platform": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
+            "cpu": {
+                "brand": "Intel Core i7",
+                "physical_cores": 4,
+                "logical_cores": 8,
+            },
+            "memory": {
+                "total": 16777216000,
+                "available": 8388608000,
+            },
+            "gpu": {
+                "available": True,
+                "devices": [{"name": "NVIDIA GTX 1060", "memory_mb": 6144}],
+                "cuda": "11.8",
+            },
+            "runtime_versions": {"python": {"version": "3.9.16", "location": "/usr/bin/python3"}},
+        }
+    )
     scanner.detect_runtime_versions.return_value = {
         "python": {"version": "3.9.16", "location": "/usr/bin/python3"},
         "nodejs": None,
@@ -76,15 +76,17 @@ class TestSystemInfo:
         assert response.status_code == 400
 
     def test_get_system_info_no_gpu(self, client, mock_scanner):
-        mock_scanner.scan_all = AsyncMock(return_value={
-            "platform": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
-            "cpu": {"brand": "Intel Core i7", "physical_cores": 4, "logical_cores": 8},
-            "memory": {"total": 16777216000, "available": 8388608000},
-            "gpu": {"available": False, "devices": []},
-            "runtime_versions": {
-                "python": {"version": "3.9.16", "location": "/usr/bin/python3"}
-            },
-        })
+        mock_scanner.scan_all = AsyncMock(
+            return_value={
+                "platform": {"system": "Linux", "release": "5.15.0", "machine": "x86_64"},
+                "cpu": {"brand": "Intel Core i7", "physical_cores": 4, "logical_cores": 8},
+                "memory": {"total": 16777216000, "available": 8388608000},
+                "gpu": {"available": False, "devices": []},
+                "runtime_versions": {
+                    "python": {"version": "3.9.16", "location": "/usr/bin/python3"}
+                },
+            }
+        )
         response = client.get("/api/v1/system/info")
         assert response.status_code == 200
         data = response.json()
@@ -124,9 +126,11 @@ class TestHealthCheck:
         assert data["status"] == "unhealthy"
 
     def test_health_check_with_redis(self, client):
-        with patch("backend.orchestrator.db_service.check_health") as mock_db_health, patch.dict(
-            "os.environ", {"REDIS_URL": "redis://localhost:6379"}
-        ), patch("redis.from_url") as mock_redis:
+        with (
+            patch("backend.orchestrator.db_service.check_health") as mock_db_health,
+            patch.dict("os.environ", {"REDIS_URL": "redis://localhost:6379"}),
+            patch("redis.from_url") as mock_redis,
+        ):
             mock_db_health.return_value = {"status": "healthy"}
             mock_redis_instance = MagicMock()
             mock_redis.return_value = mock_redis_instance
@@ -157,11 +161,7 @@ class TestSystemCheckCompatibility:
     def test_check_compatibility_gpu_required(self, client, mock_scanner):
         response = client.post(
             "/api/v1/system/check-compatibility",
-            json={
-                "requirements": [
-                    {"type": "gpu", "minimum": {"cuda": "11.0"}, "required": True}
-                ]
-            },
+            json={"requirements": [{"type": "gpu", "minimum": {"cuda": "11.0"}, "required": True}]},
         )
         assert response.status_code == 200
 
@@ -178,6 +178,3 @@ class TestSystemCheckCompatibility:
             json={"requirements": "invalid"},
         )
         assert response.status_code == 422
-
-
-

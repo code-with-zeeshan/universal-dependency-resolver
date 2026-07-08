@@ -101,6 +101,7 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l verbose -d 'Verbose'
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l deps -d 'Show deps'
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from check" -l cve -d 'Check lock file for known CVEs'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve lock scan" -l ecosystem -xa '$ecos'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve lock scan" -l format -xa 'text json'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve lock scan" -l cuda -d 'CUDA version'

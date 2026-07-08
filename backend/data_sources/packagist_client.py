@@ -416,11 +416,14 @@ class PackagistClient(BaseDataSourceClient):
         warnings = []
 
         php_requirement = pkg_data.get("system_requirements", {}).get("php")
-        if php_requirement and "php_version" in system_info:
-            if not self._check_php_compatibility(system_info["php_version"], php_requirement):
-                errors.append(
-                    f"Requires PHP {php_requirement}, but system has {system_info['php_version']}"
-                )
+        if (
+            php_requirement
+            and "php_version" in system_info
+            and not self._check_php_compatibility(system_info["php_version"], php_requirement)
+        ):
+            errors.append(
+                f"Requires PHP {php_requirement}, but system has {system_info['php_version']}"
+            )
 
         required_extensions = pkg_data.get("system_requirements", {}).get("extensions", [])
         system_extensions = system_info.get("php_extensions", [])
@@ -431,11 +434,14 @@ class PackagistClient(BaseDataSourceClient):
                 errors.append(f"Required PHP extension missing: {ext_name}")
 
         composer_requirement = pkg_data.get("system_requirements", {}).get("composer")
-        if composer_requirement and "composer_version" in system_info:
-            if not self._check_composer_compatibility(
+        if (
+            composer_requirement
+            and "composer_version" in system_info
+            and not self._check_composer_compatibility(
                 system_info["composer_version"], composer_requirement
-            ):
-                warnings.append(f"Recommends Composer {composer_requirement}")
+            )
+        ):
+            warnings.append(f"Recommends Composer {composer_requirement}")
 
         if pkg_data.get("abandoned", False):
             replacement = pkg_data.get("replacement")

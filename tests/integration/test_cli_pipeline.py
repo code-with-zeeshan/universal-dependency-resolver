@@ -123,7 +123,15 @@ class TestCLICommands:
         assert "pypi" in output
 
     def test_resolve_cross_ecosystem(self, test_dir):
-        output = run_cli("resolve", "fastapi@pypi", "express@npm", "--ecosystem", "pypi", timeout=300, cwd=test_dir)
+        output = run_cli(
+            "resolve",
+            "fastapi@pypi",
+            "express@npm",
+            "--ecosystem",
+            "pypi",
+            timeout=300,
+            cwd=test_dir,
+        )
         assert "Resolved" in output
         assert "fastapi" in output
         assert "express" in output
@@ -136,14 +144,32 @@ class TestCLICommands:
         assert "0." in output
 
     def test_lock_requirements_txt(self, test_dir):
-        output = run_cli("lock", "--dry-run", "--directory", str(test_dir), "--manifest", "requirements.txt", timeout=120, cwd=test_dir)
+        output = run_cli(
+            "lock",
+            "--dry-run",
+            "--directory",
+            str(test_dir),
+            "--manifest",
+            "requirements.txt",
+            timeout=120,
+            cwd=test_dir,
+        )
         assert "Resolved" in output
         assert "flask" in output
         assert "django" in output
         assert "direct" in output
 
     def test_lock_pyproject_toml(self, test_dir):
-        output = run_cli("lock", "--dry-run", "--directory", str(test_dir), "--manifest", "pyproject.toml", timeout=120, cwd=test_dir)
+        output = run_cli(
+            "lock",
+            "--dry-run",
+            "--directory",
+            str(test_dir),
+            "--manifest",
+            "pyproject.toml",
+            timeout=120,
+            cwd=test_dir,
+        )
         assert "fastapi" in output
         assert "pydantic" in output
         assert "direct" in output
@@ -154,7 +180,16 @@ class TestCLICommands:
         assert "numpy" in output
 
     def test_install_dry_run(self, test_dir):
-        output = run_cli("install", "--directory", str(test_dir), "--dry-run", "-e", "pypi", timeout=30, cwd=test_dir)
+        output = run_cli(
+            "install",
+            "--directory",
+            str(test_dir),
+            "--dry-run",
+            "-e",
+            "pypi",
+            timeout=30,
+            cwd=test_dir,
+        )
         assert "Install Plan" in output
         assert "pip install" in output
         assert "dry run" in output
@@ -165,6 +200,7 @@ class TestPackageSpecParsing:
 
     def test_parse_spec(self):
         from backend.cli import _parse_package_spec
+
         name, eco, constraint = _parse_package_spec("numpy@conda")
         assert name == "numpy"
         assert eco == "conda"
@@ -172,6 +208,7 @@ class TestPackageSpecParsing:
 
     def test_default_ecosystem(self):
         from backend.cli import _parse_package_spec
+
         name, eco, constraint = _parse_package_spec("numpy")
         assert name == "numpy"
         assert eco == "pypi"
@@ -179,6 +216,7 @@ class TestPackageSpecParsing:
 
     def test_scoped_npm_package(self):
         from backend.cli import _parse_package_spec
+
         name, eco, constraint = _parse_package_spec("@angular/core@npm")
         assert name == "@angular/core"
         assert eco == "npm"
@@ -190,15 +228,18 @@ class TestNameNormalization:
 
     def test_normalize_flask(self):
         from backend.core.utils import normalize_package_name
+
         assert normalize_package_name("Flask") == "flask"
         assert normalize_package_name("Django") == "django"
 
     def test_normalize_with_dashes(self):
         from backend.core.utils import normalize_package_name
+
         assert normalize_package_name("My-Package") in ("my-package", "my_package")
 
     def test_manifest_detector_normalization(self, test_dir):
         from backend.manifest_detector import ManifestDetector
+
         detector = ManifestDetector(str(test_dir))
         packages = [{"name": "Flask", "_ecosystem": "pypi", "version": ">=2.0"}]
         norm = detector.normalize(packages)
@@ -211,6 +252,7 @@ class TestEcosystemAliasing:
 
     def test_cargo_alias_in_detect(self, test_dir):
         from backend.manifest_detector import ManifestDetector
+
         detector = ManifestDetector(str(test_dir))
         manifests = detector.detect()
         names = [m["ecosystem"] for m in manifests]
@@ -221,6 +263,7 @@ class TestEcosystemAliasing:
 
     def test_cargo_alias_in_normalize(self, test_dir):
         from backend.manifest_detector import ManifestDetector
+
         detector = ManifestDetector(str(test_dir))
         packages = [{"name": "serde", "_ecosystem": "cargo"}]
         norm = detector.normalize(packages)
@@ -232,22 +275,26 @@ class TestConstraintNormalizer:
 
     def test_npm_caret(self):
         from backend.core.constraint_normalizer import normalize_constraint
+
         result = normalize_constraint("^4.18.0", "npm")
         assert ">=4.18.0" in result
         assert "<5.0.0" in result or "<4.19" in result
 
     def test_crates_tilde(self):
         from backend.core.constraint_normalizer import normalize_constraint
+
         result = normalize_constraint("~1.2.3", "crates")
         assert ">=1.2.3" in result
 
     def test_rubygems_pessimistic(self):
         from backend.core.constraint_normalizer import normalize_constraint
+
         result = normalize_constraint("~> 3.0", "rubygems")
         assert result != "~> 3.0"
 
     def test_pep440_passthrough(self):
         from backend.core.constraint_normalizer import normalize_constraint
+
         result = normalize_constraint(">=2.0,<3.0", "pypi")
         assert result == ">=2.0,<3.0"
 
@@ -257,6 +304,7 @@ class TestInstallCommand:
 
     def test_generate_pip_command(self):
         from backend.cli import _generate_install_command
+
         cmd = _generate_install_command("pypi", [("flask", "2.3.0"), ("django", "4.2")])
         assert "pip install" in cmd
         assert "flask==2.3.0" in cmd
@@ -264,12 +312,14 @@ class TestInstallCommand:
 
     def test_generate_npm_command(self):
         from backend.cli import _generate_install_command
+
         cmd = _generate_install_command("npm", [("express", "4.18.0")])
         assert "npm install" in cmd
         assert "express@4.18.0" in cmd
 
     def test_generate_unknown_ecosystem(self):
         from backend.cli import _generate_install_command
+
         cmd = _generate_install_command("nonexistent", [("pkg", "1.0")])
         assert cmd is None
 
@@ -279,6 +329,7 @@ class TestTransitiveResolution:
 
     def test_aggregator_to_resolver_input_includes_cross_eco(self):
         from backend.cli import _aggregator_to_resolver_input
+
         data = {
             "name": "test-pkg",
             "dependencies": {"pypi": {"all": []}},
@@ -287,4 +338,6 @@ class TestTransitiveResolution:
         }
         rinput = _aggregator_to_resolver_input(data, "pypi")
         assert "cross_ecosystem_deps" in rinput
-        assert rinput["cross_ecosystem_deps"] == [{"dependency": "node-pkg", "target_ecosystem": "npm"}]
+        assert rinput["cross_ecosystem_deps"] == [
+            {"dependency": "node-pkg", "target_ecosystem": "npm"}
+        ]

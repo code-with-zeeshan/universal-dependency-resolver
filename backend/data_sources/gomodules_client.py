@@ -204,38 +204,43 @@ class GoModulesClient(BaseDataSourceClient):
         last_error: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                async with _GO_SEMAPHORE:
-                    async with session.get(
-                        url, params=params, timeout=aiohttp.ClientTimeout(total=self.timeout)
-                    ) as response:
-                        if response.status == 404:
-                            return None
-                        if response.status == 429:
-                            retry_after = response.headers.get("Retry-After")
-                            if retry_after:
-                                wait = int(retry_after) if retry_after.isdigit() else 5
-                            else:
-                                wait = RETRY_BACKOFF_FACTOR**attempt
-                            if attempt < self.max_retries - 1:
-                                logger.debug(
-                                    f"429 from {url}, retrying in {wait}s (attempt {attempt + 1})"
-                                )
-                                await asyncio.sleep(wait)
-                                continue
-                            logger.error(f"429 from {url} after {self.max_retries} retries")
-                            return None
-                        if response.status >= 500 and attempt < self.max_retries - 1:
+                async with (
+                    _GO_SEMAPHORE,
+                    session.get(
+                        url,
+                        params=params,
+                        headers=self._auth_headers or None,
+                        timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    ) as response,
+                ):
+                    if response.status == 404:
+                        return None
+                    if response.status == 429:
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after:
+                            wait = int(retry_after) if retry_after.isdigit() else 5
+                        else:
                             wait = RETRY_BACKOFF_FACTOR**attempt
-                            logger.debug(f"{response.status} from {url}, retrying in {wait}s")
+                        if attempt < self.max_retries - 1:
+                            logger.debug(
+                                f"429 from {url}, retrying in {wait}s (attempt {attempt + 1})"
+                            )
                             await asyncio.sleep(wait)
                             continue
-                        if response.status != 200:
-                            logger.error(f"HTTP {response.status} from {url}")
-                            return None
-                        content_type = response.headers.get("Content-Type", "")
-                        if "application/json" in content_type:
-                            return await response.json()
-                        return await response.text()
+                        logger.error(f"429 from {url} after {self.max_retries} retries")
+                        return None
+                    if response.status >= 500 and attempt < self.max_retries - 1:
+                        wait = RETRY_BACKOFF_FACTOR**attempt
+                        logger.debug(f"{response.status} from {url}, retrying in {wait}s")
+                        await asyncio.sleep(wait)
+                        continue
+                    if response.status != 200:
+                        logger.error(f"HTTP {response.status} from {url}")
+                        return None
+                    content_type = response.headers.get("Content-Type", "")
+                    if "application/json" in content_type:
+                        return await response.json()
+                    return await response.text()
             except (TimeoutError, aiohttp.ClientError) as e:
                 last_error = e
                 if attempt == self.max_retries - 1:

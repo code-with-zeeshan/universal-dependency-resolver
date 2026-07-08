@@ -41,22 +41,16 @@ class TestExportGenerator:
         assert "package.json" in generator.template_map
         assert "Dockerfile" in generator.template_map
 
-    def test_generate_requirements_txt(
-        self, generator, sample_packages, sample_system_info
-    ):
+    def test_generate_requirements_txt(self, generator, sample_packages, sample_system_info):
         """Test requirements.txt generation."""
-        result = generator.generate(
-            sample_packages, "requirements.txt", sample_system_info
-        )
+        result = generator.generate(sample_packages, "requirements.txt", sample_system_info)
 
         assert isinstance(result, str)
         assert "numpy==1.24.3" in result
         assert "pandas==2.0.1" in result
         assert "react" not in result  # Should only include Python packages
 
-    def test_generate_package_json(
-        self, generator, sample_packages, sample_system_info
-    ):
+    def test_generate_package_json(self, generator, sample_packages, sample_system_info):
         """Test package.json generation."""
         result = generator.generate(sample_packages, "package.json", sample_system_info)
 
@@ -75,14 +69,10 @@ class TestExportGenerator:
         with pytest.raises(ValueError, match="Unsupported format"):
             generator.generate(sample_packages, "unsupported.format")
 
-    def test_generate_multiple_formats(
-        self, generator, sample_packages, sample_system_info
-    ):
+    def test_generate_multiple_formats(self, generator, sample_packages, sample_system_info):
         """Test generating multiple formats at once."""
         formats = ["requirements.txt", "package.json"]
-        result = generator.generate_multiple(
-            sample_packages, formats, sample_system_info
-        )
+        result = generator.generate_multiple(sample_packages, formats, sample_system_info)
 
         assert isinstance(result, dict)
         assert "requirements.txt" in result
@@ -110,9 +100,7 @@ class TestExportGenerator:
         assert any(pkg.name == "numpy" and pkg.version == "1.24.3" for pkg in parsed)
         assert any(pkg.name == "react" and pkg.version == "18.2.0" for pkg in parsed)
 
-    def test_generate_with_options(
-        self, generator, sample_packages, sample_system_info
-    ):
+    def test_generate_with_options(self, generator, sample_packages, sample_system_info):
         """Test generation with custom options."""
         options = {"include_comments": False, "pin_versions": False}
         result = generator.generate(

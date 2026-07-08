@@ -39,8 +39,14 @@ class TestContainerType:
 
 class TestGPUInfo:
     def test_minimal_construction(self):
-        gpu = GPUInfo(id=0, name="Test GPU", memory_total=8192, memory_free=4096,
-                      memory_used=4096, utilization=50.0)
+        gpu = GPUInfo(
+            id=0,
+            name="Test GPU",
+            memory_total=8192,
+            memory_free=4096,
+            memory_used=4096,
+            utilization=50.0,
+        )
         assert gpu.id == 0
         assert gpu.name == "Test GPU"
         assert gpu.memory_total == 8192
@@ -54,9 +60,16 @@ class TestGPUInfo:
 
     def test_full_construction(self):
         gpu = GPUInfo(
-            id=1, name="RTX 4090", memory_total=24576, memory_free=16384,
-            memory_used=8192, utilization=35.5, temperature=65.0,
-            driver_version="535.129", cuda_version="12.1", compute_capability="8.9",
+            id=1,
+            name="RTX 4090",
+            memory_total=24576,
+            memory_free=16384,
+            memory_used=8192,
+            utilization=35.5,
+            temperature=65.0,
+            driver_version="535.129",
+            cuda_version="12.1",
+            compute_capability="8.9",
         )
         assert gpu.temperature == 65.0
         assert gpu.driver_version == "535.129"
@@ -64,15 +77,15 @@ class TestGPUInfo:
         assert gpu.compute_capability == "8.9"
 
     def test_default_factory(self):
-        gpu = GPUInfo(id=0, name="GPU", memory_total=1024, memory_free=512,
-                      memory_used=512, utilization=0.0)
+        gpu = GPUInfo(
+            id=0, name="GPU", memory_total=1024, memory_free=512, memory_used=512, utilization=0.0
+        )
         assert gpu.temperature is None
 
 
 class TestCPUInfo:
     def test_minimal_construction(self):
-        cpu = CPUInfo(brand="Intel", arch="x86_64", bits=64,
-                      count_physical=8, count_logical=16)
+        cpu = CPUInfo(brand="Intel", arch="x86_64", bits=64, count_physical=8, count_logical=16)
         assert cpu.brand == "Intel"
         assert cpu.arch == "x86_64"
         assert cpu.bits == 64
@@ -85,10 +98,17 @@ class TestCPUInfo:
 
     def test_full_construction(self):
         cpu = CPUInfo(
-            brand="AMD", arch="x86_64", bits=64, count_physical=16, count_logical=32,
-            max_frequency=5000.0, min_frequency=2200.0, current_frequency=3500.0,
+            brand="AMD",
+            arch="x86_64",
+            bits=64,
+            count_physical=16,
+            count_logical=32,
+            max_frequency=5000.0,
+            min_frequency=2200.0,
+            current_frequency=3500.0,
             cache_sizes={"l1": 512, "l2": 4096, "l3": 32768},
-            features=["avx2", "sse4.2"], temperature=55.0,
+            features=["avx2", "sse4.2"],
+            temperature=55.0,
         )
         assert cpu.max_frequency == 5000.0
         assert cpu.cache_sizes["l1"] == 512
@@ -103,8 +123,14 @@ class TestCPUInfo:
 class TestMemoryInfo:
     def test_construction(self):
         mem = MemoryInfo(
-            total=16384, available=8192, used=8192, free=4096,
-            percent=50.0, swap_total=8192, swap_used=1024, swap_free=7168,
+            total=16384,
+            available=8192,
+            used=8192,
+            free=4096,
+            percent=50.0,
+            swap_total=8192,
+            swap_used=1024,
+            swap_free=7168,
             swap_percent=12.5,
         )
         assert mem.total == 16384
@@ -121,8 +147,13 @@ class TestMemoryInfo:
 class TestDiskInfo:
     def test_construction(self):
         disk = DiskInfo(
-            device="/dev/sda1", mountpoint="/", fstype="ext4",
-            total=500000, used=200000, free=300000, percent=40.0,
+            device="/dev/sda1",
+            mountpoint="/",
+            fstype="ext4",
+            total=500000,
+            used=200000,
+            free=300000,
+            percent=40.0,
         )
         assert disk.device == "/dev/sda1"
         assert disk.mountpoint == "/"
@@ -149,8 +180,11 @@ class TestNetworkInterface:
 
     def test_full_construction(self):
         net = NetworkInterface(
-            name="eth0", addresses=[{"addr": "10.0.0.1"}], is_up=True,
-            speed=1000, mtu=1500,
+            name="eth0",
+            addresses=[{"addr": "10.0.0.1"}],
+            is_up=True,
+            speed=1000,
+            mtu=1500,
             stats={"rx_bytes": 1000, "tx_bytes": 500},
         )
         assert net.speed == 1000
@@ -170,8 +204,11 @@ class TestRuntimeInfo:
 
     def test_full_construction(self):
         rt = RuntimeInfo(
-            name="node", version="20.0.0", path="/usr/bin/node",
-            architecture="x64", implementation="V8",
+            name="node",
+            version="20.0.0",
+            path="/usr/bin/node",
+            architecture="x64",
+            implementation="V8",
             additional_info={"features": ["esm"]},
         )
         assert rt.path == "/usr/bin/node"
@@ -190,7 +227,9 @@ class TestPackageInfo:
 
     def test_full_construction(self):
         pkg = PackageInfo(
-            name="flask", version="2.3.0", manager="pip",
+            name="flask",
+            version="2.3.0",
+            manager="pip",
             location="/usr/lib/python3.11",
             dependencies=["werkzeug>=2.3", "markupsafe"],
             metadata={"homepage": "https://flask.palletsprojects.com/"},

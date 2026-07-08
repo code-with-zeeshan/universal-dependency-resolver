@@ -19,15 +19,17 @@ from pathlib import Path
 
 from rich.prompt import Confirm
 
-from ..shared import _generate_install_command, _read_lock_file, console
+from ..shared import _generate_install_command, _read_lock_file, _resolve_lock_path, console
 
 
 def cmd_install(args):
-    """Install packages from ``udr.lock``."""
+    """Install packages from a lock file."""
     directory = Path(args.directory).resolve()
-    lock_path = directory / "udr.lock"
-    if getattr(args, "lock_file", None):
-        lock_path = Path(args.lock_file).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    ).resolve()
 
     lock_data = _read_lock_file(lock_path)
     packages = lock_data.get("packages", {})

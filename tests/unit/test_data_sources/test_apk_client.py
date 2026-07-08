@@ -42,9 +42,7 @@ class TestAPKClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "cached_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent")
         assert result is None
 

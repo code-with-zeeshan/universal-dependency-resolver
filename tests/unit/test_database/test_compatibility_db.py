@@ -64,7 +64,10 @@ class TestExtractSystemFields:
         assert db._extract_system_fields(info)["cuda_version"] == "11.8"
 
     def test_cpu_architecture_fallback(self, db):
-        assert db._extract_system_fields({"cpu": {"architecture": "arm64"}})["cpu_architecture"] == "arm64"
+        assert (
+            db._extract_system_fields({"cpu": {"architecture": "arm64"}})["cpu_architecture"]
+            == "arm64"
+        )
 
     def test_python_version_not_dict(self, db):
         info = {"runtime_versions": {"python": "3.10.0"}}
@@ -94,12 +97,18 @@ class TestExtractWarningsFromReports:
         assert db._extract_warnings_from_reports(reports) == []
 
     def test_cuda_warning(self, db):
-        reports = [self._report(False, "CUDA version mismatch"), self._report(False, "CUDA not found")]
+        reports = [
+            self._report(False, "CUDA version mismatch"),
+            self._report(False, "CUDA not found"),
+        ]
         warnings = db._extract_warnings_from_reports(reports)
         assert any("cuda" in w.lower() for w in warnings)
 
     def test_memory_warning(self, db):
-        reports = [self._report(False, "out of memory"), self._report(False, "memory allocation failed")]
+        reports = [
+            self._report(False, "out of memory"),
+            self._report(False, "memory allocation failed"),
+        ]
         warnings = db._extract_warnings_from_reports(reports)
         assert any("memory" in w.lower() for w in warnings)
 
@@ -128,26 +137,36 @@ class TestSerializeConflict:
         return c
 
     def test_conflict_as_package1(self, db):
-        conflict = self._conflict(1, 2, "requests", "numpy",
-                                  package1_version_spec=">=1.0",
-                                  package2_version_spec="<2.0",
-                                  conflict_type="incompatible",
-                                  severity="error",
-                                  description="numpy 2.x incompatible",
-                                  resolution="pin numpy<2")
+        conflict = self._conflict(
+            1,
+            2,
+            "requests",
+            "numpy",
+            package1_version_spec=">=1.0",
+            package2_version_spec="<2.0",
+            conflict_type="incompatible",
+            severity="error",
+            description="numpy 2.x incompatible",
+            resolution="pin numpy<2",
+        )
         result = db._serialize_conflict(conflict, package_id=1)
         assert result["conflicting_package"] == "numpy"
         assert result["version_spec"] == "<2.0"
         assert result["severity"] == "error"
 
     def test_conflict_as_package2(self, db):
-        conflict = self._conflict(1, 2, "pandas", "numpy",
-                                  package1_version_spec=">=1.0",
-                                  package2_version_spec="<2.0",
-                                  conflict_type="incompatible",
-                                  severity="warning",
-                                  description="version conflict",
-                                  resolution="upgrade")
+        conflict = self._conflict(
+            1,
+            2,
+            "pandas",
+            "numpy",
+            package1_version_spec=">=1.0",
+            package2_version_spec="<2.0",
+            conflict_type="incompatible",
+            severity="warning",
+            description="version conflict",
+            resolution="upgrade",
+        )
         result = db._serialize_conflict(conflict, package_id=2)
         assert result["conflicting_package"] == "pandas"
         assert result["version_spec"] == ">=1.0"
@@ -268,8 +287,10 @@ class TestAggregateReports:
         assert result["success_rate"] == pytest.approx(2 / 3)
 
     def test_common_issues_extracted(self, db):
-        reports = [self._report(False, notes="CUDA incompatible"),
-                   self._report(False, notes="cuda error")]
+        reports = [
+            self._report(False, notes="CUDA incompatible"),
+            self._report(False, notes="cuda error"),
+        ]
         result = db._aggregate_reports(reports)
         keywords = [i["keyword"] for i in result["common_issues"]]
         assert "cuda" in keywords
@@ -298,8 +319,10 @@ class TestAddPackageMock:
         mock_session.query.return_value.filter.return_value.first.return_value = None
         mock_get_db = iter([mock_session])
 
-        with patch("backend.database.compatibility_db.Package", return_value=mock_pkg), \
-             patch("backend.database.compatibility_db.get_db", return_value=mock_get_db):
+        with (
+            patch("backend.database.compatibility_db.Package", return_value=mock_pkg),
+            patch("backend.database.compatibility_db.get_db", return_value=mock_get_db),
+        ):
             pkg_id = db.add_package("requests", "pypi", {"version": "2.31.0"})
 
         assert pkg_id == 1
@@ -312,7 +335,9 @@ class TestAddPackageMock:
         mock_get_db = iter([mock_session])
 
         with patch("backend.database.compatibility_db.get_db", return_value=mock_get_db):
-            db.add_package("badver", "pypi", {"version": "1.0", "versions": [{"version": "invalid"}]})
+            db.add_package(
+                "badver", "pypi", {"version": "1.0", "versions": [{"version": "invalid"}]}
+            )
 
         # The version with invalid version string should not be added
         assert mock_session.add.call_count >= 1  # at least the package itself
@@ -351,8 +376,9 @@ class TestAddConflictRuleMock:
         mock_get_db = iter([mock_session, mock_session])
 
         with patch("backend.database.compatibility_db.get_db", return_value=mock_get_db):
-            db.add_conflict_rule("numpy", ">=1.24", "pandas", "<2.0",
-                                 "incompatible", "numpy 1.24+ breaks pandas")
+            db.add_conflict_rule(
+                "numpy", ">=1.24", "pandas", "<2.0", "incompatible", "numpy 1.24+ breaks pandas"
+            )
 
         assert mock_session.add.call_count >= 1
         mock_session.commit.assert_called()
@@ -366,10 +392,12 @@ class TestBulkImportPackagesMock:
         mock_get_db = iter([mock_session, mock_session, mock_session])
 
         with patch("backend.database.compatibility_db.get_db", return_value=mock_get_db):
-            count = db.bulk_import_packages([
-                {"name": "pkg1", "ecosystem": "pypi", "version": "1.0"},
-                {"name": "pkg2", "ecosystem": "npm", "version": "2.0"},
-            ])
+            count = db.bulk_import_packages(
+                [
+                    {"name": "pkg1", "ecosystem": "pypi", "version": "1.0"},
+                    {"name": "pkg2", "ecosystem": "npm", "version": "2.0"},
+                ]
+            )
 
         assert count == 2
 
@@ -385,10 +413,16 @@ class TestAddCompatibilityReportMock:
         mock_session.query.return_value.filter.return_value.first.return_value = mock_pkg
         mock_get_db = iter([mock_session])
 
-        with patch("backend.database.compatibility_db.CompatibilityReport", return_value=mock_report), \
-             patch("backend.database.compatibility_db.get_db", return_value=mock_get_db):
+        with (
+            patch(
+                "backend.database.compatibility_db.CompatibilityReport", return_value=mock_report
+            ),
+            patch("backend.database.compatibility_db.get_db", return_value=mock_get_db),
+        ):
             report_id = db.add_compatibility_report(
-                "torch", "2.0.0", "pypi",
+                "torch",
+                "2.0.0",
+                "pypi",
                 {"platform": {"system": "Linux"}, "gpu": {"available": False}},
                 works=True,
             )
@@ -446,7 +480,10 @@ class TestCheckVersionCompatibilityMock:
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.first.return_value = None
 
-        with patch("backend.database.compatibility_db.get_db", return_value=iter([mock_session, mock_session])):
+        with patch(
+            "backend.database.compatibility_db.get_db",
+            return_value=iter([mock_session, mock_session]),
+        ):
             result = db.check_version_compatibility("unknown", "1.0", {})
 
         assert result["compatible"] is True
@@ -460,10 +497,18 @@ class TestCheckVersionCompatibilityMock:
         mock_session.query.return_value.filter.return_value.first.side_effect = [mock_pkg]
         mock_session.query.return_value.filter.return_value.all.return_value = []
 
-        with patch("backend.database.compatibility_db.get_db", return_value=iter([mock_session, mock_session])):
-            result = db.check_version_compatibility("pkg", "1.0",
-                                                     {"platform": {"system": "Linux"},
-                                                      "runtime_versions": {"python": {"version": "3.11"}}})
+        with patch(
+            "backend.database.compatibility_db.get_db",
+            return_value=iter([mock_session, mock_session]),
+        ):
+            result = db.check_version_compatibility(
+                "pkg",
+                "1.0",
+                {
+                    "platform": {"system": "Linux"},
+                    "runtime_versions": {"python": {"version": "3.11"}},
+                },
+            )
 
         assert result["compatible"] is True
         assert result["confidence"] == 0.1

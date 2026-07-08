@@ -84,9 +84,7 @@ class TestCratesClient:
         assert results[0]["name"] == "serde"
 
     @pytest.mark.asyncio
-    async def test_search_packages_calls_correct_url(
-        self, client, sample_search_results
-    ):
+    async def test_search_packages_calls_correct_url(self, client, sample_search_results):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_search_results
         ) as mock_get:
@@ -115,11 +113,11 @@ class TestCratesClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_success(self, client, sample_crate_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_crate_data):
             with patch.object(client, "_get_crate_owners", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0):
+                with patch.object(
+                    client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0
+                ):
                     result = await client.get_package_info("serde")
         assert result is not None
         assert result["name"] == "serde"
@@ -131,7 +129,9 @@ class TestCratesClient:
             client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
         ) as mock_get:
             with patch.object(client, "_get_crate_owners", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0):
+                with patch.object(
+                    client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=0
+                ):
                     await client.get_package_info("serde")
         url = mock_get.call_args[0][0]
         assert "/api/v1/crates/serde" in url
@@ -145,19 +145,22 @@ class TestCratesClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_handles_missing_crate_key(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value={"versions": []}
-        ), pytest.raises(HTTPException) as exc_info:
+        with (
+            patch.object(client, "_get", new_callable=AsyncMock, return_value={"versions": []}),
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await client.get_package_info("bad-data")
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
     async def test_get_package_versions_success(self, client, sample_crate_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_crate_data
-        ):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value=[]):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_crate_data):
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value=[]
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
                     versions = await client.get_package_versions("serde")
         assert len(versions) == 2
         assert versions[0]["version"] == "1.0.188"
@@ -181,9 +184,7 @@ class TestCratesClient:
                 }
             ]
         }
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=mock_deps
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_deps):
             deps = await client.get_dependencies("serde", "1.0.188")
         assert "normal" in deps
 
@@ -195,12 +196,15 @@ class TestCratesClient:
 
     @pytest.mark.asyncio
     async def test_check_compatibility_returns_result(self, client, sample_crate_data):
-        with patch.object(
-            client,
-            "_get",
-            new_callable=AsyncMock,
-            return_value=sample_crate_data.__class__({"crate": {"id": "serde"}}),
-        ), patch.object(client, "check_compatibility") as mock_check:
+        with (
+            patch.object(
+                client,
+                "_get",
+                new_callable=AsyncMock,
+                return_value=sample_crate_data.__class__({"crate": {"id": "serde"}}),
+            ),
+            patch.object(client, "check_compatibility") as mock_check,
+        ):
             mock_check.return_value = {"compatible": True}
             result = await client.check_compatibility("serde", "1.0.188", {})
             assert isinstance(result, dict)
@@ -210,15 +214,42 @@ class TestCratesClient:
     async def test_get_package_versions_exclude_yanked(self, client):
         data = {
             "versions": [
-                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 1000, "license": "MIT"},
-                {"num": "1.0.1", "created_at": "2024-02-01", "updated_at": "2024-02-01", "yanked": True, "downloads": 100, "license": "MIT"},
-                {"num": "1.0.2", "created_at": "2024-03-01", "updated_at": "2024-03-01", "yanked": False, "downloads": 500, "license": "MIT"},
+                {
+                    "num": "1.0.0",
+                    "created_at": "2024-01-01",
+                    "updated_at": "2024-01-01",
+                    "yanked": False,
+                    "downloads": 1000,
+                    "license": "MIT",
+                },
+                {
+                    "num": "1.0.1",
+                    "created_at": "2024-02-01",
+                    "updated_at": "2024-02-01",
+                    "yanked": True,
+                    "downloads": 100,
+                    "license": "MIT",
+                },
+                {
+                    "num": "1.0.2",
+                    "created_at": "2024-03-01",
+                    "updated_at": "2024-03-01",
+                    "yanked": False,
+                    "downloads": 500,
+                    "license": "MIT",
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={}):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
-                    versions = await client.get_package_versions("serde", filters={"exclude_yanked": True})
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value={}
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
+                    versions = await client.get_package_versions(
+                        "serde", filters={"exclude_yanked": True}
+                    )
         assert len(versions) == 2
         assert all(v["version"] in ("1.0.0", "1.0.2") for v in versions)
 
@@ -227,15 +258,42 @@ class TestCratesClient:
     async def test_get_package_versions_exclude_prerelease(self, client):
         data = {
             "versions": [
-                {"num": "1.0.0", "created_at": "2023-01-01", "updated_at": "2023-01-01", "yanked": False, "downloads": 1000, "license": "MIT"},
-                {"num": "1.1.0-beta.1", "created_at": "2023-06-01", "updated_at": "2023-06-01", "yanked": False, "downloads": 50, "license": "MIT"},
-                {"num": "1.1.0", "created_at": "2023-12-01", "updated_at": "2023-12-01", "yanked": False, "downloads": 800, "license": "MIT"},
+                {
+                    "num": "1.0.0",
+                    "created_at": "2023-01-01",
+                    "updated_at": "2023-01-01",
+                    "yanked": False,
+                    "downloads": 1000,
+                    "license": "MIT",
+                },
+                {
+                    "num": "1.1.0-beta.1",
+                    "created_at": "2023-06-01",
+                    "updated_at": "2023-06-01",
+                    "yanked": False,
+                    "downloads": 50,
+                    "license": "MIT",
+                },
+                {
+                    "num": "1.1.0",
+                    "created_at": "2023-12-01",
+                    "updated_at": "2023-12-01",
+                    "yanked": False,
+                    "downloads": 800,
+                    "license": "MIT",
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={}):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
-                    versions = await client.get_package_versions("serde", filters={"exclude_prerelease": True})
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value={}
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
+                    versions = await client.get_package_versions(
+                        "serde", filters={"exclude_prerelease": True}
+                    )
         assert len(versions) == 2
         assert all("beta" not in v["version"] for v in versions)
 
@@ -244,16 +302,45 @@ class TestCratesClient:
     async def test_get_package_versions_version_range(self, client):
         data = {
             "versions": [
-                {"num": "0.8.0", "created_at": "2023-01-01", "updated_at": "2023-01-01", "yanked": False, "downloads": 100, "license": "MIT"},
-                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 500, "license": "MIT"},
-                {"num": "2.0.0", "created_at": "2024-06-01", "updated_at": "2024-06-01", "yanked": False, "downloads": 300, "license": "MIT"},
+                {
+                    "num": "0.8.0",
+                    "created_at": "2023-01-01",
+                    "updated_at": "2023-01-01",
+                    "yanked": False,
+                    "downloads": 100,
+                    "license": "MIT",
+                },
+                {
+                    "num": "1.0.0",
+                    "created_at": "2024-01-01",
+                    "updated_at": "2024-01-01",
+                    "yanked": False,
+                    "downloads": 500,
+                    "license": "MIT",
+                },
+                {
+                    "num": "2.0.0",
+                    "created_at": "2024-06-01",
+                    "updated_at": "2024-06-01",
+                    "yanked": False,
+                    "downloads": 300,
+                    "license": "MIT",
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={}):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
-                    with patch.object(client, "_version_matches_range", side_effect=lambda v, r: v == "1.0.0"):
-                        versions = await client.get_package_versions("serde", filters={"version_range": ">=1.0, <2.0"})
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value={}
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
+                    with patch.object(
+                        client, "_version_matches_range", side_effect=lambda v, r: v == "1.0.0"
+                    ):
+                        versions = await client.get_package_versions(
+                            "serde", filters={"version_range": ">=1.0, <2.0"}
+                        )
         assert len(versions) == 1
         assert versions[0]["version"] == "1.0.0"
 
@@ -262,22 +349,47 @@ class TestCratesClient:
     async def test_get_package_versions_min_rust_version(self, client):
         data = {
             "versions": [
-                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 500, "license": "MIT"},
-                {"num": "2.0.0", "created_at": "2024-06-01", "updated_at": "2024-06-01", "yanked": False, "downloads": 300, "license": "MIT"},
+                {
+                    "num": "1.0.0",
+                    "created_at": "2024-01-01",
+                    "updated_at": "2024-01-01",
+                    "yanked": False,
+                    "downloads": 500,
+                    "license": "MIT",
+                },
+                {
+                    "num": "2.0.0",
+                    "created_at": "2024-06-01",
+                    "updated_at": "2024-06-01",
+                    "yanked": False,
+                    "downloads": 300,
+                    "license": "MIT",
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value={}
+            ):
                 with patch.object(client, "_get_version_msrv", side_effect=["1.65", "1.60"]):
-                    with patch.object(client, "_rust_version_compatible", side_effect=[False, True]):
-                        versions = await client.get_package_versions("serde", filters={"min_rust_version": "1.60"})
+                    with patch.object(
+                        client, "_rust_version_compatible", side_effect=[False, True]
+                    ):
+                        versions = await client.get_package_versions(
+                            "serde", filters={"min_rust_version": "1.60"}
+                        )
         assert len(versions) == 1
         assert versions[0]["version"] == "2.0.0"
 
     # === New test: get_package_versions re-raises HTTPException ===
     @pytest.mark.asyncio
     async def test_get_package_versions_http_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=404, detail="Not found")):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=404, detail="Not found"),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_package_versions("unknown")
         assert exc_info.value.status_code == 404
@@ -285,7 +397,9 @@ class TestCratesClient:
     # === New test: get_package_versions wraps generic exception ===
     @pytest.mark.asyncio
     async def test_get_package_versions_generic_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("connection error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=ValueError("connection error")
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_package_versions("bad")
         assert exc_info.value.status_code == 500
@@ -296,12 +410,28 @@ class TestCratesClient:
     async def test_get_dependencies_include_dev(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "normal", "req": "^1.0", "optional": False, "features": [], "default_features": True},
-                {"crate_id": "dep2", "kind": "dev", "req": "^2.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "dep1",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
+                {
+                    "crate_id": "dep2",
+                    "kind": "dev",
+                    "req": "^2.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
-            with patch.object(client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None):
+            with patch.object(
+                client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None
+            ):
                 deps = await client.get_dependencies("serde", "1.0.0", include_dev=True)
         assert len(deps["normal"]) == 1
         assert len(deps["dev"]) == 1
@@ -312,12 +442,28 @@ class TestCratesClient:
     async def test_get_dependencies_include_build(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "normal", "req": "^1.0", "optional": False, "features": [], "default_features": True},
-                {"crate_id": "dep2", "kind": "build", "req": "^3.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "dep1",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
+                {
+                    "crate_id": "dep2",
+                    "kind": "build",
+                    "req": "^3.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
-            with patch.object(client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None):
+            with patch.object(
+                client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None
+            ):
                 deps = await client.get_dependencies("serde", "1.0.0", include_build=True)
         assert len(deps["normal"]) == 1
         assert len(deps["build"]) == 1
@@ -328,12 +474,28 @@ class TestCratesClient:
     async def test_get_dependencies_exclude_optional(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "normal", "req": "^1.0", "optional": False, "features": [], "default_features": True},
-                {"crate_id": "dep2", "kind": "normal", "req": "^1.0", "optional": True, "features": [], "default_features": False},
+                {
+                    "crate_id": "dep1",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
+                {
+                    "crate_id": "dep2",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": True,
+                    "features": [],
+                    "default_features": False,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
-            with patch.object(client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None):
+            with patch.object(
+                client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None
+            ):
                 deps = await client.get_dependencies("serde", "1.0.0", include_optional=False)
         assert len(deps["normal"]) == 1
         assert deps["normal"][0]["name"] == "dep1"
@@ -343,11 +505,23 @@ class TestCratesClient:
     async def test_get_dependencies_resolve_version(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "serde_derive", "kind": "normal", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "serde_derive",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
-            with patch.object(client, "_resolve_version_requirement", new_callable=AsyncMock, return_value="1.0.188"):
+            with patch.object(
+                client,
+                "_resolve_version_requirement",
+                new_callable=AsyncMock,
+                return_value="1.0.188",
+            ):
                 deps = await client.get_dependencies("serde", "1.0.0")
         assert deps["normal"][0].get("resolved_version") == "1.0.188"
 
@@ -356,12 +530,29 @@ class TestCratesClient:
     async def test_get_dependencies_no_version(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "normal", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "dep1",
+                    "kind": "normal",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
-            with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"info": {"latest_version": "1.0.0"}}):
-                with patch.object(client, "_resolve_version_requirement", new_callable=AsyncMock, return_value=None):
+            with patch.object(
+                client,
+                "get_package_info",
+                new_callable=AsyncMock,
+                return_value={"info": {"latest_version": "1.0.0"}},
+            ):
+                with patch.object(
+                    client,
+                    "_resolve_version_requirement",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
                     deps = await client.get_dependencies("serde")
         assert len(deps["normal"]) == 1
         assert deps["normal"][0]["name"] == "dep1"
@@ -369,40 +560,57 @@ class TestCratesClient:
     # === New test: _resolve_version_requirement finds matching version ===
     @pytest.mark.asyncio
     async def test_resolve_version_requirement_found(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[
-            {"version": "1.0.0"},
-            {"version": "1.1.0"},
-            {"version": "2.0.0"},
-        ]):
+        with patch.object(
+            client,
+            "get_package_versions",
+            new_callable=AsyncMock,
+            return_value=[
+                {"version": "1.0.0"},
+                {"version": "1.1.0"},
+                {"version": "2.0.0"},
+            ],
+        ):
             result = await client._resolve_version_requirement("serde", "^1.0")
         assert result == "1.0.0"
 
     # === New test: _resolve_version_requirement no match ===
     @pytest.mark.asyncio
     async def test_resolve_version_requirement_not_found(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[
-            {"version": "2.0.0"},
-            {"version": "3.0.0"},
-        ]):
+        with patch.object(
+            client,
+            "get_package_versions",
+            new_callable=AsyncMock,
+            return_value=[
+                {"version": "2.0.0"},
+                {"version": "3.0.0"},
+            ],
+        ):
             result = await client._resolve_version_requirement("serde", "^1.0")
         assert result is None
 
     # === New test: _resolve_version_requirement handles exception ===
     @pytest.mark.asyncio
     async def test_resolve_version_requirement_exception(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, side_effect=Exception("error")):
+        with patch.object(
+            client, "get_package_versions", new_callable=AsyncMock, side_effect=Exception("error")
+        ):
             result = await client._resolve_version_requirement("serde", "^1.0")
         assert result is None
 
     # === New test: _get_crate_owners fetches and transforms owner data ===
     @pytest.mark.asyncio
     async def test_get_crate_owners_success(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={
-            "users": [
-                {"id": 1, "login": "alice", "kind": "user"},
-                {"id": 2, "login": "bot", "kind": "team"},
-            ]
-        }):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            return_value={
+                "users": [
+                    {"id": 1, "login": "alice", "kind": "user"},
+                    {"id": 2, "login": "bot", "kind": "team"},
+                ]
+            },
+        ):
             owners = await client._get_crate_owners("serde")
         assert len(owners) == 2
         assert owners[0]["login"] == "alice"
@@ -425,9 +633,9 @@ class TestCratesClient:
     # === New test: _get_reverse_dependencies returns total count ===
     @pytest.mark.asyncio
     async def test_get_reverse_dependencies_success(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value={
-            "meta": {"total": 42}
-        }):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value={"meta": {"total": 42}}
+        ):
             count = await client._get_reverse_dependencies("serde")
         assert count == 42
 
@@ -448,13 +656,18 @@ class TestCratesClient:
     # === New test: _get_version_msrv returns correct MSRV by release year ===
     @pytest.mark.asyncio
     async def test_get_version_msrv_by_year(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[
-            {"version": "0.1.0", "release_date": "2017-06-15T00:00:00Z"},
-            {"version": "0.2.0", "release_date": "2018-06-15T00:00:00Z"},
-            {"version": "0.3.0", "release_date": "2020-06-15T00:00:00Z"},
-            {"version": "0.4.0", "release_date": "2021-06-15T00:00:00Z"},
-            {"version": "0.5.0", "release_date": "2023-06-15T00:00:00Z"},
-        ]):
+        with patch.object(
+            client,
+            "get_package_versions",
+            new_callable=AsyncMock,
+            return_value=[
+                {"version": "0.1.0", "release_date": "2017-06-15T00:00:00Z"},
+                {"version": "0.2.0", "release_date": "2018-06-15T00:00:00Z"},
+                {"version": "0.3.0", "release_date": "2020-06-15T00:00:00Z"},
+                {"version": "0.4.0", "release_date": "2021-06-15T00:00:00Z"},
+                {"version": "0.5.0", "release_date": "2023-06-15T00:00:00Z"},
+            ],
+        ):
             assert await client._get_version_msrv("crate", "0.1.0") == "1.0"
             assert await client._get_version_msrv("crate", "0.2.0") == "1.31"
             assert await client._get_version_msrv("crate", "0.3.0") == "1.45"
@@ -464,9 +677,14 @@ class TestCratesClient:
     # === New test: _get_version_msrv returns None when version not found ===
     @pytest.mark.asyncio
     async def test_get_version_msrv_not_found(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, return_value=[
-            {"version": "1.0.0", "release_date": "2023-01-01T00:00:00Z"},
-        ]):
+        with patch.object(
+            client,
+            "get_package_versions",
+            new_callable=AsyncMock,
+            return_value=[
+                {"version": "1.0.0", "release_date": "2023-01-01T00:00:00Z"},
+            ],
+        ):
             msrv = await client._get_version_msrv("crate", "2.0.0")
         assert msrv is None
 
@@ -517,11 +735,16 @@ class TestCratesClient:
     # === New test: get_dependency_tree basic with no deps ===
     @pytest.mark.asyncio
     async def test_get_dependency_tree_basic(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={
-            "normal": [],
-            "build": [],
-            "dev": [],
-        }):
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={
+                "normal": [],
+                "build": [],
+                "dev": [],
+            },
+        ):
             tree = await client.get_dependency_tree("serde", "1.0.0")
         assert tree["name"] == "serde"
         assert tree["version"] == "1.0.0"
@@ -543,8 +766,18 @@ class TestCratesClient:
     # === New test: get_dependency_tree fetches version from package info ===
     @pytest.mark.asyncio
     async def test_get_dependency_tree_fetches_version(self, client):
-        with patch.object(client, "get_package_info", new_callable=AsyncMock, return_value={"info": {"latest_version": "1.0.0"}}):
-            with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={"normal": [], "build": [], "dev": []}):
+        with patch.object(
+            client,
+            "get_package_info",
+            new_callable=AsyncMock,
+            return_value={"info": {"latest_version": "1.0.0"}},
+        ):
+            with patch.object(
+                client,
+                "get_dependencies",
+                new_callable=AsyncMock,
+                return_value={"normal": [], "build": [], "dev": []},
+            ):
                 tree = await client.get_dependency_tree("serde")
         assert tree["name"] == "serde"
         assert tree["version"] == "1.0.0"
@@ -552,11 +785,16 @@ class TestCratesClient:
     # === New test: get_dependency_tree with nested dep ===
     @pytest.mark.asyncio
     async def test_get_dependency_tree_nested(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={
-            "normal": [{"name": "dep1", "resolved_version": "0.2.0", "optional": False}],
-            "build": [],
-            "dev": [],
-        }):
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={
+                "normal": [{"name": "dep1", "resolved_version": "0.2.0", "optional": False}],
+                "build": [],
+                "dev": [],
+            },
+        ):
             tree = await client.get_dependency_tree("serde", "1.0.0", max_depth=1)
         assert tree["name"] == "serde"
         assert len(tree["dependencies"]["normal"]) == 1
@@ -564,61 +802,126 @@ class TestCratesClient:
     # === New test: get_dependency_tree skips optional deps ===
     @pytest.mark.asyncio
     async def test_get_dependency_tree_skips_optional(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={
-            "normal": [{"name": "opt_dep", "resolved_version": "0.1.0", "optional": True}],
-            "build": [],
-            "dev": [],
-        }):
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={
+                "normal": [{"name": "opt_dep", "resolved_version": "0.1.0", "optional": True}],
+                "build": [],
+                "dev": [],
+            },
+        ):
             tree = await client.get_dependency_tree("serde", "1.0.0")
         assert len(tree["dependencies"]["normal"]) == 0
 
     # === New test: check_compatibility with incompatible Rust version ===
     @pytest.mark.asyncio
     async def test_check_compatibility_rust_incompatible(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={"normal": [], "dev": [], "build": []}):
-            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.65"):
-                result = await client.check_compatibility("serde", "1.0.0", {"rust_version": "1.60.0"})
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={"normal": [], "dev": [], "build": []},
+        ):
+            with patch.object(
+                client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.65"
+            ):
+                result = await client.check_compatibility(
+                    "serde", "1.0.0", {"rust_version": "1.60.0"}
+                )
         assert result["compatible"] is False
         assert any("Requires Rust 1.65" in e for e in result["errors"])
 
     # === New test: check_compatibility with missing feature ===
     @pytest.mark.asyncio
     async def test_check_compatibility_feature_not_available(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={"normal": [], "dev": [], "build": []}):
-            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value=None):
-                with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={"default": ["std"]}):
-                    result = await client.check_compatibility("serde", "1.0.0", {"enabled_features": ["unknown_feature"]})
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={"normal": [], "dev": [], "build": []},
+        ):
+            with patch.object(
+                client, "_get_version_msrv", new_callable=AsyncMock, return_value=None
+            ):
+                with patch.object(
+                    client,
+                    "_get_version_features",
+                    new_callable=AsyncMock,
+                    return_value={"default": ["std"]},
+                ):
+                    result = await client.check_compatibility(
+                        "serde", "1.0.0", {"enabled_features": ["unknown_feature"]}
+                    )
         assert result["compatible"] is False
         assert any("unknown_feature" in e for e in result["errors"])
 
     # === New test: check_compatibility with target dep warning ===
     @pytest.mark.asyncio
     async def test_check_compatibility_target_warning(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={
-            "normal": [{"name": "linux-dep", "target": 'cfg(target_os = "linux")', "optional": False, "ecosystem": "crates"}],
-            "dev": [],
-            "build": [],
-        }):
-            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value=None):
-                result = await client.check_compatibility("serde", "1.0.0", {"target_triple": "x86_64-pc-windows-msvc"})
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={
+                "normal": [
+                    {
+                        "name": "linux-dep",
+                        "target": 'cfg(target_os = "linux")',
+                        "optional": False,
+                        "ecosystem": "crates",
+                    }
+                ],
+                "dev": [],
+                "build": [],
+            },
+        ):
+            with patch.object(
+                client, "_get_version_msrv", new_callable=AsyncMock, return_value=None
+            ):
+                result = await client.check_compatibility(
+                    "serde", "1.0.0", {"target_triple": "x86_64-pc-windows-msvc"}
+                )
         assert len(result["warnings"]) > 0
 
     # === New test: check_compatibility with system dep library warning ===
     @pytest.mark.asyncio
     async def test_check_compatibility_system_dep_warning(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={
-            "normal": [{"name": "openssl-sys", "version_requirement": "^0.9", "optional": False, "ecosystem": "crates"}],
-            "dev": [],
-            "build": [],
-        }):
-            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value=None):
-                result = await client.check_compatibility("serde", "1.0.0", {"installed_libraries": []})
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={
+                "normal": [
+                    {
+                        "name": "openssl-sys",
+                        "version_requirement": "^0.9",
+                        "optional": False,
+                        "ecosystem": "crates",
+                    }
+                ],
+                "dev": [],
+                "build": [],
+            },
+        ):
+            with patch.object(
+                client, "_get_version_msrv", new_callable=AsyncMock, return_value=None
+            ):
+                result = await client.check_compatibility(
+                    "serde", "1.0.0", {"installed_libraries": []}
+                )
         assert len(result["warnings"]) > 0
 
     # === New test: check_compatibility handles exception gracefully ===
     @pytest.mark.asyncio
     async def test_check_compatibility_exception(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, side_effect=Exception("network error")):
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            side_effect=Exception("network error"),
+        ):
             result = await client.check_compatibility("serde", "1.0.0", {})
         assert result["compatible"] is True
         assert any("network error" in w for w in result["warnings"])
@@ -626,7 +929,12 @@ class TestCratesClient:
     # === New test: get_package_info re-raises HTTPException ===
     @pytest.mark.asyncio
     async def test_get_package_info_http_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail="rate limited")):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=429, detail="rate limited"),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_package_info("serde")
         assert exc_info.value.status_code == 429
@@ -634,7 +942,9 @@ class TestCratesClient:
     # === New test: get_package_info wraps generic exception ===
     @pytest.mark.asyncio
     async def test_get_package_info_generic_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_package_info("serde")
         assert exc_info.value.status_code == 500
@@ -645,13 +955,31 @@ class TestCratesClient:
     async def test_get_package_versions_skips_invalid(self, client):
         data = {
             "versions": [
-                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 500, "license": "MIT"},
-                {"num": "not-a-version", "created_at": "2024-02-01", "updated_at": "2024-02-01", "yanked": False, "downloads": 0, "license": None},
+                {
+                    "num": "1.0.0",
+                    "created_at": "2024-01-01",
+                    "updated_at": "2024-01-01",
+                    "yanked": False,
+                    "downloads": 500,
+                    "license": "MIT",
+                },
+                {
+                    "num": "not-a-version",
+                    "created_at": "2024-02-01",
+                    "updated_at": "2024-02-01",
+                    "yanked": False,
+                    "downloads": 0,
+                    "license": None,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, return_value={}):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+            with patch.object(
+                client, "_get_version_features", new_callable=AsyncMock, return_value={}
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
                     versions = await client.get_package_versions("serde")
         assert len(versions) == 1
         assert versions[0]["version"] == "1.0.0"
@@ -659,14 +987,21 @@ class TestCratesClient:
     # === Coverage: search_packages exception handlers (lines 90-95) ===
     @pytest.mark.asyncio
     async def test_search_packages_re_raises_http_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail="rate limited")):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=429, detail="rate limited"),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.search_packages("serde")
         assert exc_info.value.status_code == 429
 
     @pytest.mark.asyncio
     async def test_search_packages_wraps_generic_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.search_packages("serde")
         assert exc_info.value.status_code == 500
@@ -677,12 +1012,26 @@ class TestCratesClient:
     async def test_get_package_versions_features_exception(self, client):
         data = {
             "versions": [
-                {"num": "1.0.0", "created_at": "2024-01-01", "updated_at": "2024-01-01", "yanked": False, "downloads": 500, "license": "MIT"},
+                {
+                    "num": "1.0.0",
+                    "created_at": "2024-01-01",
+                    "updated_at": "2024-01-01",
+                    "yanked": False,
+                    "downloads": 500,
+                    "license": "MIT",
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=data):
-            with patch.object(client, "_get_version_features", new_callable=AsyncMock, side_effect=Exception("fail")):
-                with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
+            with patch.object(
+                client,
+                "_get_version_features",
+                new_callable=AsyncMock,
+                side_effect=Exception("fail"),
+            ):
+                with patch.object(
+                    client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+                ):
                     versions = await client.get_package_versions("serde")
         assert len(versions) == 1
 
@@ -691,7 +1040,14 @@ class TestCratesClient:
     async def test_get_dependencies_skips_dev_by_default(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "dev", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "dep1",
+                    "kind": "dev",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
@@ -702,7 +1058,14 @@ class TestCratesClient:
     async def test_get_dependencies_skips_build_by_default(self, client):
         mock_data = {
             "dependencies": [
-                {"crate_id": "dep1", "kind": "build", "req": "^1.0", "optional": False, "features": [], "default_features": True},
+                {
+                    "crate_id": "dep1",
+                    "kind": "build",
+                    "req": "^1.0",
+                    "optional": False,
+                    "features": [],
+                    "default_features": True,
+                },
             ]
         }
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=mock_data):
@@ -712,14 +1075,21 @@ class TestCratesClient:
     # === Coverage: get_dependencies exception handlers (lines 332-337) ===
     @pytest.mark.asyncio
     async def test_get_dependencies_re_raises_http_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail="rate limited")):
+        with patch.object(
+            client,
+            "_get",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=429, detail="rate limited"),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_dependencies("serde", "1.0.0")
         assert exc_info.value.status_code == 429
 
     @pytest.mark.asyncio
     async def test_get_dependencies_wraps_generic_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await client.get_dependencies("serde", "1.0.0")
         assert exc_info.value.status_code == 500
@@ -728,16 +1098,27 @@ class TestCratesClient:
     # === Coverage: check_compatibility compatible branch (line 408) ===
     @pytest.mark.asyncio
     async def test_check_compatibility_rust_compatible(self, client):
-        with patch.object(client, "get_dependencies", new_callable=AsyncMock, return_value={"normal": [], "dev": [], "build": []}):
-            with patch.object(client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"):
-                result = await client.check_compatibility("serde", "1.0.0", {"rust_version": "1.65.0"})
+        with patch.object(
+            client,
+            "get_dependencies",
+            new_callable=AsyncMock,
+            return_value={"normal": [], "dev": [], "build": []},
+        ):
+            with patch.object(
+                client, "_get_version_msrv", new_callable=AsyncMock, return_value="1.60"
+            ):
+                result = await client.check_compatibility(
+                    "serde", "1.0.0", {"rust_version": "1.65.0"}
+                )
         assert result["compatible"] is True
         assert "rust_version" in result["details"]
 
     # === Coverage: _get_version_msrv exception (lines 519-520) ===
     @pytest.mark.asyncio
     async def test_get_version_msrv_handles_exception(self, client):
-        with patch.object(client, "get_package_versions", new_callable=AsyncMock, side_effect=Exception("fail")):
+        with patch.object(
+            client, "get_package_versions", new_callable=AsyncMock, side_effect=Exception("fail")
+        ):
             msrv = await client._get_version_msrv("crate", "1.0.0")
         assert msrv is None
 
@@ -786,10 +1167,21 @@ class TestCratesClient:
 
     # === Coverage: _target_matches (lines 653, 656-665) ===
     def test_target_matches_various(self, client):
-        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "windows")') is False
-        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "macos")') is False
-        assert client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_arch = "aarch64")') is False
-        assert client._target_matches("aarch64-unknown-linux-gnu", 'cfg(target_arch = "x86_64")') is False
+        assert (
+            client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "windows")')
+            is False
+        )
+        assert (
+            client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_os = "macos")') is False
+        )
+        assert (
+            client._target_matches("x86_64-unknown-linux-gnu", 'cfg(target_arch = "aarch64")')
+            is False
+        )
+        assert (
+            client._target_matches("aarch64-unknown-linux-gnu", 'cfg(target_arch = "x86_64")')
+            is False
+        )
         assert client._target_matches("any", "plain-dep") is True
 
     # === Coverage: _extract_msrv from keyword (lines 670-673) ===

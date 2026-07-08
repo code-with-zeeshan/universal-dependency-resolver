@@ -92,9 +92,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: mark test as an integration test")
     config.addinivalue_line("markers", "e2e: mark test as an end-to-end test")
     config.addinivalue_line("markers", "slow: mark test as slow running")
-    config.addinivalue_line(
-        "markers", "external_api: mark test as requiring external API access"
-    )
+    config.addinivalue_line("markers", "external_api: mark test as requiring external API access")
 
 
 # Test collection customization

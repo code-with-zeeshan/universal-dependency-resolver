@@ -190,9 +190,10 @@ class CratesClient(BaseDataSourceClient):
                     if filters.get("exclude_prerelease", False) and parsed_version.is_prerelease:
                         continue
 
-                    if "version_range" in filters:
-                        if not self._version_matches_range(version_str, filters["version_range"]):
-                            continue
+                    if "version_range" in filters and not self._version_matches_range(
+                        version_str, filters["version_range"]
+                    ):
+                        continue
 
                     if "min_rust_version" in filters:
                         crate_msrv = await self._get_version_msrv(package_name, version_str)

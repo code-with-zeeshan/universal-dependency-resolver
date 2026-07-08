@@ -10,4 +10,6 @@ class TestWhyHelp:
 
     def test_help_shows_usage(self):
         result = _run("why", "--help")
-        assert "usage: udr why" in result.stdout.lower() or "usage: udr why" in result.stderr.lower()
+        assert (
+            "usage: udr why" in result.stdout.lower() or "usage: udr why" in result.stderr.lower()
+        )

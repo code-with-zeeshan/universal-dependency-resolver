@@ -63,7 +63,9 @@ class MavenClient(BaseDataSourceClient):
         last_error = None
         for attempt in range(self.max_retries):
             try:
-                async with session.get(url, params=params) as response:
+                async with session.get(
+                    url, params=params, headers=self._auth_headers or None
+                ) as response:
                     if response.status == 404:
                         return None
 
@@ -383,19 +385,21 @@ class MavenClient(BaseDataSourceClient):
                             if not self._version_matches_range(version_str, range_info):
                                 continue
 
-                        if "release_type" in filters:
-                            if (
+                        if "release_type" in filters and (
+                            (
                                 filters["release_type"] == "stable"
                                 and (
                                     "SNAPSHOT" in version_str
                                     or "alpha" in version_str.lower()
                                     or "beta" in version_str.lower()
                                 )
-                            ) or (
+                            )
+                            or (
                                 filters["release_type"] == "snapshot"
                                 and "SNAPSHOT" not in version_str
-                            ):
-                                continue
+                            )
+                        ):
+                            continue
 
                     versions.append(version_info)
 
@@ -462,11 +466,14 @@ class MavenClient(BaseDataSourceClient):
                 for profile_id, profile in profiles.items():
                     if "activation" in profile and "os" in profile["activation"]:
                         os_req = profile["activation"]["os"]
-                        if os_req.get("name") and system_info.get("os_name"):
-                            if os_req["name"].lower() not in system_info["os_name"].lower():
-                                compatibility["warnings"].append(
-                                    f"Profile '{profile_id}' is OS-specific for {os_req['name']}"
-                                )
+                        if (
+                            os_req.get("name")
+                            and system_info.get("os_name")
+                            and os_req["name"].lower() not in system_info["os_name"].lower()
+                        ):
+                            compatibility["warnings"].append(
+                                f"Profile '{profile_id}' is OS-specific for {os_req['name']}"
+                            )
 
             return compatibility
 

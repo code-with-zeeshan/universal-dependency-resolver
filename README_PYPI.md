@@ -49,8 +49,8 @@ pip install ud-resolver
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| **17 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth |
-| **45 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **18 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index |
+| **49 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |
@@ -93,8 +93,8 @@ udr list-ecosystems
 ```python
 import asyncio
 from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.system_scanner import SystemScanner
+from backend.orchestrator.resolve import create_solver
 
 async def main():
     scanner = SystemScanner()
@@ -106,7 +106,7 @@ async def main():
         include_dependencies=True, include_versions=True,
     )
 
-    resolver = ConflictResolver()
+    resolver = create_solver()
     result = resolver.resolve(
         [{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,

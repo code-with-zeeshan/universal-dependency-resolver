@@ -7,7 +7,7 @@ from pathlib import Path
 from rich import box
 from rich.table import Table
 
-from ..shared import console
+from ..shared import _resolve_lock_path, console
 
 
 def _read_lock(path: str) -> dict:
@@ -30,8 +30,24 @@ def _read_lock(path: str) -> dict:
 
 def cmd_diff(args):
     """Cmd diff."""
-    data_a = _read_lock(args.lock_file_a)
-    data_b = _read_lock(args.lock_file_b)
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    workspace = getattr(args, "workspace", None)
+
+    if workspace and not args.lock_file_a and not args.lock_file_b:
+        # Compare udr.lock vs udr-{workspace}.lock
+        path_a = str(_resolve_lock_path(directory, workspace=None))
+        path_b = str(_resolve_lock_path(directory, workspace=workspace))
+    elif args.lock_file_a and args.lock_file_b:
+        path_a = args.lock_file_a
+        path_b = args.lock_file_b
+    else:
+        console.print(
+            "[red]Specify two lock file paths, or use --workspace for a diff with the base lock file.[/red]"
+        )
+        sys.exit(1)
+
+    data_a = _read_lock(path_a)
+    data_b = _read_lock(path_b)
 
     pkgs_a = data_a.get("packages", {})
     pkgs_b = data_b.get("packages", {})
@@ -67,8 +83,8 @@ def cmd_diff(args):
 
     if getattr(args, "json", False):
         data = {
-            "file_a": args.lock_file_a,
-            "file_b": args.lock_file_b,
+            "file_a": path_a,
+            "file_b": path_b,
             "added": [{"name": n, "ecosystem": e, "version": v} for n, e, v in added],
             "removed": [{"name": n, "ecosystem": e, "version": v} for n, e, v in removed],
             "changed": [
@@ -80,7 +96,7 @@ def cmd_diff(args):
         print()
         return
 
-    console.print(f"[bold]Diff:[/bold] {args.lock_file_a} ↔ {args.lock_file_b}")
+    console.print(f"[bold]Diff:[/bold] {path_a} ↔ {path_b}")
     console.print()
 
     if not added and not removed and not changed:

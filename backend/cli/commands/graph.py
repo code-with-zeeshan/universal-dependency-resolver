@@ -56,12 +56,13 @@ def _build_recursive_tree(
 
 def cmd_graph(args):
     """Cmd graph."""
-    from backend.core import ConflictResolver, DataAggregator
+    from backend.core import DataAggregator
+    from backend.orchestrator.resolve import create_solver
 
     async def _graph():
         """Graph."""
         aggregator = DataAggregator()
-        resolver = ConflictResolver()
+        resolver = create_solver()
         system_info = resolver._get_default_system_info()
 
         if getattr(args, "cuda", None) is not None:

@@ -32,7 +32,7 @@ python -m pytest tests/
 python -m pytest tests/unit/
 
 # CLI end-to-end (black-box subprocess tests)
-python -m pytest tests/cli/
+python -m pytest tests/e2e/
 
 # Data source tests only
 python -m pytest tests/unit/ -k "data_source"
@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **1572 unit tests** + **10 CLI e2e** + **5 JSON compliance** + **13 problem-statement** + **46 edge-cases**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **1839 unit tests** + **10 CLI e2e** + **5 JSON compliance** + **13 problem-statement** + **46 edge-cases**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
 
 ## Code quality
 
@@ -85,7 +85,7 @@ desktop/
 └── package.json
 tests/
 ├── conftest.py        # Shared fixtures
-├── unit/              # 1572 tests
+├── unit/              # 1839 tests
 ├── integration/       # 96 tests
 └── e2e/               # 74 tests
 ```

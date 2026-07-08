@@ -38,9 +38,7 @@ class TestAPTClient:
         assert result["version"] == "1.24.0-1"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_package_data
-    ):
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_package_data):
         with patch.object(
             client,
             "_get_packages_list",
@@ -52,9 +50,7 @@ class TestAPTClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={}
-        ):
+        with patch.object(client, "_get_packages_list", new_callable=AsyncMock, return_value={}):
             result = await client.get_package_info_async("nonexistent")
         assert result is None
 
@@ -90,7 +86,10 @@ class TestAPTClient:
 
     def test_package_exists_handles_exception(self, client):
         with patch.object(
-            client, "get_package_info_async", new_callable=AsyncMock, side_effect=Exception("apt error")
+            client,
+            "get_package_info_async",
+            new_callable=AsyncMock,
+            side_effect=Exception("apt error"),
         ):
             assert client.package_exists("nginx") is False
 
@@ -107,9 +106,7 @@ class TestAPTClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_returns_empty_on_failure(self, client):
-        with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={}
-        ):
+        with patch.object(client, "_get_packages_list", new_callable=AsyncMock, return_value={}):
             results = await client.search_packages("nonexistent")
         assert results == []
 
@@ -135,25 +132,24 @@ class TestAPTClient:
 
     @pytest.mark.asyncio
     async def test_get_versions_empty_when_no_package(self, client):
-        with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={}
-        ):
+        with patch.object(client, "_get_packages_list", new_callable=AsyncMock, return_value={}):
             versions = await client.get_versions("nonexistent")
         assert versions == []
 
     @pytest.mark.asyncio
     async def test_get_dependencies_success(self, client, sample_package_data):
         with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={"nginx": sample_package_data}
+            client,
+            "_get_packages_list",
+            new_callable=AsyncMock,
+            return_value={"nginx": sample_package_data},
         ):
             deps = await client.get_dependencies("nginx", "1.24.0-1")
         assert "depends" in deps
 
     @pytest.mark.asyncio
     async def test_get_dependencies_returns_empty_on_error(self, client):
-        with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={}
-        ):
+        with patch.object(client, "_get_packages_list", new_callable=AsyncMock, return_value={}):
             deps = await client.get_dependencies("nonexistent", "1.0")
         assert deps == {}
 
@@ -169,7 +165,10 @@ class TestAPTClient:
     @pytest.mark.asyncio
     async def test_get_dependencies_version_none(self, client, sample_package_data):
         with patch.object(
-            client, "_get_packages_list", new_callable=AsyncMock, return_value={"nginx": sample_package_data}
+            client,
+            "_get_packages_list",
+            new_callable=AsyncMock,
+            return_value={"nginx": sample_package_data},
         ):
             deps = await client.get_dependencies("nginx")
         assert "depends" in deps
@@ -201,10 +200,7 @@ class TestAPTClient:
         assert result["nginx"]["description"] == "web server"
 
     def test_parse_packages_file_multiple_packages(self, client):
-        content = (
-            "Package: nginx\nVersion: 1.24.0-1\n\n"
-            "Package: curl\nVersion: 7.88.1\n\n"
-        )
+        content = "Package: nginx\nVersion: 1.24.0-1\n\nPackage: curl\nVersion: 7.88.1\n\n"
         result = client._parse_packages_file(content)
         assert len(result) == 2
         assert result["nginx"]["version"] == "1.24.0-1"
@@ -267,6 +263,7 @@ class TestAPTClient:
     @pytest.mark.asyncio
     async def test_get_packages_list_success(self, client):
         import gzip
+
         content = "Package: nginx\nVersion: 1.24.0-1\n\n"
         gz_content = gzip.compress(content.encode())
         mock_response = AsyncMock()
@@ -306,6 +303,7 @@ class TestAPTClient:
     @pytest.mark.asyncio
     async def test_get_packages_list_caches_result(self, client):
         import gzip
+
         content = "Package: nginx\nVersion: 1.24.0-1\n\n"
         gz_content = gzip.compress(content.encode())
         mock_response = AsyncMock()
@@ -323,8 +321,7 @@ class TestAPTClient:
     @pytest.mark.asyncio
     async def test_search_packages_respects_limit(self, client):
         many_packages = {
-            f"pkg{i}": {"version": f"1.{i}", "description": f"package {i}"}
-            for i in range(10)
+            f"pkg{i}": {"version": f"1.{i}", "description": f"package {i}"} for i in range(10)
         }
         with patch.object(
             client, "_get_packages_list", new_callable=AsyncMock, return_value=many_packages

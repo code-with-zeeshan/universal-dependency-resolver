@@ -17,9 +17,12 @@ import sys
 def get_releases(repo: str) -> list[dict]:
     result = subprocess.run(
         ["gh", "release", "list", "--repo", repo, "--json", "tagName,id,body", "--limit", "100"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     import json
+
     return json.loads(result.stdout)
 
 
@@ -35,7 +38,8 @@ def get_changelog_section(text: str, target_ver: str) -> str | None:
 def update_release(repo: str, tag: str, body: str) -> None:
     subprocess.run(
         ["gh", "release", "edit", tag, "--repo", repo, "--notes", body],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
 
 
@@ -49,9 +53,12 @@ def main():
     else:
         result = subprocess.run(
             ["gh", "repo", "view", "--json", "nameWithOwner"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         import json
+
         repo = json.loads(result.stdout)["nameWithOwner"]
 
     try:

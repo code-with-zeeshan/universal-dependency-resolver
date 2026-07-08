@@ -84,11 +84,25 @@ def _build_parser() -> argparse.ArgumentParser:
         "--cuda",
         help="Target CUDA version (e.g. 12.1) — simulate system check for a specific CUDA config",
     )
+    check_p.add_argument("--cve", action="store_true", help="Check lock file for known CVEs")
+    check_p.add_argument(
+        "--license", action="store_true", help="Check lock file for license compliance"
+    )
     check_p.add_argument(
         "--device",
         choices=["cpu", "cuda", "mps"],
-        default=None,
         help="Simulate system check for a specific compute device",
+    )
+    check_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    check_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    check_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
     )
 
     resolve_p = sub.add_parser("resolve", help="Resolve dependencies for one or more packages")
@@ -128,6 +142,36 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Resolution timeout in seconds (default: 120, from SOLVER_TIMEOUT env var)",
+    )
+    resolve_p.add_argument(
+        "--extras",
+        type=lambda s: [x.strip() for x in s.split(",")],
+        default=None,
+        help="Comma-separated extras groups to activate (e.g. 'dotenv,speedups')",
+    )
+    resolve_p.add_argument(
+        "--pin",
+        action="append",
+        default=None,
+        help="Pin a package to an exact version (e.g. 'numpy==1.24'). Repeatable.",
+    )
+    resolve_p.add_argument(
+        "--pin-mode",
+        choices=["none", "patch", "minor", "exact"],
+        default="none",
+        help="Global pinning strategy (default: none)",
+    )
+    resolve_p.add_argument(
+        "--block",
+        action="append",
+        default=None,
+        help="Block a package from resolution (e.g. 'tensorflow'). Repeatable.",
+    )
+    resolve_p.add_argument(
+        "--freeze",
+        action="store_true",
+        default=False,
+        help="Freeze all packages at their lock-file versions",
     )
 
     lock_p = sub.add_parser(
@@ -182,6 +226,46 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Resolution timeout in seconds (default: 120, from SOLVER_TIMEOUT env var)",
     )
     lock_p.add_argument(
+        "--extras",
+        type=lambda s: [x.strip() for x in s.split(",")],
+        default=None,
+        help="Comma-separated extras groups to activate (e.g. 'dotenv,speedups')",
+    )
+    lock_p.add_argument(
+        "--pin",
+        action="append",
+        default=None,
+        help="Pin a package to an exact version (e.g. 'numpy==1.24'). Repeatable.",
+    )
+    lock_p.add_argument(
+        "--pin-mode",
+        choices=["none", "patch", "minor", "exact"],
+        default="none",
+        help="Global pinning strategy (default: none)",
+    )
+    lock_p.add_argument(
+        "--block",
+        action="append",
+        default=None,
+        help="Block a package from resolution (e.g. 'tensorflow'). Repeatable.",
+    )
+    lock_p.add_argument(
+        "--freeze",
+        action="store_true",
+        default=False,
+        help="Freeze all packages at their lock-file versions",
+    )
+    lock_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name for monorepo support — lock file becomes udr-{workspace}.lock",
+    )
+    lock_p.add_argument(
+        "--prefix",
+        default=None,
+        help="Prefix package names in lock file with string (e.g. 'backend/' for monorepo scoping)",
+    )
+    lock_p.add_argument(
         "--force",
         "-f",
         action="store_true",
@@ -217,10 +301,16 @@ def _build_parser() -> argparse.ArgumentParser:
     verify_p.add_argument(
         "lock_file",
         nargs="?",
-        default="udr.lock",
-        help="Path to lock file (default: udr.lock)",
+        default=None,
+        help="Path to lock file (default: auto-detected from directory/workspace)",
     )
     verify_p.add_argument("--json", action="store_true", help="Output as JSON")
+    verify_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    verify_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
 
     list_eco_p = sub.add_parser("list-ecosystems", help="List all supported ecosystems")
     list_eco_p.add_argument("--json", action="store_true", help="Output as JSON")
@@ -228,6 +318,16 @@ def _build_parser() -> argparse.ArgumentParser:
     update_p = sub.add_parser("update", help="Re-resolve a package and update lock file")
     update_p.add_argument("package", help="Package name to re-resolve")
     update_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    update_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    update_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
+    )
     update_p.add_argument(
         "--interactive",
         "-i",
@@ -258,6 +358,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--lock-file",
         "-l",
         help="Path to lock file (default: <directory>/udr.lock)",
+    )
+    install_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
     )
     install_p.add_argument(
         "--ecosystem",
@@ -338,6 +443,16 @@ def _build_parser() -> argparse.ArgumentParser:
     why_p.add_argument("--all", "-a", action="store_true", help="Show info for all packages")
     why_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     why_p.add_argument("--json", action="store_true", help="Output as JSON")
+    why_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    why_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
+    )
 
     outdated_p = sub.add_parser(
         "outdated",
@@ -353,14 +468,30 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=_eco_choices,
         help="Only check packages from this ecosystem",
     )
+    outdated_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    outdated_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
+    )
 
     diff_p = sub.add_parser(
         "diff",
         help="Compare two lock files and show version differences",
     )
-    diff_p.add_argument("lock_file_a", help="First lock file path")
-    diff_p.add_argument("lock_file_b", help="Second lock file path")
+    diff_p.add_argument("lock_file_a", nargs="?", default=None, help="First lock file path")
+    diff_p.add_argument("lock_file_b", nargs="?", default=None, help="Second lock file path")
     diff_p.add_argument("--json", action="store_true", help="Output as JSON")
+    diff_p.add_argument("--directory", "-d", default=".", help="Project directory with lock files")
+    diff_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — compares current vs. udr-{workspace}.lock",
+    )
 
     search_p = sub.add_parser(
         "search",

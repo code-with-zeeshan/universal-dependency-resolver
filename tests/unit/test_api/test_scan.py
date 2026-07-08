@@ -2,7 +2,7 @@
 
 import io
 import zipfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,14 +11,22 @@ import pytest
 def mock_manifest_detector():
     with patch("backend.api.routes.scan.ManifestDetector") as m:
         instance = m.return_value
-        instance.detect.return_value = [
-            {"filename": "requirements.txt", "ecosystem": "pypi"}
-        ]
+        instance.detect.return_value = [{"filename": "requirements.txt", "ecosystem": "pypi"}]
         instance.parse_all.return_value = [
-            {"name": "requests", "ecosystem": "pypi", "constraint": ">=2.28.0", "source": "requirements.txt"}
+            {
+                "name": "requests",
+                "ecosystem": "pypi",
+                "constraint": ">=2.28.0",
+                "source": "requirements.txt",
+            }
         ]
         instance.normalize.return_value = [
-            {"name": "requests", "ecosystem": "pypi", "constraint": ">=2.28.0", "source": "requirements.txt"}
+            {
+                "name": "requests",
+                "ecosystem": "pypi",
+                "constraint": ">=2.28.0",
+                "source": "requirements.txt",
+            }
         ]
         yield m
 
@@ -31,23 +39,17 @@ def mock_aggregator():
         instance.get_package_info.return_value = {
             "name": "requests",
             "ecosystem": {"pypi": {"system_requirements": {}}},
-            "versions": {
-                "pypi": [{"version": "2.31.0"}, {"version": "2.28.0"}]
-            },
-            "dependencies": {
-                "pypi": {"all": []}
-            },
-            "system_requirements": {
-                "pypi": []
-            },
+            "versions": {"pypi": [{"version": "2.31.0"}, {"version": "2.28.0"}]},
+            "dependencies": {"pypi": {"all": []}},
+            "system_requirements": {"pypi": []},
         }
         yield m
 
 
 @pytest.fixture
 def mock_resolver():
-    with patch("backend.api.routes.scan.ConflictResolver") as m:
-        instance = m.return_value
+    with patch("backend.api.routes.scan.create_solver") as m:
+        instance = MagicMock()
         instance.resolve_dependencies.return_value = {
             "status": "success",
             "resolved_packages": {"requests": {"version": "2.31.0", "ecosystem": "pypi"}},
@@ -58,6 +60,7 @@ def mock_resolver():
             "resolved_packages": {"requests": {"version": "2.31.0", "ecosystem": "pypi"}},
             "warnings": [],
         }
+        m.return_value = instance
         yield m
 
 
@@ -83,7 +86,9 @@ class TestScanLocal:
         data = response.json()
         assert "not found" in data["error"]["message"].lower()
 
-    def test_scan_local_success(self, client, tmp_path, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner):
+    def test_scan_local_success(
+        self, client, tmp_path, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
+    ):
         project = tmp_path / "myproject"
         project.mkdir()
         (project / "requirements.txt").write_text("requests>=2.28.0\n")
@@ -98,17 +103,23 @@ class TestScanLocal:
 
 class TestScanUpload:
     def test_scan_upload_not_zip(self, client):
-        response = client.post("/api/v1/scan/upload", files={"file": ("test.txt", b"hello world", "text/plain")})
+        response = client.post(
+            "/api/v1/scan/upload", files={"file": ("test.txt", b"hello world", "text/plain")}
+        )
         assert response.status_code == 400
         assert "zip" in response.json()["error"]["message"].lower()
 
-    def test_scan_upload_success(self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner):
+    def test_scan_upload_success(
+        self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
+    ):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:
             z.writestr("requirements.txt", "requests>=2.28.0\n")
         buf.seek(0)
 
-        response = client.post("/api/v1/scan/upload", files={"file": ("project.zip", buf, "application/zip")})
+        response = client.post(
+            "/api/v1/scan/upload", files={"file": ("project.zip", buf, "application/zip")}
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -120,8 +131,12 @@ class TestScanGitHub:
         response = client.post("/api/v1/scan/github", json={"repo_url": "not-a-url"})
         assert response.status_code == 400
 
-    def test_scan_github_success(self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner):
-        response = client.post("/api/v1/scan/github", json={"repo_url": "https://github.com/psf/requests"})
+    def test_scan_github_success(
+        self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
+    ):
+        response = client.post(
+            "/api/v1/scan/github", json={"repo_url": "https://github.com/psf/requests"}
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"

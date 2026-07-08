@@ -75,10 +75,12 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ.setdefault("OTEL_ENABLED", "false")
 os.environ.setdefault("ENABLE_AUTH", "false")
 
+
 def _enable_sqlite_fk(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
 
 if USING_SQLITE:
     engine = create_engine(
@@ -100,10 +102,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
-    """Create all tables before tests, drop after."""
-    from backend.database.models import run_migrations
-
-    run_migrations()
+    """Create all tables before tests (via Alembic on test engine), drop after."""
+    Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
 
@@ -119,7 +119,7 @@ def _patch_engine():
 
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
+def db_session(setup_database) -> Generator[Session, None, None]:
     """Provide a transactional database session rolled back after each test.
 
     Cleans all tables at the start to remove data left by API tests
@@ -249,7 +249,5 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("requires_postgres"):
             item.add_marker(
-                pytest.mark.skip(
-                    reason="Test requires PostgreSQL but running on SQLite"
-                )
+                pytest.mark.skip(reason="Test requires PostgreSQL but running on SQLite")
             )

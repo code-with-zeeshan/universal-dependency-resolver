@@ -13,7 +13,6 @@ from pydantic import BaseModel, validator
 
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_data_aggregator
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.data_aggregator import DataAggregator
 from backend.core.system_scanner import SystemScanner
 from backend.manifest_detector import ManifestDetector
@@ -22,6 +21,7 @@ from backend.orchestrator import (
     _apply_cuda_variants,
     _parse_package_spec,
     _resolve_transitive,
+    create_solver,
 )
 from backend.orchestrator.install import _generate_install_command
 
@@ -189,7 +189,7 @@ async def dependency_graph(
     """Get dependency tree for one or more packages.
     Mirrors `udr graph`.
     """
-    resolver = ConflictResolver()
+    resolver = create_solver()
     specs = [_parse_package_spec(p, req.ecosystem) for p in req.packages]
     system_info = resolver._get_default_system_info()
 
@@ -214,10 +214,16 @@ async def dependency_graph(
         raise HTTPException(status_code=404, detail="No packages could be resolved")
 
     try:
-        solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
+        bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
+        solver_ms = max(10000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
         resolved = await asyncio.wait_for(
             _resolve_transitive(
-                aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+                aggregator,
+                resolver,
+                resolver_inputs,
+                system_info,
+                solver_timeout=solver_ms,
+                bfs_timeout=bfs_budget,
             ),
             timeout=SOLVER_API_TIMEOUT,
         )
@@ -264,7 +270,7 @@ async def update_package(
     Mirrors `udr update <package> --directory <path> --json`.
     """
     aggregator = DataAggregator()
-    resolver = ConflictResolver()
+    resolver = create_solver()
     scanner = SystemScanner()
 
     lock_data = req.lock_data
@@ -300,10 +306,16 @@ async def update_package(
         raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
 
     try:
-        solver_ms = max(5000, int((SOLVER_API_TIMEOUT - 5) * 1000))
+        bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
+        solver_ms = max(5000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
         resolved = await asyncio.wait_for(
             _resolve_transitive(
-                aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+                aggregator,
+                resolver,
+                resolver_inputs,
+                system_info,
+                solver_timeout=solver_ms,
+                bfs_timeout=bfs_budget,
             ),
             timeout=SOLVER_API_TIMEOUT,
         )
@@ -354,7 +366,7 @@ async def _run_lock_pipeline(
 
         detector = ManifestDetector(str(tmp))
         aggregator = DataAggregator()
-        resolver = ConflictResolver()
+        resolver = create_solver()
         scanner = SystemScanner()
 
         manifests = detector.detect()
@@ -393,7 +405,9 @@ async def _run_lock_pipeline(
                 )
                 if data:
                     package_details[pkg["name"]] = data
-                    rinput = _aggregator_to_resolver_input(data, pkg["ecosystem"])
+                    rinput = _aggregator_to_resolver_input(
+                        data, pkg["ecosystem"], extras=pkg.get("extras")
+                    )
                     resolver_inputs.append(rinput)
             except Exception as e:
                 logger.warning("Failed to fetch %s: %s", pkg["name"], e)
@@ -404,10 +418,16 @@ async def _run_lock_pipeline(
             system_info = await scanner.scan_all()
 
         try:
-            solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
+            bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
+            solver_ms = max(10000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
             resolved = await asyncio.wait_for(
                 _resolve_transitive(
-                    aggregator, resolver, resolver_inputs, system_info, solver_timeout=solver_ms
+                    aggregator,
+                    resolver,
+                    resolver_inputs,
+                    system_info,
+                    solver_timeout=solver_ms,
+                    bfs_timeout=bfs_budget,
                 ),
                 timeout=SOLVER_API_TIMEOUT,
             )

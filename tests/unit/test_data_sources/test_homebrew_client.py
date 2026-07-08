@@ -19,9 +19,7 @@ class TestHomebrewClient:
             "urls": {"stable": {"url": "https://curl.se/download/curl-8.4.0.tar.bz2"}},
             "revision": 0,
             "version_scheme": 0,
-            "bottle": {
-                "stable": {"rebuild": 0, "files": {"arm64_ventura": {"url": "..."}}}
-            },
+            "bottle": {"stable": {"rebuild": 0, "files": {"arm64_ventura": {"url": "..."}}}},
             "desc": "Get a file from an HTTP, HTTPS or FTP server",
             "license": "curl",
             "homepage": "https://curl.se",
@@ -42,9 +40,7 @@ class TestHomebrewClient:
         assert result["name"] == "curl"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_formula_data
-    ):
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_formula_data):
         with patch.object(
             client,
             "_get",
@@ -58,12 +54,8 @@ class TestHomebrewClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
-            result = await client.get_package_info_async(
-                "nonexistent", PackageType.FORMULA
-            )
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
+            result = await client.get_package_info_async("nonexistent", PackageType.FORMULA)
         assert result is None
 
     def test_get_package_info_sync_success(self, client, sample_formula_data):
@@ -115,17 +107,13 @@ class TestHomebrewClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_no_results(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=[]
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=[]):
             results = await client.search_packages("nonexistent")
         assert results == []
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_exception(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")):
             results = await client.search_packages("curl")
         assert results == []
 
@@ -150,9 +138,7 @@ class TestHomebrewClient:
         assert deps == {}
 
     @pytest.mark.asyncio
-    async def test_check_compatibility_returns_result(
-        self, client, sample_formula_data
-    ):
+    async def test_check_compatibility_returns_result(self, client, sample_formula_data):
         with patch.object(
             client,
             "get_package_info_async",
@@ -178,18 +164,14 @@ class TestHomebrewClient:
             "name": ["Visual Studio Code"],
             "desc": "Code editor",
         }
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=[cask_data]
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=[cask_data]):
             results = await client.search_packages("visual", package_type=PackageType.CASK)
         assert len(results) == 1
         assert results[0]["name"] == "visual-studio-code"
 
     @pytest.mark.asyncio
     async def test_search_casks_exception(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")):
             results = await client.search_packages("visual", package_type=PackageType.CASK)
         assert results == []
 
@@ -217,9 +199,7 @@ class TestHomebrewClient:
                 "arch": "x86_64",
             },
         }
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=cask_data
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=cask_data):
             result = await client.get_package_info_async("visual-studio-code", PackageType.CASK)
         assert result is not None
         assert result["name"] == "visual-studio-code"
@@ -227,9 +207,7 @@ class TestHomebrewClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_cask_not_found(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent", PackageType.CASK)
         assert result is None
 
@@ -337,7 +315,9 @@ class TestHomebrewClient:
         with patch.object(
             client, "get_package_info_async", new_callable=AsyncMock, return_value=None
         ):
-            result = await client.check_compatibility("nonexistent", PackageType.FORMULA, {"macos_version": "13.0"})
+            result = await client.check_compatibility(
+                "nonexistent", PackageType.FORMULA, {"macos_version": "13.0"}
+            )
         assert result["compatible"] is False
         assert "Package not found" in result["errors"]
 
@@ -350,7 +330,9 @@ class TestHomebrewClient:
             new_callable=AsyncMock,
             return_value=formula_data,
         ):
-            result = await client.check_compatibility("curl", PackageType.FORMULA, {"macos_version": "13.0"})
+            result = await client.check_compatibility(
+                "curl", PackageType.FORMULA, {"macos_version": "13.0"}
+            )
         assert result["compatible"] is False
         assert any("macOS" in e for e in result["errors"])
 
@@ -363,7 +345,9 @@ class TestHomebrewClient:
             new_callable=AsyncMock,
             return_value=formula_data,
         ):
-            result = await client.check_compatibility("curl", PackageType.FORMULA, {"macos_version": "14.0"})
+            result = await client.check_compatibility(
+                "curl", PackageType.FORMULA, {"macos_version": "14.0"}
+            )
         assert result["compatible"] is True
 
     @pytest.mark.asyncio

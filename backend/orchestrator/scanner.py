@@ -17,13 +17,13 @@ async def _download_github_repo(url: str, branch: str) -> Path:
     owner, repo = match.group(1), match.group(2).rstrip(".git")
     api_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
     headers = {"User-Agent": "UDR/1.0"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
-        ) as resp:
-            if resp.status != 200:
-                raise ValueError(f"GitHub API returned {resp.status} for {url}")
-            data = await resp.read()
+    async with (
+        aiohttp.ClientSession() as session,
+        session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp,
+    ):
+        if resp.status != 200:
+            raise ValueError(f"GitHub API returned {resp.status} for {url}")
+        data = await resp.read()
     tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
     z = zipfile.ZipFile(io.BytesIO(data))
     _safe_extractall(z, tmp)

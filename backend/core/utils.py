@@ -141,7 +141,6 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
         "pods": "cocoapods",
         "cocoa": "cocoapods",
         "ios": "cocoapods",
-        "swift": "cocoapods",
         # Ruby
         "ruby": "rubygems",
         "gem": "rubygems",

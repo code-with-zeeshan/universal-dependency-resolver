@@ -6,6 +6,7 @@ Usage: python3 scripts/extract_changelog.py <version>
 
 Outputs only the changelog section for that specific version.
 """
+
 import re
 import sys
 

@@ -66,6 +66,7 @@ htmlcov/
 .tox/
 .nox/
 coverage.xml
+.coverage.*
 *.cover
 .hypothesis/
 

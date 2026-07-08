@@ -22,7 +22,7 @@ from backend.core.utils import (
     normalize_package_name,
     sanitize_ecosystem_name,
 )
-from backend.settings import OSV_API_URL
+from backend.settings import DETECT_ECOSYSTEMS_TIMEOUT, OSV_API_URL
 
 from ._json import dumps
 
@@ -346,32 +346,41 @@ class DataAggregator:
         """Detect which ecosystems a package might belong to."""
         package_name = normalize_package_name(package_name)
 
-        # Check cache
         if package_name in self._ecosystem_cache:
             return self._ecosystem_cache[package_name]
 
         ecosystems: list[Ecosystem] = []
 
-        # Check each source concurrently
         tasks = []
         for eco in Ecosystem:
-            if eco == Ecosystem.DOCS:  # Skip docs for ecosystem detection
+            if eco == Ecosystem.DOCS:
                 continue
             tasks.append(self._check_ecosystem_exists(eco, package_name))
 
-        results = await asyncio.gather(*tasks)
+        timeout = DETECT_ECOSYSTEMS_TIMEOUT
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=timeout,
+            )
+            pending = []
+        except TimeoutError:
+            results = []
+            pending = tasks
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+                    pending.append(t)
+            for eco, exists in zip([e for e in Ecosystem if e != Ecosystem.DOCS], results):
+                if isinstance(exists, Exception):
+                    continue
+                if exists:
+                    ecosystems.append(eco)
 
-        for eco, exists in zip([e for e in Ecosystem if e != Ecosystem.DOCS], results):
-            if exists:
-                ecosystems.append(eco)
-
-        # Always check documentation if any ecosystem found
         if ecosystems:
             ecosystems.append(Ecosystem.DOCS)
 
-        # Cache the result
         self._ecosystem_cache[package_name] = ecosystems
-
         return ecosystems
 
     async def _check_ecosystem_exists(self, ecosystem: Ecosystem, package_name: str) -> bool:
@@ -483,9 +492,10 @@ class DataAggregator:
         unified = aggregated["unified_data"]
 
         # Description (prefer longer descriptions)
-        if data.get("description"):
-            if not unified["description"] or len(data["description"]) > len(unified["description"]):
-                unified["description"] = data["description"]
+        if data.get("description") and (
+            not unified["description"] or len(data["description"]) > len(unified["description"])
+        ):
+            unified["description"] = data["description"]
 
         # License
         if data.get("license") and not unified["license"]:
@@ -511,7 +521,7 @@ class DataAggregator:
         for person_type in ["authors", "author", "maintainers", "maintainer"]:
             if person_type in data:
                 persons = data[person_type]
-                if isinstance(persons, str) or isinstance(persons, dict):
+                if isinstance(persons, (str, dict)):
                     persons = [persons]
 
                 target = "authors" if "author" in person_type else "maintainers"
@@ -1009,6 +1019,16 @@ class DataAggregator:
             "rubygems": "RubyGems",
             "packagist": "Packagist",
             "nuget": "NuGet",
+            "conda": "PyPI",
+            "pub": "Pub",
+            "cocoapods": "cocoapods",
+            "homebrew": "Homebrew",
+            "gradle": "Maven",
+            "swift": "SwiftURL",
+            "hex": "Hex",
+            "haskell": "Hackage",
+            "apt": "Debian",
+            "apk": "Alpine",
         }
         return mapping.get(ecosystem.lower())
 
@@ -1124,10 +1144,13 @@ class DataAggregator:
             # Check system requirements
             for eco, reqs in pkg_info.get("system_requirements", {}).items():
                 for req in reqs:
-                    if req.type == "runtime" and req.name in system_info:
-                        if not self._check_requirement_compatibility(req, system_info):
-                            pkg_compat["compatible"] = False
-                            pkg_compat["issues"].append(f"Requires {req.name} {req.version_spec}")
+                    if (
+                        req.type == "runtime"
+                        and req.name in system_info
+                        and not self._check_requirement_compatibility(req, system_info)
+                    ):
+                        pkg_compat["compatible"] = False
+                        pkg_compat["issues"].append(f"Requires {req.name} {req.version_spec}")
 
             compatibility_report["package_compatibility"][name] = pkg_compat
 

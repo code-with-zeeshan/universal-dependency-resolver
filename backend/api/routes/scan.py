@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from backend.api.auth import get_current_user
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
 from backend.core.system_scanner import SystemScanner
@@ -43,14 +42,14 @@ class LocalScanRequest(BaseModel):
     directory_path: str
 
 
-from backend.orchestrator import _download_github_repo
+from backend.orchestrator import _download_github_repo, create_solver
 
 
 async def _run_resolution_pipeline(project_dir: Path, export_format: str | None = None) -> dict:
     """Run manifest detection + resolution on a project directory."""
     detector = ManifestDetector(str(project_dir))
     aggregator = DataAggregator()
-    resolver = ConflictResolver()
+    resolver = create_solver()
     scanner = SystemScanner()
     exporter = ExportGenerator() if export_format else None
 
@@ -90,7 +89,9 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: str | None 
             )
             if data:
                 package_details[pkg["name"]] = data
-                rinput = _aggregator_to_resolver_input(data, pkg["ecosystem"])
+                rinput = _aggregator_to_resolver_input(
+                    data, pkg["ecosystem"], extras=pkg.get("extras")
+                )
                 resolver_inputs.append(rinput)
         except Exception as e:
             logger.warning(f"Failed to fetch {pkg['name']}: {e}")
@@ -98,8 +99,17 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: str | None 
     system_info = await scanner.scan_all()
 
     try:
+        solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
+        bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
         resolved = await asyncio.wait_for(
-            _resolve_transitive(aggregator, resolver, resolver_inputs, system_info),
+            _resolve_transitive(
+                aggregator,
+                resolver,
+                resolver_inputs,
+                system_info,
+                solver_timeout=solver_ms,
+                bfs_timeout=bfs_budget,
+            ),
             timeout=SOLVER_API_TIMEOUT,
         )
     except (TimeoutError, Exception):

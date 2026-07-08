@@ -171,43 +171,27 @@ class TestDocumentationScraper:
 
     def test_get_latest_compatible_version_with_min(self, scraper):
         versions = ["1.0.0", "2.0.0", "3.0.0"]
-        result = scraper._get_latest_compatible_version(
-            versions, min_version="2.0.0"
-        )
+        result = scraper._get_latest_compatible_version(versions, min_version="2.0.0")
         assert result == "3.0.0"
 
     def test_get_latest_compatible_version_with_max(self, scraper):
         versions = ["1.0.0", "2.0.0", "3.0.0"]
-        result = scraper._get_latest_compatible_version(
-            versions, max_version="2.0.0"
-        )
+        result = scraper._get_latest_compatible_version(versions, max_version="2.0.0")
         assert result == "2.0.0"
 
     def test_get_latest_compatible_version_empty_list(self, scraper):
         assert scraper._get_latest_compatible_version([]) is None
 
     def test_get_latest_compatible_version_all_invalid(self, scraper):
-        assert (
-            scraper._get_latest_compatible_version(["notaversion"]) is None
-        )
+        assert scraper._get_latest_compatible_version(["notaversion"]) is None
 
     def test_get_latest_compatible_version_no_match_min(self, scraper):
         versions = ["1.0.0", "2.0.0"]
-        assert (
-            scraper._get_latest_compatible_version(
-                versions, min_version="5.0.0"
-            )
-            is None
-        )
+        assert scraper._get_latest_compatible_version(versions, min_version="5.0.0") is None
 
     def test_get_latest_compatible_version_no_match_max(self, scraper):
         versions = ["1.0.0", "2.0.0"]
-        assert (
-            scraper._get_latest_compatible_version(
-                versions, max_version="0.5.0"
-            )
-            is None
-        )
+        assert scraper._get_latest_compatible_version(versions, max_version="0.5.0") is None
 
     def test_get_latest_compatible_version_mixed_valid(self, scraper):
         versions = ["1.0.0", "invalid", "3.0.0", "bad"]
@@ -227,14 +211,13 @@ class TestDocumentationScraper:
             mock_scrape.return_value = expected
             result = await scraper.scrape_installation_requirements("tensorflow")
             assert result == expected
-            mock_scrape.assert_awaited_once_with(
-                "https://www.tensorflow.org/install", "tensorflow"
-            )
+            mock_scrape.assert_awaited_once_with("https://www.tensorflow.org/install", "tensorflow")
 
     @pytest.mark.asyncio
     async def test_scrape_installation_requirements_cached(self, scraper):
         scraper.session = MagicMock()
         from datetime import datetime
+
         cached = ({"cuda_versions": ["11.8"]}, datetime.now())
         scraper.compatibility_cache["requirements:tensorflow"] = cached
         with patch.object(
@@ -245,11 +228,10 @@ class TestDocumentationScraper:
             mock_scrape.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_scrape_installation_requirements_expired_cache(
-        self, scraper
-    ):
+    async def test_scrape_installation_requirements_expired_cache(self, scraper):
         scraper.session = MagicMock()
         from datetime import datetime, timedelta
+
         old = ({"cuda_versions": ["11.8"]}, datetime.now() - timedelta(hours=1))
         scraper.cache_ttl = 60  # 1 minute TTL
         scraper.compatibility_cache["requirements:tensorflow"] = old
@@ -264,13 +246,9 @@ class TestDocumentationScraper:
     @pytest.mark.asyncio
     async def test_scrape_installation_requirements_no_url(self, scraper):
         scraper.session = MagicMock()
-        with patch.object(
-            scraper, "_find_documentation_url", new_callable=AsyncMock
-        ) as mock_find:
+        with patch.object(scraper, "_find_documentation_url", new_callable=AsyncMock) as mock_find:
             mock_find.return_value = None
-            result = await scraper.scrape_installation_requirements(
-                "nonexistent_package"
-            )
+            result = await scraper.scrape_installation_requirements("nonexistent_package")
             assert result == {}
 
     # ------------------------------------------------------------------ #
@@ -290,9 +268,7 @@ class TestDocumentationScraper:
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
 
-        with patch.object(
-            scraper, "_parse_compatibility_table"
-        ) as mock_parse:
+        with patch.object(scraper, "_parse_compatibility_table") as mock_parse:
             mock_parse.return_value = {"2.0.0": {"cuda": ["11.8"]}}
             result = await scraper.extract_compatibility_matrix("tensorflow")
             assert "2.0.0" in result
@@ -303,24 +279,19 @@ class TestDocumentationScraper:
         scraper.session = MagicMock()
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.text = AsyncMock(
-            return_value="<html><body>no tables here</body></html>"
-        )
+        mock_response.text = AsyncMock(return_value="<html><body>no tables here</body></html>")
         cm = MagicMock()
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
 
-        with patch.object(
-            scraper, "_extract_compatibility_from_text"
-        ) as mock_extract, patch.object(
-            scraper, "_find_documentation_url", new_callable=AsyncMock
-        ) as mock_find:
+        with (
+            patch.object(scraper, "_extract_compatibility_from_text") as mock_extract,
+            patch.object(scraper, "_find_documentation_url", new_callable=AsyncMock) as mock_find,
+        ):
             mock_find.return_value = "https://example.com/docs"
             mock_extract.return_value = {"1.0.0": {"python": ["3.10"]}}
-            result = await scraper.extract_compatibility_matrix(
-                "somepackage"
-            )
+            result = await scraper.extract_compatibility_matrix("somepackage")
             assert "1.0.0" in result
 
     # ------------------------------------------------------------------ #
@@ -337,9 +308,7 @@ class TestDocumentationScraper:
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
 
-        result = await scraper._scrape_requirements_from_url(
-            "https://example.com", "somepkg"
-        )
+        result = await scraper._scrape_requirements_from_url("https://example.com", "somepkg")
         assert result == {}
 
     @pytest.mark.asyncio
@@ -354,9 +323,7 @@ class TestDocumentationScraper:
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
 
-        result = await scraper._scrape_requirements_from_url(
-            "https://example.com", "somepkg"
-        )
+        result = await scraper._scrape_requirements_from_url("https://example.com", "somepkg")
         assert "python_versions" in result
         assert result["python_versions"] == ["3.10"]
 
@@ -372,9 +339,7 @@ class TestDocumentationScraper:
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
 
-        result = await scraper._scrape_requirements_from_url(
-            "https://example.com", "tensorflow"
-        )
+        result = await scraper._scrape_requirements_from_url("https://example.com", "tensorflow")
         assert "cuda_versions" in result
 
     @pytest.mark.asyncio
@@ -382,9 +347,7 @@ class TestDocumentationScraper:
         scraper.session = MagicMock()
         scraper.session.get.side_effect = Exception("network error")
 
-        result = await scraper._scrape_requirements_from_url(
-            "https://example.com", "somepkg"
-        )
+        result = await scraper._scrape_requirements_from_url("https://example.com", "somepkg")
         assert result == {}
 
     # ------------------------------------------------------------------ #
@@ -588,9 +551,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert "2.0.0" in result
         assert "2.1.0" in result
         assert result["2.0.0"]["cuda"] == ["11.8"]
@@ -599,9 +560,7 @@ class TestDocumentationScraper:
     def test_parse_compatibility_table_no_headers(self, scraper):
         html = "<table><tr><td>no header row</td></tr></table>"
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert result == {}
 
     def test_parse_compatibility_table_no_version_col(self, scraper):
@@ -612,9 +571,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert result == {}
 
     def test_parse_compatibility_table_invalid_version(self, scraper):
@@ -625,9 +582,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert result == {}
 
     def test_parse_compatibility_table_package_name_column(self, scraper):
@@ -638,9 +593,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert "2.0.0" in result
         assert result["2.0.0"]["cuda"] == ["11.8"]
 
@@ -701,9 +654,7 @@ class TestDocumentationScraper:
                 "info": {
                     "docs_url": "",
                     "home_page": "",
-                    "project_urls": {
-                        "Documentation": "https://readthedocs.io/testpkg"
-                    },
+                    "project_urls": {"Documentation": "https://readthedocs.io/testpkg"},
                 }
             }
         )
@@ -751,38 +702,41 @@ class TestDocumentationScraper:
     @pytest.mark.asyncio
     async def test_find_documentation_url_common_patterns(self, scraper):
         scraper.session = MagicMock()
-        with patch.object(
-            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
-        ) as mock_pypi, patch.object(
-            scraper, "_get_github_documentation_url", new_callable=AsyncMock
-        ) as mock_gh, patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists, patch.object(
-            scraper, "_search_documentation_url", new_callable=AsyncMock
-        ) as mock_search:
+        with (
+            patch.object(
+                scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+            ) as mock_pypi,
+            patch.object(
+                scraper, "_get_github_documentation_url", new_callable=AsyncMock
+            ) as mock_gh,
+            patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists,
+            patch.object(
+                scraper, "_search_documentation_url", new_callable=AsyncMock
+            ) as mock_search,
+        ):
             mock_pypi.return_value = None
             mock_gh.return_value = None
             mock_exists.side_effect = [True, False, False, False, False]
             mock_search.return_value = None
             result = await scraper._find_documentation_url("mypackage")
-            assert (
-                result
-                == "https://mypackage.readthedocs.io/en/latest/"
-            )
+            assert result == "https://mypackage.readthedocs.io/en/latest/"
             assert mock_exists.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_find_documentation_url_all_fail(self, scraper):
         scraper.session = MagicMock()
-        with patch.object(
-            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
-        ) as mock_pypi, patch.object(
-            scraper, "_get_github_documentation_url", new_callable=AsyncMock
-        ) as mock_gh, patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists, patch.object(
-            scraper, "_search_documentation_url", new_callable=AsyncMock
-        ) as mock_search:
+        with (
+            patch.object(
+                scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+            ) as mock_pypi,
+            patch.object(
+                scraper, "_get_github_documentation_url", new_callable=AsyncMock
+            ) as mock_gh,
+            patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists,
+            patch.object(
+                scraper, "_search_documentation_url", new_callable=AsyncMock
+            ) as mock_search,
+        ):
             mock_pypi.return_value = None
             mock_gh.return_value = None
             mock_exists.return_value = False
@@ -819,9 +773,7 @@ class TestDocumentationScraper:
         assert "12.1" in result["2.0.0"]["cuda"]
 
     @pytest.mark.asyncio
-    async def test_extract_pytorch_compatibility_matrix_no_section(
-        self, scraper
-    ):
+    async def test_extract_pytorch_compatibility_matrix_no_section(self, scraper):
         soup = BeautifulSoup("<html></html>", "html.parser")
         result = await scraper._extract_pytorch_compatibility_matrix(soup)
         assert result == {}
@@ -857,14 +809,15 @@ class TestDocumentationScraper:
 
     @pytest.mark.asyncio
     async def test_find_documentation_url_from_pypi(self, scraper):
-        with patch.object(
-            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
-        ) as mock_pypi, patch.object(
-            scraper, "_get_github_documentation_url", new_callable=AsyncMock
-        ) as mock_gh, patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ), patch.object(
-            scraper, "_search_documentation_url", new_callable=AsyncMock
+        with (
+            patch.object(
+                scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+            ) as mock_pypi,
+            patch.object(
+                scraper, "_get_github_documentation_url", new_callable=AsyncMock
+            ) as mock_gh,
+            patch.object(scraper, "_check_url_exists", new_callable=AsyncMock),
+            patch.object(scraper, "_search_documentation_url", new_callable=AsyncMock),
         ):
             mock_pypi.return_value = "https://docs.example.com/"
             result = await scraper._find_documentation_url("testpkg")
@@ -873,14 +826,15 @@ class TestDocumentationScraper:
 
     @pytest.mark.asyncio
     async def test_find_documentation_url_from_github(self, scraper):
-        with patch.object(
-            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
-        ) as mock_pypi, patch.object(
-            scraper, "_get_github_documentation_url", new_callable=AsyncMock
-        ) as mock_gh, patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ), patch.object(
-            scraper, "_search_documentation_url", new_callable=AsyncMock
+        with (
+            patch.object(
+                scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+            ) as mock_pypi,
+            patch.object(
+                scraper, "_get_github_documentation_url", new_callable=AsyncMock
+            ) as mock_gh,
+            patch.object(scraper, "_check_url_exists", new_callable=AsyncMock),
+            patch.object(scraper, "_search_documentation_url", new_callable=AsyncMock),
         ):
             mock_pypi.return_value = None
             mock_gh.return_value = "https://github.com/testpkg/testpkg"
@@ -889,15 +843,18 @@ class TestDocumentationScraper:
 
     @pytest.mark.asyncio
     async def test_find_documentation_url_from_search(self, scraper):
-        with patch.object(
-            scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
-        ) as mock_pypi, patch.object(
-            scraper, "_get_github_documentation_url", new_callable=AsyncMock
-        ) as mock_gh, patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists, patch.object(
-            scraper, "_search_documentation_url", new_callable=AsyncMock
-        ) as mock_search:
+        with (
+            patch.object(
+                scraper, "_get_pypi_documentation_url", new_callable=AsyncMock
+            ) as mock_pypi,
+            patch.object(
+                scraper, "_get_github_documentation_url", new_callable=AsyncMock
+            ) as mock_gh,
+            patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists,
+            patch.object(
+                scraper, "_search_documentation_url", new_callable=AsyncMock
+            ) as mock_search,
+        ):
             mock_pypi.return_value = None
             mock_gh.return_value = None
             mock_exists.return_value = False
@@ -928,9 +885,7 @@ class TestDocumentationScraper:
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
-        with patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists:
+        with patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists:
             mock_exists.return_value = True
             result = await scraper._get_pypi_documentation_url("testpkg")
             assert result == "https://example.com/"
@@ -955,9 +910,7 @@ class TestDocumentationScraper:
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
-        with patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists:
+        with patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists:
             mock_exists.return_value = True
             result = await scraper._get_github_documentation_url("numpy")
             assert result is not None
@@ -979,9 +932,7 @@ class TestDocumentationScraper:
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
-        with patch.object(
-            scraper, "_check_url_exists", new_callable=AsyncMock
-        ) as mock_exists:
+        with patch.object(scraper, "_check_url_exists", new_callable=AsyncMock) as mock_exists:
             mock_exists.return_value = False
             result = await scraper._get_github_documentation_url("numpy")
             assert result == "https://github.com/numpy/numpy"
@@ -1019,9 +970,7 @@ class TestDocumentationScraper:
         scraper.session = MagicMock()
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.text = AsyncMock(
-            return_value="<html><body>no relevant links</body></html>"
-        )
+        mock_response.text = AsyncMock(return_value="<html><body>no relevant links</body></html>")
         cm = MagicMock()
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
@@ -1052,9 +1001,7 @@ class TestDocumentationScraper:
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
-        result = await scraper._scrape_requirements_from_url(
-            "https://pytorch.org", "pytorch"
-        )
+        result = await scraper._scrape_requirements_from_url("https://pytorch.org", "pytorch")
         assert "cuda_versions" in result
         assert "11.8" in result["cuda_versions"]
 
@@ -1070,9 +1017,7 @@ class TestDocumentationScraper:
         cm.__aenter__ = AsyncMock(return_value=mock_response)
         cm.__aexit__ = AsyncMock()
         scraper.session.get.return_value = cm
-        result = await scraper._scrape_requirements_from_url(
-            "https://docs.nvidia.com", "tensorrt"
-        )
+        result = await scraper._scrape_requirements_from_url("https://docs.nvidia.com", "tensorrt")
         assert "cuda_versions" in result
 
     # ------------------------------------------------------------------ #
@@ -1179,6 +1124,7 @@ class TestDocumentationScraper:
     @pytest.mark.asyncio
     async def test_extract_compatibility_matrix_cached(self, scraper):
         from datetime import datetime
+
         scraper.session = MagicMock()
         cached = ({"2.0.0": {"cuda": ["11.8"]}}, datetime.now())
         scraper.compatibility_cache["compat_matrix:tensorflow"] = cached
@@ -1222,9 +1168,7 @@ class TestDocumentationScraper:
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_extract_compatibility_matrix_tensorflow_package(
-        self, scraper
-    ):
+    async def test_extract_compatibility_matrix_tensorflow_package(self, scraper):
         scraper.session = MagicMock()
         mock_response = MagicMock()
         mock_response.status = 200
@@ -1245,9 +1189,7 @@ class TestDocumentationScraper:
     def test_parse_compatibility_table_empty_header_row(self, scraper):
         html = "<table><tr></tr></table>"
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert result == {}
 
     def test_parse_compatibility_table_invalid_version_after_sub(self, scraper):
@@ -1258,9 +1200,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert result == {}
 
     def test_parse_compatibility_table_short_value(self, scraper):
@@ -1271,9 +1211,7 @@ class TestDocumentationScraper:
         </table>
         """
         soup = BeautifulSoup(html, "html.parser")
-        result = scraper._parse_compatibility_table(
-            soup.find("table"), "tensorflow"
-        )
+        result = scraper._parse_compatibility_table(soup.find("table"), "tensorflow")
         assert "2.0.0" in result
         assert "11.8" in result["2.0.0"]["cuda"]
         assert "Yes" in result["2.0.0"]["python"]
@@ -1297,9 +1235,7 @@ class TestDocumentationScraper:
     # ------------------------------------------------------------------ #
 
     @pytest.mark.asyncio
-    async def test_extract_tensorflow_compatibility_matrix_parent_loop(
-        self, scraper
-    ):
+    async def test_extract_tensorflow_compatibility_matrix_parent_loop(self, scraper):
         html = """
         <div><p>Tested build configurations</p></div>
         """
@@ -1312,9 +1248,7 @@ class TestDocumentationScraper:
     # ------------------------------------------------------------------ #
 
     @pytest.mark.asyncio
-    async def test_extract_pytorch_compatibility_matrix_2digit_cuda(
-        self, scraper
-    ):
+    async def test_extract_pytorch_compatibility_matrix_2digit_cuda(self, scraper):
         html = """
         <div id="install">
             <pre>pip install torch==2.0.0+cu11</pre>

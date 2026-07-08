@@ -34,8 +34,12 @@ class TestSwiftClient:
     @pytest.mark.asyncio
     async def test_get_package_info_success(self, client, mock_versions, mock_manifest):
         with (
-            patch.object(client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions),
-            patch.object(client, "_fetch_manifest", new_callable=AsyncMock, return_value=mock_manifest),
+            patch.object(
+                client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions
+            ),
+            patch.object(
+                client, "_fetch_manifest", new_callable=AsyncMock, return_value=mock_manifest
+            ),
         ):
             result = await client.get_package_info("owner/repo")
         assert result is not None
@@ -51,7 +55,9 @@ class TestSwiftClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_no_deps(self, client, mock_versions):
-        with patch.object(client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions):
+        with patch.object(
+            client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions
+        ):
             result = await client.get_package_info("owner/repo", include_dependencies=False)
         assert result is not None
         assert result["version"] == "1.0.0"
@@ -67,13 +73,17 @@ class TestSwiftClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_exception(self, client):
-        with patch.object(client, "_list_versions", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_list_versions", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             result = await client.get_package_info("owner/broken")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_get_package_info_no_slash(self, client, mock_versions):
-        with patch.object(client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions):
+        with patch.object(
+            client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions
+        ):
             result = await client.get_package_info("single")
         assert result is not None
         assert result["name"] == "single"
@@ -83,7 +93,9 @@ class TestSwiftClient:
 
     @pytest.mark.asyncio
     async def test_get_package_versions_success(self, client, mock_versions):
-        with patch.object(client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions):
+        with patch.object(
+            client, "_list_versions", new_callable=AsyncMock, return_value=mock_versions
+        ):
             versions = await client.get_package_versions("owner/repo")
         assert len(versions) == 2
         assert versions[0]["version"] == "1.0.0"
@@ -96,59 +108,64 @@ class TestSwiftClient:
 
     @pytest.mark.asyncio
     async def test_get_package_versions_exception(self, client):
-        with patch.object(client, "_list_versions", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_list_versions", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             versions = await client.get_package_versions("owner/broken")
         assert versions == []
 
     # --- resolve_package ---
 
-    @pytest.mark.parametrize("input_str,expected", [
-        ("owner/repo", ("owner", "repo")),
-        ("scope.name", ("scope", "name")),
-        ("plain", ("plain", "plain")),
-        ("https://github.com/apple/swift-algorithms", ("apple", "swift-algorithms")),
-        ("https://github.com/apple/swift-algorithms.git", ("apple", "swift-algorithms")),
-        ("git@github.com:apple/swift-algorithms.git", ("apple", "swift-algorithms")),
-    ])
+    @pytest.mark.parametrize(
+        "input_str,expected",
+        [
+            ("owner/repo", ("owner", "repo")),
+            ("scope.name", ("scope", "name")),
+            ("plain", ("plain", "plain")),
+            ("https://github.com/apple/swift-algorithms", ("apple", "swift-algorithms")),
+            ("https://github.com/apple/swift-algorithms.git", ("apple", "swift-algorithms")),
+            ("git@github.com:apple/swift-algorithms.git", ("apple", "swift-algorithms")),
+        ],
+    )
     def test_resolve_package(self, input_str, expected):
         assert SwiftClient._resolve_package(input_str) == expected
 
     # --- parse_swift_deps ---
 
     def test_parse_swift_deps_from(self):
-        content = '''
+        content = """
         .package(url: "https://github.com/alamofire/Alamofire", from: "5.0.0"),
-        '''
+        """
         deps = SwiftClient._parse_swift_deps(content)
         assert deps == {"Alamofire": "5.0.0"}
 
     def test_parse_swift_deps_exact(self):
-        content = '''
+        content = """
         .package(url: "https://github.com/pointfreeco/swift-composable-architecture", exact: "0.40.0"),
-        '''
+        """
         deps = SwiftClient._parse_swift_deps(content)
         assert deps == {"swift-composable-architecture": "0.40.0"}
 
     def test_parse_swift_deps_branch(self):
-        content = '''
+        content = """
         .package(url: "https://github.com/apple/swift-log.git", branch: "main"),
-        '''
+        """
         deps = SwiftClient._parse_swift_deps(content)
         assert deps == {"swift-log": "main"}
 
     def test_parse_swift_deps_multiple(self):
-        content = '''
+        content = """
         .package(url: "https://github.com/alamofire/Alamofire", from: "5.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
-        '''
+        """
         deps = SwiftClient._parse_swift_deps(content)
         assert deps == {"Alamofire": "5.0.0", "swift-argument-parser": "1.0.0"}
 
     def test_parse_swift_deps_skip_comments(self):
-        content = '''
+        content = """
         // .package(url: "https://github.com/evil/package", from: "1.0.0"),
         .package(url: "https://github.com/good/package", from: "2.0.0"),
-        '''
+        """
         deps = SwiftClient._parse_swift_deps(content)
         assert deps == {"package": "2.0.0"}
 

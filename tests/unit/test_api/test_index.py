@@ -5,8 +5,6 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api.dependencies import get_data_aggregator
-
 
 @pytest.fixture
 def client():

@@ -50,17 +50,16 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_success(self, client, sample_gem_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_gem_data
-        ):
-            with patch.object(
-                client, "_get_all_versions", new_callable=AsyncMock, return_value=[]
-            ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_gem_data):
+            with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=[]):
                 with patch.object(
                     client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=[]
                 ):
                     with patch.object(
-                        client, "_get_download_stats", new_callable=AsyncMock, return_value={"total": 0, "version": 0}
+                        client,
+                        "_get_download_stats",
+                        new_callable=AsyncMock,
+                        return_value={"total": 0, "version": 0},
                     ):
                         with patch.object(
                             client, "_get_dependencies", new_callable=AsyncMock, return_value={}
@@ -71,20 +70,19 @@ class TestRubyGemsClient:
         assert result["version"] == "7.1.2"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_async_calls_correct_url(
-        self, client, sample_gem_data
-    ):
+    async def test_get_package_info_async_calls_correct_url(self, client, sample_gem_data):
         with patch.object(
             client, "_get", new_callable=AsyncMock, return_value=sample_gem_data
         ) as mock_get:
-            with patch.object(
-                client, "_get_all_versions", new_callable=AsyncMock, return_value=[]
-            ):
+            with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=[]):
                 with patch.object(
                     client, "_get_reverse_dependencies", new_callable=AsyncMock, return_value=[]
                 ):
                     with patch.object(
-                        client, "_get_download_stats", new_callable=AsyncMock, return_value={"total": 0, "version": 0}
+                        client,
+                        "_get_download_stats",
+                        new_callable=AsyncMock,
+                        return_value={"total": 0, "version": 0},
                     ):
                         with patch.object(
                             client, "_get_dependencies", new_callable=AsyncMock, return_value={}
@@ -96,9 +94,7 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_async_not_found(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
             result = await client.get_package_info_async("nonexistent")
         assert result is None
 
@@ -140,9 +136,7 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_success(self, client, sample_gem_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=[sample_gem_data]
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, return_value=[sample_gem_data]):
             results = await client.search_packages("rails", limit=10)
         assert len(results) >= 1
 
@@ -164,9 +158,7 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_search_packages_empty_on_exception(self, client):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")
-        ):
+        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("Error")):
             results = await client.search_packages("rails")
         assert results == []
 
@@ -187,9 +179,10 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_get_package_version_success(self, client, sample_versions_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
-        ), patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+        with (
+            patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_versions_data),
+            patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}),
+        ):
             result = await client.get_package_version("rails", "7.1.2")
         assert result is not None
         assert result["version"] == "7.1.2"
@@ -206,7 +199,10 @@ class TestRubyGemsClient:
             client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
         ):
             with patch.object(
-                client, "_parse_dependencies", new_callable=AsyncMock, return_value={"runtime": {"activesupport": ">=7.1.0"}}
+                client,
+                "_parse_dependencies",
+                new_callable=AsyncMock,
+                return_value={"runtime": {"activesupport": ">=7.1.0"}},
             ):
                 deps = await client.get_dependencies("rails", "7.1.2")
         assert "runtime" in deps
@@ -219,25 +215,51 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_check_compatibility_returns_result(self, client, sample_versions_data):
-        with patch.object(
-            client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
-        ), patch.object(
-            client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+        with (
+            patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_versions_data),
+            patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}),
         ):
-            result = await client.check_compatibility(
-                "rails", "7.1.2", {}
-            )
+            result = await client.check_compatibility("rails", "7.1.2", {})
         assert isinstance(result, dict)
 
     # === New test: get_versions filters out prereleases when include_prereleases=False
     @pytest.mark.asyncio
     async def test_get_versions_excludes_prereleases(self, client):
         versions_with_prerelease = [
-            {"number": "7.1.2", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-11-10", "sha": None, "metadata": {}, "downloads_count": 100000},
-            {"number": "7.2.0.beta1", "prerelease": True, "yanked": False, "platform": "ruby", "created_at": "2023-12-01", "sha": None, "metadata": {}, "downloads_count": 5000},
-            {"number": "7.1.1", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-10-15", "sha": None, "metadata": {}, "downloads_count": 50000},
+            {
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
+                "platform": "ruby",
+                "created_at": "2023-11-10",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 100000,
+            },
+            {
+                "number": "7.2.0.beta1",
+                "prerelease": True,
+                "yanked": False,
+                "platform": "ruby",
+                "created_at": "2023-12-01",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 5000,
+            },
+            {
+                "number": "7.1.1",
+                "prerelease": False,
+                "yanked": False,
+                "platform": "ruby",
+                "created_at": "2023-10-15",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 50000,
+            },
         ]
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_with_prerelease):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=versions_with_prerelease
+        ):
             versions = await client.get_versions("rails", include_prereleases=False)
         assert len(versions) == 2
         assert all(v["prerelease"] is False for v in versions)
@@ -294,7 +316,9 @@ class TestRubyGemsClient:
     # === New test: _get_download_stats returns zeros on error
     @pytest.mark.asyncio
     async def test_get_download_stats_returns_zeros_on_error(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             result = await client._get_download_stats("rails")
         assert result == {"total": 0, "version": 0}
 
@@ -325,13 +349,18 @@ class TestRubyGemsClient:
     async def test_check_compatibility_with_ruby_version(self, client):
         versions_data = [
             {
-                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
                 "required_ruby_version": ">=3.0.0",
-                "required_rubygems_version": None, "platform": "ruby",
+                "required_rubygems_version": None,
+                "platform": "ruby",
             }
         ]
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+            ):
                 result = await client.check_compatibility(
                     "rails", "7.1.2", {"ruby_version": "3.1.0"}
                 )
@@ -342,13 +371,18 @@ class TestRubyGemsClient:
     async def test_check_compatibility_with_rubygems_version(self, client):
         versions_data = [
             {
-                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
                 "required_ruby_version": None,
-                "required_rubygems_version": ">=3.2.0", "platform": "ruby",
+                "required_rubygems_version": ">=3.2.0",
+                "platform": "ruby",
             }
         ]
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+            ):
                 result = await client.check_compatibility(
                     "rails", "7.1.2", {"rubygems_version": "3.4.0"}
                 )
@@ -357,8 +391,12 @@ class TestRubyGemsClient:
 
     # === Test: get_package_version returns None when version not found in list (line 189)
     @pytest.mark.asyncio
-    async def test_get_package_version_returns_none_when_version_mismatch(self, client, sample_versions_data):
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value=sample_versions_data):
+    async def test_get_package_version_returns_none_when_version_mismatch(
+        self, client, sample_versions_data
+    ):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=sample_versions_data
+        ):
             result = await client.get_package_version("rails", "0.0.0")
         assert result is None
 
@@ -366,11 +404,40 @@ class TestRubyGemsClient:
     @pytest.mark.asyncio
     async def test_get_versions_excludes_yanked(self, client):
         versions_with_yanked = [
-            {"number": "7.1.2", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-11-10", "sha": None, "metadata": {}, "downloads_count": 100000},
-            {"number": "7.1.0", "prerelease": False, "yanked": True, "platform": "ruby", "created_at": "2023-10-01", "sha": None, "metadata": {}, "downloads_count": 50000},
-            {"number": "7.0.0", "prerelease": False, "yanked": False, "platform": "ruby", "created_at": "2023-09-01", "sha": None, "metadata": {}, "downloads_count": 25000},
+            {
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
+                "platform": "ruby",
+                "created_at": "2023-11-10",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 100000,
+            },
+            {
+                "number": "7.1.0",
+                "prerelease": False,
+                "yanked": True,
+                "platform": "ruby",
+                "created_at": "2023-10-01",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 50000,
+            },
+            {
+                "number": "7.0.0",
+                "prerelease": False,
+                "yanked": False,
+                "platform": "ruby",
+                "created_at": "2023-09-01",
+                "sha": None,
+                "metadata": {},
+                "downloads_count": 25000,
+            },
         ]
-        with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_with_yanked):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, return_value=versions_with_yanked
+        ):
             versions = await client.get_versions("rails", include_yanked=False)
         assert len(versions) == 2
         assert all(v["yanked"] is False for v in versions)
@@ -378,15 +445,29 @@ class TestRubyGemsClient:
     # === Test: get_dependencies without version uses get_package_info_async (line 242)
     @pytest.mark.asyncio
     async def test_get_dependencies_without_version(self, client):
-        with patch.object(client, "get_package_info_async", new_callable=AsyncMock, return_value={"dependencies": {"runtime": {"rack": ">=2.2"}}}):
+        with patch.object(
+            client,
+            "get_package_info_async",
+            new_callable=AsyncMock,
+            return_value={"dependencies": {"runtime": {"rack": ">=2.2"}}},
+        ):
             deps = await client.get_dependencies("rails")
         assert deps == {"runtime": {"rack": ">=2.2"}}
 
     # === Test: _get_dependencies internal method finds matching version (lines 282-287)
     @pytest.mark.asyncio
     async def test_get_dependencies_internal_found(self, client):
-        versions_data = [{"number": "7.1.2", "dependencies": {"dependencies": [{"name": "rack", "requirements": ">=2.2", "type": "runtime"}]}}]
-        with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=versions_data):
+        versions_data = [
+            {
+                "number": "7.1.2",
+                "dependencies": {
+                    "dependencies": [{"name": "rack", "requirements": ">=2.2", "type": "runtime"}]
+                },
+            }
+        ]
+        with patch.object(
+            client, "_get_all_versions", new_callable=AsyncMock, return_value=versions_data
+        ):
             result = await client._get_dependencies("rails", "7.1.2")
         assert "runtime" in result
         assert result["runtime"]["rack"] == ">=2.2"
@@ -394,7 +475,9 @@ class TestRubyGemsClient:
     # === Test: _get_dependencies internal method returns {} when version not found (line 289)
     @pytest.mark.asyncio
     async def test_get_dependencies_internal_not_found(self, client):
-        with patch.object(client, "_get_all_versions", new_callable=AsyncMock, return_value=[{"number": "7.1.2"}]):
+        with patch.object(
+            client, "_get_all_versions", new_callable=AsyncMock, return_value=[{"number": "7.1.2"}]
+        ):
             result = await client._get_dependencies("rails", "0.0.0")
         assert result == {}
 
@@ -451,13 +534,18 @@ class TestRubyGemsClient:
     async def test_check_compatibility_ruby_incompatible_error(self, client):
         versions_data = [
             {
-                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
                 "required_ruby_version": ">=3.0.0",
-                "required_rubygems_version": None, "platform": "ruby",
+                "required_rubygems_version": None,
+                "platform": "ruby",
             }
         ]
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+            ):
                 result = await client.check_compatibility(
                     "rails", "7.1.2", {"ruby_version": "2.7.0"}
                 )
@@ -469,13 +557,18 @@ class TestRubyGemsClient:
     async def test_check_compatibility_rubygems_incompatible_warning(self, client):
         versions_data = [
             {
-                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
                 "required_ruby_version": None,
-                "required_rubygems_version": ">=3.2.0", "platform": "ruby",
+                "required_rubygems_version": ">=3.2.0",
+                "platform": "ruby",
             }
         ]
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+            ):
                 result = await client.check_compatibility(
                     "rails", "7.1.2", {"rubygems_version": "3.0.0"}
                 )
@@ -487,14 +580,18 @@ class TestRubyGemsClient:
     async def test_check_compatibility_platform_incompatible_error(self, client):
         versions_data = [
             {
-                "number": "7.1.2", "prerelease": False, "yanked": False,
+                "number": "7.1.2",
+                "prerelease": False,
+                "yanked": False,
                 "required_ruby_version": None,
                 "required_rubygems_version": None,
                 "platform": "x86_64-linux",
             }
         ]
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=versions_data):
-            with patch.object(client, "_parse_dependencies", new_callable=AsyncMock, return_value={}):
+            with patch.object(
+                client, "_parse_dependencies", new_callable=AsyncMock, return_value={}
+            ):
                 result = await client.check_compatibility(
                     "rails", "7.1.2", {"platform": "arm64-darwin"}
                 )

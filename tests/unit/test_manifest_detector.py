@@ -11,6 +11,7 @@ from backend.manifest_detector import ManifestDetector
 # detect()
 # ---------------------------------------------------------------------------
 
+
 class TestDetect:
     def test_empty_directory(self, tmp_path):
         d = ManifestDetector(str(tmp_path))
@@ -75,6 +76,7 @@ class TestDetect:
 # _read_with_encoding_fallback
 # ---------------------------------------------------------------------------
 
+
 class TestReadWithEncodingFallback:
     def test_utf8_bom(self, tmp_path):
         p = tmp_path / "req.txt"
@@ -96,6 +98,7 @@ class TestReadWithEncodingFallback:
 # ---------------------------------------------------------------------------
 # parse() — individual parsers
 # ---------------------------------------------------------------------------
+
 
 class TestParseRequirements:
     def test_simple(self, tmp_path):
@@ -151,11 +154,7 @@ class TestParsePipfile:
     def test_basic(self, tmp_path):
         p = tmp_path / "Pipfile"
         p.write_text(
-            "[packages]\n"
-            'requests = ">=2.25"\n'
-            'flask = "==2.0"\n'
-            "[dev-packages]\n"
-            'pytest = "*"\n'
+            '[packages]\nrequests = ">=2.25"\nflask = "==2.0"\n[dev-packages]\npytest = "*"\n'
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pipfile"})
@@ -166,10 +165,7 @@ class TestParsePipfile:
 
     def test_dict_spec(self, tmp_path):
         p = tmp_path / "Pipfile"
-        p.write_text(
-            '[packages]\n'
-            'mypkg = {version = ">=1.0"}\n'
-        )
+        p.write_text('[packages]\nmypkg = {version = ">=1.0"}\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pipfile"})
         assert result[0] == {"name": "mypkg", "version": ">=1.0"}
@@ -185,10 +181,7 @@ class TestParsePipfile:
 class TestParsePyproject:
     def test_pep_621_dependencies(self, tmp_path):
         p = tmp_path / "pyproject.toml"
-        p.write_text(
-            '[project]\n'
-            'dependencies = ["numpy>=1.21", "requests>=2.25"]\n'
-        )
+        p.write_text('[project]\ndependencies = ["numpy>=1.21", "requests>=2.25"]\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pyproject"})
         assert len(result) == 2
@@ -197,11 +190,7 @@ class TestParsePyproject:
 
     def test_pep_621_no_extras(self, tmp_path):
         p = tmp_path / "pyproject.toml"
-        p.write_text(
-            '[project]\n'
-            'dependencies = ["numpy>=1.21"]\n'
-            'name = "my-project"\n'
-        )
+        p.write_text('[project]\ndependencies = ["numpy>=1.21"]\nname = "my-project"\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pyproject"})
         assert len(result) == 1
@@ -210,11 +199,11 @@ class TestParsePyproject:
     def test_poetry_style(self, tmp_path):
         p = tmp_path / "pyproject.toml"
         p.write_text(
-            '[tool.poetry]\n'
-            '[tool.poetry.dependencies]\n'
+            "[tool.poetry]\n"
+            "[tool.poetry.dependencies]\n"
             'python = "^3.9"\n'
             'requests = "^2.25"\n'
-            '[tool.poetry.dev-dependencies]\n'
+            "[tool.poetry.dev-dependencies]\n"
             'pytest = "^6.0"\n'
         )
         d = ManifestDetector(str(tmp_path))
@@ -235,11 +224,13 @@ class TestParsePackageJson:
     def test_basic(self, tmp_path):
         p = tmp_path / "package.json"
         p.write_text(
-            json.dumps({
-                "dependencies": {"express": "^4.0", "lodash": "^4.17"},
-                "devDependencies": {"mocha": "^9.0"},
-                "peerDependencies": {"react": "^17.0"},
-            })
+            json.dumps(
+                {
+                    "dependencies": {"express": "^4.0", "lodash": "^4.17"},
+                    "devDependencies": {"mocha": "^9.0"},
+                    "peerDependencies": {"react": "^17.0"},
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_json"})
@@ -260,12 +251,12 @@ class TestParseCargoToml:
     def test_basic(self, tmp_path):
         p = tmp_path / "Cargo.toml"
         p.write_text(
-            '[dependencies]\n'
+            "[dependencies]\n"
             'serde = "1.0"\n'
             'tokio = {version = "1.0", features = ["full"]}\n'
-            '[dev-dependencies]\n'
+            "[dev-dependencies]\n"
             'criterion = "0.3"\n'
-            '[build-dependencies]\n'
+            "[build-dependencies]\n"
             'cc = "1.0"\n'
         )
         d = ManifestDetector(str(tmp_path))
@@ -319,10 +310,7 @@ class TestParseGemfile:
 
     def test_skips_non_gem_lines(self, tmp_path):
         p = tmp_path / "Gemfile"
-        p.write_text(
-            "# comment\n"
-            'source "https://rubygems.org"\n'
-        )
+        p.write_text('# comment\nsource "https://rubygems.org"\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "gemfile"})
         assert result == []
@@ -332,15 +320,17 @@ class TestParseCondaEnv:
     def test_basic(self, tmp_path):
         p = tmp_path / "environment.yml"
         p.write_text(
-            yaml.dump({
-                "name": "myenv",
-                "dependencies": [
-                    "numpy>=1.21",
-                    "pandas==1.3",
-                    "python=3.9",
-                    "pip",
-                ],
-            })
+            yaml.dump(
+                {
+                    "name": "myenv",
+                    "dependencies": [
+                        "numpy>=1.21",
+                        "pandas==1.3",
+                        "python=3.9",
+                        "pip",
+                    ],
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "conda_env"})
@@ -353,12 +343,14 @@ class TestParseCondaEnv:
     def test_pip_subdeps(self, tmp_path):
         p = tmp_path / "environment.yml"
         p.write_text(
-            yaml.dump({
-                "dependencies": [
-                    "numpy",
-                    {"pip": ["requests==2.25", "click"]},
-                ],
-            })
+            yaml.dump(
+                {
+                    "dependencies": [
+                        "numpy",
+                        {"pip": ["requests==2.25", "click"]},
+                    ],
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "conda_env"})
@@ -379,16 +371,18 @@ class TestParseComposerJson:
     def test_basic(self, tmp_path):
         p = tmp_path / "composer.json"
         p.write_text(
-            json.dumps({
-                "require": {
-                    "php": ">=7.4",
-                    "monolog/monolog": "^2.0",
-                    "guzzlehttp/guzzle": "^7.0",
-                },
-                "require-dev": {
-                    "phpunit/phpunit": "^9.0",
-                },
-            })
+            json.dumps(
+                {
+                    "require": {
+                        "php": ">=7.4",
+                        "monolog/monolog": "^2.0",
+                        "guzzlehttp/guzzle": "^7.0",
+                    },
+                    "require-dev": {
+                        "phpunit/phpunit": "^9.0",
+                    },
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "composer_json"})
@@ -402,15 +396,17 @@ class TestParsePipfileLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "Pipfile.lock"
         p.write_text(
-            json.dumps({
-                "default": {
-                    "requests": {"version": "==2.25.0"},
-                    "flask": {"version": "==2.0.0"},
-                },
-                "develop": {
-                    "pytest": {"version": "==6.2.0"},
-                },
-            })
+            json.dumps(
+                {
+                    "default": {
+                        "requests": {"version": "==2.25.0"},
+                        "flask": {"version": "==2.0.0"},
+                    },
+                    "develop": {
+                        "pytest": {"version": "==6.2.0"},
+                    },
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pipfile_lock"})
@@ -423,10 +419,10 @@ class TestParseCargoLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "Cargo.lock"
         p.write_text(
-            '[[package]]\n'
+            "[[package]]\n"
             'name = "serde"\n'
             'version = "1.0.130"\n'
-            '[[package]]\n'
+            "[[package]]\n"
             'name = "tokio"\n'
             'version = "1.10.0"\n'
         )
@@ -441,12 +437,12 @@ class TestParseYarnLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "yarn.lock"
         p.write_text(
-            '# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.\n'
-            '# yarn lockfile v1\n'
-            '\n'
+            "# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.\n"
+            "# yarn lockfile v1\n"
+            "\n"
             '"express@^4.0":\n'
             '  version "4.17.1"\n'
-            '\n'
+            "\n"
             '"lodash@^4.17.21":\n'
             '  version "4.17.21"\n'
         )
@@ -462,13 +458,15 @@ class TestParsePackageLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "package-lock.json"
         p.write_text(
-            json.dumps({
-                "packages": {
-                    "": {},
-                    "node_modules/react": {"version": "18.2.0"},
-                    "node_modules/vue": {"version": "3.3.4"},
+            json.dumps(
+                {
+                    "packages": {
+                        "": {},
+                        "node_modules/react": {"version": "18.2.0"},
+                        "node_modules/vue": {"version": "3.3.4"},
+                    }
                 }
-            })
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_lock"})
@@ -480,6 +478,7 @@ class TestParsePackageLock:
 # ---------------------------------------------------------------------------
 # parse() — edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestParseEdgeCases:
     def test_missing_file(self, tmp_path):
@@ -507,12 +506,11 @@ class TestParseEdgeCases:
 # parse_all()
 # ---------------------------------------------------------------------------
 
+
 class TestParseAll:
     def test_merges_multiple_manifests(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("numpy\nrequests\n")
-        (tmp_path / "package.json").write_text(
-            json.dumps({"dependencies": {"express": "^4.0"}})
-        )
+        (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"express": "^4.0"}}))
         d = ManifestDetector(str(tmp_path))
         manifests = d.detect()
         result = d.parse_all(manifests)
@@ -532,6 +530,7 @@ class TestParseAll:
 # normalize()
 # ---------------------------------------------------------------------------
 
+
 class TestNormalize:
     def test_ecosystem_alias_cargo_to_crates(self):
         d = ManifestDetector(".")
@@ -544,7 +543,12 @@ class TestNormalize:
     def test_ecosystem_alias_go_to_gomodules(self):
         d = ManifestDetector(".")
         pkgs = [
-            {"name": "github.com/pkg/errors", "version": "v0.9.1", "_ecosystem": "go", "_manifest": "go.mod"},
+            {
+                "name": "github.com/pkg/errors",
+                "version": "v0.9.1",
+                "_ecosystem": "go",
+                "_manifest": "go.mod",
+            },
         ]
         result = d.normalize(pkgs)
         assert result[0]["ecosystem"] == "gomodules"
@@ -594,7 +598,12 @@ class TestNormalize:
     def test_source_from_manifest(self):
         d = ManifestDetector(".")
         pkgs = [
-            {"name": "numpy", "version": "1.0", "_ecosystem": "pypi", "_manifest": "requirements.txt"},
+            {
+                "name": "numpy",
+                "version": "1.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
         ]
         result = d.normalize(pkgs)
         assert result[0]["source"] == "requirements.txt"
@@ -611,6 +620,7 @@ class TestNormalize:
 # ---------------------------------------------------------------------------
 # parse() — BOM encoding
 # ---------------------------------------------------------------------------
+
 
 class TestParseEncoding:
     def test_utf8_bom_requirements(self, tmp_path):
@@ -659,14 +669,7 @@ class TestParseGradle:
 
     def test_skips_other_lines(self, tmp_path):
         p = tmp_path / "build.gradle"
-        p.write_text(
-            "plugins {\n"
-            "    id 'java'\n"
-            "}\n"
-            "repositories {\n"
-            "    mavenCentral()\n"
-            "}\n"
-        )
+        p.write_text("plugins {\n    id 'java'\n}\nrepositories {\n    mavenCentral()\n}\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "gradle"})
         assert result == []
@@ -676,15 +679,15 @@ class TestParseSwift:
     def test_basic(self, tmp_path):
         p = tmp_path / "Package.swift"
         p.write_text(
-            '// swift-tools-version:5.5\n'
-            'import PackageDescription\n'
-            'let package = Package(\n'
+            "// swift-tools-version:5.5\n"
+            "import PackageDescription\n"
+            "let package = Package(\n"
             '    name: "MyPackage",\n'
-            '    dependencies: [\n'
+            "    dependencies: [\n"
             '        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.0.0"),\n'
             "        .package(url: 'https://github.com/apple/swift-argument-parser.git', from: '1.0.0'),\n"
-            '    ]\n'
-            ')\n'
+            "    ]\n"
+            ")\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "swift"})
@@ -694,12 +697,7 @@ class TestParseSwift:
 
     def test_skips_lines_without_package_url(self, tmp_path):
         p = tmp_path / "Package.swift"
-        p.write_text(
-            'let package = Package(\n'
-            '    name: "MyPackage",\n'
-            '    targets: []\n'
-            ')\n'
-        )
+        p.write_text('let package = Package(\n    name: "MyPackage",\n    targets: []\n)\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "swift"})
         assert result == []
@@ -709,13 +707,13 @@ class TestParseHex:
     def test_basic(self, tmp_path):
         p = tmp_path / "mix.exs"
         p.write_text(
-            'defp deps do\n'
-            '  [\n'
+            "defp deps do\n"
+            "  [\n"
             '    {:phoenix, "~> 1.6.0"},\n'
             '    {:ecto_sql, "~> 3.7"},\n'
             '    {:jason, "1.2"},\n'
-            '  ]\n'
-            'end\n'
+            "  ]\n"
+            "end\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "hex"})
@@ -726,11 +724,7 @@ class TestParseHex:
 
     def test_skips_non_match_lines(self, tmp_path):
         p = tmp_path / "mix.exs"
-        p.write_text(
-            "defp deps do\n"
-            "  []\n"
-            "end\n"
-        )
+        p.write_text("defp deps do\n  []\nend\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "hex"})
         assert result == []
@@ -742,19 +736,19 @@ class TestParseMaven:
         p.write_text(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
-            '  <dependencies>\n'
-            '    <dependency>\n'
-            '      <groupId>com.google.guava</groupId>\n'
-            '      <artifactId>guava</artifactId>\n'
-            '      <version>31.0.1-jre</version>\n'
-            '    </dependency>\n'
-            '    <dependency>\n'
-            '      <groupId>org.apache.commons</groupId>\n'
-            '      <artifactId>commons-lang3</artifactId>\n'
-            '      <version>3.12.0</version>\n'
-            '    </dependency>\n'
-            '  </dependencies>\n'
-            '</project>\n'
+            "  <dependencies>\n"
+            "    <dependency>\n"
+            "      <groupId>com.google.guava</groupId>\n"
+            "      <artifactId>guava</artifactId>\n"
+            "      <version>31.0.1-jre</version>\n"
+            "    </dependency>\n"
+            "    <dependency>\n"
+            "      <groupId>org.apache.commons</groupId>\n"
+            "      <artifactId>commons-lang3</artifactId>\n"
+            "      <version>3.12.0</version>\n"
+            "    </dependency>\n"
+            "  </dependencies>\n"
+            "</project>\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "maven"})
@@ -767,9 +761,9 @@ class TestParseMaven:
         p.write_text(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
-            '  <dependencies>\n'
-            '  </dependencies>\n'
-            '</project>\n'
+            "  <dependencies>\n"
+            "  </dependencies>\n"
+            "</project>\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "maven"})
@@ -779,11 +773,7 @@ class TestParseMaven:
 class TestParseCocoapods:
     def test_basic(self, tmp_path):
         p = tmp_path / "Podfile"
-        p.write_text(
-            "platform :ios, '15.0'\n"
-            "pod 'Alamofire', '~> 5.0'\n"
-            "pod 'SnapKit', '~> 5.6'\n"
-        )
+        p.write_text("platform :ios, '15.0'\npod 'Alamofire', '~> 5.0'\npod 'SnapKit', '~> 5.6'\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "cocoapods"})
         assert len(result) == 2
@@ -799,10 +789,7 @@ class TestParseCocoapods:
 
     def test_skips_non_pod_lines(self, tmp_path):
         p = tmp_path / "Podfile"
-        p.write_text(
-            "platform :ios, '15.0'\n"
-            "inhibit_all_warnings!\n"
-        )
+        p.write_text("platform :ios, '15.0'\ninhibit_all_warnings!\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "cocoapods"})
         assert result == []
@@ -813,10 +800,10 @@ class TestParseNuget:
         p = tmp_path / "packages.config"
         p.write_text(
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<packages>\n'
+            "<packages>\n"
             '  <package id="Newtonsoft.Json" version="13.0.1" />\n'
             '  <package id="Microsoft.Extensions.Logging" version="6.0.0" />\n'
-            '</packages>\n'
+            "</packages>\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "nuget"})
@@ -826,11 +813,7 @@ class TestParseNuget:
 
     def test_empty_packages(self, tmp_path):
         p = tmp_path / "packages.config"
-        p.write_text(
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<packages>\n'
-            '</packages>\n'
-        )
+        p.write_text('<?xml version="1.0" encoding="utf-8"?>\n<packages>\n</packages>\n')
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "nuget"})
         assert result == []
@@ -839,11 +822,7 @@ class TestParseNuget:
 class TestParseSimple:
     def test_basic(self, tmp_path):
         p = tmp_path / "apt-packages.txt"
-        p.write_text(
-            "curl\n"
-            "git>=2.30\n"
-            "build-essential==12.9\n"
-        )
+        p.write_text("curl\ngit>=2.30\nbuild-essential==12.9\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "simple"})
         assert len(result) == 3
@@ -853,11 +832,7 @@ class TestParseSimple:
 
     def test_skips_comments_and_blanks(self, tmp_path):
         p = tmp_path / "apk-packages.txt"
-        p.write_text(
-            "# comment\n"
-            "\n"
-            "alpine-base\n"
-        )
+        p.write_text("# comment\n\nalpine-base\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "simple"})
         assert len(result) == 1
@@ -867,11 +842,7 @@ class TestParseSimple:
 class TestParseHomebrew:
     def test_brewfile_text(self, tmp_path):
         p = tmp_path / "Brewfile"
-        p.write_text(
-            '# Brewfile\n'
-            "brew 'curl'\n"
-            'cask "firefox"\n'
-        )
+        p.write_text("# Brewfile\nbrew 'curl'\ncask \"firefox\"\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "homebrew"})
         assert len(result) == 2
@@ -881,12 +852,14 @@ class TestParseHomebrew:
     def test_brewfile_lock_json(self, tmp_path):
         p = tmp_path / "Brewfile.lock.json"
         p.write_text(
-            json.dumps({
-                "entries": [
-                    {"name": "curl", "version": "7.79.1"},
-                    {"name": "wget", "version": "1.21.2"},
-                ]
-            })
+            json.dumps(
+                {
+                    "entries": [
+                        {"name": "curl", "version": "7.79.1"},
+                        {"name": "wget", "version": "1.21.2"},
+                    ]
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "homebrew"})
@@ -896,11 +869,7 @@ class TestParseHomebrew:
 
     def test_skips_comments_and_empty_lines(self, tmp_path):
         p = tmp_path / "Brewfile"
-        p.write_text(
-            "# comment\n"
-            "\n"
-            "tap 'homebrew/core'\n"
-        )
+        p.write_text("# comment\n\ntap 'homebrew/core'\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "homebrew"})
         assert result == []
@@ -923,10 +892,7 @@ class TestParseCabal:
 
     def test_no_build_depends(self, tmp_path):
         p = tmp_path / "package.cabal"
-        p.write_text(
-            "name:    my-package\n"
-            "version: 1.0.0\n"
-        )
+        p.write_text("name:    my-package\nversion: 1.0.0\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "cabal"})
         assert result == []
@@ -946,8 +912,8 @@ class TestParsePnpmLock:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pnpm_lock"})
         assert len(result) == 2
-        assert {"name": "express@4.17.1", "version": "4.17.1"} in result
-        assert {"name": "lodash@4.17.21", "version": "4.17.21"} in result
+        assert {"name": "express", "version": "4.17.1"} in result
+        assert {"name": "lodash", "version": "4.17.21"} in result
 
     def test_malformed_yaml_returns_empty(self, tmp_path):
         p = tmp_path / "pnpm-lock.yaml"
@@ -961,17 +927,19 @@ class TestParsePubspec:
     def test_basic(self, tmp_path):
         p = tmp_path / "pubspec.yaml"
         p.write_text(
-            yaml.dump({
-                "name": "my_app",
-                "dependencies": {
-                    "flutter": "sdk",
-                    "http": "^0.13.0",
-                    "provider": "^6.0.0",
-                },
-                "dev_dependencies": {
-                    "mockito": "^5.0.0",
-                },
-            })
+            yaml.dump(
+                {
+                    "name": "my_app",
+                    "dependencies": {
+                        "flutter": "sdk",
+                        "http": "^0.13.0",
+                        "provider": "^6.0.0",
+                    },
+                    "dev_dependencies": {
+                        "mockito": "^5.0.0",
+                    },
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pubspec"})
@@ -983,11 +951,13 @@ class TestParsePubspec:
     def test_dict_spec(self, tmp_path):
         p = tmp_path / "pubspec.yaml"
         p.write_text(
-            yaml.dump({
-                "dependencies": {
-                    "my_pkg": {"version": "^1.0.0"},
-                },
-            })
+            yaml.dump(
+                {
+                    "dependencies": {
+                        "my_pkg": {"version": "^1.0.0"},
+                    },
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "pubspec"})
@@ -1005,11 +975,11 @@ class TestParsePoetryLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "poetry.lock"
         p.write_text(
-            '[[package]]\n'
+            "[[package]]\n"
             'name = "numpy"\n'
             'version = "1.21.0"\n'
-            '\n'
-            '[[package]]\n'
+            "\n"
+            "[[package]]\n"
             'name = "requests"\n'
             'version = "2.25.1"\n'
         )
@@ -1031,11 +1001,11 @@ class TestParseUvLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "uv.lock"
         p.write_text(
-            '[[package]]\n'
+            "[[package]]\n"
             'name = "numpy"\n'
             'source = { version = "1.21.0" }\n'
-            '\n'
-            '[[package]]\n'
+            "\n"
+            "[[package]]\n"
             'name = "requests"\n'
             'source = { version = "2.25.1" }\n'
         )
@@ -1056,10 +1026,7 @@ class TestParseUvLock:
 class TestParseGoSum:
     def test_basic(self, tmp_path):
         p = tmp_path / "go.sum"
-        p.write_text(
-            "github.com/pkg/errors v0.9.1 h1:...\n"
-            "golang.org/x/text v0.3.7 h1:...\n"
-        )
+        p.write_text("github.com/pkg/errors v0.9.1 h1:...\ngolang.org/x/text v0.3.7 h1:...\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_sum"})
         assert len(result) == 2
@@ -1069,8 +1036,7 @@ class TestParseGoSum:
     def test_skips_go_mod_lines(self, tmp_path):
         p = tmp_path / "go.sum"
         p.write_text(
-            "go.mod golang.org/x/text v0.3.7 h1:...\n"
-            "github.com/pkg/errors v0.9.1 h1:...\n"
+            "go.mod golang.org/x/text v0.3.7 h1:...\ngithub.com/pkg/errors v0.9.1 h1:...\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_sum"})
@@ -1080,8 +1046,7 @@ class TestParseGoSum:
     def test_deduplicates_entries(self, tmp_path):
         p = tmp_path / "go.sum"
         p.write_text(
-            "github.com/pkg/errors v0.9.1 h1:...\n"
-            "github.com/pkg/errors v0.9.1/go.mod h1:...\n"
+            "github.com/pkg/errors v0.9.1 h1:...\ngithub.com/pkg/errors v0.9.1/go.mod h1:...\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_sum"})
@@ -1093,15 +1058,17 @@ class TestParseComposerLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "composer.lock"
         p.write_text(
-            json.dumps({
-                "packages": [
-                    {"name": "monolog/monolog", "version": "2.3.5"},
-                    {"name": "guzzlehttp/guzzle", "version": "7.4.0"},
-                ],
-                "packages-dev": [
-                    {"name": "phpunit/phpunit", "version": "9.5.10"},
-                ],
-            })
+            json.dumps(
+                {
+                    "packages": [
+                        {"name": "monolog/monolog", "version": "2.3.5"},
+                        {"name": "guzzlehttp/guzzle", "version": "7.4.0"},
+                    ],
+                    "packages-dev": [
+                        {"name": "phpunit/phpunit", "version": "9.5.10"},
+                    ],
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "composer_lock"})
@@ -1141,11 +1108,7 @@ class TestParseGemfileLock:
 
     def test_skips_before_specs(self, tmp_path):
         p = tmp_path / "Gemfile.lock"
-        p.write_text(
-            "GEM\n"
-            "  remote: https://rubygems.org/\n"
-            "  specs:\n"
-        )
+        p.write_text("GEM\n  remote: https://rubygems.org/\n  specs:\n")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "gemfile_lock"})
         assert result == []
@@ -1155,10 +1118,10 @@ class TestParseMixLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "mix.lock"
         p.write_text(
-            '{\n'
+            "{\n"
             '  "phoenix": {:hex, :phoenix, "1.6.6", [...], "hexpm"}, \n'
             '  "jason": {:hex, :jason, "1.3.0", [...], "hexpm"}, \n'
-            '}\n'
+            "}\n"
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "mix_lock"})
@@ -1178,14 +1141,16 @@ class TestParsePackageResolved:
     def test_v1_format(self, tmp_path):
         p = tmp_path / "Package.resolved"
         p.write_text(
-            json.dumps({
-                "object": {
-                    "pins": [
-                        {"package": "Alamofire", "state": {"version": "5.4.3"}},
-                        {"package": "SwiftyJSON", "state": {"version": "5.0.0"}},
-                    ]
+            json.dumps(
+                {
+                    "object": {
+                        "pins": [
+                            {"package": "Alamofire", "state": {"version": "5.4.3"}},
+                            {"package": "SwiftyJSON", "state": {"version": "5.0.0"}},
+                        ]
+                    }
                 }
-            })
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_resolved"})
@@ -1196,12 +1161,14 @@ class TestParsePackageResolved:
     def test_v2_format(self, tmp_path):
         p = tmp_path / "Package.resolved"
         p.write_text(
-            json.dumps({
-                "pins": [
-                    {"identity": "alamofire", "version": "5.4.3"},
-                    {"identity": "swifty-json", "version": "5.0.0"},
-                ]
-            })
+            json.dumps(
+                {
+                    "pins": [
+                        {"identity": "alamofire", "version": "5.4.3"},
+                        {"identity": "swifty-json", "version": "5.0.0"},
+                    ]
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_resolved"})
@@ -1221,12 +1188,14 @@ class TestParseUdrLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "udr.lock"
         p.write_text(
-            json.dumps({
-                "packages": [
-                    {"name": "numpy", "version": "1.21.0"},
-                    {"name": "requests", "version": "2.25.1"},
-                ]
-            })
+            json.dumps(
+                {
+                    "packages": [
+                        {"name": "numpy", "version": "1.21.0"},
+                        {"name": "requests", "version": "2.25.1"},
+                    ]
+                }
+            )
         )
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "udr_lock"})

@@ -411,9 +411,12 @@ class HomebrewClient(BaseDataSourceClient):
             required_macos = sys_reqs.get("macos_version")
             system_macos = system_info.get("macos_version")
 
-            if required_macos and system_macos:
-                if not self._check_macos_compatibility(system_macos, required_macos):
-                    errors.append(f"Requires macOS {required_macos}, but system has {system_macos}")
+            if (
+                required_macos
+                and system_macos
+                and not self._check_macos_compatibility(system_macos, required_macos)
+            ):
+                errors.append(f"Requires macOS {required_macos}, but system has {system_macos}")
 
             required_arch = sys_reqs.get("arch")
             system_arch = system_info.get("arch")

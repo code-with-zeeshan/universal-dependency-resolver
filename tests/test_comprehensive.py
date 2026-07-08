@@ -103,30 +103,35 @@ def _build_system_info(
 ) -> dict[str, Any]:
     """Build a realistic system_info dict with defaults + overrides."""
     info: dict[str, Any] = {
-        "platform": platform or {
+        "platform": platform
+        or {
             "os": "linux",
             "os_version": "Ubuntu 24.04 LTS",
             "architecture": "x86_64",
             "hostname": "test-host",
         },
-        "cpu": cpu or {
+        "cpu": cpu
+        or {
             "brand": "AMD Ryzen 9 7950X",
             "count_physical": 16,
             "count_logical": 32,
             "current_frequency": 4500.0,
             "architecture": "x86_64",
         },
-        "memory": memory or {
+        "memory": memory
+        or {
             "total": 68719476736,
             "available": 48000000000,
             "percent": 30.0,
         },
-        "disk": disk or {
+        "disk": disk
+        or {
             "total": 1000000000000,
             "used": 400000000000,
             "free": 600000000000,
         },
-        "network": network or {
+        "network": network
+        or {
             "interfaces": [{"name": "eth0", "speed": 10000}],
             "speed": {"dns_ms": 5.0, "http_ms": 20.0, "download_mbps": 500.0},
         },
@@ -248,8 +253,17 @@ class TestSystemInfoPresets:
 
     def test_complete_structure(self):
         info = _build_system_info(gpu=MOCK_GPU_NVIDIA_CUDA12)
-        for section in ("platform", "cpu", "memory", "disk", "network", "gpu",
-                        "accelerators", "runtime_versions", "container"):
+        for section in (
+            "platform",
+            "cpu",
+            "memory",
+            "disk",
+            "network",
+            "gpu",
+            "accelerators",
+            "runtime_versions",
+            "container",
+        ):
             assert section in info, f"Missing section: {section}"
 
 
@@ -287,9 +301,12 @@ class TestManifestParsing:
         assert "npm" in ecosystems
 
     def test_cargo_toml(self, temp_project):
-        self._write_manifest_bytes(temp_project, "Cargo.toml",
+        self._write_manifest_bytes(
+            temp_project,
+            "Cargo.toml",
             '[package]\nname = "test"\nversion = "0.1.0"\n'
-            '[dependencies]\nserde = "1.0"\ntokio = "1.0"\n')
+            '[dependencies]\nserde = "1.0"\ntokio = "1.0"\n',
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -297,10 +314,13 @@ class TestManifestParsing:
         assert "crates" in ecosystems
 
     def test_go_mod(self, temp_project):
-        self._write_manifest_bytes(temp_project, "go.mod",
+        self._write_manifest_bytes(
+            temp_project,
+            "go.mod",
             "module example.com/test\ngo 1.21\nrequire (\n"
             "\tgithub.com/pkg/errors v0.9.1\n"
-            "\tgolang.org/x/text v0.14.0\n)\n")
+            "\tgolang.org/x/text v0.14.0\n)\n",
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -308,11 +328,14 @@ class TestManifestParsing:
         assert "gomodules" in ecosystems
 
     def test_build_gradle(self, temp_project):
-        self._write_manifest_bytes(temp_project, "build.gradle",
+        self._write_manifest_bytes(
+            temp_project,
+            "build.gradle",
             "dependencies {\n"
             "    implementation 'com.google.guava:guava:32.1.3-jre'\n"
             "    implementation 'org.apache.commons:commons-lang3:3.13.0'\n"
-            "}\n")
+            "}\n",
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -320,14 +343,17 @@ class TestManifestParsing:
         assert "gradle" in ecosystems
 
     def test_package_swift(self, temp_project):
-        self._write_manifest_bytes(temp_project, "Package.swift",
-            '// swift-tools-version:5.9\nimport PackageDescription\n'
-            'let package = Package(\n'
+        self._write_manifest_bytes(
+            temp_project,
+            "Package.swift",
+            "// swift-tools-version:5.9\nimport PackageDescription\n"
+            "let package = Package(\n"
             '    name: "MyLibrary",\n'
-            '    dependencies: [\n'
+            "    dependencies: [\n"
             '        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.8.0"),\n'
-            '    ],\n'
-            ')\n')
+            "    ],\n"
+            ")\n",
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -335,11 +361,14 @@ class TestManifestParsing:
         assert "swift" in ecosystems
 
     def test_mix_exs(self, temp_project):
-        self._write_manifest_bytes(temp_project, "mix.exs",
-            'defp deps do\n  [\n'
+        self._write_manifest_bytes(
+            temp_project,
+            "mix.exs",
+            "defp deps do\n  [\n"
             '    {:phoenix, "~> 1.7.7"},\n'
             '    {:ecto_sql, "~> 3.10"},\n'
-            '  ]\nend\n')
+            "  ]\nend\n",
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -347,9 +376,12 @@ class TestManifestParsing:
         assert "hex" in ecosystems
 
     def test_cabal_file(self, temp_project):
-        self._write_manifest_bytes(temp_project, "mypackage.cabal",
+        self._write_manifest_bytes(
+            temp_project,
+            "mypackage.cabal",
             "cabal-version: 3.4\nname: mypackage\nversion: 0.1.0\n"
-            "build-depends: base >=4.16 && <5, containers >=0.6\n")
+            "build-depends: base >=4.16 && <5, containers >=0.6\n",
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -360,9 +392,11 @@ class TestManifestParsing:
         _write_manifest(temp_project, "requirements.txt", "requests>=2.28")
         pkg = {"dependencies": {"express": "^4.18"}}
         _write_manifest(temp_project, "package.json", json.dumps(pkg))
-        self._write_manifest_bytes(temp_project, "Cargo.toml",
-            '[package]\nname = "test"\nversion = "0.1.0"\n'
-            '[dependencies]\nserde = "1.0"\n')
+        self._write_manifest_bytes(
+            temp_project,
+            "Cargo.toml",
+            '[package]\nname = "test"\nversion = "0.1.0"\n[dependencies]\nserde = "1.0"\n',
+        )
         result = self._detect(temp_project)
         assert isinstance(result, list)
         assert len(result) >= 3
@@ -380,11 +414,16 @@ class TestCUDAConflicts:
     async def test_cuda_11_vs_12_conflict_detected(self, aggregator, resolver):
         """Verify CUDA 11 packages conflict with CUDA 12 packages."""
         from backend.core.conflict_resolver import CONFLICT_RULES
+
         cuda_rules = [r for r in CONFLICT_RULES if "cuda" in r.get("id", "")]
         assert len(cuda_rules) >= 1
         cuda_rule = cuda_rules[0]
-        assert "cuda:min_version >=11.0,<12.0" in str(cuda_rule)
-        assert "cuda:min_version >=12.0,<13.0" in str(cuda_rule)
+        assert cuda_rule["constraint_a"]["field"] == "system_requirements.cuda.min_version"
+        assert cuda_rule["constraint_a"]["op"] == ">="
+        assert cuda_rule["constraint_a"]["value"] == "11.0"
+        assert cuda_rule["constraint_b"]["field"] == "system_requirements.cuda.min_version"
+        assert cuda_rule["constraint_b"]["op"] == ">="
+        assert cuda_rule["constraint_b"]["value"] == "12.0"
 
     @pytest.mark.slow
     async def test_resolve_torch_cuda11(self, aggregator, resolver):
@@ -411,8 +450,9 @@ class TestCUDAConflicts:
         assert _resolution_ok(result, min_pkgs=3), f"Resolution failed: {result}"
         pkgs = _get_resolved(result)
         nvidia_pkgs = [n for n in pkgs if "nvidia" in n.lower()]
-        assert len(nvidia_pkgs) >= 1, \
+        assert len(nvidia_pkgs) >= 1, (
             f"Expected nvidia deps for CUDA 12.1, got: {list(pkgs.keys())}"
+        )
 
     @pytest.mark.slow
     async def test_cuda_variant_selection(self, aggregator, resolver):
@@ -423,12 +463,14 @@ class TestCUDAConflicts:
         assert _resolution_ok(result), f"Resolution failed: {result}"
 
         from backend.cli.shared import _apply_cuda_variants
+
         enriched = _apply_cuda_variants(result, {}, system_info)
         pkgs = _get_resolved(enriched)
         torch_info = pkgs.get("torch", {})
         if torch_info.get("cuda_variant"):
-            assert "cu12" in torch_info.get("version", ""), \
+            assert "cu12" in torch_info.get("version", ""), (
                 f"Expected CUDA 12 variant, got {torch_info.get('version')}"
+            )
 
     @pytest.mark.slow
     async def test_cuda_conflict_unsatisfiable(self, aggregator, resolver):
@@ -458,8 +500,9 @@ class TestCrossEcosystem:
         ]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         pkgs_list = list(_get_resolved(result).keys())[:10]
-        assert _resolution_ok(result, min_pkgs=3), \
+        assert _resolution_ok(result, min_pkgs=3), (
             f"Expected >=3 packages, got {len(_get_resolved(result))}: {pkgs_list}"
+        )
 
     @pytest.mark.slow
     async def test_deep_transitive(self, aggregator, resolver):
@@ -467,8 +510,9 @@ class TestCrossEcosystem:
         system_info = _build_system_info()
         specs = [("click", "pypi", ">=8.0")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
-        assert _resolution_ok(result, min_pkgs=1), \
+        assert _resolution_ok(result, min_pkgs=1), (
             f"Expected click resolved, got {len(_get_resolved(result))}"
+        )
 
     @pytest.mark.slow
     async def test_npm_transitive(self, aggregator, resolver):
@@ -476,8 +520,9 @@ class TestCrossEcosystem:
         system_info = _build_system_info()
         specs = [("lodash", "npm", "^4.17.21")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
-        assert _resolution_ok(result, min_pkgs=1), \
+        assert _resolution_ok(result, min_pkgs=1), (
             f"Expected lodash resolved, got {len(_get_resolved(result))}"
+        )
 
     @pytest.mark.slow
     async def test_crates_transitive(self, aggregator, resolver):
@@ -485,8 +530,7 @@ class TestCrossEcosystem:
         system_info = _build_system_info()
         specs = [("serde", "crates", "1.0")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
-        assert _resolution_ok(result, min_pkgs=1), \
-            f"Expected serde resolved, got {result}"
+        assert _resolution_ok(result, min_pkgs=1), f"Expected serde resolved, got {result}"
 
 
 # ===================================================================
@@ -504,8 +548,7 @@ class TestConflictHandling:
         specs = [("requests", "pypi", ">=2.28"), ("urllib3", "pypi", ">=10.0")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         status = result.get("status", "unknown")
-        assert status in ("partial", "unsatisfiable", "satisfiable"), \
-            f"Unexpected status: {status}"
+        assert status in ("partial", "unsatisfiable", "satisfiable"), f"Unexpected status: {status}"
 
     @pytest.mark.slow
     async def test_package_not_found(self, aggregator, resolver):
@@ -524,8 +567,9 @@ class TestConflictHandling:
             ("urllib3", "pypi", ">=1.26,<2.0"),
         ]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
-        assert _resolution_ok(result, min_pkgs=4), \
+        assert _resolution_ok(result, min_pkgs=4), (
             f"Expected >=4 packages, got {len(_get_resolved(result))}"
+        )
         for spec_name, _, _ in specs:
             pkgs = _get_resolved(result)
             assert spec_name in pkgs, f"{spec_name} not resolved: {list(pkgs.keys())[:10]}"
@@ -545,10 +589,21 @@ class TestLockFile:
 
         import subprocess
         import sys
+
         subprocess.run(
-            [sys.executable, "-m", "backend.cli", "lock",
-             "--directory", str(temp_project), "--yes", "--json"],
-            capture_output=True, text=True, timeout=120,
+            [
+                sys.executable,
+                "-m",
+                "backend.cli",
+                "lock",
+                "--directory",
+                str(temp_project),
+                "--yes",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
             env={**os.environ, "SOLVER_TIMEOUT": "120", "TESTING": "true"},
         )
 
@@ -563,8 +618,7 @@ class TestLockFile:
         assert "packages" in data, f"Missing packages: {list(data.keys())}"
         assert "system" in data, f"Missing system: {list(data.keys())}"
         assert data["version"] in ("2.0", "2.1"), f"Unexpected version: {data['version']}"
-        assert len(data["packages"]) >= 3, \
-            f"Expected >=3 packages, got {len(data['packages'])}"
+        assert len(data["packages"]) >= 3, f"Expected >=3 packages, got {len(data['packages'])}"
 
     def test_lock_file_reproducibility(self, temp_project):
         """Resolving twice should produce the same result."""
@@ -575,9 +629,19 @@ class TestLockFile:
 
         def _lock() -> dict:
             subprocess.run(
-                [sys.executable, "-m", "backend.cli", "lock",
-                 "--directory", str(temp_project), "--yes", "--json"],
-                capture_output=True, text=True, timeout=120,
+                [
+                    sys.executable,
+                    "-m",
+                    "backend.cli",
+                    "lock",
+                    "--directory",
+                    str(temp_project),
+                    "--yes",
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
                 env={**os.environ, "SOLVER_TIMEOUT": "120", "TESTING": "true"},
             )
             out_path = temp_project / "udr.lock"
@@ -597,8 +661,9 @@ class TestLockFile:
         f2 = {n: v.get("resolved_version") for n, v in second.get("packages", {}).items()}
         for name in f1:
             if name in f2:
-                assert f1[name] == f2[name], \
+                assert f1[name] == f2[name], (
                     f"Version mismatch for {name}: {f1[name]} vs {f2[name]}"
+                )
 
 
 # ===================================================================
@@ -618,8 +683,7 @@ class TestHardwareVariants:
         assert _resolution_ok(result)
         pkgs = _get_resolved(result)
         cuda_pkgs = [n for n in pkgs if "cuda" in n.lower() or "nvidia" in n.lower()]
-        assert len(cuda_pkgs) == 0, \
-            f"CUDA packages should not appear without GPU: {cuda_pkgs}"
+        assert len(cuda_pkgs) == 0, f"CUDA packages should not appear without GPU: {cuda_pkgs}"
 
     @pytest.mark.slow
     async def test_amd_gpu_resolution(self, aggregator, resolver):
@@ -632,9 +696,7 @@ class TestHardwareVariants:
     @pytest.mark.slow
     async def test_tpu_present_no_effect(self, aggregator, resolver):
         """TPU presence should not affect regular PyPI resolution."""
-        system_info = _build_system_info(
-            gpu=MOCK_NO_GPU, accelerators=MOCK_ACCELERATORS_TPU
-        )
+        system_info = _build_system_info(gpu=MOCK_NO_GPU, accelerators=MOCK_ACCELERATORS_TPU)
         specs = [("flask", "pypi", ">=2.3")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         assert _resolution_ok(result, min_pkgs=5)
@@ -642,9 +704,7 @@ class TestHardwareVariants:
     @pytest.mark.slow
     async def test_npu_present_no_effect(self, aggregator, resolver):
         """NPU presence should not affect regular PyPI resolution."""
-        system_info = _build_system_info(
-            gpu=MOCK_NO_GPU, accelerators=MOCK_ACCELERATORS_NPU
-        )
+        system_info = _build_system_info(gpu=MOCK_NO_GPU, accelerators=MOCK_ACCELERATORS_NPU)
         specs = [("flask", "pypi", ">=2.3")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         assert _resolution_ok(result, min_pkgs=5)
@@ -665,5 +725,6 @@ class TestBacktracking:
         specs = [("requests", "pypi", ">=2.28"), ("urllib3", "pypi", ">=10.0")]
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         status = result.get("status", "unknown")
-        assert status in ("partial", "unsatisfiable", "satisfiable"), \
+        assert status in ("partial", "unsatisfiable", "satisfiable"), (
             f"Expected partial/unsatisfiable/satisfiable for incompatible deps, got {status}"
+        )

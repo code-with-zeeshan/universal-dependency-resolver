@@ -251,9 +251,10 @@ class DocumentationScraper:
 
                     for result in results[:5]:  # Check first 5 results
                         url = result.get("href")
-                        if url and isinstance(url, str):
-                            # Look for documentation indicators
-                            if any(
+                        if (
+                            url
+                            and isinstance(url, str)
+                            and any(
                                 indicator in url.lower()
                                 for indicator in [
                                     "docs",
@@ -262,8 +263,9 @@ class DocumentationScraper:
                                     "guide",
                                     "getting-started",
                                 ]
-                            ):
-                                return url
+                            )
+                        ):
+                            return url
 
         except Exception as e:
             logger.debug(f"Search failed for {package_name}: {e}")

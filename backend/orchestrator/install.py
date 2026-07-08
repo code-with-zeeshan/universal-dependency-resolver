@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 
+from backend.orchestrator.resolve import _normalize_cuda
 from backend.settings import INSTALLERS
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,11 @@ def _generate_install_command(
             # PyPI and most others: strip CUDA suffix for pip
             if ecosystem == "pypi" and cuda_version:
                 m = _CUDA_VERSION_RE.search(ver)
-                if m and m.group(1) != cuda_version:
-                    continue  # skip non-matching CUDA variants
+                if m:
+                    pkg_cuda = _normalize_cuda(m.group(1))
+                    target_cuda = _normalize_cuda(cuda_version)
+                    if pkg_cuda != target_cuda:
+                        continue
                 ver = _CUDA_VERSION_RE.sub("", ver)
             specs.append(f"{name}=={ver}")
 

@@ -27,6 +27,7 @@ class TestRunAsync:
         """run_async may raise RuntimeError when called from a running loop
         depending on Python version; just verify it doesn't crash the process.
         """
+
         async def inner():
             return "inner"
 
@@ -111,7 +112,9 @@ class TestExtractRequirements:
         assert extract_requirements("", "requirements.txt") == []
 
     def test_environment_yml(self):
-        result = extract_requirements("dependencies:\n  - numpy\n  - pandas>=1.0\n", "environment.yml")
+        result = extract_requirements(
+            "dependencies:\n  - numpy\n  - pandas>=1.0\n", "environment.yml"
+        )
         names = [r["name"] for r in result]
         assert "numpy" in names
         assert "pandas" in names
@@ -136,21 +139,24 @@ class TestHashSystemInfo:
 
 
 class TestSanitizeEcosystemName:
-    @pytest.mark.parametrize(("alias", "expected"), [
-        ("pip", "pypi"),
-        ("python", "pypi"),
-        ("node", "npm"),
-        ("cargo", "crates"),
-        ("rust", "crates"),
-        ("java", "maven"),
-        ("gradle", "gradle"),
-        ("swift", "swift"),
-        ("elixir", "hex"),
-        ("dart", "pub"),
-        ("flutter", "pub"),
-        ("unknown", "unknown"),
-        ("", ""),
-    ])
+    @pytest.mark.parametrize(
+        ("alias", "expected"),
+        [
+            ("pip", "pypi"),
+            ("python", "pypi"),
+            ("node", "npm"),
+            ("cargo", "crates"),
+            ("rust", "crates"),
+            ("java", "maven"),
+            ("gradle", "gradle"),
+            ("swift", "swift"),
+            ("elixir", "hex"),
+            ("dart", "pub"),
+            ("flutter", "pub"),
+            ("unknown", "unknown"),
+            ("", ""),
+        ],
+    )
     def test_aliases(self, alias, expected):
         assert sanitize_ecosystem_name(alias) == expected
 

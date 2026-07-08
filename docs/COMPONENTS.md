@@ -61,13 +61,13 @@ udr check
 **Python library — embed in your own tools:**
 
 ```python
-from backend.core.conflict_resolver import ConflictResolver
+from backend.orchestrator import create_solver
 from backend.core.data_aggregator import DataAggregator
 
 async def check_deps():
     agg = DataAggregator()
     info = await agg.get_package_info("torch", ecosystem="pypi")
-    resolver = ConflictResolver()
+    resolver = create_solver()
     result = resolver.resolve([{"name": "torch", "version": ">=2.0"}])
 ```
 

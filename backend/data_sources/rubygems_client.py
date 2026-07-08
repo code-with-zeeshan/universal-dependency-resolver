@@ -399,25 +399,35 @@ class RubyGemsClient(BaseDataSourceClient):
         warnings = []
 
         required_ruby = pkg_data.get("required_ruby_version")
-        if required_ruby and "ruby_version" in system_info:
-            if not self._check_ruby_compatibility(system_info["ruby_version"], required_ruby):
-                errors.append(
-                    f"Requires Ruby {required_ruby}, but system has {system_info['ruby_version']}"
-                )
+        if (
+            required_ruby
+            and "ruby_version" in system_info
+            and not self._check_ruby_compatibility(system_info["ruby_version"], required_ruby)
+        ):
+            errors.append(
+                f"Requires Ruby {required_ruby}, but system has {system_info['ruby_version']}"
+            )
 
         required_rubygems = pkg_data.get("required_rubygems_version")
-        if required_rubygems and "rubygems_version" in system_info:
-            if not self._check_rubygems_compatibility(
+        if (
+            required_rubygems
+            and "rubygems_version" in system_info
+            and not self._check_rubygems_compatibility(
                 system_info["rubygems_version"], required_rubygems
-            ):
-                warnings.append(
-                    f"Recommends RubyGems {required_rubygems}, but system has {system_info['rubygems_version']}"
-                )
+            )
+        ):
+            warnings.append(
+                f"Recommends RubyGems {required_rubygems}, but system has {system_info['rubygems_version']}"
+            )
 
         platform = pkg_data.get("platform")
-        if platform and platform != "ruby" and "platform" in system_info:
-            if not self._check_platform_compatibility(system_info["platform"], platform):
-                errors.append(f"Not compatible with platform: {system_info['platform']}")
+        if (
+            platform
+            and platform != "ruby"
+            and "platform" in system_info
+            and not self._check_platform_compatibility(system_info["platform"], platform)
+        ):
+            errors.append(f"Not compatible with platform: {system_info['platform']}")
 
         return {
             "compatible": len(errors) == 0,

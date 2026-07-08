@@ -13,10 +13,41 @@ from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
+from backend.settings import USE_PUBGRUB_SOLVER
 
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
 
 logger = logging.getLogger(__name__)
+
+
+def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
+    """Create a solver instance based on USE_PUBGRUB_SOLVER setting.
+
+    When the env var is true, tries to import ``PubGrubSolver`` and returns
+    it.  Falls back to ``ConflictResolver`` (Z3) if PubGrub is unavailable.
+    """
+    if USE_PUBGRUB_SOLVER:
+        try:
+            # Check that pubgrub-py is actually importable (not just the wrapper class)
+            from pubgrub_py import Resolver as _PubGrubResolver  # noqa: F401
+
+            from backend.core.pubgrub_solver import PubGrubSolver
+
+            logger.info("Using PubGrub solver")
+            return PubGrubSolver(
+                use_optimization=use_optimization,
+                solver_timeout=solver_timeout,
+            )
+        except ImportError:
+            logger.warning(
+                "USE_PUBGRUB_SOLVER is true but pubgrub-py is not installed; "
+                "falling back to Z3 ConflictResolver"
+            )
+    from backend.core.conflict_resolver import ConflictResolver
+
+    return ConflictResolver(
+        use_optimization=use_optimization,
+    )
 
 
 def _safe_version_key(v: str, ecosystem: str) -> _pkg_version.Version:
@@ -83,6 +114,7 @@ def _aggregator_to_resolver_input(
     agg_data: dict,
     ecosystem: str,
     constraint: str | None = None,
+    extras: list[str] | None = None,
 ) -> dict:
     available_versions = []
     raw_versions = agg_data.get("versions", {}).get(ecosystem, [])
@@ -97,9 +129,16 @@ def _aggregator_to_resolver_input(
             if not yanked and not deprecated:
                 available_versions.append(ver)
     deps = {}
-    eco_deps = agg_data.get("dependencies", {}).get(ecosystem, {})
+    eco_deps = agg_data.get("dependencies", {})
+    eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
     for dep in eco_deps.get("all", []):
         deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
+    if extras:
+        extra_map = eco_deps.get("extras", {})
+        for extra_name in extras:
+            for pkg_name, version_spec in extra_map.get(extra_name, {}).items():
+                if pkg_name not in deps:
+                    deps[pkg_name] = normalize_constraint(version_spec, ecosystem)
     sys_reqs = _extract_system_requirements(agg_data, ecosystem)
     norm_constraint = normalize_constraint(constraint or "*", ecosystem)
     sorted_versions = sorted(
@@ -256,6 +295,7 @@ async def _resolve_transitive(
     lock_data: dict | None = None,
     solver_timeout: int | None = None,
     lock_tree_data: dict[str, dict[str, dict]] | None = None,
+    bfs_timeout: int | None = None,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -318,15 +358,18 @@ async def _resolve_transitive(
             else {"status": "satisfiable", "resolved_packages": {}}
         )
 
-    # BFS transitive resolution for changed packages only
+    # BFS transitive resolution for changed packages only — continuous queue
+    # instead of depth-by-depth batching: as soon as a package's deps are
+    # discovered, they are immediately queued for fetching.
     visited: set = set()
-    queue = list(changed_packages)
     all_packages: dict = {}
-    depth = 0
     sem = asyncio.Semaphore(10)
+    fetch_queue: asyncio.Queue = asyncio.Queue()
+
+    for pkg in changed_packages:
+        await fetch_queue.put(("root", pkg))
 
     async def _fetch_with_sem(name: str, ecosystem: str) -> dict | None:
-        # Check lock tree first — skip API call if already in lock file
         lk = lock_tree_lookup.get((name, ecosystem))
         if lk is not None:
             deps: dict[str, list] = {"all": []}
@@ -347,31 +390,34 @@ async def _resolve_transitive(
         async with sem:
             return await _fetch_dep_info(aggregator, name, ecosystem, include_extended=False)
 
-    while queue and depth <= max_depth:
-        depth += 1
-        # Fetch ALL packages at current BFS level concurrently
-        fetchable = []
-        for pkg in queue:
+    async def _worker():
+        while True:
+            try:
+                pkg_type, pkg = await asyncio.wait_for(fetch_queue.get(), timeout=1)
+            except (TimeoutError, asyncio.CancelledError):
+                break
             key = (pkg["name"], pkg["ecosystem"])
             if key in visited or key in pre_resolved:
+                fetch_queue.task_done()
                 continue
             visited.add(key)
-            fetchable.append(pkg)
-        if not fetchable:
-            break
-        pkg_infos = await asyncio.gather(
-            *[_fetch_with_sem(p["name"], p["ecosystem"]) for p in fetchable],
-            return_exceptions=True,
-        )
-        # Process results and discover next-level deps
-        next_round = []
-        all_dep_fetches = []
-        for pkg, info in zip(fetchable, pkg_infos):
+            info = await _fetch_with_sem(pkg["name"], pkg["ecosystem"])
             if isinstance(info, Exception) or not info:
+                fetch_queue.task_done()
                 continue
-            key = (pkg["name"], pkg["ecosystem"])
-            if key not in all_packages:
-                all_packages[key] = pkg
+            if pkg_type == "root":
+                if key not in all_packages:
+                    all_packages[key] = pkg
+            else:
+                dep_pkg = _build_dep_pkg(
+                    pkg.get("_dep"),
+                    pkg["ecosystem"],
+                    info,
+                    pkg.get("_source_eco", pkg["ecosystem"]),
+                    pkg.get("_source_name", pkg["name"]),
+                )
+                if dep_pkg and key not in all_packages:
+                    all_packages[key] = dep_pkg
             all_deps = info.get("dependencies", {})
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
@@ -382,7 +428,18 @@ async def _resolve_transitive(
                         and dep_key not in all_packages
                         and dep_key not in pre_resolved
                     ):
-                        all_dep_fetches.append((dep, dep_ecosystem_val, dep_key, pkg))
+                        await fetch_queue.put(
+                            (
+                                "dep",
+                                {
+                                    "name": dep.name,
+                                    "ecosystem": dep_ecosystem_val,
+                                    "_dep": dep,
+                                    "_source_eco": pkg["ecosystem"],
+                                    "_source_name": pkg["name"],
+                                },
+                            )
+                        )
                     if dep_ecosystem_val != pkg["ecosystem"]:
                         _add_cross_eco_edge(
                             all_packages,
@@ -392,28 +449,23 @@ async def _resolve_transitive(
                             pkg["ecosystem"],
                             dep_ecosystem_val,
                         )
-        # Fetch next-level deps concurrently
-        if all_dep_fetches:
-            dep_info_results = await asyncio.gather(
-                *[_fetch_with_sem(d.name, d_eco) for d, d_eco, _, _ in all_dep_fetches],
-                return_exceptions=True,
+            fetch_queue.task_done()
+
+    workers = [asyncio.create_task(_worker()) for _ in range(min(10, len(changed_packages) + 4))]
+    if bfs_timeout is not None:
+        try:
+            await asyncio.wait_for(fetch_queue.join(), timeout=bfs_timeout)
+        except TimeoutError:
+            logger.warning(
+                "BFS timed out after %ds — continuing with %d packages fetched",
+                bfs_timeout,
+                len(all_packages),
             )
-            for (dep, dep_ecosystem_val, dep_key, source_pkg), dep_info in zip(
-                all_dep_fetches, dep_info_results
-            ):
-                if isinstance(dep_info, Exception) or not dep_info:
-                    continue
-                dep_pkg = _build_dep_pkg(
-                    dep,
-                    dep_ecosystem_val,
-                    dep_info,
-                    source_pkg["ecosystem"],
-                    source_pkg["name"],
-                )
-                if dep_pkg:
-                    all_packages[dep_key] = dep_pkg
-                    next_round.append(dep_pkg)
-        queue = next_round
+    else:
+        await fetch_queue.join()
+    for w in workers:
+        w.cancel()
+    await asyncio.gather(*workers, return_exceptions=True)
 
     # Pin any package with an exact version constraint (e.g. from lock files)
     # before sending to the SAT solver — avoids solver blow-up for huge lock files
@@ -525,9 +577,13 @@ def _apply_cuda_variants(
         if not base_version:
             continue
         details = package_details.get(pkg_name, {})
-        raw_versions = details.get("versions", {}).get("pypi", [])
-        if not raw_versions:
-            raw_versions = details.get("versions", {}).get(pkg_info.get("ecosystem", ""), [])
+        versions_data = details.get("versions", {})
+        if isinstance(versions_data, list):
+            raw_versions = versions_data
+        else:
+            raw_versions = versions_data.get("pypi", [])
+            if not raw_versions:
+                raw_versions = versions_data.get(pkg_info.get("ecosystem", ""), [])
         cuda_variants = _extract_cuda_variants(raw_versions, base_version)
         if cuda_variants:
             has_cuda_variants = True

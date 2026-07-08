@@ -16,10 +16,10 @@ The entire backend is importable:
 
 ```python
 from backend.core.data_aggregator import DataAggregator
-from backend.core.conflict_resolver import ConflictResolver
+from backend.orchestrator import create_solver
 
 aggregator = DataAggregator()
-resolver = ConflictResolver()
+resolver = create_solver()
 info = await aggregator.get_package_info("flask", "pypi")
 ```
 

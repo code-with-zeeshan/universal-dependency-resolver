@@ -28,7 +28,9 @@ class TestHaskellClient:
 
     @pytest.mark.asyncio
     async def test_get_package_info_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             result = await client.get_package_info("broken")
         assert result is None
 
@@ -48,7 +50,9 @@ class TestHaskellClient:
 
     @pytest.mark.asyncio
     async def test_get_package_versions_exception(self, client):
-        with patch.object(client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")):
+        with patch.object(
+            client, "_get", new_callable=AsyncMock, side_effect=Exception("API error")
+        ):
             versions = await client.get_package_versions("broken")
         assert versions == []
 

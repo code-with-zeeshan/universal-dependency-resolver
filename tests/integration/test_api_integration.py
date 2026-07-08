@@ -344,9 +344,7 @@ class TestDatabaseSession:
         db_session.add(pkg)
         db_session.commit()
 
-        version = PackageVersion(
-            package_id=pkg.id, version="1.0.0", python_requires=">=3.8"
-        )
+        version = PackageVersion(package_id=pkg.id, version="1.0.0", python_requires=">=3.8")
         db_session.add(version)
         db_session.commit()
 

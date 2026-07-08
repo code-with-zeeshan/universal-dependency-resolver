@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -79,9 +79,7 @@ class TestSearchPackages:
             ]
         }
         mock_aggregator.search_packages.return_value = mock_results
-        response = client.get(
-            "/api/v1/packages/search?q=flask&ecosystems=pypi&limit=20"
-        )
+        response = client.get("/api/v1/packages/search?q=flask&ecosystems=pypi&limit=20")
         assert response.status_code == 200
         data = response.json()
         assert "results" in data
@@ -137,9 +135,7 @@ class TestGetPackageDetails:
     def test_get_package_details_with_metrics(self, client, mock_aggregator):
         mock_aggregator.get_package_info.return_value = {
             "name": "flask",
-            "ecosystems": {
-                "pypi": {"name": "Flask", "version": "2.3.3", "versions": []}
-            },
+            "ecosystems": {"pypi": {"name": "Flask", "version": "2.3.3", "versions": []}},
             "system_requirements": {},
             "compatibility_matrix": {},
         }
@@ -190,9 +186,7 @@ class TestGetPackageVersions:
     def _setup_mock_source(self, mock_aggregator, return_value=None, side_effect=None):
         """Helper to mock _get_client instead of sources dict."""
         mock_source = MagicMock()
-        mock_source.get_versions = AsyncMock(
-            return_value=return_value, side_effect=side_effect
-        )
+        mock_source.get_versions = AsyncMock(return_value=return_value, side_effect=side_effect)
         mock_aggregator._get_client = MagicMock(return_value=mock_source)
         return mock_source
 
@@ -518,9 +512,7 @@ class TestGetPackageCompatibility:
         mock_compat_db.get_compatibility_statistics.return_value = {}
         app.dependency_overrides[get_compatibility_db] = lambda: mock_compat_db
         try:
-            response = client.get(
-                "/api/v1/packages/pypi/torch/compatibility?version=2.1.0"
-            )
+            response = client.get("/api/v1/packages/pypi/torch/compatibility?version=2.1.0")
             assert response.status_code == 200
             data = response.json()
             assert data["version"] == "2.1.0"

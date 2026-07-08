@@ -40,8 +40,10 @@ def client():
 @pytest.fixture
 def mock_get_current_user():
     """Override get_current_user to return a mock user."""
+
     async def _override():
         return _mock_user
+
     _test_app.dependency_overrides.clear()
     _test_app.dependency_overrides[get_current_user] = _override
     yield
@@ -80,6 +82,7 @@ class TestRegister:
     def test_register_duplicate_user(self, client):
         with patch.object(AuthService, "register_user", new_callable=AsyncMock) as mock_reg:
             from fastapi import HTTPException, status
+
             mock_reg.side_effect = HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username or email already registered",
@@ -129,6 +132,7 @@ class TestLogin:
     def test_login_invalid_credentials(self, client):
         with patch.object(AuthService, "login", new_callable=AsyncMock) as mock_login:
             from fastapi import HTTPException, status
+
             mock_login.side_effect = HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
@@ -200,6 +204,7 @@ class TestRefreshToken:
     def test_refresh_invalid_token(self, client):
         with patch.object(AuthService, "refresh_token", new_callable=AsyncMock) as mock_ref:
             from fastapi import HTTPException, status
+
             mock_ref.side_effect = HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
@@ -215,6 +220,7 @@ class TestLogout:
     def test_logout_success(self, client):
         async def _override():
             return _mock_user
+
         _test_app.dependency_overrides.clear()
         _test_app.dependency_overrides[get_current_user] = _override
         try:
@@ -228,7 +234,11 @@ class TestLogout:
     def test_logout_unauthorized(self, client):
         async def _override():
             from fastapi import HTTPException, status
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+            )
+
         _test_app.dependency_overrides.clear()
         _test_app.dependency_overrides[get_current_user] = _override
         try:
@@ -236,6 +246,3 @@ class TestLogout:
             assert response.status_code == 401
         finally:
             _test_app.dependency_overrides.clear()
-
-
-
