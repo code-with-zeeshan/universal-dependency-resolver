@@ -180,7 +180,10 @@ class TestPyPIHelpers:
     async def test_fetch_package_json_parse(self):
         """Test that JSON parsing produces correct version entries."""
         fake_json = {
-            "info": {"name": "requests", "requires_dist": ["urllib3>=1.21.1", "certifi>=2017.4.17"]},
+            "info": {
+                "name": "requests",
+                "requires_dist": ["urllib3>=1.21.1", "certifi>=2017.4.17"],
+            },
             "releases": {
                 "2.31.0": [{"upload_time": "2023-05-22T10:00:00", "requires_python": ">=3.7"}],
                 "2.28.0": [{"upload_time": "2022-06-08T10:00:00", "requires_python": ">=3.7"}],
@@ -286,7 +289,9 @@ class TestAggregatorIntegration:
         from backend.core.data_aggregator import DataAggregator
 
         agg = DataAggregator()
-        with patch("backend.core.local_index.LocalIndexManager.sync", new_callable=AsyncMock) as mock_sync:
+        with patch(
+            "backend.core.local_index.LocalIndexManager.sync", new_callable=AsyncMock
+        ) as mock_sync:
             mock_sync.return_value = 42
             result = await agg.sync_local_index("pypi")
             assert result == 42
@@ -343,8 +348,10 @@ class TestAggregatorIntegration:
                 with patch.object(agg, "_get_client") as mock_get_client:
                     # Use spec=None so MagicMock doesn't auto-create attributes
                     mock_client = MagicMock(spec=["get_package_info"])
+
                     def fake_get_package_info(name, **kwargs):
                         return {"name": name, "version": "1.0"}
+
                     mock_client.get_package_info = fake_get_package_info
                     mock_get_client.return_value = mock_client
                     mock_eco = MagicMock()
@@ -364,7 +371,11 @@ class TestAggregatorIntegration:
 class TestSyncDeduplication:
     def test_create_or_update_index_dedup(self, tmp_path):
         """create_or_update_index handles duplicate packages gracefully."""
-        from backend.core.offline_index import _ensure_index, create_or_update_index, get_package_info
+        from backend.core.offline_index import (
+            _ensure_index,
+            create_or_update_index,
+            get_package_info,
+        )
 
         with patch("backend.core.offline_index.INDEX_DIR", tmp_path):
             pkgs = [

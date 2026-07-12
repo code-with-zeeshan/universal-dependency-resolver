@@ -22,12 +22,14 @@ logger = logging.getLogger(__name__)
 
 class DependencyType(Enum):
     """DependencyType."""
+
     DEPENDENCY = "dependency"
     DEVELOPMENT = "development"
 
 
 class TargetFramework(Enum):
     """TargetFramework."""
+
     NET_FRAMEWORK_48 = "net48"
     NET_FRAMEWORK_472 = "net472"
     NET_FRAMEWORK_461 = "net461"
@@ -42,6 +44,7 @@ class TargetFramework(Enum):
 @dataclass
 class NuGetVersionRequirement:
     """NuGetVersionRequirement."""
+
     """NuGetVersionRequirement."""
     raw: str
     operator: str | None = None
@@ -53,6 +56,7 @@ class NuGetVersionRequirement:
 
 class NuGetClient(BaseDataSourceClient):
     """NuGetClient."""
+
     def __init__(
         self,
         service_index_url: str | None = None,

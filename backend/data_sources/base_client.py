@@ -40,6 +40,7 @@ async def close_all_sessions() -> None:
 
 class BaseDataSourceClient:
     """Shared HTTP client + caching + rate limiting for all data sources."""
+
     """Shared HTTP client + caching + rate limiting for all data sources."""
 
     def __init__(

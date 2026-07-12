@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class DependencyType(Enum):
     """DependencyType."""
+
     REQUIRE = "require"
     REQUIRE_DEV = "require-dev"
     CONFLICT = "conflict"
@@ -38,6 +39,7 @@ class DependencyType(Enum):
 @dataclass
 class ComposerVersionRequirement:
     """ComposerVersionRequirement."""
+
     """ComposerVersionRequirement."""
     raw: str
     operator: str | None = None
@@ -48,6 +50,7 @@ class ComposerVersionRequirement:
 
 class PackagistClient(BaseDataSourceClient):
     """PackagistClient."""
+
     def __init__(
         self,
         api_url: str | None = None,

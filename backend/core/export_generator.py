@@ -1,4 +1,5 @@
 """Module docstring."""
+
 import json
 import logging
 from dataclasses import dataclass

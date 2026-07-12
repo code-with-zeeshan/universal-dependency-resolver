@@ -505,7 +505,7 @@ class DataAggregator:
 
             # Build _version_metadata from version dicts for deprecation/yanked checking
             version_meta = {}
-            for ver_entry in (result.get("versions") or []):
+            for ver_entry in result.get("versions") or []:
                 if isinstance(ver_entry, dict):
                     v_str = ver_entry.get("version", "")
                     if v_str:
@@ -551,7 +551,12 @@ class DataAggregator:
                 return
             create_or_update_index(ecosystem.value, [{"name": name, "versions": versions}])
         except Exception:
-            logger.debug("Failed to auto-index %s/%s", ecosystem.value, result.get("name", "?"), exc_info=True)
+            logger.debug(
+                "Failed to auto-index %s/%s",
+                ecosystem.value,
+                result.get("name", "?"),
+                exc_info=True,
+            )
 
     async def _merge_ecosystem_data(self, aggregated: dict, ecosystem: Ecosystem, data: dict):
         """Merge data from an ecosystem into aggregated result."""

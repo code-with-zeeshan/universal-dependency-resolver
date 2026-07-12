@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class PubClient(BaseDataSourceClient):
     """PubClient."""
+
     def __init__(
         self,
         cache_ttl: int | None = None,

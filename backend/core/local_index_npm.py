@@ -7,15 +7,13 @@ and keeps it current via the ``_changes`` feed.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
 
-from backend import settings as _settings
 from backend.core.offline_index import (
     _connect,
     _ensure_index,
@@ -83,7 +81,7 @@ class NpmIndexManager:
         if not updated:
             return None
         try:
-            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         except (ValueError, TypeError):
             return None
 
@@ -110,7 +108,7 @@ class NpmIndexManager:
 
         total += await self._sync_changes()
 
-        self._last_updated = datetime.now(timezone.utc)
+        self._last_updated = datetime.now(UTC)
         return total
 
     async def _seed_from_search(self) -> int:
@@ -126,7 +124,9 @@ class NpmIndexManager:
                 try:
                     async with session.get(url) as resp:
                         if resp.status != 200:
-                            logger.warning("npm search returned %d at from=%d", resp.status, from_arg)
+                            logger.warning(
+                                "npm search returned %d at from=%d", resp.status, from_arg
+                            )
                             break
                         data = await resp.json()
                 except Exception as exc:
@@ -167,12 +167,11 @@ class NpmIndexManager:
 
         url = f"{_NPM_CHANGES_URL}?since={since}&limit=1000"
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        logger.warning("npm _changes feed returned %d", resp.status)
-                        return 0
-                    rows = await resp.json()
+            async with aiohttp.ClientSession() as session, session.get(url) as resp:
+                if resp.status != 200:
+                    logger.warning("npm _changes feed returned %d", resp.status)
+                    return 0
+                rows = await resp.json()
         except Exception as exc:
             logger.warning("Failed to fetch npm changes feed: %s", exc)
             return 0

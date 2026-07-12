@@ -9,8 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +78,7 @@ class CratesIndexManager:
         if not updated:
             return None
         try:
-            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         except (ValueError, TypeError):
             return None
 
@@ -156,7 +155,7 @@ class CratesIndexManager:
         if batch:
             create_or_update_index("crates", batch)
 
-        self._last_updated = datetime.now(timezone.utc)
+        self._last_updated = datetime.now(UTC)
         logger.info("crates.io sync complete: %d packages indexed", pkgs_found)
         return pkgs_found
 
@@ -184,7 +183,7 @@ class CratesIndexManager:
                 except Exception:
                     break
 
-        self._last_updated = datetime.now(timezone.utc)
+        self._last_updated = datetime.now(UTC)
         logger.info("crates.io API sync complete: %d packages registered", total)
         return total
 

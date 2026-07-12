@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class DependencyKind(Enum):
     """DependencyKind."""
+
     NORMAL = "normal"
     BUILD = "build"
     DEV = "dev"
@@ -31,6 +32,7 @@ class DependencyKind(Enum):
 
 class CratesClient(BaseDataSourceClient):
     """CratesClient."""
+
     def __init__(
         self,
         user_agent: str | None = None,

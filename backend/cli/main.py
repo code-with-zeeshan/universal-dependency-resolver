@@ -615,7 +615,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     index_sync_p = index_sub.add_parser("sync", help="Sync local indexes from remote registries")
     index_sync_p.add_argument("--ecosystem", "-e", choices=_eco_choices, help="Ecosystem to sync")
-    index_sync_p.add_argument("--all", "-a", action="store_true", help="Sync all supported ecosystems")
+    index_sync_p.add_argument(
+        "--all", "-a", action="store_true", help="Sync all supported ecosystems"
+    )
 
     return parser
 

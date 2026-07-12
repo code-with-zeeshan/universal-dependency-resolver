@@ -34,6 +34,7 @@ _PUBGRUB_TIMEOUT = 30  # seconds per ecosystem before falling back to Z3
 
 class HybridSolver:
     """Two-phase solver: PubGrub per ecosystem + Z3 cross-eco reconciliation."""
+
     """Two-phase solver: PubGrub per ecosystem + Z3 cross-eco reconciliation."""
 
     def __init__(
@@ -57,11 +58,7 @@ class HybridSolver:
             "os": platform.system().lower(),
             "architecture": platform.machine(),
             "runtime_versions": {
-                "python": {
-                    "version": ".".join(
-                        str(v) for v in platform.python_version_tuple()[:2]
-                    )
-                }
+                "python": {"version": ".".join(str(v) for v in platform.python_version_tuple()[:2])}
             },
             "gpu": {"available": False, "cuda": None},
         }
@@ -95,25 +92,17 @@ class HybridSolver:
         if not pubgrub_versions:
             return eco_result
 
-        z3_result = self._verify_cross_eco(
-            packages, pubgrub_versions, system_info
-        )
+        z3_result = self._verify_cross_eco(packages, pubgrub_versions, system_info)
         if z3_result.get("status") == "satisfiable":
-            logger.info(
-                "Hybrid solver succeeded: PubGrub + Z3 cross-eco check passed"
-            )
+            logger.info("Hybrid solver succeeded: PubGrub + Z3 cross-eco check passed")
             return eco_result
 
-        logger.info(
-            "Cross-ecosystem conflict detected — falling back to full Z3"
-        )
+        logger.info("Cross-ecosystem conflict detected — falling back to full Z3")
         return self._full_z3_fallback(packages, system_info)
 
     # ── Phase 1: PubGrub per ecosystem ────────────────────────────────────
 
-    def _try_pubgrub_per_eco(
-        self, packages: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    def _try_pubgrub_per_eco(self, packages: list[dict[str, Any]]) -> dict[str, Any]:
         from backend.core.pubgrub_solver import PubGrubSolver
 
         eco_groups: dict[str, list[dict[str, Any]]] = {}
@@ -164,8 +153,7 @@ class HybridSolver:
 
         if thread.is_alive():
             logger.warning(
-                "PubGrub timed out after %ds for ecosystem '%s' — "
-                "falling back to full Z3",
+                "PubGrub timed out after %ds for ecosystem '%s' — falling back to full Z3",
                 _PUBGRUB_TIMEOUT,
                 ecosystem,
             )
@@ -173,8 +161,7 @@ class HybridSolver:
 
         if error_container[0] is not None:
             logger.warning(
-                "PubGrub failed for ecosystem '%s': %s — "
-                "falling back to full Z3",
+                "PubGrub failed for ecosystem '%s': %s — falling back to full Z3",
                 ecosystem,
                 error_container[0],
             )

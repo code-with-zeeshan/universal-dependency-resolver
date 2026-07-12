@@ -155,9 +155,7 @@ print(type(solver).__module__ + '.' + type(solver).__qualname__)
         if result.returncode != 0:
             raise AssertionError(f"subprocess failed: {result.stderr}")
         solver_type = result.stdout.strip()
-        assert solver_type == expected_type, (
-            f"Expected {expected_type}, got {solver_type}"
-        )
+        assert solver_type == expected_type, f"Expected {expected_type}, got {solver_type}"
 
     def test_hybrid_solver_env_var(self):
         """USE_HYBRID_SOLVER=true returns HybridSolver."""

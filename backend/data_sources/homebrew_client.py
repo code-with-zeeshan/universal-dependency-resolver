@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 
 class PackageType(Enum):
     """PackageType."""
+
     FORMULA = "formula"
     CASK = "cask"
 
 
 class DependencyType(Enum):
     """DependencyType."""
+
     BUILD = "build"
     RUNTIME = "runtime"
     OPTIONAL = "optional"
@@ -36,6 +38,7 @@ class DependencyType(Enum):
 @dataclass
 class BrewDependency:
     """BrewDependency."""
+
     """BrewDependency."""
     name: str
     dependency_type: DependencyType
@@ -44,6 +47,7 @@ class BrewDependency:
 
 class HomebrewClient(BaseDataSourceClient):
     """HomebrewClient."""
+
     def __init__(
         self,
         api_url: str | None = None,

@@ -12,10 +12,8 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
-from backend.settings import BFS_BATCH_SIZE
+from backend.settings import BFS_BATCH_SIZE, USE_HYBRID_SOLVER, USE_PUBGRUB_SOLVER
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
-from backend.settings import USE_HYBRID_SOLVER
-from backend.settings import USE_PUBGRUB_SOLVER
 
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
 
@@ -457,16 +455,21 @@ async def _resolve_transitive(
                 for dep_name, dep_ver in lk.get("dependencies", {}).items():
                     deps["all"].append(
                         type(
-                            "_Dep", (),
+                            "_Dep",
+                            (),
                             {"name": dep_name, "version_spec": dep_ver, "ecosystem": eco},
                         )()
                     )
-                return (name, eco, {
-                    "name": name,
-                    "version": lk.get("version", "0.0.0"),
-                    "versions": [{"version": lk.get("version", "0.0.0")}],
-                    "dependencies": {eco: deps},
-                })
+                return (
+                    name,
+                    eco,
+                    {
+                        "name": name,
+                        "version": lk.get("version", "0.0.0"),
+                        "versions": [{"version": lk.get("version", "0.0.0")}],
+                        "dependencies": {eco: deps},
+                    },
+                )
             async with sem:
                 info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
             return (name, eco, info)
@@ -502,13 +505,17 @@ async def _resolve_transitive(
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, eco)
                     dep_key = (dep.name, dep_ecosystem_val)
                     if dep_ecosystem_val != eco:
-                        _add_cross_eco_edge(all_packages, dep_key, dep, name, eco, dep_ecosystem_val)
+                        _add_cross_eco_edge(
+                            all_packages, dep_key, dep, name, eco, dep_ecosystem_val
+                        )
 
     # Phase 2: level-by-level batch fetch of transitive deps
     current_level_deps: list[tuple] = []
     # Collect deps from root packages
     for (name, eco), pkg in list(all_packages.items()):
-        _collect_current_deps(pkg, visited, all_packages, pre_resolved, current_level_deps, name, eco)
+        _collect_current_deps(
+            pkg, visited, all_packages, pre_resolved, current_level_deps, name, eco
+        )
 
     if bfs_timeout is not None:
         bfs_deadline = asyncio.get_event_loop().time() + bfs_timeout
@@ -572,7 +579,9 @@ async def _resolve_transitive(
             if dep_pkg and key not in all_packages:
                 all_packages[key] = dep_pkg
             # Collect deps from this package for next level
-            _collect_current_deps(dep_pkg or {}, visited, all_packages, pre_resolved, next_level_deps, name, eco)
+            _collect_current_deps(
+                dep_pkg or {}, visited, all_packages, pre_resolved, next_level_deps, name, eco
+            )
 
         current_level_deps = next_level_deps
 

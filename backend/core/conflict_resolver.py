@@ -1541,6 +1541,7 @@ class ConflictResolver:
             return
 
         from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
         from .constraint_normalizer import normalize_constraint
 
         # Build lookup: pkg_name -> ecosystem
@@ -1857,9 +1858,13 @@ class ConflictResolver:
                 if is_yanked or is_deprecated:
                     label = "yanked" if is_yanked else "deprecated"
                     if _REJECT_DEP:
-                        deprecation_warnings.append(f"{pkg_name} {version_str} is {label} — excluded")
+                        deprecation_warnings.append(
+                            f"{pkg_name} {version_str} is {label} — excluded"
+                        )
                         continue
-                    deprecation_warnings.append(f"{pkg_name} {version_str} is {label} — included with warning")
+                    deprecation_warnings.append(
+                        f"{pkg_name} {version_str} is {label} — included with warning"
+                    )
 
             # Skip pre-release versions in fallback path
             if self._is_prerelease(version_str):

@@ -40,6 +40,7 @@ def _strip_v(version: str) -> str:
 
 class GoModulesClient(BaseDataSourceClient):
     """GoModulesClient."""
+
     def __init__(self):
         """Initialize."""
         go_config = get_ecosystem_config("gomodules")

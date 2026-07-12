@@ -548,6 +548,7 @@ class TestBuildTargetSystemInfo:
             target = None
             platform = None
             cuda = None
+
         assert _build_target_system_info(Args(), {}) is None
 
     def test_target_os_only(self):
@@ -555,6 +556,7 @@ class TestBuildTargetSystemInfo:
             target = "windows"
             platform = None
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"os": "windows"}
 
@@ -563,6 +565,7 @@ class TestBuildTargetSystemInfo:
             target = None
             platform = "aarch64"
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"architecture": "aarch64"}
 
@@ -571,6 +574,7 @@ class TestBuildTargetSystemInfo:
             target = None
             platform = None
             cuda = "11.8"
+
         result = _build_target_system_info(Args(), {})
         assert result == {"cuda": "11.8"}
 
@@ -579,6 +583,7 @@ class TestBuildTargetSystemInfo:
             target = "linux"
             platform = "x86_64"
             cuda = "12.1"
+
         result = _build_target_system_info(Args(), {})
         assert result == {"os": "linux", "architecture": "x86_64", "cuda": "12.1"}
 
@@ -587,6 +592,7 @@ class TestBuildTargetSystemInfo:
             target = None
             platform = "amd64"
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"architecture": "x86_64"}
 
@@ -595,6 +601,7 @@ class TestBuildTargetSystemInfo:
             target = None
             platform = "arm64"
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"architecture": "aarch64"}
 
@@ -603,39 +610,47 @@ class TestBuildTargetSystemInfo:
     def test_target_overrides_host_os(self):
         """Cross-compilation to windows overrides os in system_info."""
         from backend.cli.shared import _build_target_system_info
+
         class Args:
             target = "windows"
             platform = None
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"os": "windows"}
 
     def test_target_arch_normalizes_arm64(self):
         """Cross-compilation to arm64 normalizes arch."""
         from backend.cli.shared import _build_target_system_info
+
         class Args:
             target = None
             platform = "arm64"
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"architecture": "aarch64"}
 
     def test_target_with_cuda_version(self):
         """Cross-compilation with explicit CUDA version."""
         from backend.cli.shared import _build_target_system_info
+
         class Args:
             target = "linux"
             platform = "x86_64"
             cuda = "11.8"
+
         result = _build_target_system_info(Args(), {})
         assert result == {"os": "linux", "architecture": "x86_64", "cuda": "11.8"}
 
     def test_target_partial_override_no_host_cuda(self):
         """Explicit platform with no host CUDA detected."""
         from backend.cli.shared import _build_target_system_info
+
         class Args:
             target = None
             platform = "x86_64"
             cuda = None
+
         result = _build_target_system_info(Args(), {})
         assert result == {"architecture": "x86_64"}

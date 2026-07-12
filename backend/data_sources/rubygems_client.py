@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class DependencyType(Enum):
     """DependencyType."""
+
     RUNTIME = "runtime"
     DEVELOPMENT = "development"
 
@@ -34,6 +35,7 @@ class DependencyType(Enum):
 @dataclass
 class RubyVersionRequirement:
     """RubyVersionRequirement."""
+
     """RubyVersionRequirement."""
     raw: str
     operator: str | None = None
@@ -44,6 +46,7 @@ class RubyVersionRequirement:
 
 class RubyGemsClient(BaseDataSourceClient):
     """RubyGemsClient."""
+
     def __init__(
         self,
         api_url: str | None = None,

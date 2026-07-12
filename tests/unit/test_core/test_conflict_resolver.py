@@ -412,7 +412,9 @@ class TestConflictResolver:
         yanked_warnings = [w for w in warnings if "yanked" in w.lower()]
         # With default policy (warn), deprecated versions are in candidates,
         # solver may select 2.0.0 (latest) if compatible. The warning should appear.
-        assert len(dep_warnings) > 0 or len(yanked_warnings) > 0 or True  # check any dep key in package
+        assert (
+            len(dep_warnings) > 0 or len(yanked_warnings) > 0 or True
+        )  # check any dep key in package
 
     def test_yanked_version_warns(self, resolver):
         """Yanked version generates warning when selected."""
@@ -433,16 +435,20 @@ class TestConflictResolver:
             pkg = rp["yanked-pkg"]
             # Solver may pick 0.9.0 (avoiding yanked 1.0.0) or 1.0.0 with yanked flag
             if pkg.get("version") == "1.0.0":
-                assert pkg.get("yanked") or any("yanked" in w.lower() for w in result.get("warnings", []))
+                assert pkg.get("yanked") or any(
+                    "yanked" in w.lower() for w in result.get("warnings", [])
+                )
 
     def test_reject_deprecated_filters_versions(self, resolver):
         """SOLVER_REJECT_DEPRECATED=true excludes deprecated versions from candidates."""
         import os
+
         orig = os.environ.get("SOLVER_REJECT_DEPRECATED")
         os.environ["SOLVER_REJECT_DEPRECATED"] = "true"
         try:
             import importlib
             import backend.core.conflict_resolver as cr
+
             importlib.reload(cr)
             from backend.core.conflict_resolver import ConflictResolver as CR2
 

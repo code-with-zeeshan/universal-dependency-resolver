@@ -66,8 +66,8 @@ async def _cmd_verify_async(args):
                     return {
                         "name": name,
                         "issue": (
-                            f"Integrity mismatch: stored={stored.get('value','?')[:12]}..., "
-                            f"actual={actual.get('value','?')[:12]}..."
+                            f"Integrity mismatch: stored={stored.get('value', '?')[:12]}..., "
+                            f"actual={actual.get('value', '?')[:12]}..."
                         ),
                         "severity": "error",
                     }

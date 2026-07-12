@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class DependencyType(Enum):
     """DependencyType."""
+
     DEPENDENCIES = "dependencies"
     DEV_DEPENDENCIES = "devDependencies"
     PEER_DEPENDENCIES = "peerDependencies"
@@ -33,6 +34,7 @@ class DependencyType(Enum):
 @dataclass
 class VersionRequirement:
     """VersionRequirement."""
+
     """VersionRequirement."""
     raw: str
     operator: str | None = None
@@ -51,6 +53,7 @@ _NPM_SEMAPHORE = asyncio.Semaphore(NPM_CONCURRENCY)
 
 class NPMClient(BaseDataSourceClient):
     """NPMClient."""
+
     def __init__(
         self,
         registry_url: str | None = None,

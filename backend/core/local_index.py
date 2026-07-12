@@ -57,9 +57,7 @@ class LocalIndexManager:
             updated = status.get("metadata", {}).get("updated_at", "")
             if not updated:
                 return True
-            updated_ts = time.mktime(
-                time.strptime(updated, "%Y-%m-%dT%H:%M:%SZ")
-            )
+            updated_ts = time.mktime(time.strptime(updated, "%Y-%m-%dT%H:%M:%SZ"))
             return (time.time() - updated_ts) > self.update_interval
         except (ValueError, OSError):
             return True
@@ -200,7 +198,7 @@ class LocalIndexManager:
         """
         import subprocess
 
-        from backend.core.offline_index import create_or_update_index, index_status
+        from backend.core.offline_index import create_or_update_index
 
         logger.info("Syncing crates.io index …")
         index_dir = _crates_index_path()
@@ -351,9 +349,9 @@ def _offline_conn(ecosystem: str, create: bool = False) -> Any:
 
 def _crates_index_path() -> Any:
     """Return path to the local crates.io-index Git checkout."""
-    from backend.settings import LOCAL_INDEX_DIR
-
     from pathlib import Path
+
+    from backend.settings import LOCAL_INDEX_DIR
 
     return Path(LOCAL_INDEX_DIR) / "crates.io-index"
 
@@ -450,12 +448,11 @@ async def _fetch_npm_changes(since: int = 0) -> list[dict]:
 
     url = f"https://registry.npmjs.org/-/v1/_changes?since={since}&limit=1000"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    logger.warning("npm _changes feed returned status %d", resp.status)
-                    return []
-                return await resp.json()
+        async with aiohttp.ClientSession() as session, session.get(url) as resp:
+            if resp.status != 200:
+                logger.warning("npm _changes feed returned status %d", resp.status)
+                return []
+            return await resp.json()
     except Exception as exc:
         logger.warning("Failed to fetch npm changes feed: %s", exc)
         return []
@@ -468,11 +465,10 @@ async def _fetch_npm_package_json(package: str, sem: asyncio.Semaphore) -> dict 
     url = f"https://registry.npmjs.org/{package}"
     async with sem:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
+            async with aiohttp.ClientSession() as session, session.get(url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
         except Exception as exc:
             logger.debug("Failed to fetch npm package %s: %s", package, exc)
             return None

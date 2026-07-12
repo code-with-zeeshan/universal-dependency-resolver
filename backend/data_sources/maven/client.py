@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class MavenClient(BaseDataSourceClient):
     """MavenClient."""
+
     def __init__(self):
         """Initialize."""
         maven_config = get_ecosystem_config("maven")

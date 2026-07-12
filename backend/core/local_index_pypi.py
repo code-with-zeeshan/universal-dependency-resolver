@@ -7,18 +7,15 @@ then fetches individual package JSON lazily on first access.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
 
 from backend.core.offline_index import (
     _connect,
-    _ensure_index,
     create_or_update_index,
     get_package_info,
     index_status,
@@ -85,7 +82,7 @@ class PyPIIndexManager:
         if not updated:
             return None
         try:
-            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            return datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         except (ValueError, TypeError):
             return None
 
@@ -113,7 +110,7 @@ class PyPIIndexManager:
 
         if not new_packages:
             logger.info("PyPI index already up to date (%d packages)", len(existing))
-            self._last_updated = datetime.now(timezone.utc)
+            self._last_updated = datetime.now(UTC)
             return 0
 
         sem = asyncio.Semaphore(10)
@@ -129,7 +126,7 @@ class PyPIIndexManager:
                 inserted = create_or_update_index("pypi", valid)
                 total += inserted
 
-        self._last_updated = datetime.now(timezone.utc)
+        self._last_updated = datetime.now(UTC)
         logger.info(
             "PyPI sync complete: %d new packages indexed (total %d)",
             total,
@@ -157,14 +154,14 @@ class PyPIIndexManager:
     async def _fetch_package_list(self) -> list[str]:
         """Fetch all package names from the PyPI Simple API."""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    _PYPI_SIMPLE_URL, headers={"Accept": "text/html"}
-                ) as resp:
-                    if resp.status != 200:
-                        logger.warning("PyPI Simple API returned status %d", resp.status)
-                        return []
-                    html = await resp.text()
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(_PYPI_SIMPLE_URL, headers={"Accept": "text/html"}) as resp,
+            ):
+                if resp.status != 200:
+                    logger.warning("PyPI Simple API returned status %d", resp.status)
+                    return []
+                html = await resp.text()
         except Exception as exc:
             logger.warning("Failed to fetch PyPI package list: %s", exc)
             return []

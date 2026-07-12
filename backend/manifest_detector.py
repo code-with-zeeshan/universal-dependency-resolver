@@ -247,7 +247,9 @@ class ManifestDetector:
     def parse_all(self, manifests: list[dict]) -> list[dict]:
         """Parse all manifests and return a unified package list with ecosystem info."""
         # Pre-load workspace config for workspace:* / catalog: resolution
-        self._workspace_versions, self._catalog_versions, self._workspace_found = self._load_workspace_config()
+        self._workspace_versions, self._catalog_versions, self._workspace_found = (
+            self._load_workspace_config()
+        )
         all_packages = []
         for m in manifests:
             packages = self.parse(m)
@@ -298,7 +300,7 @@ class ManifestDetector:
 
             # Resolve catalog: or catalog:<name> from pnpm-workspace.yaml catalog
             if constraint.startswith("catalog:") and getattr(self, "_workspace_found", False):
-                catalog_name = constraint[len("catalog:"):].strip()
+                catalog_name = constraint[len("catalog:") :].strip()
                 if catalog_name and catalog_name in self._catalog_versions:
                     # Named catalog: look up the package name within the named catalog dict
                     named = self._catalog_versions.get(catalog_name, {})
@@ -306,7 +308,9 @@ class ManifestDetector:
                 else:
                     # Default catalog: use the package name directly
                     default = self._catalog_versions.get("_default", {})
-                    catalog_ver = default.get(catalog_name or name) if isinstance(default, dict) else None
+                    catalog_ver = (
+                        default.get(catalog_name or name) if isinstance(default, dict) else None
+                    )
                 if catalog_ver:
                     pkg["_workspace_resolved"] = False
                     constraint = catalog_ver

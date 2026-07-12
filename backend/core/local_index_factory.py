@@ -34,9 +34,9 @@ def get_local_index(ecosystem: str):
 
     eco = ecosystem.lower().strip()
 
+    from backend.core.local_index_crates import CratesIndexManager
     from backend.core.local_index_npm import NpmIndexManager
     from backend.core.local_index_pypi import PyPIIndexManager
-    from backend.core.local_index_crates import CratesIndexManager
 
     _MANAGERS: dict[str, type] = {
         "npm": NpmIndexManager,
