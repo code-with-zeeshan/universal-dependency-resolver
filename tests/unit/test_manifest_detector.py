@@ -1216,3 +1216,102 @@ class TestParseUdrLock:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "udr_lock"})
         assert result == []
+
+
+class TestWorkspaceResolution:
+    """pnpm workspace: and catalog: constraint resolution."""
+
+    def test_no_workspace_yaml(self, tmp_path):
+        """No pnpm-workspace.yaml → no resolution, constraints unchanged."""
+        (tmp_path / "package.json").write_text(json.dumps({
+            "dependencies": {"react": "^18.0.0", "lodash": "workspace:*"}
+        }))
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "lodash":
+                assert p["constraint"] == "workspace:*"
+                assert not p.get("_workspace_resolved")
+
+    def test_workspace_exact_pin(self, tmp_path):
+        """workspace:* ref resolves to exact version from workspace package.json."""
+        ws_yaml = tmp_path / "pnpm-workspace.yaml"
+        ws_yaml.write_text(yaml.dump({"packages": ["packages/*"]}))
+        pkg_dir = tmp_path / "packages" / "my-lib"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "package.json").write_text(json.dumps({
+            "name": "@scope/my-lib",
+            "version": "2.1.0",
+        }))
+        (tmp_path / "package.json").write_text(json.dumps({
+            "dependencies": {"@scope/my-lib": "workspace:*"},
+        }))
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "@scope/my-lib":
+                assert p["constraint"] == "==2.1.0"
+                assert p.get("_workspace_resolved") is True
+                return
+        assert False, "@scope/my-lib not found"
+
+    def test_catalog_resolution(self, tmp_path):
+        """catalog: ref resolves to catalog version from pnpm-workspace.yaml."""
+        ws_yaml = tmp_path / "pnpm-workspace.yaml"
+        ws_yaml.write_text(yaml.dump({
+            "packages": ["packages/*"],
+            "catalog": {"react": "^19.0.0", "lodash": "4.17.21"},
+        }))
+        (tmp_path / "package.json").write_text(json.dumps({
+            "dependencies": {"react": "catalog:", "lodash": "catalog:"},
+        }))
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "react":
+                assert p["constraint"] == "^19.0.0"
+                assert not p.get("_workspace_resolved")
+            elif p["name"] == "lodash":
+                assert p["constraint"] == "4.17.21"
+                assert not p.get("_workspace_resolved")
+
+    def test_named_catalog(self, tmp_path):
+        """catalog:sentry ref resolves to named catalog entry."""
+        ws_yaml = tmp_path / "pnpm-workspace.yaml"
+        ws_yaml.write_text(yaml.dump({
+            "packages": ["packages/*"],
+            "catalogs": {"sentry": {"@sentry/node": "^10.55.0"}},
+        }))
+        (tmp_path / "package.json").write_text(json.dumps({
+            "dependencies": {"@sentry/node": "catalog:sentry"},
+        }))
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "@sentry/node":
+                assert p["constraint"] == "^10.55.0"
+                assert not p.get("_workspace_resolved")
+
+    def test_unknown_workspace_ref(self, tmp_path):
+        """Unresolvable workspace:* ref falls back to ==0.0.0."""
+        ws_yaml = tmp_path / "pnpm-workspace.yaml"
+        ws_yaml.write_text(yaml.dump({"packages": []}))
+        (tmp_path / "package.json").write_text(json.dumps({
+            "dependencies": {"unknown-pkg": "workspace:*"},
+        }))
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "unknown-pkg":
+                assert p["constraint"] == "==0.0.0"
+                assert p.get("_workspace_resolved") is True

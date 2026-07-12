@@ -163,6 +163,7 @@ def check_license_compatibility(
     -------
     dict
         ``{name: {license, normalized, category, status, reason}}``
+
     """
     policy = policy or DEFAULT_POLICY
     results: dict[str, dict[str, Any]] = {}

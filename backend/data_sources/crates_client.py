@@ -23,12 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 class DependencyKind(Enum):
+    """DependencyKind."""
     NORMAL = "normal"
     BUILD = "build"
     DEV = "dev"
 
 
 class CratesClient(BaseDataSourceClient):
+    """CratesClient."""
     def __init__(
         self,
         user_agent: str | None = None,
@@ -36,6 +38,7 @@ class CratesClient(BaseDataSourceClient):
         max_retries: int | None = None,
         rate_limit_delay: float | None = None,
     ):
+        """Initialize."""
         crates_config = get_ecosystem_config("crates")
 
         super().__init__(
@@ -50,6 +53,7 @@ class CratesClient(BaseDataSourceClient):
     async def search_packages(
         self, query: str, limit: int = 10, page: int = 1, sort: str = "relevance"
     ) -> list[dict[str, Any]]:
+        """search packages."""
         query = normalize_package_name(query)
         try:
             params = {
@@ -97,6 +101,8 @@ class CratesClient(BaseDataSourceClient):
             raise HTTPException(status_code=500, detail=f"Crates search error: {e!s}")
 
     async def get_package_info(self, package_name: str) -> dict[str, Any]:
+        """async get package info."""
+        """async get package info."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}")
@@ -165,9 +171,21 @@ class CratesClient(BaseDataSourceClient):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Crates package info error: {e!s}")
 
+    async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get crates.io artifact integrity hash (cksum = SHA256)."""
+        data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/{version}")
+        if not data:
+            return None
+        version_data = data.get("version", {})
+        cksum = version_data.get("cksum")
+        if cksum:
+            return {"algorithm": "sha256", "hash": cksum}
+        return None
+
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
+        """get package versions."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/versions")
@@ -252,6 +270,7 @@ class CratesClient(BaseDataSourceClient):
         include_dev: bool = False,
         include_build: bool = False,
     ) -> dict[str, list[dict]]:
+        """get dependencies."""
         package_name = normalize_package_name(package_name)
         try:
             if not version:
@@ -311,6 +330,7 @@ class CratesClient(BaseDataSourceClient):
         max_depth: int = 3,
         visited: set[str] | None = None,
     ) -> dict:
+        """get dependency tree."""
         package_name = normalize_package_name(package_name)
         if visited is None:
             visited = set()
@@ -350,6 +370,8 @@ class CratesClient(BaseDataSourceClient):
         return tree
 
     async def check_compatibility(self, package_name: str, version: str, system_info: dict) -> dict:
+        """async check compatibility."""
+        """async check compatibility."""
         package_name = normalize_package_name(package_name)
         try:
             await self._get_version_metadata(package_name, version)
@@ -675,6 +697,7 @@ class CratesClient(BaseDataSourceClient):
 
 
 async def example_usage():
+    """async example usage."""
     client = CratesClient()
 
     try:

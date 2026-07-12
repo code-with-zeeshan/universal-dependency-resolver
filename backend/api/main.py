@@ -149,6 +149,7 @@ app.add_middleware(
 # API Key Authentication Middleware
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
+    """Async api key middleware."""
     exempt_paths = {"/healthz", "/readyz", "/api/v1/health", "/api/v1/readyz"}
     if request.url.path in exempt_paths or request.method == "OPTIONS":
         return await call_next(request)
@@ -334,11 +335,13 @@ async def root(request: Request) -> dict:
 
 @app.get("/healthz", tags=["Health"])
 async def healthz():
+    """Async healthz."""
     return {"status": "ok"}
 
 
 @app.get("/readyz", tags=["Health"])
 async def readyz():
+    """Async readyz."""
     return {"status": "ok"}
 
 

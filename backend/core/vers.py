@@ -78,9 +78,11 @@ class VersSpec:
             return False
 
     def __str__(self) -> str:
+        """Str."""
         return self.pep508 if self.pep508 != "*" else "*"
 
     def __repr__(self) -> str:
+        """Repr."""
         return f"VersSpec(eco={self.ecosystem}, raw={self.raw!r}, pep508={self.pep508!r})"
 
 
@@ -150,7 +152,7 @@ def _parse_pip(constraint: str, ecosystem: str) -> VersSpec:
 
 
 def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
-    """npm / crates / pub / packagist: ``^1.2.0``, ``~1.2.0``, bare ``1.2``."""
+    """Npm / crates / pub / packagist: ``^1.2.0``, ``~1.2.0``, bare ``1.2``."""
     c = constraint.strip()
     if not c or c in ("*", "any", ""):
         return VersSpec(ecosystem, constraint, "*")
@@ -222,7 +224,7 @@ def _parse_hex(constraint: str, ecosystem: str) -> VersSpec:
 
 
 def _parse_swift(constraint: str, ecosystem: str) -> VersSpec:
-    """Swift: ``from: \"1.2.3\"``, ``exact: \"1.2.3\"``, ``branch: \"main\"``."""
+    r"""Swift: ``from: \"1.2.3\"``, ``exact: \"1.2.3\"``, ``branch: \"main\"``."""
     c = constraint.strip()
     if not c or c in ("*", "any", ""):
         return VersSpec(ecosystem, constraint, "*")

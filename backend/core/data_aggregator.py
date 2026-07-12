@@ -175,6 +175,13 @@ class DataAggregator:
         """Async context manager exit."""
         await self.close()
 
+    async def sync_local_index(self, ecosystem: str) -> int:
+        """Sync the local index for *ecosystem* — delegates to LocalIndexManager."""
+        from backend.core.local_index import LocalIndexManager
+
+        mgr = LocalIndexManager()
+        return await mgr.sync(ecosystem)
+
     async def close(self):
         """Cleanup resources."""
         if not self.executor._shutdown:
@@ -440,6 +447,22 @@ class DataAggregator:
                 f"Package {package_name} not found in offline index for {ecosystem.value}"
             )
 
+        from backend.settings import ENABLE_LOCAL_INDEX as _ENABLE_LOCAL_INDEX
+
+        if _ENABLE_LOCAL_INDEX:
+            from backend.core.local_index import LocalIndexManager
+
+            _local_mgr = LocalIndexManager()
+            cached = _local_mgr.lookup(ecosystem.value, package_name)
+            if cached is not None:
+                logger.debug("Local index hit for %s/%s", ecosystem.value, package_name)
+                return cached
+            logger.debug(
+                "Local index miss for %s/%s — falling through to API",
+                ecosystem.value,
+                package_name,
+            )
+
         try:
             client = self._get_client(ecosystem)
 
@@ -480,11 +503,55 @@ class DataAggregator:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
 
+            # Build _version_metadata from version dicts for deprecation/yanked checking
+            version_meta = {}
+            for ver_entry in (result.get("versions") or []):
+                if isinstance(ver_entry, dict):
+                    v_str = ver_entry.get("version", "")
+                    if v_str:
+                        meta = {}
+                        if "yanked" in ver_entry:
+                            meta["yanked"] = bool(ver_entry["yanked"])
+                        if "deprecated" in ver_entry:
+                            meta["deprecated"] = ver_entry["deprecated"] is not None
+                        if meta:
+                            version_meta[v_str] = meta
+            if version_meta:
+                result["_version_metadata"] = version_meta
+
+            # Auto-index: write fetched package into offline index for future --offline use
+            if os.environ.get("UDR_OFFLINE", "").lower() != "true":
+                asyncio.create_task(self._auto_index_package(ecosystem, result))
             return result
 
         except Exception as e:
             logger.error(f"Error fetching {package_name} from {ecosystem.value}: {e}")
             raise
+
+    async def _auto_index_package(self, ecosystem: Ecosystem, result: dict) -> None:
+        """Write a successfully fetched package into the offline index (fire-and-forget)."""
+        try:
+            from backend.core.offline_index import create_or_update_index
+
+            name = result.get("name", "")
+            if not name:
+                return
+            raw_versions = result.get("versions", [])
+            versions: list[dict] = []
+            for ver in raw_versions:
+                entry: dict = {"version": ver.get("version", "")}
+                if ver.get("upload_time"):
+                    entry["release_date"] = ver["upload_time"]
+                if ver.get("requires_python"):
+                    entry["requires_python"] = ver["requires_python"]
+                if ver.get("dependencies"):
+                    entry["dependencies"] = ver["dependencies"]
+                versions.append(entry)
+            if not versions:
+                return
+            create_or_update_index(ecosystem.value, [{"name": name, "versions": versions}])
+        except Exception:
+            logger.debug("Failed to auto-index %s/%s", ecosystem.value, result.get("name", "?"), exc_info=True)
 
     async def _merge_ecosystem_data(self, aggregated: dict, ecosystem: Ecosystem, data: dict):
         """Merge data from an ecosystem into aggregated result."""
@@ -1217,6 +1284,18 @@ class DataAggregator:
         if requirement.version_spec:
             return is_compatible_version(system_version, requirement.version_spec)
         return True
+
+    async def get_artifact_hash(
+        self,
+        package_name: str,
+        ecosystem: str,
+        version: str,
+    ) -> dict | None:
+        """Get artifact integrity hash from the registry."""
+        client = self._get_client(Ecosystem(ecosystem))
+        if hasattr(client, "get_artifact_hash"):
+            return await client.get_artifact_hash(package_name, version)
+        return None
 
     def _generate_compatibility_recommendations(self, report: dict):
         """Generate recommendations based on compatibility analysis."""

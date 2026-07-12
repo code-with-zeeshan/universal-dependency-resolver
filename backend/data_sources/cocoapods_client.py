@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class CocoaPodsClient(BaseDataSourceClient):
+    """CocoaPodsClient."""
+
     def __init__(self):
+        """Initialize."""
         cocoapods_config = get_ecosystem_config("cocoapods")
 
         base_url = cocoapods_config.get("url", "https://trunk.cocoapods.org/api/v1")
@@ -30,6 +33,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         self.specs_url = cocoapods_config.get("specs_url", "https://cdn.cocoapods.org")
 
     async def package_exists(self, package_name: str) -> bool:
+        """Async package exists."""
         package_name = self._normalize_pod_name(package_name)
         try:
             session = self._get_session()
@@ -42,6 +46,7 @@ class CocoaPodsClient(BaseDataSourceClient):
             return False
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Async search packages."""
         query = normalize_package_name(query)
 
         url = f"{self.base_url}/pods"
@@ -70,6 +75,7 @@ class CocoaPodsClient(BaseDataSourceClient):
 
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(self, package_name: str) -> dict | None:
+        """Async get package info async."""
         package_name = self._normalize_pod_name(package_name)
 
         url = f"{self.base_url}/pods/{quote(package_name)}"
@@ -108,10 +114,12 @@ class CocoaPodsClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict | None:
+        """Get package info."""
         package_name = self._normalize_pod_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
     async def get_versions(self, package_name: str) -> list[dict]:
+        """Async get versions."""
         package_name = self._normalize_pod_name(package_name)
 
         url = f"{self.base_url}/pods/{quote(package_name)}"
@@ -124,6 +132,7 @@ class CocoaPodsClient(BaseDataSourceClient):
         return self._process_versions(versions)
 
     async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
+        """Async get dependencies."""
         package_name = self._normalize_pod_name(package_name)
 
         if not version:

@@ -6,11 +6,11 @@
 |------|--------|
 | Supported ecosystems | 20 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, docs, custom_db) |
 | Resolution engine | Z3 SAT solver + PubGrub (pure-Python fallback) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
-| In-place manifest update | 13/20 ecosystems — PyPI, npm, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda have updaters; **Go, Haskell, Hex, Gradle, Swift, Pub, Homebrew cannot write back** |
+| In-place manifest update | **18/18 resolvable ecosystems** — all ecosystems with local manifests can be written back after `udr lock` |
 | CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index` |
 | Lock file | `udr.lock` (supports `--workspace` for multi-workspace projects) |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| Tests | 1831 unit + 94 integration = **1925 total** (zero regressions) |
+| Tests | 1850 unit + 94 integration = **1944 total** (zero regressions) |
 | All 21 bottlenecks | ✅ Fixed — P0×4 (wrong results), P1×4 (reliability), P2×5 (scalability), P3×8 (code quality) |
 | Architecture violations | 0 (api→orchestrator→database service layer enforced) |
 | Ruff violations | 0 in `backend/` |
@@ -20,22 +20,19 @@
 
 ## High-Priority Gaps (from FAQ.md — needs contributors)
 
-### 1. Missing Manifest Updaters
-- **What**: Only 13/20 ecosystems have in-place `_update_*` functions.
-- **Entry point**: `backend/cli/shared.py` — add updaters for Go (`go.mod`), Haskell (`*.cabal`), Hex/Elixir (`mix.exs`), Gradle (`build.gradle`/`.kts`), Swift (`Package.swift`), Pub (`pubspec.yaml`), Homebrew (`Brewfile`).
-- **Priority**: High — manifests are the primary output surface; missing updaters mean users must manually re-write after `udr lock`.
+### 1. Missing Manifest Updaters — ✅ Complete
+- **What**: **18/18 ecosystems** now have in-place `_update_*` functions (go.mod, cabal, mix.exs, build.gradle, Package.swift, pubspec.yaml, Brewfile, apt-packages.txt, apk-packages.txt, pom.xml, and all prior).
+- **Status**: All resolvable ecosystems are writable. Removed from high-priority gap list.
 
-### 2. No Cross-Compilation Targeting (`--target`/`--platform`)
-- **What**: `SystemScanner` always auto-detects OS, architecture (arm64 vs amd64), Python version — no way to override. A lock file generated on macOS ARM for a Linux CUDA deploy target locks in the wrong OS/arch.
-- **Partial fix**: `--cuda <ver>` + `--device <cpu/cuda/mps>` exist on 7 commands, but only override GPU info.
-- **Entry point**: `backend/core/system_scanner.py` + CLI flag propagation through all command handlers.
-- **Priority**: High — CI/CD workflows need to generate deploy-target lock files from developer laptops.
+### 2. Cross-Compilation Targeting (`--target`/`--platform`) — ✅ Complete
+- **What**: `--target` (linux/windows/darwin) + `--platform` (x86_64/aarch64/arm64/i386/amd64) flags on `lock`, `install`, `update`, `resolve`. Override OS/arch before resolution. Target info stored in lock file's `target` section alongside host system info.
+- **Env overrides**: `TARGET_OS`, `TARGET_ARCH`, `TARGET_CUDA` settings for CI-driven cross-compilation.
+- **Status**: Implemented. Removed from high-priority gap list.
 
-### 3. Offline-First Mode is Manual
-- **What**: SQLite offline index (`~/.cache/udr/indexes/{eco}.db`) exists but must be explicitly built via `udr index build` or pulled via `udr index pull`. There's no "cache-as-you-go" — API responses are not automatically indexed for future offline use.
-- **Partial fix**: DictCache with disk persistence + ETag conditional requests cache individual lookups, but a fresh package always requires network unless pre-indexed.
-- **Entry point**: `backend/core/offline_index.py` + `DataAggregator` auto-population during online fetches.
-- **Priority**: High — the `--offline` flag exists but raises `FileNotFoundError` for un-indexed packages.
+### 3. Offline-First Mode — Auto-Population ✅
+- **What**: `_auto_index_package` in `DataAggregator` caches every API response into the SQLite offline index automatically during normal fetches. No explicit `udr index build` needed for previously-seen packages.
+- **Remaining gap**: First-time packages still require network (no proactive index sync).
+- **Status**: Auto-population implemented. Manual `udr index sync` still available for pre-seeding.
 
 ### 4. Per-Ecosystem Solver Isolation
 - **What**: All ecosystems share a single Z3 optimization matrix (`conflict_resolver.py:1113-1218`). A conflict in JavaScript frontend deps blocks backend Python resolution if any transitive dependency path connects them.
@@ -80,9 +77,10 @@
 | 5.7 | Swift DSL updater | P2 | ✅ Done | `Package.swift` |
 | 5.8 | Elixir DSL updater | P2 | ✅ Done | `mix.exs` |
 | 5.9 | Cabal updater | P3 | ✅ Done | `*.cabal` |
-| 5.10 | XML updater | P3 | ✅ Done | `packages.config` (nuget) |
-| 5.11 | Incremental resolution | P1 | Partially done | resolution_hash caching; full incremental re-resolution pending |
-| 5.12 | PubGrub solver integration | P1 | ✅ Done (pure-Python) | `backend/core/pubgrub_core.py` (661 lines) — pure-Python PubGrub with CDCL; no Rust toolchain needed. `USE_PUBGRUB_SOLVER=true` to enable. Falls back gracefully to ConflictResolver (Z3). |
+| 5.10 | XML updater | P3 | ✅ Done | `packages.config` (nuget), `pom.xml` (maven) |
+| 5.11 | Simple text updater | P3 | ✅ Done | `apt-packages.txt`, `apk-packages.txt` |
+| 5.12 | Incremental resolution | P1 | ✅ Done | resolution_hash per package; BFS + SAT skip for unchanged subtrees; per-transitive-dep hash comparison |
+| 5.13 | PubGrub solver integration | P1 | ✅ Done (pure-Python) | `backend/core/pubgrub_core.py` (661 lines) — pure-Python PubGrub with CDCL; no Rust toolchain needed. `USE_PUBGRUB_SOLVER=true` to enable. Falls back gracefully to ConflictResolver (Z3). |
 
 ## Phase 6 — Cross-Compilation & Offline (New — from FAQ priorities)
 

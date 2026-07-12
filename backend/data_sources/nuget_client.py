@@ -21,11 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class DependencyType(Enum):
+    """DependencyType."""
     DEPENDENCY = "dependency"
     DEVELOPMENT = "development"
 
 
 class TargetFramework(Enum):
+    """TargetFramework."""
     NET_FRAMEWORK_48 = "net48"
     NET_FRAMEWORK_472 = "net472"
     NET_FRAMEWORK_461 = "net461"
@@ -39,6 +41,8 @@ class TargetFramework(Enum):
 
 @dataclass
 class NuGetVersionRequirement:
+    """NuGetVersionRequirement."""
+    """NuGetVersionRequirement."""
     raw: str
     operator: str | None = None
     major: int | None = None
@@ -48,6 +52,7 @@ class NuGetVersionRequirement:
 
 
 class NuGetClient(BaseDataSourceClient):
+    """NuGetClient."""
     def __init__(
         self,
         service_index_url: str | None = None,
@@ -56,6 +61,7 @@ class NuGetClient(BaseDataSourceClient):
         rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
+        """Initialize."""
         nuget_config = get_ecosystem_config("nuget")
 
         service_index_url = (
@@ -76,6 +82,7 @@ class NuGetClient(BaseDataSourceClient):
         self._service_endpoints: dict[str, str] = {}
 
     async def __aenter__(self):
+        """async   aenter."""
         await self._initialize_service_endpoints()
         return self
 
@@ -116,6 +123,8 @@ class NuGetClient(BaseDataSourceClient):
         self.registration_base_url = "https://api.nuget.org/v3/registration5-semver1"
 
     async def package_exists(self, package_name: str) -> bool:
+        """async package exists."""
+        """async package exists."""
         package_name = package_name.lower()
         try:
             session = self._get_session()
@@ -132,6 +141,7 @@ class NuGetClient(BaseDataSourceClient):
         include_prerelease: bool = False,
         target_framework: str | None = None,
     ) -> list[dict]:
+        """search packages."""
         query = query.lower()
 
         if not self.search_url:
@@ -180,6 +190,7 @@ class NuGetClient(BaseDataSourceClient):
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
     ) -> dict | None:
+        """get package info async."""
         package_name = package_name.lower()
 
         if not self.registration_base_url:
@@ -271,10 +282,14 @@ class NuGetClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict:
+        """get package info."""
+        """get package info."""
         package_name = package_name.lower()
         return run_async(self.get_package_info_async(package_name))
 
     async def get_package_version(self, package_name: str, version: str) -> dict | None:
+        """async get package version."""
+        """async get package version."""
         package_name = package_name.lower()
 
         if not self.registration_base_url:
@@ -298,6 +313,7 @@ class NuGetClient(BaseDataSourceClient):
         include_prereleases: bool = True,
         include_unlisted: bool = False,
     ) -> list[dict]:
+        """get versions."""
         package_name = package_name.lower()
 
         info = await self.get_package_info_async(package_name, include_versions=True)
@@ -322,6 +338,7 @@ class NuGetClient(BaseDataSourceClient):
         version: str | None = None,
         target_framework: str | None = None,
     ) -> dict[str, Any]:
+        """get dependencies."""
         package_name = package_name.lower()
 
         if version:
@@ -497,6 +514,7 @@ class NuGetClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: dict[str, Any]
     ) -> dict[str, Any]:
+        """check compatibility."""
         package_name = package_name.lower()
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -602,6 +620,7 @@ class NuGetClient(BaseDataSourceClient):
 
 
 async def example_usage():
+    """async example usage."""
     async with NuGetClient() as client:
         await client.search_packages("Newtonsoft.Json", limit=5)
 

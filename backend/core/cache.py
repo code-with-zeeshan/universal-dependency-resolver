@@ -1,4 +1,5 @@
 # backend/core/cache.py
+"""Module docstring."""
 import asyncio
 import hashlib
 import logging

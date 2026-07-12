@@ -18,6 +18,7 @@ def parse_package_swift(content: str) -> dict[str, Any]:
       - ``targets``: list of target names (name only)
       - ``platforms``: list of platform strings
       - ``swift_tools_version``: parsed tools version string or ``None``
+
     """
     result: dict[str, Any] = {
         "dependencies": {},

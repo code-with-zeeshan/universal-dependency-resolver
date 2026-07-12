@@ -33,7 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 class CompatibilityDB:
+    """CompatibilityDB."""
+
     def __init__(self):
+        """Initialize."""
         init_db()
 
     def add_package(self, name: str, ecosystem: str, info: dict) -> int:

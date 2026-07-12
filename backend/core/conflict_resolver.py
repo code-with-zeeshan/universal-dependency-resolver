@@ -1112,8 +1112,8 @@ class ConflictResolver:
             if parsed:
                 parsed_versions.append((ver, parsed))
 
-        # Sort by parsed version objects
-        sorted_versions = sorted(parsed_versions, key=lambda x: x[1])
+        # Sort by parsed version objects descending (latest = idx 0 for optimization)
+        sorted_versions = sorted(parsed_versions, key=lambda x: x[1], reverse=True)
 
         for idx, (ver, _) in enumerate(sorted_versions):
             key = f"{package_name}_{ver}"
@@ -1133,6 +1133,7 @@ class ConflictResolver:
 
         self._version_weights = []
         self._minimization_added = False
+        self._candidate_lists: dict[str, list[str]] = {}
 
         # Variable for each package version
         total_vars = 0
@@ -1198,6 +1199,7 @@ class ConflictResolver:
             if not version_vars:
                 continue
             package["available_versions"] = versions_used
+            self._candidate_lists[pkg_name] = versions_used
 
             constraints["package_versions"][pkg_name] = version_vars
             total_vars += len(version_vars)
@@ -1512,6 +1514,11 @@ class ConflictResolver:
                         }
                         break
 
+            # Post-process: when optimization is disabled, upgrade each package
+            # to the newest candidate that still satisfies all constraints.
+            if not self._use_optimization:
+                self._upgrade_to_latest(solution, constraints)
+
             return solution
         if result == z3.unknown:
             logger.warning("Z3 solver returned unknown (likely timeout or incomplete)")
@@ -1521,6 +1528,97 @@ class ConflictResolver:
                 "message": "Solver timed out or could not determine satisfiability",
             }
         return {"status": "unsatisfiable", "conflicts": self._analyze_conflicts()}
+
+    def _upgrade_to_latest(self, solution: dict, constraints: dict) -> None:
+        """Post-process SAT solution: upgrade each package to newest feasible version.
+
+        When optimization is disabled (large graphs), the solver may pick arbitrary
+        versions. This method tries each package's newer candidates and keeps the
+        upgrade if all dependency constraints remain satisfied.
+        """
+        pkgs = solution.get("packages", {})
+        if not pkgs or not self._candidate_lists:
+            return
+
+        from packaging.specifiers import InvalidSpecifier, SpecifierSet
+        from .constraint_normalizer import normalize_constraint
+
+        # Build lookup: pkg_name -> ecosystem
+        pkg_eco = {}
+        for node in self.dependency_graph.nodes():
+            nd = self.dependency_graph.nodes[node]
+            name = nd.get("name")
+            if name:
+                pkg_eco[name] = nd.get("ecosystem", "pypi")
+
+        # Pre-compute dependency constraints: for each package A that depends on B,
+        # store (A_version, B, constraint_str).
+        # Iterate edges in dependency graph.
+        dep_edges: list[tuple[str, str, str, str]] = []
+        for node in self.dependency_graph.nodes():
+            nd = self.dependency_graph.nodes[node]
+            src_name = nd.get("name")
+            if src_name is None:
+                continue
+            for successor in self.dependency_graph.successors(node):
+                edge_data = self.dependency_graph.get_edge_data(node, successor)
+                con_str = edge_data.get("constraint", "")
+                if not con_str:
+                    continue
+                snd = self.dependency_graph.nodes.get(successor, {})
+                dep_name = snd.get("name")
+                if dep_name is None:
+                    continue
+                dep_eco = pkg_eco.get(dep_name, "pypi")
+                parsed = normalize_constraint(con_str, dep_eco)
+                if parsed and parsed != "*":
+                    dep_edges.append((src_name, dep_name, parsed, dep_eco))
+
+        def _check_version(v: str, constraint: str, eco: str) -> bool:
+            try:
+                spec = SpecifierSet(constraint)
+                return v in spec
+            except (InvalidSpecifier, Exception):
+                pass
+            return True
+
+        def _check_assignment(assigned: dict[str, str]) -> bool:
+            for src, dep, con, eco in dep_edges:
+                src_ver = assigned.get(src)
+                dep_ver = assigned.get(dep)
+                if src_ver is None or dep_ver is None:
+                    continue
+                if not _check_version(dep_ver, con, eco):
+                    return False
+            return True
+
+        # Build current assignment
+        current = {n: info.get("version", "") for n, info in pkgs.items()}
+
+        # Try upgrading each package (iterate in sorted order for determinism)
+        for pkg_name in sorted(self._candidate_lists, key=lambda n: (pkg_eco.get(n, ""), n)):
+            candidates = self._candidate_lists[pkg_name]
+            if pkg_name not in current or not candidates:
+                continue
+            current_ver = current[pkg_name]
+            # Find best (newest) candidate that is newer than current
+            best = current_ver
+            for c in candidates:
+                if c == current_ver:
+                    break  # candidates are sorted newest-first; past current = older
+                # Try this version
+                old = current[pkg_name]
+                current[pkg_name] = c
+                if _check_assignment(current):
+                    best = c
+                else:
+                    current[pkg_name] = old
+            if best != current_ver:
+                current[pkg_name] = best
+                pkgs[pkg_name] = {
+                    "version": best,
+                    "ecosystem": pkg_eco.get(pkg_name, "?"),
+                }
 
     def _resolve_with_alternatives(self, packages: list[dict], system_info: dict) -> dict:
         """DFS backtracking with forward checking — tries to satisfy all cross-package constraints.
@@ -1554,12 +1652,16 @@ class ConflictResolver:
 
         # Pre-compute compatible versions for each package (system-compatible + own constraint)
         candidate_versions: dict[str, list[str]] = {}
+        self._deprecation_warnings: list[str] = []
         for pkg in packages:
             versions = self._find_compatible_versions(pkg, system_info)
             if versions:
                 candidate_versions[pkg["name"]] = versions
             else:
-                result["warnings"].append(f"No compatible version found for {pkg['name']}")
+                dep_warnings = getattr(self, "_deprecation_warnings", [])
+                dep_msgs = [w for w in dep_warnings if pkg["name"] in w]
+                if not dep_msgs:
+                    result["warnings"].append(f"No compatible version found for {pkg['name']}")
 
         # Sort packages: those with most dependency constraints first, then fewest versions
         def _sort_key(name: str) -> tuple[int, int]:
@@ -1594,7 +1696,8 @@ class ConflictResolver:
 
         def _check_constraints(name: str, version_str: str, assignment: dict[str, str]) -> bool:
             """Forward checking: does version_str for name satisfy all constraints
-            from already-assigned packages that depend on name?"""
+            from already-assigned packages that depend on name?
+            """
             if name not in dep_constraints:
                 return True
             for con_str, eco in dep_constraints[name]:
@@ -1692,11 +1795,20 @@ class ConflictResolver:
             result["status"] = "unsatisfiable"
             result["warnings"].append("No compatible version assignment found for any package")
 
+        dep_warnings = getattr(self, "_deprecation_warnings", [])
+        if dep_warnings:
+            result["warnings"].extend(dep_warnings)
+
         return result
 
     def _find_compatible_versions(self, package: dict, system_info: dict) -> list[str]:
         """Find versions compatible with system requirements."""
         compatible = []
+        from backend.settings import SOLVER_REJECT_DEPRECATED as _REJECT_DEP
+
+        deprecation_warnings: list[str] = []
+        version_metadata = package.get("_version_metadata", {}) or {}
+        pkg_name = package.get("name", "unknown")
 
         # Apply version_constraint from manifest (e.g. >=3.11,<3.13)
         version_constraint = package.get("version_constraint", "*")
@@ -1737,11 +1849,27 @@ class ConflictResolver:
                 if sys_cuda and compare_versions(sys_cuda, min_cuda) < 0:
                     continue
 
+            # Check deprecation/yanked status
+            meta = version_metadata.get(version_str, {})
+            if meta:
+                is_yanked = meta.get("yanked", False)
+                is_deprecated = bool(meta.get("deprecated", False))
+                if is_yanked or is_deprecated:
+                    label = "yanked" if is_yanked else "deprecated"
+                    if _REJECT_DEP:
+                        deprecation_warnings.append(f"{pkg_name} {version_str} is {label} — excluded")
+                        continue
+                    deprecation_warnings.append(f"{pkg_name} {version_str} is {label} — included with warning")
+
             # Skip pre-release versions in fallback path
             if self._is_prerelease(version_str):
                 continue
 
             compatible.append(version_str)
+
+        if deprecation_warnings:
+            existing = getattr(self, "_deprecation_warnings", [])
+            self._deprecation_warnings = existing + deprecation_warnings
 
         # Sort using compare_versions
         return sorted(

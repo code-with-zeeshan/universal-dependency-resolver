@@ -45,10 +45,12 @@ class PubGrubSolver:
         use_optimization: bool = True,
         solver_timeout: int | None = None,
     ) -> None:
+        """Initialize."""
         self._use_optimization = use_optimization
         self._solver_timeout = solver_timeout
 
     def _get_default_system_info(self) -> dict:
+        """Provide default system info (drop-in for ConflictResolver)."""
         """Provide default system info (drop-in for ConflictResolver)."""
         return {
             "os": platform.system().lower(),
@@ -87,6 +89,7 @@ class PubGrubSolver:
         return self._resolve_via_pure_python(packages)
 
     def _resolve_via_pubgrub_py(self, packages: list[dict]) -> dict:
+        """Resolve using the Rust-backed ``pubgrub-py``."""
         """Resolve using the Rust-backed ``pubgrub-py``."""
         resolver = _PubGrubPyResolver()
         requirements: dict[str, str] = {}
@@ -139,6 +142,7 @@ class PubGrubSolver:
 
     def _resolve_via_pure_python(self, packages: list[dict]) -> dict:
         """Resolve using the pure-Python ``PubGrubCoreSolver``."""
+        """Resolve using the pure-Python ``PubGrubCoreSolver``."""
         solver = PubGrubCoreSolver()
         requirements: dict[str, str] = {}
 
@@ -184,6 +188,7 @@ class PubGrubSolver:
 
 
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:
+    """Normalize a version constraint to PEP 440 / PubGrub-compatible form."""
     """Normalize a version constraint to PEP 440 / PubGrub-compatible form."""
     c = constraint.strip()
     if not c:

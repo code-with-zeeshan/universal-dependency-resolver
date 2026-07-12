@@ -45,6 +45,7 @@ class SwiftClient(BaseDataSourceClient):
         max_retries: int | None = None,
         rate_limit_delay: float | None = None,
     ):
+        """Initialize."""
         config = get_ecosystem_config("swift")
         configured_url = config.get("url", "").rstrip("/")
         self._registry_url = configured_url or GITHUB_API
@@ -62,6 +63,7 @@ class SwiftClient(BaseDataSourceClient):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """get package info async."""
         return await self.get_package_info(
             package_name,
             include_dependencies=include_dependencies,
@@ -74,6 +76,7 @@ class SwiftClient(BaseDataSourceClient):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """get package info."""
         try:
             owner, repo = self._resolve_package(package_name)
             versions = await self._list_versions(owner, repo) if include_versions else []
@@ -98,6 +101,7 @@ class SwiftClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
+        """get package versions."""
         info = await self.get_package_info(
             package_name, include_versions=True, include_dependencies=False
         )
@@ -168,6 +172,7 @@ class SwiftClient(BaseDataSourceClient):
 
     async def _list_registry_releases(self, owner: str, repo: str) -> list[dict]:
         """SE-0292 ``GET /{scope}/{name}``."""
+        """SE-0292 ``GET /{scope}/{name}``."""
         scope = quote(owner, safe="")
         name = quote(repo, safe="")
         data = await self._get(
@@ -201,6 +206,7 @@ class SwiftClient(BaseDataSourceClient):
 
     async def _fetch_registry_manifest(self, owner: str, repo: str, version: str) -> str | None:
         """SE-0292 ``GET /{scope}/{name}/{version}/Package.swift``."""
+        """SE-0292 ``GET /{scope}/{name}/{version}/Package.swift``."""
         scope = quote(owner, safe="")
         name = quote(repo, safe="")
         ver = quote(version, safe="")
@@ -211,6 +217,7 @@ class SwiftClient(BaseDataSourceClient):
 
     @staticmethod
     def _swift_resolution_help() -> str:
+        """Return a user-facing message explaining Swift resolution options."""
         """Return a user-facing message explaining Swift resolution options."""
         return _SWIFT_HELP
 

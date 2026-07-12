@@ -26,12 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 class DependencyType(Enum):
+    """DependencyType."""
     RUNTIME = "runtime"
     DEVELOPMENT = "development"
 
 
 @dataclass
 class RubyVersionRequirement:
+    """RubyVersionRequirement."""
+    """RubyVersionRequirement."""
     raw: str
     operator: str | None = None
     major: int | None = None
@@ -40,6 +43,7 @@ class RubyVersionRequirement:
 
 
 class RubyGemsClient(BaseDataSourceClient):
+    """RubyGemsClient."""
     def __init__(
         self,
         api_url: str | None = None,
@@ -48,6 +52,7 @@ class RubyGemsClient(BaseDataSourceClient):
         rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
+        """Initialize."""
         rubygems_config = get_ecosystem_config("rubygems")
 
         api_url = (api_url or rubygems_config.get("api_url", "https://rubygems.org/api/v1")).rstrip(
@@ -62,6 +67,8 @@ class RubyGemsClient(BaseDataSourceClient):
         self._version_cache: dict[str, RubyVersionRequirement] = {}
 
     async def package_exists(self, package_name: str) -> bool:
+        """async package exists."""
+        """async package exists."""
         package_name = normalize_package_name(package_name)
         try:
             session = self._get_session()
@@ -71,6 +78,8 @@ class RubyGemsClient(BaseDataSourceClient):
             return False
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """async search packages."""
+        """async search packages."""
         query = normalize_package_name(query)
 
         url = f"{self.base_url}/search.json"
@@ -108,6 +117,7 @@ class RubyGemsClient(BaseDataSourceClient):
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
     ) -> dict | None:
+        """get package info async."""
         package_name = normalize_package_name(package_name)
 
         url = f"{self.base_url}/gems/{package_name}.json"
@@ -158,10 +168,27 @@ class RubyGemsClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict:
+        """get package info."""
+        """get package info."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
+    async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get RubyGems artifact integrity hash (SHA256 from version sha)."""
+        versions_data = await self._get_all_versions(package_name)
+        if not versions_data:
+            return None
+        for v in versions_data:
+            if v.get("number") == version:
+                sha = v.get("sha")
+                if sha:
+                    return {"algorithm": "sha256", "hash": sha}
+                break
+        return None
+
     async def get_package_version(self, package_name: str, version: str) -> dict | None:
+        """async get package version."""
+        """async get package version."""
         package_name = normalize_package_name(package_name)
 
         versions_data = await self._get_all_versions(package_name)
@@ -196,6 +223,7 @@ class RubyGemsClient(BaseDataSourceClient):
         include_prereleases: bool = True,
         include_yanked: bool = False,
     ) -> list[dict]:
+        """get versions."""
         package_name = normalize_package_name(package_name)
 
         versions_data = await self._get_all_versions(package_name)
@@ -236,6 +264,7 @@ class RubyGemsClient(BaseDataSourceClient):
         version: str | None = None,
         include_development: bool = True,
     ) -> dict[str, Any]:
+        """get dependencies."""
         package_name = normalize_package_name(package_name)
 
         if version:
@@ -385,6 +414,7 @@ class RubyGemsClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: dict[str, Any]
     ) -> dict[str, Any]:
+        """check compatibility."""
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -490,6 +520,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
 
 async def example_usage():
+    """async example usage."""
     async with RubyGemsClient() as client:
         await client.search_packages("rails", limit=5)
 

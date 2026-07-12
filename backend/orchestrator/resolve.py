@@ -12,7 +12,9 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
+from backend.settings import BFS_BATCH_SIZE
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
+from backend.settings import USE_HYBRID_SOLVER
 from backend.settings import USE_PUBGRUB_SOLVER
 
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
@@ -21,11 +23,25 @@ logger = logging.getLogger(__name__)
 
 
 def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
-    """Create a solver instance based on USE_PUBGRUB_SOLVER setting.
+    """Create a solver instance based on USE_PUBGRUB_SOLVER / USE_HYBRID_SOLVER settings.
 
-    When the env var is true, tries to import ``PubGrubSolver`` and returns
-    it.  Falls back to ``ConflictResolver`` (Z3) if PubGrub is unavailable.
+    Priority: USE_HYBRID_SOLVER > USE_PUBGRUB_SOLVER > ConflictResolver (Z3 default).
     """
+    if USE_HYBRID_SOLVER:
+        try:
+            from backend.core.hybrid_solver import HybridSolver
+
+            logger.info("Using HybridSolver (PubGrub per-ecosystem + Z3 cross-eco)")
+            return HybridSolver(
+                use_optimization=use_optimization,
+                solver_timeout=solver_timeout,
+            )
+        except ImportError:
+            logger.warning(
+                "USE_HYBRID_SOLVER is true but hybrid_solver module not available; "
+                "falling back to Z3 ConflictResolver"
+            )
+
     if USE_PUBGRUB_SOLVER:
         try:
             # Check that pubgrub-py is actually importable (not just the wrapper class)
@@ -286,6 +302,42 @@ def _collect_locked_transitive_deps(
     return collected
 
 
+def _check_dep_hash(
+    dep_name: str,
+    dep_eco: str,
+    lock_data: dict | None,
+    system_info: dict | None,
+) -> str | None:
+    """If *dep_name* in *lock_data* has a matching resolution_hash, return its locked version."""
+    if not lock_data:
+        return None
+    locked_pkgs = lock_data.get("packages", {})
+    entry = locked_pkgs.get(dep_name)
+    if not entry:
+        return None
+    stored_hash = entry.get("resolution_hash", "")
+    if not stored_hash:
+        return None
+    deps_by_eco: dict[str, dict[str, str]] = {}
+    for d_name, d_constraint in entry.get("depends_on", {}).items():
+        d_entry = locked_pkgs.get(d_name, {})
+        d_eco = d_entry.get("ecosystem")
+        if d_eco:
+            deps_by_eco.setdefault(d_eco, {})[d_name] = d_constraint
+    from backend.core.conflict_resolver import ConflictResolver
+
+    current_hash = ConflictResolver.compute_resolution_hash(
+        dep_name,
+        entry.get("ecosystem", dep_eco),
+        entry.get("original_constraint", "*"),
+        deps_by_eco,
+        system_info,
+    )
+    if stored_hash == current_hash:
+        return entry.get("resolved_version") or entry.get("version", "")
+    return None
+
+
 async def _resolve_transitive(
     aggregator: Any,
     resolver: Any,
@@ -358,114 +410,171 @@ async def _resolve_transitive(
             else {"status": "satisfiable", "resolved_packages": {}}
         )
 
-    # BFS transitive resolution for changed packages only — continuous queue
-    # instead of depth-by-depth batching: as soon as a package's deps are
-    # discovered, they are immediately queued for fetching.
+    def _collect_current_deps(
+        pkg: dict,
+        visited: set,
+        all_packages: dict,
+        pre_resolved: dict,
+        out_list: list[tuple],
+        pkg_name: str,
+        pkg_eco: str,
+    ) -> None:
+        """Extract dependency names from *pkg* and append (name, eco, source) tuples to *out_list*.
+        Skips already visited, pre-resolved, or collected packages.
+        """
+        if not pkg:
+            return
+        deps_by_eco = pkg.get("dependencies", {})
+        if not deps_by_eco and isinstance(pkg, dict) and "dependencies" not in pkg:
+            return
+        for dep_eco, dep_data in deps_by_eco.items():
+            for dep in dep_data.get("all", []):
+                dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg_eco)
+                key = (dep.name, dep_ecosystem_val)
+                if key in visited or key in all_packages or key in pre_resolved:
+                    continue
+                out_list.append((dep.name, dep_ecosystem_val, dep))
+
+    # BFS transitive resolution — level-by-level parallel batches
+    # Phase 1: batch-fetch all root packages (not pre-resolved) in parallel.
+    # Phase 2: level-by-level: collect deps → batch-fetch → recurse.
     visited: set = set()
     all_packages: dict = {}
-    sem = asyncio.Semaphore(10)
-    fetch_queue: asyncio.Queue = asyncio.Queue()
 
-    for pkg in changed_packages:
-        await fetch_queue.put(("root", pkg))
+    async def _batch_fetch(
+        items: list[tuple],
+        batch_size: int,
+    ) -> list[tuple]:
+        """Fetch *items* in parallel batches, each batch limited by batch_size semaphore."""
+        results: list[tuple] = []
+        sem = asyncio.Semaphore(batch_size)
 
-    async def _fetch_with_sem(name: str, ecosystem: str) -> dict | None:
-        lk = lock_tree_lookup.get((name, ecosystem))
-        if lk is not None:
-            deps: dict[str, list] = {"all": []}
-            for dep_name, dep_ver in lk.get("dependencies", {}).items():
-                deps["all"].append(
-                    type(
-                        "_Dep",
-                        (),
-                        {"name": dep_name, "version_spec": dep_ver, "ecosystem": ecosystem},
-                    )()
-                )
-            return {
-                "name": name,
-                "version": lk.get("version", "0.0.0"),
-                "versions": [{"version": lk.get("version", "0.0.0")}],
-                "dependencies": {ecosystem: deps},
-            }
-        async with sem:
-            return await _fetch_dep_info(aggregator, name, ecosystem, include_extended=False)
+        async def _fetch_one(item: tuple) -> tuple:
+            name, eco = item[0], item[1]
+            lk = lock_tree_lookup.get((name, eco))
+            if lk is not None:
+                deps: dict[str, list] = {"all": []}
+                for dep_name, dep_ver in lk.get("dependencies", {}).items():
+                    deps["all"].append(
+                        type(
+                            "_Dep", (),
+                            {"name": dep_name, "version_spec": dep_ver, "ecosystem": eco},
+                        )()
+                    )
+                return (name, eco, {
+                    "name": name,
+                    "version": lk.get("version", "0.0.0"),
+                    "versions": [{"version": lk.get("version", "0.0.0")}],
+                    "dependencies": {eco: deps},
+                })
+            async with sem:
+                info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
+            return (name, eco, info)
 
-    async def _worker():
-        while True:
-            try:
-                pkg_type, pkg = await asyncio.wait_for(fetch_queue.get(), timeout=1)
-            except (TimeoutError, asyncio.CancelledError):
-                break
-            key = (pkg["name"], pkg["ecosystem"])
-            if key in visited or key in pre_resolved:
-                fetch_queue.task_done()
+        batch_results = await asyncio.gather(*[_fetch_one(item) for item in items])
+        for r in batch_results:
+            if r[2] is not None:
+                results.append(r)
+        return results
+
+    # Phase 1: batch-fetch root packages that aren't pre-resolved
+    roots_to_fetch = [
+        (p["name"], p["ecosystem"], p)
+        for p in changed_packages
+        if (p["name"], p["ecosystem"]) not in pre_resolved
+    ]
+    if roots_to_fetch:
+        root_batch = [(n, e) for n, e, _ in roots_to_fetch]
+        batch_sz = min(BFS_BATCH_SIZE, len(root_batch))
+        fetched = await _batch_fetch(root_batch, batch_sz)
+        for name, eco, info in fetched:
+            key = (name, eco)
+            if key in all_packages:
                 continue
             visited.add(key)
-            info = await _fetch_with_sem(pkg["name"], pkg["ecosystem"])
-            if isinstance(info, Exception) or not info:
-                fetch_queue.task_done()
-                continue
-            if pkg_type == "root":
-                if key not in all_packages:
-                    all_packages[key] = pkg
-            else:
-                dep_pkg = _build_dep_pkg(
-                    pkg.get("_dep"),
-                    pkg["ecosystem"],
-                    info,
-                    pkg.get("_source_eco", pkg["ecosystem"]),
-                    pkg.get("_source_name", pkg["name"]),
-                )
-                if dep_pkg and key not in all_packages:
-                    all_packages[key] = dep_pkg
+            # find the original pkg dict
+            pkg = next(p for n, e, p in roots_to_fetch if n == name and e == eco)
+            all_packages[key] = pkg
+            # cross-eco edges from root packages
             all_deps = info.get("dependencies", {})
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
-                    dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg["ecosystem"])
+                    dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, eco)
                     dep_key = (dep.name, dep_ecosystem_val)
-                    if (
-                        dep_key not in visited
-                        and dep_key not in all_packages
-                        and dep_key not in pre_resolved
-                    ):
-                        await fetch_queue.put(
-                            (
-                                "dep",
-                                {
-                                    "name": dep.name,
-                                    "ecosystem": dep_ecosystem_val,
-                                    "_dep": dep,
-                                    "_source_eco": pkg["ecosystem"],
-                                    "_source_name": pkg["name"],
-                                },
-                            )
-                        )
-                    if dep_ecosystem_val != pkg["ecosystem"]:
-                        _add_cross_eco_edge(
-                            all_packages,
-                            dep_key,
-                            dep,
-                            pkg["name"],
-                            pkg["ecosystem"],
-                            dep_ecosystem_val,
-                        )
-            fetch_queue.task_done()
+                    if dep_ecosystem_val != eco:
+                        _add_cross_eco_edge(all_packages, dep_key, dep, name, eco, dep_ecosystem_val)
 
-    workers = [asyncio.create_task(_worker()) for _ in range(min(10, len(changed_packages) + 4))]
+    # Phase 2: level-by-level batch fetch of transitive deps
+    current_level_deps: list[tuple] = []
+    # Collect deps from root packages
+    for (name, eco), pkg in list(all_packages.items()):
+        _collect_current_deps(pkg, visited, all_packages, pre_resolved, current_level_deps, name, eco)
+
     if bfs_timeout is not None:
-        try:
-            await asyncio.wait_for(fetch_queue.join(), timeout=bfs_timeout)
-        except TimeoutError:
+        bfs_deadline = asyncio.get_event_loop().time() + bfs_timeout
+    else:
+        bfs_deadline = None
+
+    while current_level_deps:
+        if bfs_deadline is not None and asyncio.get_event_loop().time() >= bfs_deadline:
             logger.warning(
                 "BFS timed out after %ds — continuing with %d packages fetched",
                 bfs_timeout,
                 len(all_packages),
             )
-    else:
-        await fetch_queue.join()
-    for w in workers:
-        w.cancel()
-    await asyncio.gather(*workers, return_exceptions=True)
+            break
+
+        # Deduplicate by key — also check resolution hash for each dep
+        seen = set()
+        unique_deps = []
+        for item in current_level_deps:
+            key = (item[0], item[1])
+            if key not in seen and key not in visited and key not in pre_resolved:
+                seen.add(key)
+                # Check if transitive dep can be pre-resolved from lock hash
+                locked_ver = _check_dep_hash(item[0], item[1], lock_data, system_info)
+                if locked_ver:
+                    pre_resolved[key] = locked_ver
+                    # Pre-resolve all transitive deps of this dep from lock data
+                    if lock_data:
+                        td = _collect_locked_transitive_deps(
+                            lock_data.get("packages", {}), item[0], item[1]
+                        )
+                        for dk, dv in td.items():
+                            if dk not in pre_resolved:
+                                pre_resolved[dk] = dv
+                else:
+                    unique_deps.append(item)
+        if not unique_deps:
+            break
+
+        # Batch-fetch this level
+        fetch_items = [(n, e) for n, e, _source in unique_deps]
+        batch_sz = min(BFS_BATCH_SIZE, len(fetch_items))
+        fetched = await _batch_fetch(fetch_items, batch_sz)
+
+        # Process fetched deps
+        next_level_deps: list[tuple] = []
+        for name, eco, info in fetched:
+            key = (name, eco)
+            if key in visited or key in all_packages or key in pre_resolved:
+                continue
+            visited.add(key)
+            # Find the source info for this dep
+            source_info = next((src for n, e, src in unique_deps if n == name and e == eco), None)
+            dep_pkg = _build_dep_pkg(
+                getattr(source_info, "_dep", source_info) if source_info else None,
+                eco,
+                info,
+                eco,  # _source_eco
+                name,  # _source_name
+            )
+            if dep_pkg and key not in all_packages:
+                all_packages[key] = dep_pkg
+            # Collect deps from this package for next level
+            _collect_current_deps(dep_pkg or {}, visited, all_packages, pre_resolved, next_level_deps, name, eco)
+
+        current_level_deps = next_level_deps
 
     # Pin any package with an exact version constraint (e.g. from lock files)
     # before sending to the SAT solver — avoids solver blow-up for huge lock files

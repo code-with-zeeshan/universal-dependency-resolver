@@ -28,6 +28,7 @@ class PinningPolicy:
         If ``True`` and a lock file is present, all packages that appear in the lock
         file are constrained to their locked version.  Only new/changed packages
         go through re-resolution.
+
     """
 
     pin_mode: str = "none"

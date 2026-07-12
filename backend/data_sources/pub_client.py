@@ -15,12 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 class PubClient(BaseDataSourceClient):
+    """PubClient."""
     def __init__(
         self,
         cache_ttl: int | None = None,
         max_retries: int | None = None,
         rate_limit_delay: float | None = None,
     ):
+        """Initialize."""
         pub_config = get_ecosystem_config("pub")
         super().__init__(
             ecosystem="pub",
@@ -30,6 +32,8 @@ class PubClient(BaseDataSourceClient):
         self.download_url = "https://pub.dev/api"
 
     async def get_package_info(self, package_name: str) -> dict[str, Any] | None:
+        """async get package info."""
+        """async get package info."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.download_url}/packages/{quote(package_name)}")
@@ -93,6 +97,7 @@ class PubClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
+        """get package versions."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.download_url}/packages/{quote(package_name)}")

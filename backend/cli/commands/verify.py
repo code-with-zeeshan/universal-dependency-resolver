@@ -11,6 +11,8 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from backend.settings import PIN_INTEGRITY as _pin_integrity
+
 from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
 
 
@@ -54,6 +56,21 @@ async def _cmd_verify_async(args):
                     "issue": "No resolved version",
                     "severity": "warning",
                 }
+            if _pin_integrity and info.get("integrity"):
+                stored = info["integrity"]
+                actual = await aggregator.get_artifact_hash(name, eco, ver)
+                if actual and (
+                    stored.get("value") != actual.get("value")
+                    or stored.get("algorithm") != actual.get("algorithm")
+                ):
+                    return {
+                        "name": name,
+                        "issue": (
+                            f"Integrity mismatch: stored={stored.get('value','?')[:12]}..., "
+                            f"actual={actual.get('value','?')[:12]}..."
+                        ),
+                        "severity": "error",
+                    }
             try:
                 data = await aggregator.get_package_info(
                     name,

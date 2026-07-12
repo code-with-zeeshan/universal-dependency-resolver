@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class DocumentationScraper:
+    """DocumentationScraper."""
+
     def __init__(self):
+        """Initialize."""
         self.session = None
         self.scraped_urls = set()
         self.known_docs = {
@@ -68,16 +71,19 @@ class DocumentationScraper:
         }
 
     async def __aenter__(self):
+        """Async   aenter."""
         self.session = aiohttp.ClientSession(
             headers={"User-Agent": "Mozilla/5.0 (compatible; DocScraper/1.0)"}
         )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async   aexit."""
         if self.session:
             await self.session.close()
 
     async def close(self):
+        """Async close."""
         if self.session:
             await self.session.close()
             self.session = None

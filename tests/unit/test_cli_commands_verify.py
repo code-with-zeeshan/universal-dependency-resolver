@@ -152,3 +152,75 @@ class TestCmdVerify:
 
                     result = await _cmd_verify_async(args)
                     assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_verify_integrity_match(self):
+        """Integrity check passes when stored hash matches registry."""
+        args = MagicMock()
+        args.lock_file = "/tmp/udr.lock"
+        args.json = False
+
+        mock_data = {
+            "packages": {
+                "requests": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.31.0",
+                    "integrity": {"algorithm": "sha256", "value": "abc123"},
+                },
+            }
+        }
+
+        with patch("backend.cli.commands.verify._read_lock_file", return_value=mock_data):
+            with patch("pathlib.Path.is_file", return_value=True):
+                with patch("backend.cli.commands.verify._pin_integrity", True):
+                    with patch("backend.core.DataAggregator") as mock_agg_cls:
+                        mock_agg = MagicMock()
+                        mock_agg.get_package_info = AsyncMock(
+                            return_value={"versions": {"pypi": [{"version": "2.31.0"}]}}
+                        )
+                        mock_agg.get_artifact_hash = AsyncMock(
+                            return_value={"algorithm": "sha256", "value": "abc123"}
+                        )
+                        mock_agg.close = AsyncMock()
+                        mock_agg_cls.return_value = mock_agg
+
+                        from backend.cli.commands.verify import _cmd_verify_async
+
+                        result = await _cmd_verify_async(args)
+                        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_verify_integrity_mismatch(self):
+        """Integrity check fails when stored hash differs from registry."""
+        args = MagicMock()
+        args.lock_file = "/tmp/udr.lock"
+        args.json = False
+
+        mock_data = {
+            "packages": {
+                "requests": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.31.0",
+                    "integrity": {"algorithm": "sha256", "value": "stored_hash"},
+                },
+            }
+        }
+
+        with patch("backend.cli.commands.verify._read_lock_file", return_value=mock_data):
+            with patch("pathlib.Path.is_file", return_value=True):
+                with patch("backend.cli.commands.verify._pin_integrity", True):
+                    with patch("backend.core.DataAggregator") as mock_agg_cls:
+                        mock_agg = MagicMock()
+                        mock_agg.get_package_info = AsyncMock(
+                            return_value={"versions": {"pypi": [{"version": "2.31.0"}]}}
+                        )
+                        mock_agg.get_artifact_hash = AsyncMock(
+                            return_value={"algorithm": "sha256", "value": "registry_hash"}
+                        )
+                        mock_agg.close = AsyncMock()
+                        mock_agg_cls.return_value = mock_agg
+
+                        from backend.cli.commands.verify import _cmd_verify_async
+
+                        result = await _cmd_verify_async(args)
+                        assert result == 1

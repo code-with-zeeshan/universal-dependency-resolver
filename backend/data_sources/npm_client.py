@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class DependencyType(Enum):
+    """DependencyType."""
     DEPENDENCIES = "dependencies"
     DEV_DEPENDENCIES = "devDependencies"
     PEER_DEPENDENCIES = "peerDependencies"
@@ -31,6 +32,8 @@ class DependencyType(Enum):
 
 @dataclass
 class VersionRequirement:
+    """VersionRequirement."""
+    """VersionRequirement."""
     raw: str
     operator: str | None = None
     major: int | None = None
@@ -47,6 +50,7 @@ _NPM_SEMAPHORE = asyncio.Semaphore(NPM_CONCURRENCY)
 
 
 class NPMClient(BaseDataSourceClient):
+    """NPMClient."""
     def __init__(
         self,
         registry_url: str | None = None,
@@ -55,6 +59,7 @@ class NPMClient(BaseDataSourceClient):
         rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
+        """Initialize."""
         npm_config = get_ecosystem_config("npm")
         registry_url = (registry_url or npm_config.get("url", "https://registry.npmjs.org")).rstrip(
             "/"
@@ -82,6 +87,7 @@ class NPMClient(BaseDataSourceClient):
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
+        """cached get."""
         async with _NPM_SEMAPHORE:
             return await super().cached_get(cache_key, url, ttl=ttl, headers=headers)
 
@@ -93,6 +99,7 @@ class NPMClient(BaseDataSourceClient):
         popularity: float | None = None,
         maintenance: float | None = None,
     ) -> list[dict[str, Any]]:
+        """search packages."""
         query = normalize_package_name(query)
         params = {"text": query, "size": min(limit, 250)}
 
@@ -147,6 +154,7 @@ class NPMClient(BaseDataSourceClient):
         include_versions: bool = True,
         include_extended: bool = True,
     ) -> dict[str, Any] | None:
+        """get package info."""
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
@@ -240,7 +248,25 @@ class NPMClient(BaseDataSourceClient):
 
         return info
 
+    async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get npm package artifact integrity hash (sha512 from dist.integrity)."""
+        encoded_name = quote(package_name, safe="@/")
+        url = f"{self.registry_url}/{encoded_name}/{version}"
+        data = await self._make_request("GET", url)
+        if not data:
+            return None
+        dist = data.get("dist", {})
+        integrity = dist.get("integrity")
+        if integrity:
+            return {"algorithm": "sha512", "hash": integrity.replace("sha512-", "")}
+        shasum = dist.get("shasum")
+        if shasum:
+            return {"algorithm": "sha1", "hash": shasum}
+        return None
+
     async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
+        """async get package version."""
+        """async get package version."""
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}/{version}"
@@ -272,6 +298,7 @@ class NPMClient(BaseDataSourceClient):
         include_prereleases: bool = True,
         include_deprecated: bool = False,
     ) -> list[dict[str, Any]]:
+        """get versions."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(
             package_name, include_readme=False, include_versions=True
@@ -292,6 +319,8 @@ class NPMClient(BaseDataSourceClient):
         return versions
 
     async def resolve_version(self, package_name: str, version_spec: str) -> str | None:
+        """async resolve version."""
+        """async resolve version."""
         package_name = normalize_package_name(package_name)
         versions = await self.get_versions(package_name, include_deprecated=False)
         if not versions:
@@ -320,6 +349,7 @@ class NPMClient(BaseDataSourceClient):
         include_transitive: bool = False,
         max_depth: int = 3,
     ) -> dict[str, Any]:
+        """get dependencies."""
         package_name = normalize_package_name(package_name)
         if version:
             pkg_data = await self.get_package_version(package_name, version)
@@ -395,6 +425,7 @@ class NPMClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: dict[str, Any]
     ) -> dict[str, Any]:
+        """check compatibility."""
         package_name = normalize_package_name(package_name)
         pkg_data = await self.get_package_version(package_name, version)
         if not pkg_data:
@@ -469,6 +500,7 @@ class NPMClient(BaseDataSourceClient):
     async def get_dependency_tree(
         self, package_name: str, version: str | None = None, max_depth: int = 3
     ) -> dict[str, Any]:
+        """get dependency tree."""
         package_name = normalize_package_name(package_name)
         tree = {
             "name": package_name,
@@ -541,6 +573,7 @@ class NPMClient(BaseDataSourceClient):
     async def analyze_package(
         self, package_name: str, version: str | None = None
     ) -> dict[str, Any]:
+        """analyze package."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(package_name)
         if not info:
@@ -1032,6 +1065,7 @@ class NPMClient(BaseDataSourceClient):
 
 
 async def example_usage():
+    """async example usage."""
     async with NPMClient() as client:
         await client.search_packages("react", limit=10, quality=0.8, popularity=0.5)
 

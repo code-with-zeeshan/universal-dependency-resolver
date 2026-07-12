@@ -26,6 +26,20 @@ from ..shared import (
 )
 
 
+def _extract_integrity(pkg_detail: dict, version: str, ecosystem: str) -> str | None:
+    """Extract integrity hash from fetched package data by ecosystem."""
+    versions = pkg_detail.get("versions") or []
+    for v_entry in versions:
+        if isinstance(v_entry, dict) and v_entry.get("version") == version:
+            dist = v_entry.get("dist", {})
+            if isinstance(dist, dict) and dist.get("integrity"):
+                return dist["integrity"]
+            if isinstance(dist, dict) and dist.get("shasum"):
+                return f"sha1:{dist['shasum']}"
+            return None
+    return None
+
+
 def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[str, dict]]:
     """Parse ecosystem lock files (package-lock.json, yarn.lock) and return lock tree.
 
@@ -279,6 +293,11 @@ def cmd_lock(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["type"] = "cuda"
 
+        # Override system_info with cross-compilation target info (if --target/--platform/--cuda)
+        target_info = _build_target_system_info(args, system_info)
+        if target_info:
+            system_info["target"] = target_info
+
         # Separate pinned (Go) from SAT-solved packages
         sat_inputs = [r for r in resolver_inputs if "pinned_version" not in r]
         pinned_inputs = [r for r in resolver_inputs if "pinned_version" in r]
@@ -359,6 +378,8 @@ def cmd_lock(args):
             "packages": {},
             "warnings": resolved.get("warnings", []),
         }
+        if system_info.get("target"):
+            lock_data["target"] = system_info["target"]
         if workspace:
             lock_data["workspace"] = workspace
 
@@ -380,16 +401,23 @@ def cmd_lock(args):
             is_direct = pkg_name in manifest_pkg_info
             pkg_detail = package_details.get(pkg_name, {})
             vulns = pkg_detail.get("security", {}).get("vulnerabilities", [])
+            dep_info = pkg_detail.get("_version_metadata", {}).get(rp.get("version", ""), {})
+            eco = rp.get("ecosystem", "?")
+            ver = rp.get("version", "")
+            integrity_val = _extract_integrity(pkg_detail, ver, eco)
             lock_data["packages"][pkg_name] = {
                 "name": pkg_name,
-                "ecosystem": rp.get("ecosystem", "?"),
-                "resolved_version": rp.get("version"),
+                "ecosystem": eco,
+                "resolved_version": ver,
                 "direct": is_direct,
                 "cuda_variant": rp.get("cuda_variant", False),
                 "cuda_version": rp.get("cuda_version"),
                 "original_constraint": manifest_info.get("constraint", "*"),
                 "source": manifest_info.get("source", "transitive"),
                 "license": pkg_detail.get("unified_data", {}).get("license"),
+                "deprecated": dep_info.get("deprecated", False),
+                "yanked": dep_info.get("yanked", False),
+                "integrity": integrity_val,
                 "vulnerabilities": [
                     {
                         "id": v.get("id", ""),
@@ -417,7 +445,8 @@ def cmd_lock(args):
                             dep_names[dep_name] = dep_constraint
             lock_data["packages"][pkg_name]["depends_on"] = dep_names
 
-        # Compute resolution hash for each package for incremental re-resolution
+        # Compute resolution_hash for EVERY package (roots + transitive deps)
+        # for full incremental re-resolution. Non-roots derive deps from depends_on.
         for pkg_name, pkg_info in lock_data["packages"].items():
             rinput = next(
                 (r for r in resolver_inputs if r["name"] == pkg_name),
@@ -429,6 +458,20 @@ def cmd_lock(args):
                     rinput["ecosystem"],
                     rinput.get("version_constraint", "*"),
                     rinput.get("dependencies", {}),
+                    system_info,
+                )
+            else:
+                deps_by_eco: dict[str, dict[str, str]] = {}
+                for d_name, d_constraint in pkg_info.get("depends_on", {}).items():
+                    d_entry = lock_data["packages"].get(d_name, {})
+                    d_eco = d_entry.get("ecosystem")
+                    if d_eco:
+                        deps_by_eco.setdefault(d_eco, {})[d_name] = d_constraint
+                pkg_info["resolution_hash"] = ConflictResolver.compute_resolution_hash(
+                    pkg_name,
+                    pkg_info.get("ecosystem", "?"),
+                    pkg_info.get("original_constraint", "*"),
+                    deps_by_eco,
                     system_info,
                 )
 

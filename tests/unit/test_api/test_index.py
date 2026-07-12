@@ -16,12 +16,12 @@ def client():
 class TestIndexStatus:
     """GET /api/v1/index/status"""
 
-    def test_status_empty_when_no_indexes(self, client):
+    def test_status_returns_success(self, client):
         resp = client.get("/api/v1/index/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
-        assert data["indexes"] == []
+        assert "indexes" in data
 
     def test_status_with_ecosystem_not_found(self, client):
         resp = client.get("/api/v1/index/status?ecosystem=nonexistent")

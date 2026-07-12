@@ -71,6 +71,7 @@ class GenerateLockRequest(BaseModel):
 
     @validator("manifest_contents")
     def validate_manifest_contents(cls, v):
+        """Validate manifest contents."""
         if v is None:
             return v
         if len(v) > 50:

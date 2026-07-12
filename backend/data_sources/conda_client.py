@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class CondaClient(BaseDataSourceClient):
+    """CondaClient."""
+
     def __init__(self):
+        """Initialize."""
         super().__init__(
             ecosystem="conda",
             base_url="https://api.anaconda.org",
@@ -46,6 +49,7 @@ class CondaClient(BaseDataSourceClient):
         self._dependency_cache = {}
 
     async def package_exists(self, package_name: str) -> bool:
+        """Async package exists."""
         package_name = normalize_package_name(package_name)
         try:
             session = self._get_session()
@@ -57,6 +61,7 @@ class CondaClient(BaseDataSourceClient):
             return False
 
     async def get_package_info_async(self, package_name: str) -> dict | None:
+        """Async get package info async."""
         package_name = normalize_package_name(package_name)
         try:
             package_info = None
@@ -79,6 +84,7 @@ class CondaClient(BaseDataSourceClient):
             return None
 
     def get_package_info(self, package_name: str) -> dict | None:
+        """Get package info."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
@@ -506,6 +512,7 @@ class CondaClient(BaseDataSourceClient):
         return requirements
 
     async def search(self, query: str, limit: int = 20) -> list[dict]:
+        """Async search."""
         query = normalize_package_name(query)
 
         try:
@@ -539,6 +546,7 @@ class CondaClient(BaseDataSourceClient):
             return []
 
     async def get_versions(self, package_name: str) -> list[dict]:
+        """Async get versions."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info_async(package_name)
         if not info:
@@ -547,6 +555,7 @@ class CondaClient(BaseDataSourceClient):
         return info.get("versions", [])
 
     async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
+        """Async get dependencies."""
         package_name = normalize_package_name(package_name)
         if not version:
             info = await self.get_package_info_async(package_name)

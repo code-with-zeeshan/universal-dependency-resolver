@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 class PyPIClient(BaseDataSourceClient):
+    """PyPIClient."""
+
     def __init__(self):
+        """Initialize."""
         super().__init__(
             ecosystem="pypi",
             base_url="https://pypi.org/pypi",
@@ -92,6 +95,23 @@ class PyPIClient(BaseDataSourceClient):
         """Synchronous wrapper for get_package_info_async."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
+
+    async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get PyPI package artifact integrity hash (sha256 from version digests)."""
+        data = await self.cached_get(
+            f"pypi:{package_name}",
+            f"{self.base_url}/{package_name}/json",
+        )
+        if not data:
+            return None
+        releases = data.get("releases") or {}
+        files = releases.get(version, [])
+        for f in files:
+            digests = f.get("digests", {})
+            sha256 = digests.get("sha256")
+            if sha256:
+                return {"algorithm": "sha256", "hash": sha256}
+        return None
 
     async def _process_package_data_enhanced(self, data: dict[str, Any]) -> dict[str, Any]:
         """Process raw PyPI data with enhanced extraction."""

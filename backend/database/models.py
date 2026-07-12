@@ -1,4 +1,5 @@
 # models.py
+"""Module docstring."""
 import logging
 import os
 import sys
@@ -34,6 +35,8 @@ Base: type = declarative_base()
 
 
 class Package(Base):
+    """Package."""
+
     __tablename__ = "packages"
 
     id = Column(Integer, primary_key=True)
@@ -67,6 +70,8 @@ class Package(Base):
 
 
 class PackageVersion(Base):
+    """PackageVersion."""
+
     __tablename__ = "package_versions"
 
     id = Column(Integer, primary_key=True)
@@ -115,6 +120,8 @@ class PackageVersion(Base):
 
 
 class CompatibilityReport(Base):
+    """CompatibilityReport."""
+
     __tablename__ = "compatibility_reports"
 
     id = Column(Integer, primary_key=True)
@@ -150,6 +157,8 @@ class CompatibilityReport(Base):
 
 
 class ConflictRule(Base):
+    """ConflictRule."""
+
     __tablename__ = "conflict_rules"
 
     id = Column(Integer, primary_key=True)
@@ -176,6 +185,8 @@ class ConflictRule(Base):
 
 
 class VerifiedCombination(Base):
+    """VerifiedCombination."""
+
     __tablename__ = "verified_combinations"
 
     id = Column(Integer, primary_key=True)
@@ -207,6 +218,8 @@ class VerifiedCombination(Base):
 
 
 class SystemBenchmark(Base):
+    """SystemBenchmark."""
+
     __tablename__ = "system_benchmarks"
 
     id = Column(Integer, primary_key=True)
@@ -233,6 +246,8 @@ class SystemBenchmark(Base):
 
 
 class ResolutionCache(Base):
+    """ResolutionCache."""
+
     __tablename__ = "resolution_cache"
 
     id = Column(Integer, primary_key=True)
@@ -261,6 +276,8 @@ class ResolutionCache(Base):
 
 
 class User(Base):
+    """User."""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
@@ -289,6 +306,8 @@ class User(Base):
 
 
 class APIKey(Base):
+    """APIKey."""
+
     __tablename__ = "api_keys"
 
     id = Column(Integer, primary_key=True)
@@ -350,6 +369,7 @@ _SessionLocal = None
 
 
 def get_engine():
+    """Get engine."""
     global _engine
     if _engine is None:
         kwargs: dict[str, Any] = {"echo": False}
@@ -376,6 +396,7 @@ def _enable_sqlite_fk(dbapi_connection, connection_record):
 
 
 def get_session_local():
+    """Get session local."""
     global _SessionLocal
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(

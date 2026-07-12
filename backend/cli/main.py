@@ -89,6 +89,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--license", action="store_true", help="Check lock file for license compliance"
     )
     check_p.add_argument(
+        "--deprecated",
+        action="store_true",
+        help="Check lock file for deprecated or yanked packages",
+    )
+    check_p.add_argument(
         "--device",
         choices=["cpu", "cuda", "mps"],
         help="Simulate system check for a specific compute device",
@@ -172,6 +177,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Freeze all packages at their lock-file versions",
+    )
+    resolve_p.add_argument(
+        "--target",
+        choices=["linux", "windows", "darwin"],
+        default=None,
+        help="Target OS for cross-compilation (overrides host OS)",
+    )
+    resolve_p.add_argument(
+        "--platform",
+        choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
+        default=None,
+        help="Target CPU architecture for cross-compilation (overrides host arch)",
     )
 
     lock_p = sub.add_parser(
@@ -271,6 +288,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force full re-resolution, ignoring existing lock file cache",
     )
+    lock_p.add_argument(
+        "--target",
+        choices=["linux", "windows", "darwin"],
+        default=None,
+        help="Target OS for cross-compilation (overrides host OS)",
+    )
+    lock_p.add_argument(
+        "--platform",
+        choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
+        default=None,
+        help="Target CPU architecture for cross-compilation (overrides host arch)",
+    )
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
     graph_p.add_argument(
@@ -349,6 +378,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
     )
+    update_p.add_argument(
+        "--target",
+        choices=["linux", "windows", "darwin"],
+        default=None,
+        help="Target OS for cross-compilation (overrides host OS)",
+    )
+    update_p.add_argument(
+        "--platform",
+        choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
+        default=None,
+        help="Target CPU architecture for cross-compilation (overrides host arch)",
+    )
 
     install_p = sub.add_parser("install", help="Install packages from udr.lock lock file")
     install_p.add_argument(
@@ -391,6 +432,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--cuda",
         "-c",
         help="CUDA version to target (e.g. 121 for cu121 wheels)",
+    )
+    install_p.add_argument(
+        "--target",
+        choices=["linux", "windows", "darwin"],
+        default=None,
+        help="Target OS for cross-compilation (overrides host OS)",
+    )
+    install_p.add_argument(
+        "--platform",
+        choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
+        default=None,
+        help="Target CPU architecture for cross-compilation (overrides host arch)",
     )
 
     completion_p = sub.add_parser(
@@ -559,6 +612,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     index_status_p = index_sub.add_parser("status", help="Show local offline index status")
     index_status_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    index_sync_p = index_sub.add_parser("sync", help="Sync local indexes from remote registries")
+    index_sync_p.add_argument("--ecosystem", "-e", choices=_eco_choices, help="Ecosystem to sync")
+    index_sync_p.add_argument("--all", "-a", action="store_true", help="Sync all supported ecosystems")
 
     return parser
 

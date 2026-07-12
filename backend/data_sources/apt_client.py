@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class APTClient(BaseDataSourceClient):
+    """APTClient."""
+
     def __init__(self):
+        """Initialize."""
         apt_config = get_ecosystem_config("apt")
 
         super().__init__(
@@ -49,6 +52,7 @@ class APTClient(BaseDataSourceClient):
         self._packages_cache: dict[str, Any] = {}
 
     def package_exists(self, package_name: str) -> bool:
+        """Package exists."""
         package_name = normalize_package_name(package_name)
         try:
             result = run_async(self.get_package_info_async(package_name))
@@ -57,6 +61,7 @@ class APTClient(BaseDataSourceClient):
             return False
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Async search packages."""
         query = normalize_package_name(query)
         results: list[dict] = []
 
@@ -88,6 +93,7 @@ class APTClient(BaseDataSourceClient):
 
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(self, package_name: str) -> dict | None:
+        """Async get package info async."""
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -136,10 +142,12 @@ class APTClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict | None:
+        """Get package info."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
     async def get_versions(self, package_name: str) -> list[dict]:
+        """Async get versions."""
         package_name = normalize_package_name(package_name)
         versions: list[Any] = []
         for dist in self.distributions:
@@ -165,6 +173,7 @@ class APTClient(BaseDataSourceClient):
         return versions
 
     async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
+        """Async get dependencies."""
         package_name = normalize_package_name(package_name)
 
         package_data = None

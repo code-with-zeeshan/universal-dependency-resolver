@@ -31,6 +31,7 @@ _sessions_registry: list[aiohttp.ClientSession] = []
 
 async def close_all_sessions() -> None:
     """Close all tracked aiohttp sessions (call on application shutdown)."""
+    """Close all tracked aiohttp sessions (call on application shutdown)."""
     for sess in _sessions_registry:
         if not sess.closed:
             await sess.close()
@@ -38,6 +39,7 @@ async def close_all_sessions() -> None:
 
 
 class BaseDataSourceClient:
+    """Shared HTTP client + caching + rate limiting for all data sources."""
     """Shared HTTP client + caching + rate limiting for all data sources."""
 
     def __init__(
@@ -51,6 +53,7 @@ class BaseDataSourceClient:
         max_retries: int = MAX_RETRIES,
         auth_headers: dict[str, str] | None = None,
     ):
+        """Initialize."""
         self.ecosystem = ecosystem
         self.base_url = base_url
         self.session: aiohttp.ClientSession | None = None
@@ -76,11 +79,13 @@ class BaseDataSourceClient:
         self._circuit_half_open_max_successes = 2
 
     async def __aenter__(self):
+        """async   aenter."""
         self.session = aiohttp.ClientSession()
         _sessions_registry.append(self.session)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """async   aexit."""
         if self.session and not self.session.closed:
             await self.session.close()
             if self.session in _sessions_registry:
@@ -88,11 +93,20 @@ class BaseDataSourceClient:
             self.session = None
 
     async def close(self):
+        """async close."""
         if self.session and not self.session.closed:
             await self.session.close()
             if self.session in _sessions_registry:
                 _sessions_registry.remove(self.session)
             self.session = None
+
+    async def get_artifact_hash(
+        self,
+        package_name: str,
+        version: str,
+    ) -> dict | None:
+        """Get artifact integrity hash."""
+        return None
 
     def _get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
@@ -224,6 +238,7 @@ class BaseDataSourceClient:
 
     async def _get_text(self, url: str, **kwargs) -> str | None:
         """Like ``_get`` but returns the raw response body as text."""
+        """Like ``_get`` but returns the raw response body as text."""
         await self._throttle()
         session = self._get_session()
         headers = kwargs.pop("headers", {})
@@ -248,6 +263,7 @@ class BaseDataSourceClient:
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
+        """cached get."""
         import os as _os
         import time as _time
 
@@ -340,6 +356,7 @@ class BaseDataSourceClient:
 
     @property
     def circuit_state(self) -> str:
+        """Current circuit breaker state."""
         """Current circuit breaker state."""
         return self._circuit_state
 

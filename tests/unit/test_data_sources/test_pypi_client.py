@@ -945,3 +945,39 @@ class TestPyPIClient:
         with patch.object(session, "get", side_effect=Exception("HTTP error")):
             results = await client._search_web_scraping("flask", 20)
         assert results == []
+
+    # === get_artifact_hash (line ~865)
+    @pytest.mark.asyncio
+    async def test_get_artifact_hash_returns_sha256(self, client):
+        """get_artifact_hash extracts sha256 from version digests."""
+        with patch.object(
+            client,
+            "get_package_info_async",
+            new_callable=AsyncMock,
+            return_value={
+                "name": "requests",
+                "versions": [
+                    {"version": "2.31.0", "digests": {"sha256": "abc123"}},
+                    {"version": "2.30.0", "digests": {}},
+                ],
+            },
+        ):
+            result = await client.get_artifact_hash("requests", "2.31.0")
+        assert result == {"algorithm": "sha256", "value": "abc123"}
+
+    @pytest.mark.asyncio
+    async def test_get_artifact_hash_none_when_no_digest(self, client):
+        """get_artifact_hash returns None when version has no digest."""
+        with patch.object(
+            client,
+            "get_package_info_async",
+            new_callable=AsyncMock,
+            return_value={
+                "name": "requests",
+                "versions": [
+                    {"version": "2.30.0", "digests": {}},
+                ],
+            },
+        ):
+            result = await client.get_artifact_hash("requests", "2.30.0")
+        assert result is None

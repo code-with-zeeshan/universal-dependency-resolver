@@ -1630,3 +1630,30 @@ class TestNPMClient:
     # === _check_cpu_compatibility: cpu in allowed list (line 980)
     def test_check_cpu_compatibility_in_allowed(self, client):
         assert client._check_cpu_compatibility("x64", ["x64", "!arm64"]) is True
+
+    # === get_artifact_hash (line ~965)
+    @pytest.mark.asyncio
+    async def test_get_artifact_hash_returns_integrity(self, client):
+        """get_artifact_hash extracts sha512 from dist.integrity."""
+        sample = {
+            "dist-tags": {"latest": "4.18.2"},
+            "versions": {
+                "4.18.2": {
+                    "dist": {"integrity": "sha512-abc123def456=="}
+                }
+            }
+        }
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=sample):
+            result = await client.get_artifact_hash("express", "4.18.2")
+        assert result == {"algorithm": "sha512", "value": "abc123def456=="}
+
+    @pytest.mark.asyncio
+    async def test_get_artifact_hash_none_when_no_dist(self, client):
+        """get_artifact_hash returns None when no dist key."""
+        sample = {
+            "dist-tags": {"latest": "4.18.2"},
+            "versions": {"4.18.2": {}}
+        }
+        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=sample):
+            result = await client.get_artifact_hash("express", "4.18.2")
+        assert result is None

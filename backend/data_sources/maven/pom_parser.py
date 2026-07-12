@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 
 
 class PomParser:
+    """PomParser."""
+
     def __init__(self, client: "MavenClient"):
+        """Initialize."""
         self.client = client
 
     def _merge_poms(self, parent_pom: dict, child_pom: dict) -> dict:

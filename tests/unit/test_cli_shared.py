@@ -3,14 +3,17 @@
 import json
 
 from backend.cli.shared import (
+    _build_target_system_info,
     _get_manifest_updater,
     _select_manifests_interactive,
+    _update_brewfile,
     _update_build_gradle,
     _update_cabal,
     _update_cargo_toml,
     _update_composer_json,
     _update_environment_yml,
     _update_gemfile,
+    _update_gemspec_dependency,
     _update_go_mod,
     _update_mix_exs,
     _update_package_json,
@@ -18,8 +21,10 @@ from backend.cli.shared import (
     _update_packages_config,
     _update_pipfile,
     _update_podfile,
+    _update_pom_xml,
     _update_pubspec_yaml,
     _update_pyproject_toml,
+    _update_simple,
 )
 
 
@@ -312,6 +317,167 @@ class TestUpdateCabal:
         assert "bytestring ==0.11.0" in result
 
 
+class TestUpdateBrewfile:
+    def test_updates_brew_cask_double_quoted(self):
+        content = 'brew "hello", ">= 2.0"\ncask "firefox", ">= 100.0"\ngem "jekyll", ">= 4.0"\n'
+        result = _update_brewfile(content, "hello", "2.1.0")
+        assert result is not None
+        assert 'brew "hello", "2.1.0"' in result
+        result2 = _update_brewfile(content, "firefox", "101.0")
+        assert result2 is not None
+        assert 'cask "firefox", "101.0"' in result2
+        result3 = _update_brewfile(content, "jekyll", "4.3.0")
+        assert result3 is not None
+        assert 'gem "jekyll", "4.3.0"' in result3
+
+    def test_updates_single_quoted(self):
+        content = "brew 'hello', '>= 2.0'\n"
+        result = _update_brewfile(content, "hello", "2.1.0")
+        assert result is not None
+        assert "brew 'hello', \"2.1.0\"" in result
+
+    def test_preserves_comment(self):
+        content = 'brew "hello", ">= 2.0"  # core utility\n'
+        result = _update_brewfile(content, "hello", "2.1.0")
+        assert result is not None
+        assert "# core utility" in result
+
+    def test_not_found(self):
+        content = 'brew "other", ">= 1.0"\n'
+        result = _update_brewfile(content, "missing", "1.0")
+        assert result is None
+
+
+class TestUpdateGemspecDependency:
+    def test_updates_add_dependency(self):
+        content = 's.add_dependency "rails", ">= 7.0"\n'
+        result = _update_gemspec_dependency(content, "rails", "7.1.0")
+        assert result is not None
+        assert '"7.1.0"' in result
+
+    def test_updates_add_dependency_parens(self):
+        content = 's.add_dependency("rails", ">= 7.0")\n'
+        result = _update_gemspec_dependency(content, "rails", "7.1.0")
+        assert result is not None
+        assert '"7.1.0"' in result
+
+    def test_updates_runtime_dependency(self):
+        content = 's.add_runtime_dependency "rack", ">= 2.0"\n'
+        result = _update_gemspec_dependency(content, "rack", "3.0.0")
+        assert result is not None
+        assert '"3.0.0"' in result
+
+    def test_updates_development_dependency(self):
+        content = 's.add_development_dependency "rspec", ">= 3.0"\n'
+        result = _update_gemspec_dependency(content, "rspec", "3.12.0")
+        assert result is not None
+        assert '"3.12.0"' in result
+
+    def test_not_found(self):
+        content = 's.add_dependency "other", ">= 1.0"\n'
+        result = _update_gemspec_dependency(content, "missing", "1.0")
+        assert result is None
+
+
+class TestUpdateSimple:
+    def test_updates_eq_dep(self):
+        content = "nginx==1.24.0\nredis==7.0.0\n"
+        result = _update_simple(content, "nginx", "1.25.0")
+        assert result is not None
+        assert "nginx==1.25.0" in result
+        assert "redis==7.0.0" in result
+
+    def test_updates_bare_dep(self):
+        content = "curl\nwget\n"
+        result = _update_simple(content, "curl", "8.0.0")
+        assert result is not None
+        assert "curl==8.0.0" in result
+        assert "wget" in result
+
+    def test_updates_ge_dep(self):
+        content = "python>=3.10\n"
+        result = _update_simple(content, "python", "3.12.0")
+        assert result is not None
+        assert "python==3.12.0" in result
+
+    def test_preserves_comment(self):
+        content = "nginx==1.24.0  # web server\n"
+        result = _update_simple(content, "nginx", "1.25.0")
+        assert result is not None
+        assert "# web server" in result
+
+    def test_preserves_blank_and_comment_lines(self):
+        content = "# System packages\n\ngit==2.40.0\n"
+        result = _update_simple(content, "git", "2.41.0")
+        assert result is not None
+        assert "# System packages" in result
+        assert "" in result.split("\n")  # blank line preserved
+
+    def test_not_found(self):
+        content = "nginx==1.24.0\n"
+        result = _update_simple(content, "missing", "1.0")
+        assert result is None
+
+
+class TestUpdatePomXml:
+    def test_updates_dependency_version(self):
+        content = """<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <dependencies>
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>my-lib</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>
+"""
+        result = _update_pom_xml(content, "com.example:my-lib", "2.0.0")
+        assert result is not None
+        assert "<version>2.0.0</version>" in result
+
+    def test_updates_second_dep(self):
+        content = """<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <dependencies>
+    <dependency>
+      <groupId>com.alpha</groupId>
+      <artifactId>first</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.beta</groupId>
+      <artifactId>second</artifactId>
+      <version>2.0.0</version>
+    </dependency>
+  </dependencies>
+</project>
+"""
+        result = _update_pom_xml(content, "com.beta:second", "3.0.0")
+        assert result is not None
+        assert "<version>3.0.0</version>" in result
+        assert "<version>1.0.0</version>" in result
+
+    def test_not_found(self):
+        content = """<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <dependencies>
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>my-lib</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>
+"""
+        result = _update_pom_xml(content, "com.missing:lib", "1.0")
+        assert result is None
+
+    def test_invalid_xml_returns_none(self):
+        result = _update_pom_xml("not xml", "pkg", "1.0")
+        assert result is None
+
+
 class TestGetManifestUpdater:
     def test_known_filenames(self):
         assert _get_manifest_updater("package.json") is _update_package_json
@@ -326,10 +492,13 @@ class TestGetManifestUpdater:
         assert _get_manifest_updater("Package.swift") is _update_package_swift
         assert _get_manifest_updater("mix.exs") is _update_mix_exs
         assert _get_manifest_updater("Podfile") is _update_podfile
-        assert _get_manifest_updater("Brewfile") is not None
+        assert _get_manifest_updater("Brewfile") is _update_brewfile
         assert _get_manifest_updater("Pipfile") is _update_pipfile
         assert _get_manifest_updater("packages.config") is _update_packages_config
         assert _get_manifest_updater("environment.yml") is _update_environment_yml
+        assert _get_manifest_updater("apt-packages.txt") is _update_simple
+        assert _get_manifest_updater("apk-packages.txt") is _update_simple
+        assert _get_manifest_updater("pom.xml") is _update_pom_xml
 
     def test_gemspec_files(self):
         updater = _get_manifest_updater("mygem.gemspec")
@@ -369,3 +538,104 @@ class TestSelectManifestsInteractive:
         result = _select_manifests_interactive(manifests)
         assert len(result) == 1
         assert result[0]["ecosystem"] == "npm"
+
+
+class TestBuildTargetSystemInfo:
+    """Tests for _build_target_system_info — cross-compilation target builder."""
+
+    def test_no_overrides_returns_none(self):
+        class Args:
+            target = None
+            platform = None
+            cuda = None
+        assert _build_target_system_info(Args(), {}) is None
+
+    def test_target_os_only(self):
+        class Args:
+            target = "windows"
+            platform = None
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"os": "windows"}
+
+    def test_target_arch_only(self):
+        class Args:
+            target = None
+            platform = "aarch64"
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"architecture": "aarch64"}
+
+    def test_target_cuda_only(self):
+        class Args:
+            target = None
+            platform = None
+            cuda = "11.8"
+        result = _build_target_system_info(Args(), {})
+        assert result == {"cuda": "11.8"}
+
+    def test_all_overrides(self):
+        class Args:
+            target = "linux"
+            platform = "x86_64"
+            cuda = "12.1"
+        result = _build_target_system_info(Args(), {})
+        assert result == {"os": "linux", "architecture": "x86_64", "cuda": "12.1"}
+
+    def test_amd64_normalized_to_x86_64(self):
+        class Args:
+            target = None
+            platform = "amd64"
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"architecture": "x86_64"}
+
+    def test_arm64_normalized_to_aarch64(self):
+        class Args:
+            target = None
+            platform = "arm64"
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"architecture": "aarch64"}
+
+    # === Cross-compilation integration tests (2.18) ===
+
+    def test_target_overrides_host_os(self):
+        """Cross-compilation to windows overrides os in system_info."""
+        from backend.cli.shared import _build_target_system_info
+        class Args:
+            target = "windows"
+            platform = None
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"os": "windows"}
+
+    def test_target_arch_normalizes_arm64(self):
+        """Cross-compilation to arm64 normalizes arch."""
+        from backend.cli.shared import _build_target_system_info
+        class Args:
+            target = None
+            platform = "arm64"
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"architecture": "aarch64"}
+
+    def test_target_with_cuda_version(self):
+        """Cross-compilation with explicit CUDA version."""
+        from backend.cli.shared import _build_target_system_info
+        class Args:
+            target = "linux"
+            platform = "x86_64"
+            cuda = "11.8"
+        result = _build_target_system_info(Args(), {})
+        assert result == {"os": "linux", "architecture": "x86_64", "cuda": "11.8"}
+
+    def test_target_partial_override_no_host_cuda(self):
+        """Explicit platform with no host CUDA detected."""
+        from backend.cli.shared import _build_target_system_info
+        class Args:
+            target = None
+            platform = "x86_64"
+            cuda = None
+        result = _build_target_system_info(Args(), {})
+        assert result == {"architecture": "x86_64"}

@@ -401,7 +401,7 @@ docs/build/
 site/
 
 # Internal assessment
-docs/PRODUCTION_HARDENING_PLAN.md
+Z_phase.md
 AGENTS.md
 
 # =============================================================================

@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 class APKClient(BaseDataSourceClient):
+    """APKClient."""
+
     def __init__(self):
+        """Initialize."""
         apk_config = get_ecosystem_config("apk")
 
         super().__init__(
@@ -48,6 +51,7 @@ class APKClient(BaseDataSourceClient):
         self._index_cache: dict[str, Any] = {}
 
     def package_exists(self, package_name: str) -> bool:
+        """Package exists."""
         package_name = normalize_package_name(package_name)
         try:
             result = run_async(self.get_package_info_async(package_name))
@@ -56,6 +60,7 @@ class APKClient(BaseDataSourceClient):
             return False
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Async search packages."""
         query = normalize_package_name(query)
         results = []
         seen = set()
@@ -93,6 +98,7 @@ class APKClient(BaseDataSourceClient):
 
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(self, package_name: str) -> dict | None:
+        """Async get package info async."""
         package_name = normalize_package_name(package_name)
 
         package_data = None
@@ -143,10 +149,12 @@ class APKClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict | None:
+        """Get package info."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
     async def get_versions(self, package_name: str) -> list[dict]:
+        """Async get versions."""
         package_name = normalize_package_name(package_name)
         versions = []
         seen_versions = set()
@@ -179,6 +187,7 @@ class APKClient(BaseDataSourceClient):
         return versions
 
     async def get_dependencies(self, package_name: str, version: str | None = None) -> dict:
+        """Async get dependencies."""
         package_name = normalize_package_name(package_name)
 
         package_data = None

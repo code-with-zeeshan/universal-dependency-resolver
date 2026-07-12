@@ -20,11 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 class PackageType(Enum):
+    """PackageType."""
     FORMULA = "formula"
     CASK = "cask"
 
 
 class DependencyType(Enum):
+    """DependencyType."""
     BUILD = "build"
     RUNTIME = "runtime"
     OPTIONAL = "optional"
@@ -33,12 +35,15 @@ class DependencyType(Enum):
 
 @dataclass
 class BrewDependency:
+    """BrewDependency."""
+    """BrewDependency."""
     name: str
     dependency_type: DependencyType
     optional: bool = False
 
 
 class HomebrewClient(BaseDataSourceClient):
+    """HomebrewClient."""
     def __init__(
         self,
         api_url: str | None = None,
@@ -47,6 +52,7 @@ class HomebrewClient(BaseDataSourceClient):
         rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
+        """Initialize."""
         homebrew_config = get_ecosystem_config("homebrew")
 
         api_url = (
@@ -65,6 +71,7 @@ class HomebrewClient(BaseDataSourceClient):
     async def package_exists(
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
     ) -> bool:
+        """package exists."""
         package_name = normalize_package_name(package_name)
         try:
             session = self._get_session()
@@ -80,6 +87,7 @@ class HomebrewClient(BaseDataSourceClient):
     async def search_packages(
         self, query: str, limit: int = 20, package_type: PackageType | None = None
     ) -> list[dict]:
+        """search packages."""
         query = normalize_package_name(query)
         results = []
 
@@ -202,6 +210,7 @@ class HomebrewClient(BaseDataSourceClient):
         # Don't use normalize_package_name — it converts dots in version
         # specs (e.g. python@3.11 → python@3-11) which breaks formula API URLs.
 
+        """get package info async."""
         if package_type == PackageType.FORMULA:
             return await self._get_formula_info(package_name)
         return await self._get_cask_info(package_name)
@@ -210,6 +219,7 @@ class HomebrewClient(BaseDataSourceClient):
         self, package_name: str, package_type: PackageType = PackageType.FORMULA
     ) -> dict:
         # Don't use normalize_package_name for Homebrew formula names
+        """get package info."""
         return run_async(self.get_package_info_async(package_name, package_type))
 
     async def _get_formula_info(self, formula_name: str) -> dict | None:
@@ -309,6 +319,7 @@ class HomebrewClient(BaseDataSourceClient):
         include_optional: bool = True,
         include_build: bool = True,
     ) -> dict[str, list[str]]:
+        """get dependencies."""
         package_name = normalize_package_name(package_name)
 
         info = await self.get_package_info_async(package_name, package_type)
@@ -393,6 +404,7 @@ class HomebrewClient(BaseDataSourceClient):
         package_type: PackageType = PackageType.FORMULA,
         system_info: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """check compatibility."""
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_info_async(package_name, package_type)
@@ -468,6 +480,7 @@ class HomebrewClient(BaseDataSourceClient):
 
 
 async def example_usage():
+    """async example usage."""
     async with HomebrewClient() as client:
         await client.search_packages("python", limit=5)
 

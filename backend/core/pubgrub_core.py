@@ -33,6 +33,7 @@ class Term:
     positive: bool = True
 
     def __repr__(self) -> str:
+        """Repr."""
         sign = "" if self.positive else "not "
         return f"{sign}{self.package} {self.constraint}"
 
@@ -93,6 +94,7 @@ class Incompatibility:
     cause: Incompatibility | None = None  # For conflict tracking
 
     def __repr__(self) -> str:
+        """Repr."""
         return f"Incompatibility({self.terms})"
 
 
@@ -114,6 +116,7 @@ class PartialSolution:
 
     @property
     def decision_level(self) -> int:
+        """Decision level."""
         return self._decision_level
 
     def decide(self, package: str, version: str) -> None:
@@ -212,6 +215,7 @@ class PartialSolution:
           "conflict"    — all terms satisfied except exactly one which is unknown
                           (unit propagation can fire on the unknown term)
           "unknown"     — otherwise (multiple unknown or any contradicted)
+
         """
         satisfied_count = 0
         unknown_count = 0
@@ -238,6 +242,7 @@ class PubGrubCoreSolver:
     """Pure-Python PubGrub algorithm implementation."""
 
     def __init__(self) -> None:
+        """Initialize."""
         self._packages: dict[str, dict[str, dict[str, str]]] = {}
         self._incompatibilities: list[Incompatibility] = []
 

@@ -32,6 +32,7 @@ def _generate_install_command(
     Returns
     -------
     A shell command string, or ``None`` if no installer is known.
+
     """
     if not packages:
         return None

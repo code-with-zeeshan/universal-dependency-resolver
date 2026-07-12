@@ -18,6 +18,15 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
 API_KEY_HEADER = os.getenv("API_KEY_HEADER", "X-API-Key")
 ENABLE_API_KEY_AUTH = os.getenv("ENABLE_API_KEY_AUTH", "false").lower() == "true"
 
+# BFS batch parallelism
+BFS_BATCH_SIZE = int(os.getenv("BFS_BATCH_SIZE", "20"))
+
+# Local index settings (for offline-first architecture)
+PIN_INTEGRITY = os.getenv("PIN_INTEGRITY", "false").lower() == "true"
+ENABLE_LOCAL_INDEX = os.getenv("ENABLE_LOCAL_INDEX", "false").lower() == "true"
+LOCAL_INDEX_DIR: str = os.getenv("LOCAL_INDEX_DIR", os.path.expanduser("~/.cache/udr/indexes"))
+LOCAL_INDEX_UPDATE_INTERVAL = int(os.getenv("LOCAL_INDEX_UPDATE_INTERVAL", "3600"))
+
 _API_KEY_ENV = os.getenv("API_KEY")
 if _API_KEY_ENV:
     API_KEY = _API_KEY_ENV
@@ -230,6 +239,11 @@ FEATURES = {
 }
 
 USE_PUBGRUB_SOLVER = os.getenv("USE_PUBGRUB_SOLVER", "false").lower() == "true"
+USE_HYBRID_SOLVER = os.getenv("USE_HYBRID_SOLVER", "false").lower() == "true"
+SOLVER_REJECT_DEPRECATED = os.getenv("SOLVER_REJECT_DEPRECATED", "false").lower() == "true"
+TARGET_OS = os.getenv("TARGET_OS", "")
+TARGET_ARCH = os.getenv("TARGET_ARCH", "")
+TARGET_CUDA = os.getenv("TARGET_CUDA", "")
 
 ENV = os.getenv("ENV", "development")
 

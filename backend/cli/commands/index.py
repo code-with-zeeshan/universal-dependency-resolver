@@ -361,6 +361,55 @@ def _fmt_size(size: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# sync
+# ---------------------------------------------------------------------------
+
+
+async def _sync_index_async(args) -> int:
+    """Sync local indexes from remote registries."""
+    from backend.core import DataAggregator
+
+    ecosystems = []
+    if getattr(args, "all", False):
+        ecosystems = ["pypi", "npm", "crates"]
+    elif getattr(args, "ecosystem", None):
+        ecosystems = [args.ecosystem]
+    else:
+        err_console.print("[red]Specify --ecosystem or --all[/red]")
+        return 1
+
+    aggregator = DataAggregator()
+    total = 0
+    for eco in ecosystems:
+        err_console.print(f"  [dim]Syncing {eco} index...[/dim]")
+        try:
+            n = await aggregator.sync_local_index(eco)
+            if n > 0:
+                console.print(f"  [green]Synced {n} packages for {eco}[/green]")
+            else:
+                err_console.print(f"  [yellow]{eco}: no new packages[/yellow]")
+            total += n
+        except Exception as e:
+            err_console.print(f"  [red]{eco}: sync failed — {e}[/red]")
+
+    await aggregator.close()
+    console.print(f"\n[green]Done:[/green] {total} total packages synced")
+    return 0
+
+
+def cmd_index_sync(args):
+    """Sync local indexes from remote registries."""
+    try:
+        sys.exit(asyncio.run(_sync_index_async(args)))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[red]Index sync failed: {e}[/red]")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # top-level dispatch
 # ---------------------------------------------------------------------------
 
@@ -371,9 +420,10 @@ def cmd_index(args):
         "pull": cmd_index_pull,
         "build": cmd_index_build,
         "status": cmd_index_status,
+        "sync": cmd_index_sync,
     }
     action = getattr(args, "index_action", None)
     if action is None:
-        console.print("[red]Specify an action: pull, build, or status[/red]")
+        console.print("[red]Specify an action: pull, build, status, or sync[/red]")
         sys.exit(1)
     dispatch[action](args)

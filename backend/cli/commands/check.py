@@ -29,6 +29,8 @@ def cmd_check(args):
             return await _check_cve(args)
         if getattr(args, "license", False):
             return await _check_license(args)
+        if getattr(args, "deprecated", False):
+            return await _check_deprecated(args)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -336,4 +338,58 @@ async def _check_license(args):
         console.print("\n[yellow]⚠ Review warnings before production use.[/yellow]")
 
     console.print("\n[green]✅ All packages meet the license policy.[/green]")
+    return True
+
+
+async def _check_deprecated(args):
+    """Check lock file packages for deprecated/yanked versions."""
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        sys.exit(1)
+
+    lock_data = _read_lock_file(lock_path)
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]Lock file has no packages to check.[/yellow]")
+        return True
+
+    deprecated: list[tuple[str, str, str]] = []  # name, version, label (deprecated/yanked)
+
+    for pname, pinfo in packages.items():
+        ver = pinfo.get("resolved_version", "")
+        if pinfo.get("yanked"):
+            deprecated.append((pname, ver, "yanked"))
+        elif pinfo.get("deprecated"):
+            deprecated.append((pname, ver, "deprecated"))
+
+    if not deprecated:
+        console.print("[green]✅ No deprecated or yanked packages found.[/green]")
+        return True
+
+    table = Table(
+        title=f"[yellow]{len(deprecated)} deprecated/yanked package(s)[/yellow]",
+        box=box.ROUNDED,
+    )
+    table.add_column("Package", style="cyan")
+    table.add_column("Version", style="dim")
+    table.add_column("Status")
+
+    for pname, ver, label in deprecated:
+        styl = "bold red" if label == "yanked" else "yellow"
+        table.add_row(pname, ver, f"[{styl}]{label}[/{styl}]")
+
+    console.print(table)
+
+    if any(label == "yanked" for _, _, label in deprecated):
+        console.print("\n[red]✗ Some packages are yanked — they may be unsafe to use.[/red]")
+        return False
+
+    console.print("\n[yellow]⚠ Some packages are deprecated — consider upgrading.[/yellow]")
     return True

@@ -1048,6 +1048,90 @@ def _update_cabal(content: str, pkg_name: str, resolved_ver: str) -> str | None:
     return "\n".join(new_lines) + "\n" if updated else None
 
 
+def _update_simple(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    """Update apt-packages.txt / apk-packages.txt content with pinned version."""
+    updated = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if not stripped or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+        comment = ""
+        if "#" in stripped and not stripped.startswith("#"):
+            comment = " #" + stripped.split("#", 1)[1]
+            stripped = stripped.split("#", 1)[0].strip()
+        matched = False
+        for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
+            if op in stripped:
+                n, _ = stripped.split(op, 1)
+                if n.strip() == pkg_name:
+                    new_lines.append(f"{indent}{pkg_name}=={resolved_ver}{comment}")
+                    updated = True
+                    matched = True
+                    break
+                break
+        if not matched:
+            if stripped == pkg_name:
+                new_lines.append(f"{indent}{pkg_name}=={resolved_ver}{comment}")
+                updated = True
+            else:
+                new_lines.append(line)
+    return "\n".join(new_lines) + "\n" if updated else None
+
+
+def _update_pom_xml(content: str, pkg_name: str, resolved_ver: str) -> str | None:
+    """Update Maven pom.xml with pinned version using namespace-aware XML parsing."""
+    try:
+        import xml.etree.ElementTree as ET
+    except ImportError:
+        return None
+    try:
+        root = ET.fromstring(content)
+    except Exception:
+        return None
+    ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+    updated = False
+    for dep in root.findall(".//m:dependencies/m:dependency", ns):
+        group = dep.find("m:groupId", ns)
+        artifact = dep.find("m:artifactId", ns)
+        version = dep.find("m:version", ns)
+        if group is not None and artifact is not None:
+            name = f"{group.text}:{artifact.text}"
+            if name == pkg_name and version is not None:
+                version.text = resolved_ver
+                updated = True
+    if not updated:
+        return None
+    ET.register_namespace("", ns["m"])
+    result = ET.tostring(root, encoding="unicode", xml_declaration=True)
+    return result + "\n"
+
+
+def _build_target_system_info(args: Any, system_info: dict) -> dict | None:
+    """Build target system info from --target/--platform/--cuda flags (cross-compilation)."""
+    target_os = getattr(args, "target", None)
+    target_arch = getattr(args, "platform", None)
+    target_cuda = getattr(args, "cuda", None)
+    if not any([target_os, target_arch, target_cuda]):
+        return None
+    result: dict = {}
+    if target_os:
+        result["os"] = target_os
+    if target_arch:
+        arch = target_arch
+        if arch in ("amd64",):
+            arch = "x86_64"
+        elif arch in ("arm64",):
+            arch = "aarch64"
+        result["architecture"] = arch
+    if target_cuda:
+        result["cuda"] = target_cuda
+    return result
+
+
 def _get_manifest_updater(filename: str):
     _updaters = {
         "package.json": _update_package_json,
@@ -1066,6 +1150,9 @@ def _get_manifest_updater(filename: str):
         "Pipfile": _update_pipfile,
         "packages.config": _update_packages_config,
         "environment.yml": _update_environment_yml,
+        "apt-packages.txt": _update_simple,
+        "apk-packages.txt": _update_simple,
+        "pom.xml": _update_pom_xml,
     }
     if filename in _updaters:
         return _updaters[filename]

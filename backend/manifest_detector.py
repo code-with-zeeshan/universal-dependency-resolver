@@ -108,11 +108,77 @@ class ManifestDetector:
         """Initialize."""
         self.directory = Path(directory).resolve()
 
+    def _load_workspace_config(self) -> tuple[dict[str, str], dict[str, str], bool]:
+        """Load pnpm-workspace.yaml and resolve workspace packages + catalog entries.
+
+        Returns (workspace_version_map, catalog_map, found) where:
+        - workspace_version_map: package_name -> exact_version (from workspace package.json)
+        - catalog_map: catalog_name_or_default -> version_constraint (from pnpm-workspace.yaml)
+        - found: True if pnpm-workspace.yaml existed and was parsed
+        """
+        ws_path = self.directory / "pnpm-workspace.yaml"
+        if not ws_path.exists():
+            return {}, {}, False
+
+        try:
+            import yaml
+        except ImportError:
+            return {}, {}
+
+        try:
+            raw = ws_path.read_text(encoding="utf-8")
+            ws_config = yaml.safe_load(raw) or {}
+        except Exception:
+            return {}, {}
+
+        workspace_version_map: dict[str, str] = {}
+        catalog_map: dict[str, dict[str, str]] = {}  # named_catalogs -> {pkg_name: constraint}
+
+        # Parse catalog entries (singular — simple pkg -> version)
+        catalog_raw = ws_config.get("catalog", {}) or {}
+        if isinstance(catalog_raw, dict):
+            for k, v in catalog_raw.items():
+                catalog_map.setdefault("_default", {})[k] = str(v)
+
+        # Parse catalogs entries (plural — named catalogs per package)
+        catalogs_raw = ws_config.get("catalogs", {}) or {}
+        if isinstance(catalogs_raw, dict):
+            for catalog_name, catalog_pkgs in catalogs_raw.items():
+                if isinstance(catalog_pkgs, dict):
+                    catalog_map.setdefault(catalog_name, {}).update(
+                        {k: str(v) for k, v in catalog_pkgs.items()}
+                    )
+
+        # Parse workspace packages to find actual versions
+        packages_globs = ws_config.get("packages", []) or []
+        if isinstance(packages_globs, str):
+            packages_globs = [packages_globs]
+
+        for glob_pattern in packages_globs:
+            matched = sorted(self.directory.glob(glob_pattern))
+            for pkg_dir in matched:
+                if not pkg_dir.is_dir():
+                    continue
+                pkg_json_path = pkg_dir / "package.json"
+                if not pkg_json_path.exists():
+                    continue
+                try:
+                    pkg_data = loads(pkg_json_path.read_text(encoding="utf-8"))
+                    pkg_name = pkg_data.get("name", "")
+                    pkg_version = pkg_data.get("version", "")
+                    if pkg_name and pkg_version:
+                        workspace_version_map[pkg_name] = pkg_version
+                except Exception as exc:
+                    logger.debug("Error reading workspace package %s: %s", pkg_json_path, exc)
+
+        return workspace_version_map, catalog_map, True
+
     def detect(self, include_dev: bool = False) -> list[dict]:
         """Scan directory recursively for known manifests. Returns list of manifest info dicts.
 
         Args:
             include_dev: If True, include manifests from excluded dirs (examples, test, docs, etc.)
+
         """
         found = []
         seen_paths = set()
@@ -180,6 +246,8 @@ class ManifestDetector:
 
     def parse_all(self, manifests: list[dict]) -> list[dict]:
         """Parse all manifests and return a unified package list with ecosystem info."""
+        # Pre-load workspace config for workspace:* / catalog: resolution
+        self._workspace_versions, self._catalog_versions, self._workspace_found = self._load_workspace_config()
         all_packages = []
         for m in manifests:
             packages = self.parse(m)
@@ -196,7 +264,8 @@ class ManifestDetector:
     }
 
     def normalize(self, packages: list[dict]) -> list[dict]:
-        """Normalize parsed packages to {name, ecosystem, constraint} format."""
+        """Normalize parsed packages to {name, ecosystem, constraint} format.
+        Resolves workspace:* and catalog: constraints using workspace config."""
         normalized = []
         for pkg in packages:
             raw_name = pkg.get("name", "").strip()
@@ -215,6 +284,33 @@ class ManifestDetector:
             else:
                 name = raw_name
             constraint = pkg.get("version", "*") or "*"
+
+            # Resolve workspace:* to exact version from workspace package.json
+            if constraint == "workspace:*" and getattr(self, "_workspace_found", False):
+                resolved_ver = self._workspace_versions.get(name)
+                if resolved_ver:
+                    pkg["_workspace_resolved"] = True
+                    constraint = f"=={resolved_ver}"
+                else:
+                    # Unresolvable workspace ref — fall back to ==0.0.0
+                    pkg["_workspace_resolved"] = True
+                    constraint = "==0.0.0"
+
+            # Resolve catalog: or catalog:<name> from pnpm-workspace.yaml catalog
+            if constraint.startswith("catalog:") and getattr(self, "_workspace_found", False):
+                catalog_name = constraint[len("catalog:"):].strip()
+                if catalog_name and catalog_name in self._catalog_versions:
+                    # Named catalog: look up the package name within the named catalog dict
+                    named = self._catalog_versions.get(catalog_name, {})
+                    catalog_ver = named.get(name) if isinstance(named, dict) else None
+                else:
+                    # Default catalog: use the package name directly
+                    default = self._catalog_versions.get("_default", {})
+                    catalog_ver = default.get(catalog_name or name) if isinstance(default, dict) else None
+                if catalog_ver:
+                    pkg["_workspace_resolved"] = False
+                    constraint = catalog_ver
+
             entry = {
                 "name": name,
                 "ecosystem": ecosystem,
@@ -223,6 +319,8 @@ class ManifestDetector:
             }
             if "extras" in pkg:
                 entry["extras"] = pkg["extras"]
+            if "_workspace_resolved" in pkg:
+                entry["_workspace_resolved"] = pkg["_workspace_resolved"]
             normalized.append(entry)
         return normalized
 
