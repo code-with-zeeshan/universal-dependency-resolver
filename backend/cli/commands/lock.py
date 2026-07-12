@@ -15,6 +15,7 @@ from rich.table import Table
 from ..shared import (
     _aggregator_to_resolver_input,
     _build_pinning_policy,
+    _build_target_system_info,
     _extract_severity,
     _get_manifest_updater,
     _output_json,
