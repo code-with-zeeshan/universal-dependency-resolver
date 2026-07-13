@@ -38,19 +38,6 @@ class GradlePlugin(EcosystemPlugin):
     def parse_gradle(content: str) -> list[dict]:
         """Parse Gradle build file for dependencies."""
         deps = []
-        gradle_configs = {
-            "implementation",
-            "api",
-            "compile",
-            "runtimeOnly",
-            "testImplementation",
-            "kapt",
-            "annotationProcessor",
-            "compileOnly",
-            "androidTestImplementation",
-            "debugImplementation",
-            "releaseImplementation",
-        }
         import re
 
         # Match map-style notation: group:name:version or group:name:version@ext
@@ -60,7 +47,6 @@ class GradlePlugin(EcosystemPlugin):
             r"debugImplementation|releaseImplementation)\s+['\"]([^'\"]+)['\"]"
         )
         for match in map_pattern.finditer(content):
-            config = match.group(1)
             value = match.group(2)
             if value.count(":") >= 1:
                 parts = value.rsplit(":", 2) if value.count(":") >= 2 else value.split(":")

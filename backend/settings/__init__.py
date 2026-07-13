@@ -26,6 +26,8 @@ PIN_INTEGRITY = os.getenv("PIN_INTEGRITY", "false").lower() == "true"
 ENABLE_LOCAL_INDEX = os.getenv("ENABLE_LOCAL_INDEX", "false").lower() == "true"
 LOCAL_INDEX_DIR: str = os.getenv("LOCAL_INDEX_DIR", os.path.expanduser("~/.cache/udr/indexes"))
 LOCAL_INDEX_UPDATE_INTERVAL = int(os.getenv("LOCAL_INDEX_UPDATE_INTERVAL", "3600"))
+INDEX_AUTO_SYNC = os.getenv("INDEX_AUTO_SYNC", "false").lower() == "true"
+INDEX_SYNC_AGE_HOURS = int(os.getenv("INDEX_SYNC_AGE_HOURS", "24"))
 
 _API_KEY_ENV = os.getenv("API_KEY")
 if _API_KEY_ENV:
@@ -90,6 +92,8 @@ RATE_LIMITS = {
     "apt": int(os.getenv("APT_RATE_LIMIT", 300)),
     "apk": int(os.getenv("APK_RATE_LIMIT", 300)),
     "gomodules": int(os.getenv("GOMODULES_RATE_LIMIT", 600)),
+    "nix": int(os.getenv("NIX_RATE_LIMIT", 300)),
+    "guix": int(os.getenv("GUIX_RATE_LIMIT", 300)),
 }
 
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 30))
@@ -154,6 +158,8 @@ ECOSYSTEMS = [
     "swift",
     "hex",
     "haskell",
+    "nix",
+    "guix",
     "docs",
     "custom_db",
 ]
@@ -176,6 +182,8 @@ ECOSYSTEM_NAMES = {
     "swift": "Swift Package Manager",
     "hex": "Hex (Elixir)",
     "haskell": "Haskell (Cabal)",
+    "nix": "Nix",
+    "guix": "GNU Guix",
     "docs": "Documentation",
     "custom_db": "Custom Database",
 }
@@ -242,6 +250,7 @@ USE_PUBGRUB_SOLVER = os.getenv("USE_PUBGRUB_SOLVER", "false").lower() == "true"
 USE_HYBRID_SOLVER = os.getenv("USE_HYBRID_SOLVER", "false").lower() == "true"
 USE_Z3_SOLVER = os.getenv("USE_Z3_SOLVER", "false").lower() == "true"
 SOLVER_REJECT_DEPRECATED = os.getenv("SOLVER_REJECT_DEPRECATED", "false").lower() == "true"
+SOLVER_MAX_VARIABLES = int(os.getenv("SOLVER_MAX_VARIABLES", "50000"))
 TARGET_OS = os.getenv("TARGET_OS", "")
 TARGET_ARCH = os.getenv("TARGET_ARCH", "")
 TARGET_CUDA = os.getenv("TARGET_CUDA", "")
@@ -385,6 +394,16 @@ def get_ecosystem_config(ecosystem: str) -> dict[str, Any]:
             "url": "https://pub.dev/api",
             "cache_ttl": CACHE_TTL,
             "rate_limit": 600,
+        },
+        "nix": {
+            "url": "",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
+        },
+        "guix": {
+            "url": "",
+            "cache_ttl": CACHE_TTL,
+            "rate_limit": 300,
         },
     }
     return configs.get(ecosystem, {})

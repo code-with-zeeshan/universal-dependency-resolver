@@ -368,10 +368,11 @@ def _fmt_size(size: int) -> str:
 async def _sync_index_async(args) -> int:
     """Sync local indexes from remote registries."""
     from backend.core import DataAggregator
+    from backend.settings import ECOSYSTEMS as _ECOSYSTEMS
 
     ecosystems = []
     if getattr(args, "all", False):
-        ecosystems = ["pypi", "npm", "crates"]
+        ecosystems = [e for e in _ECOSYSTEMS if e not in ("docs", "custom_db")]
     elif getattr(args, "ecosystem", None):
         ecosystems = [args.ecosystem]
     else:
@@ -379,18 +380,25 @@ async def _sync_index_async(args) -> int:
         return 1
 
     aggregator = DataAggregator()
-    total = 0
-    for eco in ecosystems:
-        err_console.print(f"  [dim]Syncing {eco} index...[/dim]")
+
+    async def _sync_one(eco: str) -> tuple[str, int | None, str | None]:
+        """Sync one ecosystem, returning (name, count_or_None, error_msg)."""
         try:
             n = await aggregator.sync_local_index(eco)
-            if n > 0:
-                console.print(f"  [green]Synced {n} packages for {eco}[/green]")
-            else:
-                err_console.print(f"  [yellow]{eco}: no new packages[/yellow]")
-            total += n
+            return eco, n, None
         except Exception as e:
-            err_console.print(f"  [red]{eco}: sync failed — {e}[/red]")
+            return eco, None, str(e)
+
+    results = await asyncio.gather(*[_sync_one(e) for e in ecosystems])
+    total = 0
+    for eco, n, err in results:
+        if err:
+            err_console.print(f"  [red]{eco}: sync failed — {err}[/red]")
+        elif n and n > 0:
+            console.print(f"  [green]Synced {n} packages for {eco}[/green]")
+            total += n
+        else:
+            err_console.print(f"  [yellow]{eco}: no new packages[/yellow]")
 
     await aggregator.close()
     console.print(f"\n[green]Done:[/green] {total} total packages synced")

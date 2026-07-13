@@ -9,6 +9,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from backend.core.policy_engine import check_policy, load_policy
+
 from ..shared import (
     PROJECT_ROOT,
     _extract_severity,
@@ -25,6 +27,8 @@ def cmd_check(args):
     from backend.core import SystemScanner
 
     async def _check():
+        if getattr(args, "policy", None) is not None:
+            return await _check_policy(args)
         if getattr(args, "cve", False):
             return await _check_cve(args)
         if getattr(args, "license", False):
@@ -415,4 +419,73 @@ async def _check_deprecated(args):
         return False
 
     console.print("\n[yellow]⚠ Some packages are deprecated — consider upgrading.[/yellow]")
+    return True
+
+
+async def _check_policy(args):
+    """Check lock file packages against project policy file."""
+    directory = Path(getattr(args, "directory", ".")).resolve()
+    policy_path = getattr(args, "policy", None)
+    if not policy_path or policy_path == "udr-policy.yaml":
+        candidate = directory / "udr-policy.yaml"
+        if not candidate.is_file():
+            console.print("[red]Policy file not found:[/red] expected ./udr-policy.yaml")
+            console.print("Create one or pass an explicit path via --policy ./custom.yaml")
+            sys.exit(1)
+        policy_path = candidate
+    else:
+        policy_path = Path(policy_path)
+        if not policy_path.is_absolute():
+            policy_path = directory / policy_path
+
+    try:
+        policy = load_policy(str(policy_path))
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Policy load failed:[/red] {exc}")
+        sys.exit(1)
+
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=getattr(args, "workspace", None),
+        lock_file=getattr(args, "lock_file", None),
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        sys.exit(1)
+
+    lock_data = _read_lock_file(lock_path)
+    violations = check_policy(lock_data, policy)
+
+    if getattr(args, "json", False):
+        return _output_json({"policy": str(policy_path), "violations": violations}, args)
+
+    if not violations:
+        console.print("[green]✅ All policy checks passed.[/green]")
+        return True
+
+    title = f"[red]{len(violations)} policy violation(s)[/red]"
+    has_error = any(v.get("severity") == "error" for v in violations)
+
+    table = Table(title=title, box=box.ROUNDED)
+    table.add_column("Rule", style="cyan")
+    table.add_column("Package", style="yellow")
+    table.add_column("Severity")
+    table.add_column("Message")
+
+    for v in violations:
+        rule = v.get("rule", "?")
+        pkg = v.get("package", "?")
+        sev = v.get("severity", "error")
+        msg = v.get("message", "")
+        sev_style = "bold red" if sev == "error" else "yellow"
+        table.add_row(rule, pkg, f"[{sev_style}]{sev}[/{sev_style}]", msg)
+
+    console.print(table)
+
+    if has_error:
+        console.print("\n[red]✗ Policy violations with 'error' severity found.[/red]")
+        sys.exit(1)
+
+    console.print("\n[yellow]⚠ Policy violations found (warnings only).[/yellow]")
     return True

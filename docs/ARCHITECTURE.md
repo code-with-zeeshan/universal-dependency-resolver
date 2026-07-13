@@ -18,7 +18,8 @@ graph TB
     end
 
     subgraph CoreLayer["🧠 Core Logic"]
-        CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]:::core
+        CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver (fallback)"]:::core
+        PG["<code>pubgrub_solver.py</code><br/>PubGrub solver (default, Rust-backed)"]:::core
         DA["<code>data_aggregator.py</code><br/>Async metadata aggregation"]:::core
         EG["<code>export_generator.py</code><br/>15 export formats (Jinja2)"]:::core
         SS["<code>system_scanner.py</code><br/>OS · CPU · GPU · CUDA · runtimes · accelerators"]:::core
@@ -27,12 +28,12 @@ graph TB
     end
 
     subgraph DataLayer["📦 Data Sources"]
-        DS_CLIENTS["<code>data_sources/</code><br/>20 ecosystem clients"]:::data
+        DS_CLIENTS["<code>data_sources/</code><br/>19 ecosystem plugins"]:::data
         PYPI["PyPI"]:::data
         NPM["npm"]:::data
         CRATES["Crates.io"]:::data
         MAVEN["Maven"]:::data
-        MORE["+ 14 more..."]:::data
+        MORE["+ 15 more (plugin system)"]:::data
     end
 
     subgraph DBLayer["🗄️ Database"]
@@ -123,7 +124,9 @@ Routes:
 
 ### Core logic (`backend/core/`)
 
-- **`conflict_resolver.py`** — Z3 SAT solver. 18 data source clients loaded lazily via `importlib.import_module()`. `import z3` deferred to inside 7 methods.
+- **`conflict_resolver.py`** — Z3 SAT solver (fallback). Lazy-loaded `z3` inside methods.
+- **`pubgrub_solver.py`** — PubGrub solver (default, Rust-backed `pubgrub-py` when installed; pure-Python fallback).
+- **`plugin.py`** — Ecosystem plugin system: `EcosystemPlugin` ABC, `@register_ecosystem` decorator, `import_builtin_plugins()` for eager discovery. All 19 ecosystems use the plugin interface.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
 - **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
@@ -132,7 +135,7 @@ Routes:
 
 ### Data sources (`backend/data_sources/`)
 
-18 ecosystem clients, all inheriting from `BaseClient`:
+All 19 ecosystem plugins (registered via `@register_ecosystem`), each an `EcosystemPlugin` subclass inheriting from `BaseClient`:
 
 | Client | Ecosystem | Registry |
 |---|---|---|
@@ -155,7 +158,7 @@ Routes:
 | `hex_client.py` | Hex (Elixir) | hex.pm |
 | `haskell_client.py` | Haskell (Cabal) | hackage.haskell.org |
 
-All clients are lazily registered — they are only imported when their ecosystem is first accessed.
+All ecosystems use the **plugin system** (`backend/core/plugin.py`). Built-in plugins are eagerly discovered via `import_builtin_plugins()` — third-party plugins (installed via pip) are discoverable via setuptools entry points.
 
 ### Database (`backend/database/`)
 
@@ -217,18 +220,19 @@ graph LR
 
 ## Key design decisions
 
-- **Lazy loading**: `import z3` inside methods (not at module level), 20 data source clients via `_register_client()` with `importlib`. Saves ~1s on every CLI command that doesn't need resolution.
+- **Lazy loading**: `import z3` inside methods (not at module level), 19 ecosystem plugins via `@register_ecosystem` + `import_builtin_plugins()`. Saves ~1s on every CLI command that doesn't need resolution.
 - **SQLite first**: No PostgreSQL or Redis required. SQLite + DictCache work for all standalone/desktop use cases.
 - **Auth conditionally registered**: `ENABLE_AUTH=true` by default. Auth router only mounted when enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.
 - **No Docker**: Tool ships as `pip install ud-resolver` and as a desktop app. Docker export templates (Dockerfile.j2, docker-compose.yml.j2) are user-facing features for exporting resolved dependencies.
+- **Architecture rules enforced**: CI + pre-commit hooks verify no `api/ → cli/` or `cli/ → api/` imports. Coverage threshold `fail_under = 55` enforced in CI.
 
 ## Testing
 
 ```
 tests/
-├── unit/         → 1839 tests (CLI, API, core, data sources, settings)
-├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
+├── unit/         → 2351 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
+├── integration/  → 94 tests (API + DB + data flow, uses SQLite)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures
 ```

@@ -61,6 +61,60 @@ def _extract_severity(vuln: dict) -> str:
     return "UNKNOWN"
 
 
+async def _check_and_sync_indexes(
+    ecosystem_hints: set[str] | None = None,
+    auto_sync: bool = False,
+) -> int:
+    """Check local index freshness and auto-sync stale indexes.
+
+    When ``INDEX_AUTO_SYNC`` is set or ``auto_sync`` is True, checks each
+    ecosystem that has a local index.  If the index is older than
+    ``INDEX_SYNC_AGE_HOURS``, triggers a sync.
+
+    Returns the total number of packages synced.
+    """
+    from backend.settings import ENABLE_LOCAL_INDEX as _ENABLE_LOCAL_INDEX
+    from backend.settings import INDEX_AUTO_SYNC as _INDEX_AUTO_SYNC
+    from backend.settings import INDEX_SYNC_AGE_HOURS as _INDEX_SYNC_AGE_HOURS
+
+    if not _ENABLE_LOCAL_INDEX and not auto_sync:
+        return 0
+    if not _INDEX_AUTO_SYNC and not auto_sync:
+        return 0
+
+    from backend.core.local_index import LocalIndexManager
+    from backend.core.offline_index import list_indexes
+
+    mgr = LocalIndexManager(update_interval=_INDEX_SYNC_AGE_HOURS * 3600)
+    indexes = list_indexes()
+    if ecosystem_hints:
+        indexes = [e for e in indexes if e in ecosystem_hints]
+
+    stale = [eco for eco in indexes if mgr.needs_sync(eco)]
+    if not stale:
+        return 0
+
+    err_console.print(f"\n[dim]Auto-syncing {len(stale)} stale local index(es)...[/dim]")
+    from backend.core import DataAggregator
+
+    aggregator = DataAggregator()
+    total = 0
+    for eco in stale:
+        try:
+            n = await aggregator.sync_local_index(eco)
+            if n > 0:
+                err_console.print(f"  [green]Synced {n} packages for {eco}[/green]")
+            else:
+                err_console.print(f"  [yellow]{eco}: up to date[/yellow]")
+            total += n
+        except Exception as e:
+            err_console.print(f"  [red]{eco}: sync failed — {e}[/red]")
+    await aggregator.close()
+    if total > 0:
+        err_console.print(f"[dim]Auto-sync complete: {total} packages updated[/dim]\n")
+    return total
+
+
 async def _run_resolution(
     aggregator,
     resolver,
@@ -109,7 +163,7 @@ async def _run_resolution(
             resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
             resolved["resolved_packages"] = resolved.pop("packages", {})
         else:
-            resolved = resolved or {}
+            resolved = {}
 
     if "packages" in resolved and "resolved_packages" not in resolved:
         resolved["resolved_packages"] = resolved.pop("packages")

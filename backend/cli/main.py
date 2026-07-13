@@ -18,6 +18,7 @@ from .commands.list_ecosystems import cmd_list_ecosystems
 from .commands.lock import cmd_lock
 from .commands.outdated import cmd_outdated
 from .commands.resolve import cmd_resolve
+from .commands.sbom import cmd_sbom
 from .commands.scan import cmd_scan
 from .commands.search import cmd_search
 from .commands.serve import cmd_serve
@@ -109,6 +110,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "-l",
         help="Explicit lock file path (overrides directory/workspace)",
     )
+    check_p.add_argument(
+        "--policy",
+        "-p",
+        nargs="?",
+        const="udr-policy.yaml",
+        default=None,
+        help="Path to policy YAML file (default: ./udr-policy.yaml)",
+    )
 
     resolve_p = sub.add_parser("resolve", help="Resolve dependencies for one or more packages")
     resolve_p.add_argument(
@@ -192,6 +201,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
         default=None,
         help="Target CPU architecture for cross-compilation (overrides host arch)",
+    )
+    resolve_p.add_argument(
+        "--auto-sync",
+        action="store_true",
+        help="Auto-sync stale local indexes before resolution",
     )
 
     lock_p = sub.add_parser(
@@ -303,6 +317,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Target CPU architecture for cross-compilation (overrides host arch)",
     )
+    lock_p.add_argument(
+        "--auto-sync",
+        action="store_true",
+        help="Auto-sync stale local indexes before resolution",
+    )
+    lock_p.add_argument("--sign", action="store_true", help="Sign the lock file with Ed25519 key")
+    lock_p.add_argument(
+        "--provenance", action="store_true", help="Add SLSA provenance section to lock file"
+    )
+    lock_p.add_argument(
+        "--check",
+        "-c",
+        action="store_true",
+        help="Check if lock file is up to date (CI mode). Exit code 1 if drift detected.",
+    )
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
     graph_p.add_argument(
@@ -343,12 +372,24 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Workspace name — lock file becomes udr-{workspace}.lock",
     )
+    verify_p.add_argument(
+        "--signature",
+        "--sig",
+        action="store_true",
+        dest="signature",
+        help="Verify Ed25519 signature on the lock file",
+    )
 
     list_eco_p = sub.add_parser("list-ecosystems", help="List all supported ecosystems")
     list_eco_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     update_p = sub.add_parser("update", help="Re-resolve a package and update lock file")
-    update_p.add_argument("package", help="Package name to re-resolve")
+    update_p.add_argument(
+        "package",
+        nargs="?",
+        default=None,
+        help="Package name to re-resolve (optional with --fix-cve)",
+    )
     update_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     update_p.add_argument(
         "--workspace",
@@ -392,6 +433,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["x86_64", "aarch64", "arm64", "i386", "amd64"],
         default=None,
         help="Target CPU architecture for cross-compilation (overrides host arch)",
+    )
+    update_p.add_argument(
+        "--fix-cve",
+        action="store_true",
+        help="Update vulnerable packages to versions that fix known CVEs",
     )
 
     install_p = sub.add_parser("install", help="Install packages from udr.lock lock file")
@@ -563,6 +609,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     search_p.add_argument("--json", action="store_true", help="Output as JSON")
 
+    sbom_p = sub.add_parser("sbom", help="Generate SPDX 2.3 or CycloneDX 1.5 SBOM from lock file")
+    sbom_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    sbom_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    sbom_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
+    )
+    sbom_p.add_argument(
+        "--format", "-f", default="spdx", choices=["spdx", "cyclonedx"], help="SBOM format"
+    )
+    sbom_p.add_argument(
+        "--output", "-o", default=None, help="Output file path (default: print to stdout)"
+    )
+
     details_p = sub.add_parser(
         "details",
         help="Show detailed package info — versions, dependencies, metadata",
@@ -590,6 +655,9 @@ def _build_parser() -> argparse.ArgumentParser:
     auth_revoke.add_argument("key_id", type=int, help="ID of the key to revoke")
 
     auth_sub.add_parser("list", help="List all API keys")
+
+    auth_sub.add_parser("gen-key", help="Generate a new Ed25519 signing key for lock file signing")
+    auth_sub.add_parser("show-key", help="Show the current Ed25519 public signing key")
 
     index_p = sub.add_parser("index", help="Manage offline SQLite indexes")
     index_sub = index_p.add_subparsers(dest="index_action", required=True)
@@ -657,6 +725,7 @@ def main():
         "outdated": cmd_outdated,
         "diff": cmd_diff,
         "search": cmd_search,
+        "sbom": cmd_sbom,
         "details": cmd_details,
         "auth": cmd_auth,
         "index": cmd_index,

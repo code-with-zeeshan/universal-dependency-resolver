@@ -56,7 +56,7 @@ udr serve --ssl-keyfile key.pem --ssl-certfile cert.pem  # HTTPS
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOLVER_TIMEOUT` | `120` | Total seconds for BFS+SAT resolution (used by `lock`/`scan`/`update`). ~80% of budget goes to Z3 solver (minimum 10s); rest for BFS dep discovery |
+| `SOLVER_TIMEOUT` | `120` | Total seconds for BFS+SAT resolution (used by `lock`/`scan`/`update`). ~80% of budget goes to solver (minimum 10s); rest for BFS dep discovery |
 | `SCANNER_MAX_WORKERS` | `10` | Thread pool workers for parallel system scanning in `system_scanner.py` |
 | `CACHE_TTL` | `3600` | Default cache TTL in seconds for package metadata |
 | `CACHE_TTL_SHORT` | `300` | Cache TTL for rate-limited API endpoints (5 min default) |
@@ -166,7 +166,7 @@ name@ecosystem                → name, specific ecosystem
 
 ## `lock`
 
-Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run SAT/PubGrub resolution, and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
+Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run PubGrub SAT resolution, and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
 
 **Usage:**
 

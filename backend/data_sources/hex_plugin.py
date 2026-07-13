@@ -39,7 +39,7 @@ class HexPlugin(EcosystemPlugin):
         paren_depth = 0
         for line in content.splitlines():
             stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//"):
+            if stripped.startswith(("#", "//")):
                 continue
             if "defp deps" in stripped or "def deps" in stripped:
                 in_deps = True

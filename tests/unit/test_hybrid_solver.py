@@ -164,10 +164,17 @@ print(type(solver).__module__ + '.' + type(solver).__qualname__)
             "backend.core.hybrid_solver.HybridSolver",
         )
 
-    def test_default_is_z3(self):
-        """No env var returns ConflictResolver (Z3)."""
+    def test_default_is_pubgrub(self):
+        """No env var returns PubGrubSolver (default)."""
         self._check_solver(
             {},
+            "backend.core.pubgrub_solver.PubGrubSolver",
+        )
+
+    def test_z3_when_explicitly_requested(self):
+        """USE_Z3_SOLVER=true returns ConflictResolver (Z3)."""
+        self._check_solver(
+            {"USE_Z3_SOLVER": "true"},
             "backend.core.conflict_resolver.ConflictResolver",
         )
 

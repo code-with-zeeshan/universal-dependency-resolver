@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/1831%20unit%2B94%20integration-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/2351%20unit%2B94%20integration-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
@@ -77,7 +77,7 @@ udr serve --port 8000
 
 | Feature | What it does |
 |---|---|
-| 🧠 **SAT-solver resolution** | Z3-powered solver finds compatible versions across all ecosystems simultaneously |
+| 🧠 **SAT-solver resolution** | PubGrub-powered solver (Rust-backed, default; Z3 fallback) finds compatible versions across all ecosystems simultaneously |
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, Dockerfile, docker-compose.yml, pyproject.toml, Cargo.toml, pom.xml, build.gradle, CMakeLists.txt, install.sh, install.bat, environment.yml, package.json, Gemfile, composer.json, go.mod |
@@ -186,12 +186,12 @@ flowchart LR
     A["👤 Your Request<br/><code>udr resolve flask react</code>"] --> B
     B["🌐 Fetch metadata<br/>from registry APIs"] --> C
     C["🔍 Scan system<br/>OS · GPU · CUDA · Python"] --> D
-    D["🧠 Z3 SAT solver<br/>Find compatible versions"] --> E
+    D["🧠 PubGrub SAT solver<br/>(Rust-backed, default;<br/>Z3 fallback)"] --> E
     E["📤 Export / Lock<br/>12 formats · udr.lock"]
 
     B -->|"aiohttp"| F["📦 PyPI · npm · Crates · Maven<br/>+ 14 more registries"]
     C -->|"pynvml"| G["🖥️ NVIDIA · AMD · Apple Silicon<br/>TPU · NPU · ANE"]
-    D -->|"z3.Optimize()"| H["⚡ Prefer newer versions<br/>Resolve CUDA variants<br/>Detect cross-eco conflicts"]
+    D -->|"PubGrub / z3.Optimize()"| H["⚡ Prefer newer versions<br/>Resolve CUDA variants<br/>Detect cross-eco conflicts"]
 
     style A fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
     style B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
@@ -209,7 +209,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **20** |
-| 🧪 Unit tests passing | **1831** (+ 94 integration) |
+| 🧪 Unit tests passing | **2351** (+ 94 integration) |
 | 🎛️ CLI commands | **18** |
 | 🌐 API endpoints | **49** |
 | 📤 Export formats | **15** |

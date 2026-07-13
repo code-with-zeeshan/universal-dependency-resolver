@@ -50,6 +50,8 @@ class Ecosystem(Enum):
     SWIFT = "swift"
     HEX = "hex"
     HASKELL = "haskell"
+    NIX = "nix"
+    GUIX = "guix"
     DOCS = "docs"
     CUSTOM_DB = "custom_db"
 
@@ -164,6 +166,8 @@ _register_builtin("nuget", "backend.data_sources.nuget_plugin")
 _register_builtin("packagist", "backend.data_sources.packagist_plugin")
 _register_builtin("rubygems", "backend.data_sources.rubygems_plugin")
 _register_builtin("custom_db", "backend.data_sources.custom_db_plugin")
+_register_builtin("nix", "backend.data_sources.nix_plugin")
+_register_builtin("guix", "backend.data_sources.guix_plugin")
 import_builtin_plugins()
 
 

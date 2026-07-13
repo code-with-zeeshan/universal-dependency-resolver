@@ -12,7 +12,12 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
-from backend.settings import BFS_BATCH_SIZE, USE_HYBRID_SOLVER, USE_PUBGRUB_SOLVER
+from backend.settings import (
+    BFS_BATCH_SIZE,
+    SOLVER_MAX_VARIABLES,
+    USE_HYBRID_SOLVER,
+    USE_PUBGRUB_SOLVER,
+)
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
 
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
@@ -354,6 +359,65 @@ def _check_dep_hash(
     return None
 
 
+def _group_by_ecosystem(packages: list[dict]) -> dict[str, list[dict]]:
+    """Group packages by ecosystem for per-ecosystem solver isolation.
+
+    Packages whose dependency graph is entirely within a single ecosystem
+    are grouped by ecosystem for independent resolution.  Packages that
+    participate in cross-ecosystem dependencies — along with ALL packages
+    from their ecosystem (to keep the dependency graph consistent) — go
+    into a special ``"__cross__"`` group resolved by the original single-solver
+    code path.
+
+    This prevents a conflict in one ecosystem from blocking resolution in
+    another, while ensuring cross-ecosystem packages still have access to
+    all same-ecosystem dependencies they need.
+    """
+    # First pass: identify ecosystems with any cross-eco package
+    eco_has_cross: dict[str, bool] = {}
+    for pkg in packages:
+        eco = pkg.get("ecosystem", "unknown")
+        deps = pkg.get("dependencies", {})
+        cross_deps = pkg.get("cross_ecosystem_deps", [])
+        has_cross = bool(cross_deps) or any(k != eco for k in deps)
+        if has_cross:
+            eco_has_cross[eco] = True
+
+    # Second pass: group packages
+    groups: dict[str, list[dict]] = {}
+    for pkg in packages:
+        eco = pkg.get("ecosystem", "unknown")
+        if eco_has_cross.get(eco):
+            groups.setdefault("__cross__", []).append(pkg)
+        else:
+            groups.setdefault(eco, []).append(pkg)
+    return groups
+
+
+def _merge_solver_results(results: list[dict]) -> dict:
+    """Merge multiple solver result dicts into one.
+
+    Handles ``resolved_packages`` merging, status propagation
+    (any unsatisfiable → overall unsatisfiable), and best-effort
+    collection of other metadata keys.
+    """
+    merged: dict = {"status": "satisfiable", "resolved_packages": {}}
+    for res in results:
+        if res.get("status") != "satisfiable":
+            merged["status"] = "unsatisfiable"
+            merged["resolution_error"] = res.get(
+                "resolution_error", "One or more ecosystem groups are unsatisfiable"
+            )
+        for key, val in res.items():
+            if key == "resolved_packages":
+                merged.setdefault("resolved_packages", {}).update(val)
+            elif key == "status":
+                continue
+            elif key not in merged:
+                merged[key] = val
+    return merged
+
+
 async def _resolve_transitive(
     aggregator: Any,
     resolver: Any,
@@ -375,6 +439,13 @@ async def _resolve_transitive(
     When lock_tree_data is provided (from e.g. package-lock.json), the BFS uses
     it to resolve transitive deps without making API calls for locked packages.
     Format: {ecosystem: {package_name: {version, dependencies: {dep_name: constraint}}}}
+
+    Per-ecosystem solver isolation: packages whose dependency graph is entirely
+    within a single ecosystem are resolved independently per ecosystem.  Packages
+    that participate in cross-ecosystem dependencies (along with all packages from
+    their ecosystem) are grouped into a ``"__cross__"`` group that uses the
+    original single-solver path.  This prevents a conflict in one ecosystem from
+    blocking resolution in another.
     """
     from backend.core.conflict_resolver import ConflictResolver
 
@@ -466,45 +537,44 @@ async def _resolve_transitive(
     visited: set = set()
     all_packages: dict = {}
 
+    async def _fetch_one(item: tuple) -> tuple:
+        name, eco = item[0], item[1]
+        lk = lock_tree_lookup.get((name, eco))
+        if lk is not None:
+            deps: dict[str, list] = {"all": []}
+            for dep_name, dep_ver in lk.get("dependencies", {}).items():
+                deps["all"].append(
+                    type(
+                        "_Dep",
+                        (),
+                        {"name": dep_name, "version_spec": dep_ver, "ecosystem": eco},
+                    )()
+                )
+            return (
+                name,
+                eco,
+                {
+                    "name": name,
+                    "version": lk.get("version", "0.0.0"),
+                    "versions": [{"version": lk.get("version", "0.0.0")}],
+                    "dependencies": {eco: deps},
+                },
+            )
+        info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
+        return (name, eco, info)
+
     async def _batch_fetch(
         items: list[tuple],
         batch_size: int,
     ) -> list[tuple]:
-        """Fetch *items* in parallel batches, each batch limited by batch_size semaphore."""
+        """Fetch *items* in chunks of *batch_size*, gathering each chunk in parallel."""
         results: list[tuple] = []
-        sem = asyncio.Semaphore(batch_size)
-
-        async def _fetch_one(item: tuple) -> tuple:
-            name, eco = item[0], item[1]
-            lk = lock_tree_lookup.get((name, eco))
-            if lk is not None:
-                deps: dict[str, list] = {"all": []}
-                for dep_name, dep_ver in lk.get("dependencies", {}).items():
-                    deps["all"].append(
-                        type(
-                            "_Dep",
-                            (),
-                            {"name": dep_name, "version_spec": dep_ver, "ecosystem": eco},
-                        )()
-                    )
-                return (
-                    name,
-                    eco,
-                    {
-                        "name": name,
-                        "version": lk.get("version", "0.0.0"),
-                        "versions": [{"version": lk.get("version", "0.0.0")}],
-                        "dependencies": {eco: deps},
-                    },
-                )
-            async with sem:
-                info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
-            return (name, eco, info)
-
-        batch_results = await asyncio.gather(*[_fetch_one(item) for item in items])
-        for r in batch_results:
-            if r[2] is not None:
-                results.append(r)
+        for i in range(0, len(items), batch_size):
+            chunk = items[i : i + batch_size]
+            chunk_results = await asyncio.gather(*[_fetch_one(item) for item in chunk])
+            for r in chunk_results:
+                if r[2] is not None:
+                    results.append(r)
         return results
 
     # Phase 1: batch-fetch root packages that aren't pre-resolved
@@ -628,13 +698,84 @@ async def _resolve_transitive(
         else:
             sat_packages.append(pkg)
 
-    # Resolve with SAT solver for remaining packages
+    # Pre-check: total version capacity before solver
     if sat_packages:
-        result = resolver.resolve_dependencies(
-            sat_packages, system_info, prefer_compatibility=True, solver_timeout=solver_timeout
-        )
-        if "packages" in result and "resolved_packages" not in result:
-            result["resolved_packages"] = result.pop("packages")
+        total_versions = sum(len(p.get("available_versions", []) or []) for p in sat_packages)
+        if total_versions > SOLVER_MAX_VARIABLES:
+            logger.warning(
+                "Too many versions (%d) — exceeds SOLVER_MAX_VARIABLES (%d), "
+                "falling back to pre-resolved packages only",
+                total_versions,
+                SOLVER_MAX_VARIABLES,
+            )
+            # Return with whatever was pre-resolved from lock data
+            result = {"status": "partial", "resolved_packages": {}}
+            if pre_resolved:
+                for (name, eco), version in pre_resolved.items():
+                    result["resolved_packages"][name] = {
+                        "version": version,
+                        "ecosystem": eco,
+                    }
+                result["error"] = (
+                    f"Too many versions ({total_versions}) — "
+                    f"exceeds SOLVER_MAX_VARIABLES ({SOLVER_MAX_VARIABLES}). "
+                    f"Using {len(pre_resolved)} pre-resolved packages from lock file."
+                )
+            else:
+                result["error"] = (
+                    f"Too many versions ({total_versions}) — "
+                    f"exceeds SOLVER_MAX_VARIABLES ({SOLVER_MAX_VARIABLES})"
+                )
+            return result
+
+    # Resolve with SAT solver — per-ecosystem isolation
+    if sat_packages:
+        groups = _group_by_ecosystem(sat_packages)
+
+        # Use the original single-solver path when:
+        #   - There's a cross-ecosystem group, or
+        #   - Only one ecosystem group exists (no isolation benefit)
+        if "__cross__" in groups or len(groups) <= 1:
+            logger.debug(
+                "Single-solver path: %d groups, cross=%s",
+                len(groups),
+                "__cross__" in groups,
+            )
+            result = resolver.resolve_dependencies(
+                sat_packages,
+                system_info,
+                prefer_compatibility=True,
+                solver_timeout=solver_timeout,
+            )
+            if "packages" in result and "resolved_packages" not in result:
+                result["resolved_packages"] = result.pop("packages")
+        else:
+            logger.info(
+                "Per-ecosystem solver isolation: %d groups (%s)",
+                len(groups),
+                ", ".join(sorted(groups.keys())),
+            )
+            results: list[dict] = []
+            for eco, eco_pkgs in sorted(groups.items()):
+                if not eco_pkgs:
+                    continue
+                logger.debug("Resolving ecosystem group '%s' (%d packages)", eco, len(eco_pkgs))
+                eco_result = resolver.resolve_dependencies(
+                    eco_pkgs,
+                    system_info,
+                    prefer_compatibility=True,
+                    solver_timeout=solver_timeout,
+                )
+                if "packages" in eco_result and "resolved_packages" not in eco_result:
+                    eco_result["resolved_packages"] = eco_result.pop("packages")
+                results.append(eco_result)
+
+                # Fail fast on unsatisfiable ecosystem
+                if eco_result.get("status") != "satisfiable":
+                    logger.warning("Ecosystem '%s' is unsatisfiable — stopping", eco)
+                    break
+
+            result = _merge_solver_results(results)
     else:
         result = {"status": "satisfiable", "resolved_packages": {}}
 

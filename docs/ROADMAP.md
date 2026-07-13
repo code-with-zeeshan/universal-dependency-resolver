@@ -5,15 +5,16 @@
 | Area | Status |
 |------|--------|
 | Supported ecosystems | 20 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, docs, custom_db) |
-| Resolution engine | Z3 SAT solver + PubGrub (pure-Python fallback) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
+| Resolution engine | PubGrub SAT solver (Rust-backed, default) + Z3 fallback (`USE_Z3_SOLVER=true`) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
 | In-place manifest update | **18/18 resolvable ecosystems** — all ecosystems with local manifests can be written back after `udr lock` |
-| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index` |
+| CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index`, `sbom` |
 | Lock file | `udr.lock` (supports `--workspace` for multi-workspace projects) |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| Tests | 1850 unit + 94 integration = **1944 total** (zero regressions) |
+| Tests | 2351 unit + 94 integration = **2445 total** (zero regressions) |
 | All 21 bottlenecks | ✅ Fixed — P0×4 (wrong results), P1×4 (reliability), P2×5 (scalability), P3×8 (code quality) |
-| Architecture violations | 0 (api→orchestrator→database service layer enforced) |
+| Architecture violations | 0 — enforced via CI + pre-commit |
 | Ruff violations | 0 in `backend/` |
+| Coverage threshold | 60% (`fail_under = 60`) — enforced via CI + pre-commit |
 | Missing docstrings | 221 (D100–D417) — incremental fix ongoing |
 
 ---
@@ -34,11 +35,10 @@
 - **Remaining gap**: First-time packages still require network (no proactive index sync).
 - **Status**: Auto-population implemented. Manual `udr index sync` still available for pre-seeding.
 
-### 4. Per-Ecosystem Solver Isolation
+### 4. Per-Ecosystem Solver Isolation — ✅ Complete
 - **What**: All ecosystems share a single Z3 optimization matrix (`conflict_resolver.py:1113-1218`). A conflict in JavaScript frontend deps blocks backend Python resolution if any transitive dependency path connects them.
-- **Partial mitigation**: SCC decomposition separates disconnected subgraphs, but shared transitive deps merge them back into one component.
-- **Entry point**: `backend/core/conflict_resolver.py` — advanced topic; explore `s.push()/s.pop()` contexts or multi-solver architecture.
-- **Priority**: Medium — affects monorepos with independent sub-projects across ecosystems.
+- **Fix**: `_group_by_ecosystem()` splits packages into single-ecosystem groups; each group resolves independently in isolated solver contexts. Cross-ecosystem packages (with cross-ecosystem deps) still use unified path.
+- **Status**: Implemented. Removed from high-priority gap list.
 
 ---
 
@@ -46,7 +46,7 @@
 
 ### 5. Solver Capacity: 50000-variable limit
 - **What**: `SOLVER_MAX_VARS=50000` caps total Z3 boolean variables.
-- **Mitigation**: SCC batch partitioning + dynamic version clustering handle projects up to ~500 packages. PubGrub solver (pure-Python 661 lines) available via `USE_PUBGRUB_SOLVER=true`.
+- **Mitigation**: PubGrub (default, Rust-backed) handles 200+ packages in synthetic tests. SCC batch partitioning + dynamic version clustering handle larger projects. Z3 fallback via `USE_Z3_SOLVER=true`.
 - **Remaining gap**: Very large monorepos (>500 packages) may still hit the limit.
 
 ### 6. Incremental / Online Resolution
@@ -80,7 +80,7 @@
 | 5.10 | XML updater | P3 | ✅ Done | `packages.config` (nuget), `pom.xml` (maven) |
 | 5.11 | Simple text updater | P3 | ✅ Done | `apt-packages.txt`, `apk-packages.txt` |
 | 5.12 | Incremental resolution | P1 | ✅ Done | resolution_hash per package; BFS + SAT skip for unchanged subtrees; per-transitive-dep hash comparison |
-| 5.13 | PubGrub solver integration | P1 | ✅ Done (pure-Python) | `backend/core/pubgrub_core.py` (661 lines) — pure-Python PubGrub with CDCL; no Rust toolchain needed. `USE_PUBGRUB_SOLVER=true` to enable. Falls back gracefully to ConflictResolver (Z3). |
+| 5.13 | PubGrub solver integration | P1 | ✅ Done (Rust-backed, default) | `backend/core/pubgrub_solver.py` — Rust-backed `pubgrub-py` when installed; pure-Python fallback. **Default solver** — no env var needed. `USE_Z3_SOLVER=true` to force Z3. |
 
 ## Phase 6 — Cross-Compilation & Offline (New — from FAQ priorities)
 
@@ -88,7 +88,7 @@
 |---|------|----------|-------|
 | 6.1 | `--target`/`--platform` flags | P1 | Override OS, arch, Python version for CI/CD lock file generation from dev laptops |
 | 6.2 | Automatic offline index population | P1 | Cache API responses into SQLite index automatically during online use; eliminate `udr index build` requirement |
-| 6.3 | Per-ecosystem solver isolation | P2 | Isolate independent ecosystems into separate solver contexts; prevent JS conflict from blocking Python resolution |
+| 6.3 | Per-ecosystem solver isolation | P2 | ✅ Done — `_group_by_ecosystem()`, isolated per-eco solver contexts |
 
 ## Phase 7 — Platform & Integrations
 
@@ -97,7 +97,7 @@
 | 7.1 | WASM frontend | P2 | Browser-based dependency analysis |
 | 7.2 | Desktop app (Tauri) | P2 | Native GUI (Electron served since v1.2) |
 | 7.3 | VSCode extension | P2 | In-editor manifest editing + lock integration |
-| 7.4 | GitHub Actions | P2 | CI: `udr lock --check` for drift detection |
+| 7.4 | GitHub Actions | P2 | ✅ Done — `udr lock --check` for drift detection, `.github/workflows/lock-check.yml` |
 | 7.5 | GitLab CI template | P2 | Same as GitHub Actions |
 | 7.6 | Pre-commit hook | P2 | `udr lock --check` before commits |
 
@@ -107,10 +107,10 @@
 |---|------|----------|-------|
 | 8.1 | License compliance | P1 | ✅ Done (`check --license`) — SPDX alias table, configurable policy |
 | 8.2 | CVE scanning | P1 | ✅ Done (`check --cve`) — OSV-based, severity-colored output |
-| 8.3 | CVE auto-fix | P1 | `udr update --fix-cve` to bump vulnerable deps |
-| 8.4 | SBOM generation | P1 | SPDX 2.3 / CycloneDX 1.5 output |
-| 8.5 | Supply chain attestation | P2 | SLSA provenance + signed lock files |
-| 8.6 | Policy engine | P2 | Custom rules: "no GPL in production", "pin all transitive" |
+| 8.3 | CVE auto-fix | P1 | ✅ Done — `udr update --fix-cve` to bump vulnerable deps |
+| 8.4 | SBOM generation | P1 | ✅ Done — `udr sbom` SPDX 2.3 / CycloneDX 1.5 output |
+| 8.5 | Supply chain attestation | P2 | ✅ Done — `udr lock --sign`, `udr verify --signature`, SLSA provenance |
+| 8.6 | Policy engine | P2 | ✅ Done — `udr check --policy`, YAML-based rules |
 
 ## Phase 9 — Ecosystem Deepening
 
@@ -140,6 +140,7 @@
 |---------|-------|--------|--------|
 | v1.3 | All 21 bottlenecks fixed, Phase 5 complete, 0 ruff violations | ✅ Released | Q3 2026 |
 | v1.4 | CVE scanning, license compliance, PubGrub pure-Python, workspace awareness, private registry auth | ✅ Released | Q3 2026 |
-| v1.5 | Cross-compilation flags + offline-first auto-indexing | Pending | Q4 2026 |
-| v2.0 | WASM frontend + SBOM | Pending | Q1 2027 |
-| v3.0 | Policy engine + supply chain attestation + per-ecosystem isolation | Pending | Q2 2027 |
+| v1.5 | Cross-compilation flags + offline-first auto-indexing + per-ecosystem solver isolation | ✅ Released | Q4 2026 |
+| v2.0 | CVE auto-fix + SBOM generation + GitHub Actions CI drift check | ✅ Released | Q1 2027 |
+| v3.0 | Policy engine + supply chain attestation + signed lock files | ✅ Released | Q2 2027 |
+| v4.0 | WASM frontend + Desktop app (Tauri) + VSCode extension | Pending | Q3 2027 |

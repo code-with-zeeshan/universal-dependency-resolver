@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using a Z3 SAT-solver engine that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using a PubGrub SAT-solver engine (Rust-backed, default) that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -132,7 +132,7 @@ sequenceDiagram
     participant CLI as 🖥️ CLI
     participant Agg as 📊 DataAggregator
     participant Scanner as 🔍 SystemScanner
-    participant Solver as 🧠 Solver (Z3/PubGrub)
+    participant Solver as 🧠 Solver (PubGrub/Z3)
     participant Export as 📤 ExportGenerator
 
     User->>CLI: udr resolve flask>=2.0 react@npm
@@ -148,7 +148,7 @@ sequenceDiagram
     Scanner-->>CLI: OS, CPU, GPU, CUDA, runtimes
     Note over CLI,Solver: Step 3 — SAT resolution
     CLI->>Solver: resolve(packages, system_info)
-    Solver->>Solver: Solve cross-ecosystem<br/>constraints (Z3 / PubGrub)
+    Solver->>Solver: Solve cross-ecosystem<br/>constraints (PubGrub / Z3)
     Solver-->>CLI: compatible versions
     Note over CLI,Export: Step 4 — Export / Lock
     CLI->>Export: export(packages, "requirements.txt")
@@ -160,7 +160,7 @@ sequenceDiagram
 
 1. **Metadata fetch** — Queries registry APIs (PyPI, npmjs.org, crates.io, etc.) for each package's versions, dependencies, and system requirements
 2. **System scan** — Detects OS, CPU, GPU, CUDA version, Python version, Node.js, GCC, Java
-3. **SAT resolution** — Z3 (default) or PubGrub (via `USE_PUBGRUB_SOLVER=true`) solver finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
+3. **SAT resolution** — PubGrub solver (default, Rust-backed) or Z3 (via `USE_Z3_SOLVER=true`) finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
 4. **Export / Lock** — Writes `udr.lock` or exports to any of 15 formats
 
 ### Architecture overview
@@ -479,11 +479,11 @@ Single-page app with a collapsible icon sidebar:
 
 ### SAT-solver resolution
 
-Uses Z3 (Microsoft's theorem prover) to find compatible versions across all ecosystems simultaneously:
+Uses **PubGrub** (Rust-backed, default) or **Z3** (MIT's theorem prover, via `USE_Z3_SOLVER=true`) to find compatible versions across all ecosystems simultaneously:
 - Handles complex cross-ecosystem version constraints
 - Detects and reports conflicts with specific error messages
 - Configurable timeout via `SOLVER_TIMEOUT` env var (default: 120s)
-- Falls back to backtracking search when SAT times out
+- Falls back to backtracking search when solver times out
 
 ### System awareness
 
@@ -641,7 +641,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 | Resource | What it covers |
 |---|---|
 | [CLI Reference](CLI.md) | Every command with flags and examples |
-| [API Reference](API.md) | 47 REST endpoints with request/response schemas |
+| [API Reference](API.md) | 49 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |
 | [Development](DEVELOPMENT.md) | Setup, testing, project structure |

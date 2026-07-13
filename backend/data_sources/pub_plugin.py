@@ -35,7 +35,7 @@ class PubPlugin(EcosystemPlugin):
         in_dev_deps = False
         for line in content.splitlines():
             stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//"):
+            if stripped.startswith(("#", "//")):
                 continue
             if stripped.startswith("dependencies:"):
                 in_deps = True

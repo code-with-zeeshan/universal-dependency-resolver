@@ -12,6 +12,7 @@ from ..shared import (
     _aggregator_to_resolver_input,
     _build_pinning_policy,
     _build_resolved_table,
+    _check_and_sync_indexes,
     _extract_severity,
     _parse_package_spec,
     _run_resolution,
@@ -31,6 +32,10 @@ def cmd_resolve(args):
 
     async def _resolve():
         """Resolve."""
+        auto_sync = getattr(args, "auto_sync", False)
+        if auto_sync:
+            await _check_and_sync_indexes(auto_sync=True)
+
         aggregator = DataAggregator()
         resolver = create_solver()
 

@@ -55,18 +55,19 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
     """
     from backend.manifest_detector import ManifestDetector
 
-    LOCK_TREE_PARSERS: dict[str, tuple[str, ...]] = {
-        "package-lock.json": ("npm",),
-        "Cargo.lock": ("crates",),
-        "composer.lock": ("packagist",),
-        "Gemfile.lock": ("rubygems",),
-        "poetry.lock": ("pypi",),
-        "pnpm-lock.yaml": ("npm",),
+    LOCK_TREE_PARSERS: dict[str, list[str]] = {
+        "package-lock.json": ["npm"],
+        "Cargo.lock": ["crates"],
+        "composer.lock": ["packagist"],
+        "Gemfile.lock": ["rubygems"],
+        "poetry.lock": ["pypi"],
+        "pnpm-lock.yaml": ["npm"],
     }
 
     # Extend with plugin-defined lock files
     try:
-        from backend.core.plugin import get_all_plugins, get_plugin, list_plugin_lock_files
+        import importlib
+        from backend.core.plugin import get_plugin, list_plugin_lock_files
 
         for glob, eco, parser_name in list_plugin_lock_files():
             LOCK_TREE_PARSERS.setdefault(glob, []).append(eco)
@@ -110,6 +111,193 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
     return tree
 
 
+def _add_signing_and_provenance(
+    lock_data: dict,
+    args,
+    directory: Path,
+    manifests: list[dict],
+    system_info: dict,
+    resolved: dict,
+) -> dict:
+    """Add SLSA provenance and/or Ed25519 signature to lock_data."""
+    import base64
+    import hashlib
+    import json
+
+    sign = getattr(args, "sign", False)
+    provenance = getattr(args, "provenance", False)
+
+    if provenance:
+        lock_data["provenance"] = {
+            "builder": {
+                "id": "universal-dependency-resolver",
+                "version": "1.0.0",
+            },
+            "buildType": "https://opencode.ai/udr/lock/v1",
+            "materials": [
+                {"uri": m.get("path", m.get("filename", "?")), "digest": {"sha256": "?"}}
+                for m in manifests
+            ],
+            "buildConfig": {
+                "resolver": lock_data.get("resolver", "sat"),
+                "target": lock_data.get("target"),
+                "workspace": lock_data.get("workspace"),
+                "package_count": len(lock_data.get("packages", {})),
+            },
+        }
+
+    if sign:
+        config_dir = Path.home() / ".config" / "udr"
+        key_path = config_dir / "signing.key"
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+
+        if key_path.is_file():
+            private_key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+            if not isinstance(private_key, ed25519.Ed25519PrivateKey):
+                console.print("[red]Invalid signing key — generating new one[/red]")
+                private_key = ed25519.Ed25519PrivateKey.generate()
+                config_dir.mkdir(parents=True, exist_ok=True)
+                pem = private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+                key_path.write_bytes(pem)
+                key_path.chmod(0o600)
+        else:
+            config_dir.mkdir(parents=True, exist_ok=True)
+            private_key = ed25519.Ed25519PrivateKey.generate()
+            pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            key_path.write_bytes(pem)
+            key_path.chmod(0o600)
+
+        pub_key_bytes = private_key.public_key().public_bytes_raw()
+        pub_path = config_dir / "signing.pub"
+        pub_path.write_text(base64.b64encode(pub_key_bytes).decode() + "\n")
+        pub_path.chmod(0o644)
+
+        # Sort keys, exclude signature when computing hash
+        exclude_keys = {"signature", "provenance"}
+        canonical = json.dumps(
+            {k: v for k, v in sorted(lock_data.items()) if k not in exclude_keys},
+            sort_keys=True,
+            default=str,
+            ensure_ascii=False,
+        )
+        digest = hashlib.sha256(canonical.encode("utf-8")).digest()
+        sig_value = private_key.sign(digest)
+
+        lock_data["signature"] = {
+            "algorithm": "ed25519",
+            "value": base64.b64encode(sig_value).decode(),
+            "public_key": base64.b64encode(pub_key_bytes).decode(),
+        }
+
+    return lock_data
+
+
+def _run_lock_check(lock_data: dict, lock_path: Path) -> int:
+    """Compare lock_data with existing lock file for CI drift detection.
+
+    Returns 0 if identical, 1 if drift found (and prints diff table).
+    """
+    from ..shared import _read_lock_file
+
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found to check against:[/red] {lock_path}")
+        return 1
+
+    try:
+        existing = _read_lock_file(lock_path)
+    except SystemExit:
+        console.print(f"[red]Could not read existing lock file:[/red] {lock_path}")
+        return 1
+
+    new_pkgs = lock_data.get("packages", {})
+    old_pkgs = existing.get("packages", {})
+
+    all_names = sorted(set(list(new_pkgs.keys()) + list(old_pkgs.keys())))
+
+    diff_rows: list[list[str]] = []
+    has_diff = False
+
+    for name in all_names:
+        old_info = old_pkgs.get(name)
+        new_info = new_pkgs.get(name)
+
+        if old_info is None:
+            diff_rows.append(
+                [
+                    name,
+                    "[green]added[/green]",
+                    "",
+                    new_info.get("resolved_version", "?"),
+                    "",
+                    "yes" if new_info.get("direct") else "no",
+                ]
+            )
+            has_diff = True
+        elif new_info is None:
+            diff_rows.append(
+                [
+                    name,
+                    "[red]removed[/red]",
+                    old_info.get("resolved_version", "?"),
+                    "",
+                    "yes" if old_info.get("direct") else "no",
+                    "",
+                ]
+            )
+            has_diff = True
+        else:
+            old_ver = old_info.get("resolved_version", "")
+            new_ver = new_info.get("resolved_version", "")
+            old_direct = old_info.get("direct", False)
+            new_direct = new_info.get("direct", False)
+            direct_changed = old_direct != new_direct
+
+            if old_ver != new_ver or direct_changed:
+                status_parts = []
+                if old_ver != new_ver:
+                    status_parts.append("[yellow]version changed[/yellow]")
+                if direct_changed:
+                    status_parts.append("[yellow]type changed[/yellow]")
+                status = ", ".join(status_parts)
+                diff_rows.append(
+                    [
+                        name,
+                        status,
+                        old_ver if old_ver != new_ver else "",
+                        new_ver if old_ver != new_ver else "",
+                        "yes" if old_direct else "no",
+                        "yes" if new_direct else "no",
+                    ]
+                )
+                has_diff = True
+
+    if not has_diff:
+        console.print("[green]Lock file is up to date.[/green]")
+        return 0
+
+    table = Table(title="Lock File Drift Detected", box=box.ROUNDED)
+    table.add_column("Package", style="cyan")
+    table.add_column("Status")
+    table.add_column("Old Version")
+    table.add_column("New Version")
+    table.add_column("Old Direct")
+    table.add_column("New Direct")
+    for row in diff_rows:
+        table.add_row(*row)
+    console.print(table)
+    console.print("[red]Dependencies have changed! Lock file is out of date.[/red]")
+    return 1
+
+
 def cmd_lock(args):
     """Cmd lock."""
     from backend.core import DataAggregator, SystemScanner
@@ -118,7 +306,7 @@ def cmd_lock(args):
     from backend.manifest_detector import ManifestDetector
     from backend.orchestrator.resolve import create_solver
 
-    from ..shared import _read_lock_file
+    from ..shared import _check_and_sync_indexes, _read_lock_file
 
     async def _lock():
         """Lock."""
@@ -126,6 +314,10 @@ def cmd_lock(args):
         if not directory.is_dir():
             console.print(f"[red]Directory not found:[/red] {directory}")
             return 1
+
+        auto_sync = getattr(args, "auto_sync", False)
+        if auto_sync:
+            await _check_and_sync_indexes(auto_sync=True)
 
         detector = ManifestDetector(str(directory))
         aggregator = DataAggregator()
@@ -537,6 +729,15 @@ def cmd_lock(args):
                     }
             lock_data["packages"] = prefixed_packages
             lock_data["package_prefix"] = prefix
+
+        if getattr(args, "sign", False) or getattr(args, "provenance", False):
+            lock_data = _add_signing_and_provenance(
+                lock_data, args, directory, manifests, system_info, resolved
+            )
+
+        if getattr(args, "check", False):
+            ret = _run_lock_check(lock_data, lock_path)
+            sys.exit(ret)
 
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
 

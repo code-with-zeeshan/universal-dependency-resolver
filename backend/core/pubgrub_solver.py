@@ -10,11 +10,14 @@ It supports the same ``resolve_dependencies(system_info)`` interface as
 """
 
 import logging
+import os
 import platform
 import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+SOLVER_MAX_VARIABLES = int(os.environ.get("SOLVER_MAX_VARIABLES", "50000"))
 
 _HAS_PUBGRUB_PY = False
 try:
@@ -85,6 +88,23 @@ class PubGrubSolver:
             ``{"status": "satisfiable"|"unsatisfiable",
                "resolved_packages": {name: {version, ecosystem, ...}}}``
         """
+        # Guard: reject if total available versions exceed SOLVER_MAX_VARIABLES
+        total_versions = sum(len(pkg.get("available_versions", []) or []) for pkg in packages)
+        if total_versions > SOLVER_MAX_VARIABLES:
+            logger.warning(
+                "Too many versions (%d) — exceeds SOLVER_MAX_VARIABLES (%d)",
+                total_versions,
+                SOLVER_MAX_VARIABLES,
+            )
+            return {
+                "status": "unsatisfiable",
+                "error": (
+                    f"Too many versions ({total_versions}) — "
+                    f"exceeds SOLVER_MAX_VARIABLES ({SOLVER_MAX_VARIABLES})"
+                ),
+                "resolved_packages": {},
+            }
+
         if _HAS_PUBGRUB_PY:
             return self._resolve_via_pubgrub_py(packages)
         return self._resolve_via_pure_python(packages)
@@ -128,7 +148,8 @@ class PubGrubSolver:
                 deps_map.setdefault(name, {})[ver_str] = dep_specs
 
             for ver_str, deps in deps_map.get(name, {}).items():
-                resolver.add_package(name, ver_str, deps)
+                safe_ver = _sanitize_version(ver_str)
+                resolver.add_package(name, safe_ver, deps)
 
         try:
             result = resolver.resolve(requirements)
@@ -181,7 +202,8 @@ class PubGrubSolver:
                             )
                         if d_name:
                             dep_specs[d_name] = _normalize_constraint(d_spec, eco)
-                solver.add_package(name, ver_str, dep_specs)
+                safe_ver = _sanitize_version(ver_str)
+                solver.add_package(name, safe_ver, dep_specs)
 
         try:
             result = solver.resolve(requirements)
@@ -203,9 +225,41 @@ class PubGrubSolver:
 def _to_semver(v: str) -> str:
     """Ensure a version string has 3 semver parts (e.g. ``"4.18"`` → ``"4.18.0"``)."""
     parts = v.strip().split(".")
-    while len(parts) < 3:
-        parts.append("0")
-    return ".".join(parts[:3])
+    version_parts = []
+    for p in parts:
+        if p and p[0].isdigit():
+            version_parts.append(p)
+        else:
+            break
+    while len(version_parts) < 3:
+        version_parts.append("0")
+    return ".".join(version_parts[:3])
+
+
+def _sanitize_version(version: str) -> str:
+    """Sanitize a version string for pubgrub-py compatibility.
+
+    pubgrub-py's version parser rejects suffixes like ``.dev1``, ``.post1``,
+    or ``.alpha1`` that appear after a full three-part version, and also
+    rejects leading zeros in numeric parts (e.g. ``0.12.01``) and
+    two-part versions (``1.0`` needs to be ``1.0.0``).
+    This function strips non-numeric suffixes, normalizes leading zeros,
+    and pads to three numeric parts.
+    """
+    parts = version.strip().split(".")
+    clean_parts: list[str] = []
+    for p in parts:
+        if p and p[0].isdigit():
+            num = re.match(r"\d+", p)
+            if num:
+                clean_parts.append(str(int(num.group())))
+            else:
+                break
+        else:
+            break
+    while len(clean_parts) < 3:
+        clean_parts.append("0")
+    return ".".join(clean_parts[:3]) or version
 
 
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:
@@ -215,6 +269,19 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
         return ">=0.0.0"
     if c == "*":
         return ">=0.0.0"
+
+    # Normalize 2-part versions embedded in operators to 3-part semver
+    # e.g. ">=1.20" -> ">=1.20.0",  ">=2.0" -> ">=2.0.0",  "<=1.5" -> "<=1.5.0"
+    # pubgrub-py cannot parse 2-part versions.
+    def _pad_version_in_constraint(constraint_str: str) -> str:
+        parts = constraint_str.split(".", 2)
+        if len(parts) == 2:
+            if parts[1] and parts[1][0].isdigit():
+                return f"{parts[0]}.{parts[1]}.0"
+        elif len(parts) == 1 and parts[0] and parts[0][0].isdigit():
+            return f"{parts[0]}.0.0"
+        return constraint_str
+
     if c.startswith("^"):
         inner = c.removeprefix("^=").removeprefix("^")
         if not re.fullmatch(r"\d+(\.\d+)*", inner):
@@ -235,8 +302,16 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
             minor = int(parts[1])
             return f">={low},<{parts[0]}.{minor + 1}.0"
         return f">={_to_semver(parts[0])},<{int(parts[0]) + 1}.0.0"
-    # Pad bare version strings to 3 parts for pubgrub-py compatibility
-    # Only apply when the string looks like a clean version (digits and dots only)
+
+    # Pad 2-part version constraints (>=1.20, <=2.0, !=1.5, etc.)
+    # and bare version strings to 3-part semver for pubgrub-py compatibility.
+    m = re.match(r"([><=!]+)\s*(.+)", c)
+    if m:
+        op = m.group(1)
+        ver = m.group(2)
+        if ver[0].isdigit() and ver.count(".") < 2:
+            return f"{op}{_pad_version_in_constraint(ver)}"
+        return c
     if c[0].isdigit() and c.count(".") < 2 and all(ch.isdigit() or ch == "." for ch in c):
         return f"=={_to_semver(c)}"
     return c

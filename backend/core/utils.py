@@ -175,6 +175,12 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
         "dart": "pub",
         "flutter": "pub",
         "pub.dev": "pub",
+        # Nix
+        "nixos": "nix",
+        "nixpkgs": "nix",
+        # Guix
+        "guix": "guix",
+        "guixsd": "guix",
     }
     ecosystem_lower = ecosystem.lower().strip()
     return ecosystem_aliases.get(ecosystem_lower, ecosystem_lower)

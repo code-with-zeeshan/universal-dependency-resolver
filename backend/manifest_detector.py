@@ -392,6 +392,9 @@ class ManifestDetector:
             "mix_lock": self._parse_mix_lock,
             "package_resolved": self._parse_package_resolved,
             "udr_lock": self._parse_udr_lock,
+            "parse_nix": self._parse_nix,
+            "parse_nix_lock": self._parse_nix_lock,
+            "parse_guix_scm": self._parse_guix_scm,
         }
         parser = parsers.get(key)
         if parser is None:
@@ -1285,3 +1288,138 @@ class ManifestDetector:
             if name:
                 packages.append({"name": name, "version": version})
         return packages
+
+    def _parse_nix(self, content: str) -> list[dict]:
+        """Parse a Nix expression for buildInputs / propagatedBuildInputs."""
+        deps: list[dict] = []
+        in_block = False
+        block_depth = 0
+        block_parts: list[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("#", "//")):
+                continue
+            if not in_block:
+                m = re.search(
+                    r"(buildInputs|propagatedBuildInputs|nativeBuildInputs|checkInputs)\s*=\s*\[",
+                    stripped,
+                )
+                if m:
+                    in_block = True
+                    block_depth = 1
+                    remainder = stripped[m.end() :]
+                    if "]" in remainder:
+                        block_depth -= remainder.count("]")
+                        if block_depth <= 0:
+                            in_block = False
+                            idx = remainder.index("]")
+                            block_parts.append(remainder[:idx])
+                            self._extract_nix_pkgs(" ".join(block_parts), deps)
+                            block_parts = []
+                            continue
+                    block_parts.append(remainder)
+                    continue
+            else:
+                block_depth += stripped.count("[")
+                block_depth -= stripped.count("]")
+                if block_depth <= 0:
+                    in_block = False
+                    idx = stripped.index("]") if "]" in stripped else len(stripped)
+                    block_parts.append(stripped[:idx])
+                    self._extract_nix_pkgs(" ".join(block_parts), deps)
+                    block_parts = []
+                    continue
+                block_parts.append(stripped)
+        if block_parts:
+            self._extract_nix_pkgs(" ".join(block_parts), deps)
+        return deps
+
+    @staticmethod
+    def _extract_nix_pkgs(text: str, deps: list[dict]) -> None:
+        """Extract package references from Nix expression text."""
+        for token in re.findall(r"[a-zA-Z_][\w.]*(?:\.[a-zA-Z_][\w.]+)*", text):
+            if not token or token in ("pkgs", "inputs", "self"):
+                continue
+            if (
+                "python3Packages." in token
+                or "python310Packages." in token
+                or "python311Packages." in token
+                or "python312Packages." in token
+            ):
+                for prefix in (
+                    "python3Packages.",
+                    "python310Packages.",
+                    "python311Packages.",
+                    "python312Packages.",
+                ):
+                    if token.startswith(prefix):
+                        pkg_name = token[len(prefix) :]
+                        if pkg_name and pkg_name not in ("pkgs", "inputs", "self"):
+                            deps.append({"name": pkg_name, "version": "*", "_ecosystem": "pypi"})
+                        break
+            elif token.startswith("pkgs."):
+                pkg_name = token[len("pkgs.") :]
+                pkg_name = pkg_name.split(".", 1)[0] if "." in pkg_name else pkg_name
+                if pkg_name and pkg_name not in ("pkgs", "inputs", "self"):
+                    deps.append({"name": pkg_name, "version": "*", "_ecosystem": "nix"})
+            elif token not in ("pkgs", "inputs", "self", "lib"):
+                deps.append({"name": token, "version": "*", "_ecosystem": "nix"})
+
+    def _parse_nix_lock(self, content: str) -> list[dict]:
+        """Parse flake.lock."""
+        try:
+            data = loads(content)
+        except Exception:
+            logger.warning("flake.lock parse error", exc_info=True)
+            return []
+        nodes = data.get("nodes", {})
+        root = nodes.get("root", {})
+        root_inputs = root.get("inputs", {})
+        packages = []
+        seen_nodes: set[str] = set()
+        for input_name, node_key in root_inputs.items():
+            if isinstance(node_key, dict):
+                node_key = input_name
+            if node_key in seen_nodes:
+                continue
+            seen_nodes.add(node_key)
+            node = nodes.get(node_key, {})
+            locked = node.get("locked", {})
+            original_ref = node.get("original", {})
+            display = original_ref.get("id") or original_ref.get("path") or input_name
+            version = locked.get("rev", locked.get("version", "latest"))
+            if isinstance(version, str) and len(version) > 12:
+                version = version[:12]
+            packages.append({"name": display, "version": version, "_ecosystem": "nix"})
+        # Include non-root referenced nodes
+        for node_id, node in nodes.items():
+            if node_id in ("root",) or node_id in seen_nodes:
+                continue
+            locked = node.get("locked", {})
+            if locked.get("rev") or locked.get("version"):
+                original_ref = node.get("original", {})
+                display = original_ref.get("id") or original_ref.get("path") or node_id
+                if not any(p["name"] == display for p in packages):
+                    version = locked.get("rev", locked.get("version", "latest"))
+                    if isinstance(version, str) and len(version) > 12:
+                        version = version[:12]
+                    packages.append({"name": display, "version": version, "_ecosystem": "nix"})
+        return packages
+
+    def _parse_guix_scm(self, content: str) -> list[dict]:
+        """Parse a Guix manifest for package references."""
+        deps: list[dict] = []
+        seen: set[str] = set()
+        for m in re.finditer(
+            r'"([a-zA-Z][a-zA-Z0-9@+\-_.]*(?:/[a-zA-Z][a-zA-Z0-9+\-_.]*)*)"', content
+        ):
+            name = m.group(1)
+            if not name or name in seen:
+                continue
+            if name.startswith(("/", ".", "http")):
+                continue
+            if re.match(r"^\d+[\d.]*\d$", name):
+                continue
+            seen.add(name)
+            deps.append({"name": name, "version": "*", "_ecosystem": "guix"})
+        return deps

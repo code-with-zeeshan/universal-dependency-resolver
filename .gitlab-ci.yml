@@ -1,0 +1,13 @@
+stages:
+  - udr-lock
+
+udr-lock-check:
+  stage: udr-lock
+  image: python:3.12-slim
+  before_script:
+    - pip install udr
+  script:
+    - udr lock --check
+  only:
+    - merge_requests
+    - main

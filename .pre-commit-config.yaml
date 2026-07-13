@@ -46,3 +46,10 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+
+      - id: udr-lock-check
+        name: UDR lock check
+        description: Check that udr.lock is up-to-date with current manifests
+        entry: udr lock --check
+        language: system
+        pass_filenames: false

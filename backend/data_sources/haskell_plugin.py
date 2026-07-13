@@ -34,16 +34,13 @@ class HaskellPlugin(EcosystemPlugin):
         continuation_lines = []
         for line in content.splitlines():
             stripped = line.strip()
-            if stripped.startswith("--") or stripped.startswith("{"):
+            if stripped.startswith(("--", "{")):
                 continue
             if stripped.startswith("build-depends:"):
                 in_build_depends = True
                 # Collect remaining part of this line and continuations
                 rest = stripped[len("build-depends:") :].strip()
-                if rest:
-                    continuation_lines = [rest]
-                else:
-                    continuation_lines = []
+                continuation_lines = [rest] if rest else []
                 continue
             if in_build_depends:
                 # Accumulate continuation lines (indented or starting with ,)

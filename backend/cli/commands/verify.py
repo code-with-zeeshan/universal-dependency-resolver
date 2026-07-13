@@ -155,9 +155,74 @@ async def _cmd_verify_async(args):
     return 0
 
 
+def _verify_signature(lock_data: dict) -> tuple[bool, str]:
+    """Verify Ed25519 signature on lock_data.
+
+    Returns (passed: bool, message: str).
+    """
+    import base64
+    import hashlib
+    import json
+
+    signature = lock_data.get("signature")
+    if not signature:
+        return False, "No signature field in lock file"
+    if signature.get("algorithm") != "ed25519":
+        return False, f"Unsupported signature algorithm: {signature.get('algorithm')}"
+
+    sig_bytes = base64.b64decode(signature["value"])
+    pub_key_bytes = base64.b64decode(signature["public_key"])
+
+    # Compute hash of lock data excluding the signature field
+    exclude_keys = {"signature", "provenance"}
+    canonical = json.dumps(
+        {k: v for k, v in sorted(lock_data.items()) if k not in exclude_keys},
+        sort_keys=True,
+        default=str,
+        ensure_ascii=False,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).digest()
+
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    try:
+        public_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_key_bytes)
+        public_key.verify(sig_bytes, digest)
+    except Exception:
+        return False, "Signature does not match lock file content"
+
+    # Cross-check against stored public key if available
+    from pathlib import Path
+
+    stored_pub_path = Path.home() / ".config" / "udr" / "signing.pub"
+    if stored_pub_path.is_file():
+        stored_pub_b64 = stored_pub_path.read_text().strip()
+        if stored_pub_b64 != signature["public_key"]:
+            return (
+                True,
+                "Signature valid but public key differs from ~/.config/udr/signing.pub — check key rotation",
+            )
+
+    return True, "Ed25519 signature verified"
+
+
 def cmd_verify(args):
     """Cmd verify."""
     try:
+        sig_flag = getattr(args, "signature", False)
+        if sig_flag:
+            lock_path = _resolve_lock_path(
+                Path(getattr(args, "directory", ".")).resolve(),
+                workspace=getattr(args, "workspace", None),
+                lock_file=args.lock_file,
+            ).resolve()
+            lock_data = _read_lock_file(lock_path)
+            passed, msg = _verify_signature(lock_data)
+            if passed:
+                console.print(f"[green]✔ Signature:[/green] {msg}")
+                return 0
+            console.print(f"[red]✘ Signature:[/red] {msg}")
+            return 1
         sys.exit(asyncio.run(_cmd_verify_async(args)))
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled by user[/yellow]")

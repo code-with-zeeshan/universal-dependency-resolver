@@ -28,7 +28,7 @@ BACKEND = Path(__file__).resolve().parent.parent / "backend"
 RULES: dict[str, list[str]] = {
     "orchestrator": ["cli", "api", "desktop"],
     "cli": ["api", "desktop"],
-    "api": ["cli", "desktop"],
+    "api": ["cli", "desktop", "database"],  # must not import database directly
     "data_sources": ["cli", "api", "desktop"],
     "core": ["cli", "api", "desktop", "data_sources"],
     "database": ["cli", "api", "desktop"],  # strict: DB should not know about layers above

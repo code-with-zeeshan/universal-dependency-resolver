@@ -22,7 +22,7 @@ from ._json import dumps
 if TYPE_CHECKING:
     import z3
 
-from backend.settings import CACHE_TTL
+from backend.settings import CACHE_TTL, SOLVER_MAX_VARIABLES
 from backend.utils.errors import (
     ResolverError,
     ResolverErrorCode,
@@ -180,6 +180,28 @@ class ConflictResolver:
         self.int_to_version = {}
         self._version_weights = []
         self._minimization_added = False
+
+        # Guard: reject if total available versions exceed SOLVER_MAX_VARIABLES
+        total_versions = sum(len(pkg.get("available_versions", []) or []) for pkg in packages)
+        if total_versions > SOLVER_MAX_VARIABLES:
+            logger.warning(
+                "Too many versions (%d) — exceeds SOLVER_MAX_VARIABLES (%d)",
+                total_versions,
+                SOLVER_MAX_VARIABLES,
+                extra={
+                    "event": "solver_max_variables_exceeded",
+                    "total_versions": total_versions,
+                    "max_vars": SOLVER_MAX_VARIABLES,
+                },
+            )
+            return {
+                "status": "unsatisfiable",
+                "error": (
+                    f"Too many versions ({total_versions}) — "
+                    f"exceeds SOLVER_MAX_VARIABLES ({SOLVER_MAX_VARIABLES})"
+                ),
+                "resolved_packages": {},
+            }
 
         resolution_context = {
             "package_count": len(packages),
