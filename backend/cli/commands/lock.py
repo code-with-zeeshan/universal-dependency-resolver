@@ -66,7 +66,6 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
 
     # Extend with plugin-defined lock files
     try:
-        import importlib
         from backend.core.plugin import get_plugin, list_plugin_lock_files
 
         for glob, eco, parser_name in list_plugin_lock_files():
@@ -96,9 +95,8 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
                         if lf.glob == fname:
                             method = getattr(plugin_cls, lf.parser, None)
                             if method:
-                                content_fn = lambda p, m=method: m(
-                                    Path(p).read_text(encoding="utf-8")
-                                )
+                                def content_fn(p, m=method):
+                                    return m(Path(p).read_text(encoding="utf-8"))
                                 parser = content_fn
                             break
             except Exception:

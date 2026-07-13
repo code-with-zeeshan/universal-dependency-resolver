@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UDR — Universal Dependency Resolver</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-header">
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="menu-toggle" aria-label="Toggle menu">&#9776;</button>
+    <div class="logo">
+      <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="14" r="12"/><path d="M8 14h12M14 8v12"/></svg>
+      <span>UDR</span>
+    </div>
+  </div>
+  <div class="header-status">
+    <span class="status-dot checking" id="status-dot"></span>
+    <span id="status-text">Checking...</span>
+  </div>
+</div>
+
+<div class="sidebar-backdrop"></div>
+
+<div class="app-container">
+  <aside class="sidebar">
+    <nav>
+      <a href="#dashboard"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="7" height="7" rx="1"/><rect x="10" y="1" width="7" height="7" rx="1"/><rect x="1" y="10" width="7" height="7" rx="1"/><rect x="10" y="10" width="7" height="7" rx="1"/></svg>Dashboard</a>
+      <a href="#search"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M12 12l4 4"/></svg>Search</a>
+      <a href="#graph"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="5" r="2.5"/><circle cx="5" cy="13" r="2.5"/><circle cx="13" cy="13" r="2.5"/><path d="M7 7L6 11M11 7l1 4M8 13l2-4"/></svg>Graph</a>
+      <a href="#lock"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="12" height="10" rx="1"/><path d="M6 7V5a3 3 0 016 0v2"/></svg>Lock Viewer</a>
+      <a href="#cve"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 1L1 17h16L9 1z"/><path d="M9 6v4"/><circle cx="9" cy="13" r=".8" fill="currentColor"/></svg>CVE Check</a>
+      <a href="#sbom"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h12v12H3z"/><path d="M6 9h6M9 6v6"/></svg>SBOM</a>
+      <a href="#policy"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l5-2 5 2 5-2v10c0 3-5 5-10 7-5-2-10-4-10-7V1z"/></svg>Policy</a>
+      <a href="#system"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="14" height="10" rx="1"/><path d="M6 15h6"/><path d="M9 13v2"/></svg>System</a>
+    </nav>
+    <div style="padding:16px 20px;margin-top:8px;border-top:1px solid var(--border);font-size:0.75rem;color:var(--text-muted)">
+      <span class="lock-count" style="font-weight:700;color:var(--text-primary)">0</span> packages loaded
+    </div>
+  </aside>
+
+  <main class="main-content">
+
+    <!-- ====== Dashboard ====== -->
+    <section id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <p>Overview of your dependency resolution environment.</p>
+      </div>
+      <div id="dashboard-content"></div>
+    </section>
+
+    <!-- ====== Search ====== -->
+    <section id="page-search" class="page">
+      <div class="page-header">
+        <h1>Package Search</h1>
+        <p>Search packages across multiple ecosystems.</p>
+      </div>
+      <div class="card" id="search-content">
+        <form id="search-form">
+          <div class="form-row">
+            <div class="form-group" style="flex:3">
+              <label for="search-input">Package Name</label>
+              <input type="text" id="search-input" placeholder="e.g. flask, requests, lodash" autocomplete="off">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label for="search-eco">Ecosystem</label>
+              <select id="search-eco">
+                <option value="">All ecosystems</option>
+                <option value="pypi">PyPI</option>
+                <option value="npm">npm</option>
+                <option value="crates">crates.io</option>
+                <option value="conda">Conda</option>
+                <option value="maven">Maven</option>
+                <option value="nuget">NuGet</option>
+                <option value="rubygems">RubyGems</option>
+                <option value="gomodules">Go Modules</option>
+                <option value="packagist">Packagist</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+      </div>
+      <div id="search-results"></div>
+    </section>
+
+    <!-- ====== Graph ====== -->
+    <section id="page-graph" class="page">
+      <div class="page-header">
+        <h1>Dependency Graph</h1>
+        <p>Visualize dependency relationships between packages.</p>
+      </div>
+      <div class="card">
+        <form id="graph-form">
+          <div class="form-row">
+            <div class="form-group" style="flex:3">
+              <label for="graph-input">Package Names (comma-separated)</label>
+              <input type="text" id="graph-input" placeholder="flask, requests, numpy">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label for="graph-eco">Ecosystem</label>
+              <select id="graph-eco">
+                <option value="pypi">PyPI</option>
+                <option value="npm">npm</option>
+                <option value="crates">crates.io</option>
+                <option value="conda">Conda</option>
+                <option value="maven">Maven</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Resolve Graph</button>
+        </form>
+      </div>
+      <div id="graph-output"></div>
+      <div id="graph-canvas-container" style="display:none">
+        <div class="card">
+          <div class="card-title">Dependency Graph <span class="text-sm text-secondary" id="graph-node-count"></span></div>
+          <div style="position:relative">
+            <svg id="graph-svg" width="100%" height="600" style="background:var(--bg-card);border-radius:8px;cursor:grab"></svg>
+            <div id="graph-tooltip" class="graph-tooltip" style="display:none;position:absolute;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:0.8rem;pointer-events:none;z-index:100;max-width:300px;box-shadow:0 4px 12px rgba(0,0,0,0.3)"></div>
+          </div>
+          <div class="btn-group mt-2">
+            <button class="btn btn-sm" id="graph-zoom-in">Zoom +</button>
+            <button class="btn btn-sm" id="graph-zoom-out">Zoom -</button>
+            <button class="btn btn-sm" id="graph-reset">Reset</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== Lock Viewer ====== -->
+    <section id="page-lock" class="page">
+      <div class="page-header">
+        <h1>Lock File Viewer</h1>
+        <p>Upload, inspect, and verify <code>udr.lock</code> files.</p>
+      </div>
+      <div class="drop-zone" id="lock-drop">
+        <div class="icon">&#128196;</div>
+        <p><strong>Drop a udr.lock file here</strong> or click to browse</p>
+        <input type="file" accept=".lock,.json" style="display:none">
+      </div>
+      <div id="lock-content">
+        <div class="empty-state">
+          <div class="icon">&#128196;</div>
+          <h3>No lock file loaded</h3>
+          <p>Drop a <code>udr.lock</code> file above or click to browse.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== CVE Check ====== -->
+    <section id="page-cve" class="page">
+      <div class="page-header">
+        <h1>CVE Vulnerability Check</h1>
+        <p>Scan packages for known vulnerabilities via the OSV database.</p>
+      </div>
+      <div class="drop-zone" id="lock-drop-cve">
+        <div class="icon">&#128737;</div>
+        <p><strong>Drop a udr.lock file here</strong> or click to browse</p>
+        <input type="file" accept=".lock,.json" style="display:none">
+      </div>
+      <div class="btn-group mb-4">
+        <button class="btn btn-danger" id="cve-run">Run CVE Check</button>
+      </div>
+      <div id="cve-results"></div>
+      <div id="license-results"></div>
+    </section>
+
+    <!-- ====== SBOM ====== -->
+    <section id="page-sbom" class="page">
+      <div class="page-header">
+        <h1>SBOM Generator</h1>
+        <p>Generate SPDX 2.3 or CycloneDX 1.5 SBOMs from lock files.</p>
+      </div>
+      <div class="drop-zone" id="lock-drop-sbom">
+        <div class="icon">&#128203;</div>
+        <p><strong>Drop a udr.lock file here</strong> or click to browse</p>
+        <input type="file" accept=".lock,.json" style="display:none">
+      </div>
+      <div class="card">
+        <form id="sbom-form">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label for="sbom-format">SBOM Format</label>
+              <select id="sbom-format">
+                <option value="spdx">SPDX 2.3</option>
+                <option value="cyclonedx">CycloneDX 1.5</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button type="submit" class="btn btn-primary">Generate SBOM</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div id="sbom-content">
+        <div class="empty-state">
+          <div class="icon">&#128203;</div>
+          <h3>No lock file loaded</h3>
+          <p>Drop a <code>udr.lock</code> file above to generate an SBOM.</p>
+        </div>
+      </div>
+      <div id="sbom-output"></div>
+    </section>
+
+    <!-- ====== Policy Check ====== -->
+    <section id="page-policy" class="page">
+      <div class="page-header">
+        <h1>Policy Check</h1>
+        <p>Validate lock files against security and licensing policies.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Policy File (YAML)</div>
+        <div class="drop-zone" id="policy-drop" style="padding:20px;margin-bottom:12px">
+          <p class="text-sm">Drop a <code>udr-policy.yaml</code> file here or click to browse</p>
+          <input type="file" accept=".yaml,.yml" style="display:none">
+        </div>
+        <textarea id="policy-yaml" rows="8" placeholder="# udr-policy.yaml&#10;no-deprecated: true&#10;no-yanked: true&#10;no-gpl: true&#10;max-vulnerabilities: 10&#10;max-critical-vulns: 2&#10;allowed-licenses: [MIT, Apache-2.0, BSD-3-Clause, ISC]&#10;blocked-packages: []"></textarea>
+        <div class="mt-2">
+          <button class="btn btn-primary" id="policy-run">Check Policy</button>
+        </div>
+      </div>
+      <div id="policy-results"></div>
+    </section>
+
+    <!-- ====== System Info ====== -->
+    <section id="page-system" class="page">
+      <div class="page-header">
+        <h1>System Information</h1>
+        <p>Runtime environment details detected by the backend scanner.</p>
+      </div>
+      <div class="btn-group mb-4">
+        <button class="btn" id="system-refresh">&#8635; Refresh</button>
+      </div>
+      <div id="system-content"></div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

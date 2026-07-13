@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/2351%20unit%2B94%20integration-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/2407%20unit%2B96%20integration%2B74%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
@@ -63,25 +63,25 @@ udr serve --port 8000
 
 ## 💎 Features at a Glance
 
-### 🌍 20 Supported Ecosystems
+### 🌍 22 Supported Ecosystems
 
 | ☁️ Cloud Native | 🐍 Dynamic | ☕ JVM & .NET | 📦 Package Managers | 🛠️ System |
 |---|---|---|---|---|
 | **PyPI** – Python | **npm** – JavaScript | **Maven** – Java | **CocoaPods** – Swift/ObjC | **APT** – Debian/Ubuntu |
 | **Conda** – Multi-language | **Crates.io** – Rust | **Gradle** – Java/Kotlin | **NuGet** – .NET | **APK** – Alpine |
 | **Go Modules** – Go | **RubyGems** – Ruby | **Pub** – Dart/Flutter | **Packagist** – PHP | **Homebrew** – macOS/Linux |
-| | **Hex** – Elixir | **Swift** – Swift | | |
-| | **Haskell** – Cabal | | **Docs DB** – Internal | |
+| **Hex** – Elixir | **Swift** – Swift | **Haskell** – Cabal | **Nix** – NixOS | **Guix** – GNU Guix |
+| | **Docs DB** – Internal | | | |
 
 ### ⚡ Core Capabilities
 
 | Feature | What it does |
 |---|---|
-| 🧠 **SAT-solver resolution** | PubGrub-powered solver (Rust-backed, default; Z3 fallback) finds compatible versions across all ecosystems simultaneously |
+| 🧠 **SAT-solver resolution** | PubGrub-powered solver (Rust-backed, default; Z3 fallback) with per-ecosystem isolation, SCC batch partitioning, CUDA-aware conflict resolution, and DFS backtracking fallback |
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, Dockerfile, docker-compose.yml, pyproject.toml, Cargo.toml, pom.xml, build.gradle, CMakeLists.txt, install.sh, install.bat, environment.yml, package.json, Gemfile, composer.json, go.mod |
-| 🎛️ **18 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index |
+| 🎛️ **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
 | 🌐 **49 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
@@ -93,7 +93,7 @@ udr serve --port 8000
 
 | Component | What it is | How to get | Best for |
 |---|---|---|---|
-| 🖥️ **CLI** | Terminal tool with 17 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
+| 🖥️ **CLI** | Terminal tool with 19 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
 | 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
 | 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
 | 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
@@ -132,6 +132,18 @@ udr list-ecosystems
 
 # Update & search
 udr update flask
+udr update --fix-cve                          # auto-fix known CVEs
+
+# Generate SBOM
+udr sbom --format spdx --output sbom.json
+
+# Policy check & CI drift
+udr check --policy                            # policy compliance
+udr lock --check                              # CI drift detection
+
+# Supply chain attestation
+udr lock --sign                               # sign lock file
+udr verify --signature                        # verify signature
 udr search numpy --limit 50
 udr details react -e npm
 ```
@@ -186,7 +198,7 @@ flowchart LR
     A["👤 Your Request<br/><code>udr resolve flask react</code>"] --> B
     B["🌐 Fetch metadata<br/>from registry APIs"] --> C
     C["🔍 Scan system<br/>OS · GPU · CUDA · Python"] --> D
-    D["🧠 PubGrub SAT solver<br/>(Rust-backed, default;<br/>Z3 fallback)"] --> E
+    D["🧠 PubGrub/Hybrid/Z3 solver<br/>Per-eco isolation · CUDA-aware<br/>Backtracking · SCC batching"] --> E
     E["📤 Export / Lock<br/>12 formats · udr.lock"]
 
     B -->|"aiohttp"| F["📦 PyPI · npm · Crates · Maven<br/>+ 14 more registries"]
@@ -208,9 +220,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Metric | Value |
 |---|---|
-| ✅ Supported ecosystems | **20** |
-| 🧪 Unit tests passing | **2351** (+ 94 integration) |
-| 🎛️ CLI commands | **18** |
+| ✅ Supported ecosystems | **22** |
+| 🧪 Unit tests passing | **2407** (+ 96 integration + 74 e2e) |
+| 🎛️ CLI commands | **19** |
 | 🌐 API endpoints | **49** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
@@ -251,8 +263,8 @@ cd desktop && node --test tests/
 | Guide | Description |
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
-| 🎮 [CLI Reference](docs/CLI.md) | All 17 commands, flags, examples, exit codes |
-| 🌐 [API Reference](docs/API.md) | 45 REST endpoints, request/response schemas |
+| 🎮 [CLI Reference](docs/CLI.md) | All 19 commands, flags, examples, exit codes |
+| 🌐 [API Reference](docs/API.md) | 49 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
 | 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |

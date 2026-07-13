@@ -3,7 +3,7 @@
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>18 commands"]:::cli
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>19 commands"]:::cli
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code><br/>Standalone binary"]:::desktop
     end
 
@@ -28,7 +28,7 @@ graph TB
     end
 
     subgraph DataLayer["📦 Data Sources"]
-        DS_CLIENTS["<code>data_sources/</code><br/>19 ecosystem plugins"]:::data
+        DS_CLIENTS["<code>data_sources/</code><br/>22 ecosystem plugins"]:::data
         PYPI["PyPI"]:::data
         NPM["npm"]:::data
         CRATES["Crates.io"]:::data
@@ -73,7 +73,7 @@ graph TB
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 21 files across 18 commands:
+Modular CLI package with 22 files across 19 commands:
 
 ```
 backend/cli/
@@ -98,6 +98,7 @@ backend/cli/
     ├── outdated.py    # cmd_outdated — show outdated packages
     ├── diff.py        # cmd_diff — compare lock files
     ├── search.py      # cmd_search — search packages
+    ├── sbom.py        # cmd_sbom — SBOM generation (SPDX/CycloneDX)
     └── details.py     # cmd_details — package details
 ```
 
@@ -124,10 +125,12 @@ Routes:
 
 ### Core logic (`backend/core/`)
 
-- **`conflict_resolver.py`** — Z3 SAT solver (fallback). Lazy-loaded `z3` inside methods.
+- **`conflict_resolver.py`** — Z3 SAT solver (fallback). Lazy-loaded `z3` inside methods. SCC batch partitioning, dynamic version clustering, configurable optimization threshold.
 - **`pubgrub_solver.py`** — PubGrub solver (default, Rust-backed `pubgrub-py` when installed; pure-Python fallback).
-- **`plugin.py`** — Ecosystem plugin system: `EcosystemPlugin` ABC, `@register_ecosystem` decorator, `import_builtin_plugins()` for eager discovery. All 19 ecosystems use the plugin interface.
-- **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching.
+- **`hybrid_solver.py`** — Hybrid solver (PubGrub per-ecosystem + Z3 cross-ecosystem). Enabled via `USE_HYBRID_SOLVER=true`.
+- **`plugin.py`** — Ecosystem plugin system: `EcosystemPlugin` ABC, `@register_ecosystem` decorator, `import_builtin_plugins()` for eager discovery. All 22 ecosystems use the plugin interface.
+- **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching with BFS batch parallelism and configurable `BFS_BATCH_SIZE`.
+- **`orchestrator/resolve.py`** — BFS + SAT pipeline: `_group_by_ecosystem()` splits packages into per-ecosystem groups for **per-ecosystem solver isolation** (a conflict in npm can't block PyPI). Cross-ecosystem deps use a unified path. `create_solver()` factory selects PubGrub (default), Hybrid (`USE_HYBRID_SOLVER=true`), or Z3 fallback.
 - **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
 - **`cache.py`** — `DictCache` (in-memory dict + TTL, no dependencies) with optional Redis fallback.
@@ -135,7 +138,7 @@ Routes:
 
 ### Data sources (`backend/data_sources/`)
 
-All 19 ecosystem plugins (registered via `@register_ecosystem`), each an `EcosystemPlugin` subclass inheriting from `BaseClient`:
+All 22 ecosystem plugins (registered via `@register_ecosystem`), each an `EcosystemPlugin` subclass inheriting from `BaseClient`:
 
 | Client | Ecosystem | Registry |
 |---|---|---|
@@ -157,6 +160,8 @@ All 19 ecosystem plugins (registered via `@register_ecosystem`), each an `Ecosys
 | `swift_client.py` | Swift | swiftpackageindex.com |
 | `hex_client.py` | Hex (Elixir) | hex.pm |
 | `haskell_client.py` | Haskell (Cabal) | hackage.haskell.org |
+| `nix_plugin.py` | Nix | Nixpkgs / GitHub |
+| `guix_plugin.py` | GNU Guix | Guix upstream |
 
 All ecosystems use the **plugin system** (`backend/core/plugin.py`). Built-in plugins are eagerly discovered via `import_builtin_plugins()` — third-party plugins (installed via pip) are discoverable via setuptools entry points.
 
@@ -220,19 +225,20 @@ graph LR
 
 ## Key design decisions
 
-- **Lazy loading**: `import z3` inside methods (not at module level), 19 ecosystem plugins via `@register_ecosystem` + `import_builtin_plugins()`. Saves ~1s on every CLI command that doesn't need resolution.
+- **Lazy loading**: `import z3` inside methods (not at module level), 22 ecosystem plugins via `@register_ecosystem` + `import_builtin_plugins()`. Saves ~1s on every CLI command that doesn't need resolution.
 - **SQLite first**: No PostgreSQL or Redis required. SQLite + DictCache work for all standalone/desktop use cases.
 - **Auth conditionally registered**: `ENABLE_AUTH=true` by default. Auth router only mounted when enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.
 - **No Docker**: Tool ships as `pip install ud-resolver` and as a desktop app. Docker export templates (Dockerfile.j2, docker-compose.yml.j2) are user-facing features for exporting resolved dependencies.
-- **Architecture rules enforced**: CI + pre-commit hooks verify no `api/ → cli/` or `cli/ → api/` imports. Coverage threshold `fail_under = 55` enforced in CI.
+- **Architecture rules enforced**: CI + pre-commit hooks verify no `api/ → cli/` or `cli/ → api/` imports. Coverage threshold `fail_under = 60` enforced in CI.
 
 ## Testing
 
 ```
 tests/
-├── unit/         → 2351 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
-├── integration/  → 94 tests (API + DB + data flow, uses SQLite)
+├── unit/         → 2407 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
+├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
+├── e2e/          → 74 tests (CLI black-box, problem-statement, JSON compliance)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures
 ```

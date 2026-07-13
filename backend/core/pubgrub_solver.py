@@ -270,6 +270,18 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
     if c == "*":
         return ">=0.0.0"
 
+    # Split comma-separated constraints early — each part normalised independently.
+    if "," in c:
+        parts = [p.strip() for p in c.split(",")]
+        normalised = [_normalize_single_constraint(p, ecosystem) for p in parts if p.strip()]
+        normalised = [p for p in normalised if p.strip()]
+        return ",".join(normalised) if normalised else c
+    return _normalize_single_constraint(c, ecosystem)
+
+
+def _normalize_single_constraint(c: str, ecosystem: str) -> str:
+    """Normalize a single (non-comma-separated) version constraint."""
+
     # Normalize 2-part versions embedded in operators to 3-part semver
     # e.g. ">=1.20" -> ">=1.20.0",  ">=2.0" -> ">=2.0.0",  "<=1.5" -> "<=1.5.0"
     # pubgrub-py cannot parse 2-part versions.

@@ -164,6 +164,146 @@ function cacheLastLock(lockData) {
   try { sessionStorage.setItem('udr_lastLock', JSON.stringify(lockData)) } catch(e) {}
 }
 
+function formatSBOMResult(data) {
+  const sbom = data.sbom || data
+  return '<pre style="max-height:500px">' + JSON.stringify(sbom, null, 2) + '</pre>'
+}
+
+function formatPolicyViolations(data) {
+  const violations = data.violations || data.results || data
+  const arr = Array.isArray(violations) ? violations : []
+  if (!arr.length) return '<div class="alert success">No policy violations found</div>'
+  let h = '<div class="alert ' + (arr.some(v=>v.severity==='error')?'warning':'info') + '">' + arr.length + ' policy violation(s) found</div>'
+  h += '<table class="result-table"><tr><th>Rule</th><th>Severity</th><th>Package</th><th>Message</th></tr>'
+  for (const v of arr) {
+    const sev = v.severity === 'error' ? '<span class="badge red">ERROR</span>' : v.severity === 'warning' ? '<span class="badge yellow">WARN</span>' : '<span class="badge blue">INFO</span>'
+    h += '<tr><td>' + (v.rule||'-') + '</td><td>' + sev + '</td><td><strong>' + (v.package||v.name||'-') + '</strong></td><td>' + (v.message||v.description||'-') + '</td></tr>'
+  }
+  h += '</table>'
+  return h
+}
+
+function formatCveFixResult(data) {
+  const fixed = data.fixed_packages || []
+  const summary = data.summary || {}
+  let h = '<div class="alert success">CVE auto-fix complete</div>'
+  if (summary && Object.keys(summary).length) {
+    h += '<div class="info-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:8px">'
+    h += '<div class="info-item"><div class="label">Fixed</div><div class="value good">' + (summary.fixed||0) + '</div></div>'
+    h += '<div class="info-item"><div class="label">Unfixable</div><div class="value bad">' + (summary.unfixable||0) + '</div></div>'
+    h += '<div class="info-item"><div class="label">Total CVEs</div><div class="value">' + (summary.total_cves||0) + '</div></div>'
+    h += '</div>'
+  }
+  if (fixed.length) {
+    h += '<table class="result-table"><tr><th>Package</th><th>Old Version</th><th>New Version</th><th>Fixed CVEs</th></tr>'
+    for (const p of fixed) {
+      h += '<tr><td><strong>' + (p.package||p.name) + '</strong></td><td>' + (p.old_version||'-') + '</td><td><span class="badge green">' + (p.new_version||'-') + '</span></td><td>' + ((p.fixed_cves||[]).join(', ')||'-') + '</td></tr>'
+    }
+    h += '</table>'
+  }
+  return h
+}
+
+function formatCheckResults(data) {
+  const results = data.results || data
+  let h = '<div class="alert success">All checks complete</div>'
+  if (results.cve) {
+    const vulns = results.cve.vulnerabilities || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">&#x1F50D; CVE Scan (' + vulns.length + ' vulns)</h3>'
+    if (vulns.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>CVE</th><th>Severity</th><th>Fix Version</th></tr>'
+      for (const v of vulns) {
+        const sev = v.severity === 'CRITICAL' ? '<span class="badge red">CRITICAL</span>' : v.severity === 'HIGH' ? '<span class="badge yellow">HIGH</span>' : '<span class="badge blue">' + (v.severity||'INFO') + '</span>'
+        h += '<tr><td><strong>' + (v.package||v.name) + '</strong></td><td>' + (v.id||v.cve_id) + '</td><td>' + sev + '</td><td>' + (v.fixed_version||'-') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.deprecated) {
+    const dep = results.deprecated.packages || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">&#x26A0; Deprecated (' + dep.length + ')</h3>'
+    if (dep.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>Message</th></tr>'
+      for (const d of dep) {
+        h += '<tr><td><strong>' + (d.package||d.name) + '</strong></td><td>' + (d.message||'Deprecated') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.license) {
+    const issues = results.license.issues || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">&#x1F4C4; License (' + issues.length + ' issues)</h3>'
+    if (issues.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>License</th><th>Issue</th></tr>'
+      for (const l of issues) {
+        h += '<tr><td><strong>' + (l.package||l.name) + '</strong></td><td>' + (l.license||'-') + '</td><td>' + (l.issue||'-') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.policy) {
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">&#x1F4CB; Policy</h3>'
+    const policyArr = results.policy.violations || results.policy.results || results.policy
+    h += formatPolicyViolations(Array.isArray(policyArr) ? {results: policyArr} : results.policy)
+  }
+  return h
+}
+
+function formatLockSignResult(data) {
+  if (data.signed_lock) {
+    return '<div class="alert success">Lock file signed successfully</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify({signature: data.signature||'present', key_id: data.key_id||'-', provenance: data.provenance ? 'included' : 'none'}, null, 2) + '</pre>'
+  }
+  return '<div class="alert success">' + (data.message||'Operation completed') + '</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify(data, null, 2) + '</pre>'
+}
+
+function formatCICheckDiff(data) {
+  const changes = data.changes || data.diff || []
+  if (!changes || !changes.length) {
+    return '<div class="alert success">Lock file is up to date &#x2713;</div>'
+  }
+  let h = '<div class="alert ' + (data.status==='drift'?'warning':'info') + '">' + changes.length + ' change(s) detected</div>'
+  h += '<table class="result-table"><tr><th>Type</th><th>Package</th><th>Current</th><th>Expected</th></tr>'
+  for (const c of changes) {
+    const cls = c.type === 'added' ? 'green' : c.type === 'removed' ? 'red' : 'yellow'
+    h += '<tr><td><span class="badge ' + cls + '">' + (c.type||'changed') + '</span></td><td><strong>' + (c.package||c.name) + '</strong></td><td>' + (c.current||'-') + '</td><td>' + (c.expected||c.resolved||'-') + '</td></tr>'
+  }
+  h += '</table>'
+  return h
+}
+
+function generateSBOMFromLock(lockData, format) {
+  const pkgs = lockData.packages || lockData.resolved_packages || {}
+  const pkgNames = Object.keys(pkgs)
+  const now = new Date().toISOString()
+  if (format === 'cyclonedx') {
+    const components = pkgNames.map(name => {
+      const info = pkgs[name] || {}
+      return {
+        type: 'library',
+        name: name,
+        version: info.version || info.resolved_version || '',
+        'bom-ref': 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||''),
+        licenses: [],
+        purl: 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||''),
+      }
+    })
+    return {bomFormat: 'CycloneDX', specVersion: '1.5', version: 1, metadata: {timestamp: now, tools: [{name: 'UDR Desktop', vendor: 'UDR'}]}, components}
+  }
+  const packages = pkgNames.map(name => {
+    const info = pkgs[name] || {}
+    return {
+      SPDXID: 'SPDXRef-' + name.replace(/[^a-zA-Z0-9]/g, '-'),
+      name: name,
+      versionInfo: info.version || info.resolved_version || '',
+      supplier: 'NOASSERTION',
+      downloadLocation: 'NOASSERTION',
+      licenseConcluded: 'NOASSERTION',
+      externalRefs: [{referenceCategory: 'PACKAGE-MANAGER', referenceType: 'purl', referenceLocator: 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||'')}],
+    }
+  })
+  return {spdxVersion: 'SPDX-2.3', dataLicense: 'CC0-1.0', SPDXID: 'SPDXRef-DOCUMENT', name: 'UDR SBOM', documentNamespace: 'https://spdx.org/spdxdocs/udr-sbom-' + Date.now(), creationInfo: {created: now, creators: ['Tool: UDR Desktop']}, packages}
+}
+
 // Support both browser (global) and Node.js (module.exports)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -176,6 +316,13 @@ if (typeof module !== 'undefined' && module.exports) {
     formatGraphTree,
     formatVerifyResult,
     formatUpdateResult,
+    formatSBOMResult,
+    formatPolicyViolations,
+    formatCveFixResult,
+    formatCheckResults,
+    formatLockSignResult,
+    formatCICheckDiff,
+    generateSBOMFromLock,
     cacheLastLock,
   }
 }

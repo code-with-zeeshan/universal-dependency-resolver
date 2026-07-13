@@ -212,6 +212,9 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 <div class="nav-section">Project</div>
 <button class="nav-btn" data-tab="scan"><span class="icon">📁</span><span class="label">Scan</span></button>
 <button class="nav-btn" data-tab="graph"><span class="icon">🌳</span><span class="label">Graph</span></button>
+<button class="nav-btn" data-tab="sbom"><span class="icon">📋</span><span class="label">SBOM</span></button>
+<button class="nav-btn" data-tab="lock"><span class="icon">🔒</span><span class="label">Lock</span></button>
+<button class="nav-btn" data-tab="check"><span class="icon">✅</span><span class="label">Check</span></button>
 <button class="nav-btn" data-tab="verify"><span class="icon">✓</span><span class="label">Verify Lock</span></button>
 <button class="nav-btn" data-tab="install"><span class="icon">📦</span><span class="label">Install</span></button>
 <button class="nav-btn" data-tab="restore"><span class="icon">↩</span><span class="label">Restore</span></button>
@@ -479,6 +482,107 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 </div>
 </div>
 
+<!-- SBOM -->
+<div class="tab" id="tab-sbom">
+<div class="tab-header"><h2>SBOM Generation</h2><p>Generate Software Bill of Materials in SPDX or CycloneDX format</p></div>
+<div class="card">
+<div class="card-title">📋 SBOM Generator</div>
+<div class="row">
+<label style="font-size:12px;color:var(--text-muted)">Format:</label>
+<select id="sbomFormatSelect" style="flex:0;min-width:160px">
+<option value="spdx">SPDX 2.3</option>
+<option value="cyclonedx">CycloneDX 1.5</option>
+</select>
+</div>
+<div class="row" style="margin-top:8px">
+<textarea id="sbomLockInput" rows="4" style="width:100%" placeholder="Paste udr.lock contents..."></textarea>
+</div>
+<div class="row">
+<button id="sbomLoadBtn" class="secondary">Load from File</button>
+<button id="sbomGenBtn">Generate SBOM</button>
+<button id="sbomDownloadBtn" class="secondary" disabled>Download</button>
+</div>
+</div>
+<div class="card" id="sbomResultCard" style="display:none">
+<div class="card-title">📄 SBOM Output</div>
+<div id="sbomResult"></div>
+<div id="sbomRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('sbomRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
+<pre id="sbomRaw" style="display:none"></pre>
+</div>
+</div>
+
+<!-- Lock -->
+<div class="tab" id="tab-lock">
+<div class="tab-header"><h2>Lock File Management</h2><p>Sign, add provenance, and CI-check lock files</p></div>
+<div class="card">
+<div class="card-title">🔒 Lock File Operations</div>
+<div class="row">
+<textarea id="lockInput" rows="4" style="width:100%" placeholder="Paste udr.lock contents..."></textarea>
+</div>
+<div class="row">
+<button id="lockLoadBtn" class="secondary">Load from File</button>
+</div>
+<div style="margin-top:10px">
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+<input type="checkbox" id="lockSignCheck"> Sign lock file
+</label>
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+<input type="checkbox" id="lockProvenanceCheck"> Include SLSA provenance
+</label>
+<div class="row" style="margin-top:6px">
+<button id="lockSignBtn">Sign &amp; Save</button>
+<button id="lockCICheckBtn" class="secondary">CI Check (diff)</button>
+</div>
+</div>
+</div>
+<div class="card" id="lockResultCard" style="display:none">
+<div class="card-title">📋 Result</div>
+<div id="lockResult"></div>
+<div id="lockRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('lockRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
+<pre id="lockRaw" style="display:none"></pre>
+</div>
+</div>
+
+<!-- Check -->
+<div class="tab" id="tab-check">
+<div class="tab-header"><h2>Package Checks</h2><p>CVE scanning, deprecation, license, and policy checks</p></div>
+<div class="card">
+<div class="card-title">✅ Run Checks</div>
+<div class="row">
+<textarea id="checkLockInput" rows="4" style="width:100%" placeholder="Paste udr.lock contents..."></textarea>
+</div>
+<div class="row">
+<button id="checkLoadBtn" class="secondary">Load from File</button>
+</div>
+<div style="margin-top:10px">
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<input type="checkbox" id="checkCveCb" checked> CVE Scan
+</label>
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<input type="checkbox" id="checkDeprecatedCb" checked> Deprecated Check
+</label>
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<input type="checkbox" id="checkLicenseCb"> License Check
+</label>
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<input type="checkbox" id="checkPolicyCb"> Policy Check
+</label>
+<div class="row" id="checkPolicyRow" style="display:none;margin-top:6px">
+<textarea id="checkPolicyInput" rows="4" style="width:100%" placeholder="Paste policy YAML content..."></textarea>
+</div>
+<div class="row" style="margin-top:8px">
+<button id="checkRunAllBtn">Run All Checks</button>
+</div>
+</div>
+</div>
+<div class="card" id="checkResultCard" style="display:none">
+<div class="card-title">📊 Check Results</div>
+<div id="checkResult"></div>
+<div id="checkRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('checkRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
+<pre id="checkRaw" style="display:none"></pre>
+</div>
+</div>
+
 <!-- Verify Lock -->
 <div class="tab" id="tab-verify">
 <div class="tab-header"><h2>Verify Lock File</h2><p>Validate that all versions in a lock file still exist</p></div>
@@ -496,6 +600,15 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 <div id="verifyResult"></div>
 <div id="verifyRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('verifyRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="verifyRaw" style="display:none"></pre>
+</div>
+<div class="card" style="margin-top:16px">
+<div class="card-title">📋 Policy Check</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">Run policy file against the lock file to check for violations.</p>
+<textarea id="verifyPolicyInput" rows="4" style="width:100%" placeholder="Paste policy YAML content..."></textarea>
+<div class="row" style="margin-top:8px">
+<button id="verifyPolicyBtn" class="secondary">Run Policy</button>
+</div>
+<div id="verifyPolicyResult" style="margin-top:8px"></div>
 </div>
 </div>
 
@@ -516,6 +629,17 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 <div id="updateResult"></div>
 <div id="updateRawLink" style="font-size:11px;margin-top:6px"><a href="#" onclick="toggleRaw('updateRaw')" style="color:var(--accent-light)">Show raw JSON</a></div>
 <pre id="updateRaw" style="display:none"></pre>
+</div>
+<div class="card" style="margin-top:16px">
+<div class="card-title">🛡️ Auto-fix CVEs</div>
+<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">Scan lock file for vulnerabilities and batch-fix affected packages.</p>
+<div class="row">
+<label style="display:flex;align-items:center;gap:8px">
+<input type="checkbox" id="updateFixCveCb"> Auto-fix CVEs
+</label>
+<button id="updateFixAllBtn" class="secondary">Fix All</button>
+</div>
+<div id="updateCveResult" style="margin-top:8px"></div>
 </div>
 </div>
 

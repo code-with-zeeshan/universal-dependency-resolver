@@ -137,6 +137,19 @@ WantedBy=multi-user.target
 
 See `.env.example` in the repository root.
 
+#### Solver & resolution
+
+| Variable | Default | Description |
+|---|---|---|
+| `SOLVER_TIMEOUT` | `120` | Total seconds for BFS+SAT resolution |
+| `SOLVER_REJECT_DEPRECATED` | `false` | Reject deprecated/yanked packages (default: warn only) |
+| `SOLVER_MAX_VARIABLES` | `50000` | Cap on solver variables to prevent runaway on large graphs |
+| `BFS_BATCH_SIZE` | `20` | Batch size for parallel BFS dependency discovery |
+| `INDEX_AUTO_SYNC` | `false` | Auto-sync stale local indexes before resolution |
+| `TARGET_OS` | `` | Default target OS for cross-compilation |
+| `TARGET_ARCH` | `` | Default target arch for cross-compilation |
+| `TARGET_CUDA` | `` | Default target CUDA version for cross-compilation |
+
 ## Backup
 
 For SQLite:

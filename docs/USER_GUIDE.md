@@ -168,7 +168,7 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>18 commands"]
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>19 commands"]
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code>"]
     end
 
@@ -223,7 +223,7 @@ graph TB
 
 ## 7. CLI Usage
 
-All 18 commands support `--help` for inline usage.
+All 19 commands support `--help` for inline usage.
 
 ### Global flags
 
@@ -252,6 +252,7 @@ All 18 commands support `--help` for inline usage.
 | `outdated` | Check for newer versions | `udr outdated --json` |
 | `diff` | Compare two lock files | `udr diff old.lock new.lock` |
 | `search` | Search packages across ecosystems | `udr search numpy --limit 50` |
+| `sbom` | Generate SPDX/CycloneDX SBOM from lock file | `udr sbom --format spdx` |
 | `auth` | Manage API keys for the API server | `udr auth create --name my-key` |
 | `index` | Manage offline SQLite indexes | `udr index status` |
 | `details` | Show package details | `udr details react -e npm` |
@@ -285,6 +286,61 @@ The resolver is GPU-aware for PyPI packages. When a package has CUDA-tagged vari
 # On a CPU-only machine, force CUDA resolution
 udr lock --cuda 12.1
 udr resolve torch --cuda 12.1
+```
+
+### SBOM generation
+
+Generate SPDX 2.3 or CycloneDX 1.5 Software Bill of Materials from the lock file:
+
+```bash
+udr sbom                                        # SPDX JSON to stdout
+udr sbom --format cyclonedx --output sbom.json  # CycloneDX to file
+```
+
+### CI drift detection
+
+Check if the lock file is up to date without writing (exits 0 if current, 1 if drift detected):
+
+```bash
+udr lock --check                                # CI-friendly drift check
+```
+
+### Supply chain attestation
+
+Sign lock files with Ed25519 keys and verify signatures:
+
+```bash
+udr auth gen-key                                # generate signing key
+udr lock --sign                                 # sign lock file
+udr verify --signature                          # verify signature
+udr lock --provenance                           # add SLSA provenance section
+```
+
+### Policy engine
+
+Evaluate lock file against a YAML policy file (`udr-policy.yaml`):
+
+```bash
+udr check --policy                              # check policy compliance
+```
+
+Supports 10 rules: `no-deprecated`, `no-yanked`, `no-gpl`, `no-agpl`, `max-vulnerabilities`, `max-critical-vulns`, `must-pin-transitives`, `allowed-licenses`, `blocked-packages`, `require-vendor`.
+
+### CVE auto-fix
+
+Automatically update vulnerable packages to versions that fix known CVEs:
+
+```bash
+udr update --fix-cve                            # fix all vulnerable packages
+udr update flask --fix-cve                      # fix a specific package
+```
+
+### Cross-compilation targeting
+
+Override OS/architecture for cross-compilation resolution:
+
+```bash
+udr lock --target linux --platform x86_64       # resolve for linux/amd64
 ```
 
 ### Exit codes
@@ -452,7 +508,7 @@ Single-page app with a collapsible icon sidebar:
 
 ## 11. Features in Detail
 
-### 20 supported ecosystems
+### 22 supported ecosystems
 
 | Ecosystem | Language | Registry | Client |
 |---|---|---|---|
@@ -474,16 +530,21 @@ Single-page app with a collapsible icon sidebar:
 | Swift | Swift | swiftpackageindex.com | `swift_client.py` |
 | Hex | Elixir | hex.pm | `hex_client.py` |
 | Haskell | Haskell | hackage.haskell.org | `haskell_client.py` |
+| Nix | NixOS | nixpkgs / GitHub | `nix_plugin.py` |
+| GNU Guix | Guix | guix upstream | `guix_plugin.py` |
 | Docs DB | Documentation | Internal | `docs_client.py` |
 | Custom DB | Custom | Internal | `custom_client.py` |
 
 ### SAT-solver resolution
 
-Uses **PubGrub** (Rust-backed, default) or **Z3** (MIT's theorem prover, via `USE_Z3_SOLVER=true`) to find compatible versions across all ecosystems simultaneously:
+Uses **PubGrub** (Rust-backed, default), **Hybrid** (PubGrub per-ecosystem + Z3 cross-ecosystem, via `USE_HYBRID_SOLVER=true`), or **Z3** (via `USE_Z3_SOLVER=true`) to find compatible versions across all ecosystems simultaneously:
+- **Per-ecosystem solver isolation**: packages grouped by ecosystem and resolved independently — a conflict in npm can't block PyPI
+- Cross-ecosystem dependencies use a unified resolution path
 - Handles complex cross-ecosystem version constraints
 - Detects and reports conflicts with specific error messages
 - Configurable timeout via `SOLVER_TIMEOUT` env var (default: 120s)
 - Falls back to backtracking search when solver times out
+- `SOLVER_MAX_VARIABLES` cap (default 50000) prevents runaway solver on large graphs
 
 ### System awareness
 
@@ -543,6 +604,8 @@ Resolves transitive dependencies across ecosystem boundaries. For example, if an
 - CSRF protection
 - SQL injection prevention (SQLAlchemy ORM)
 - Input validation (Pydantic)
+- Lock file signing (Ed25519) with auto-generated key pairs
+- SLSA provenance tracking for supply chain integrity
 
 ---
 

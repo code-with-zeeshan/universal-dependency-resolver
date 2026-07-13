@@ -88,6 +88,8 @@ udr check --cuda 12.1                  # simulate check for specific CUDA versio
 udr check --device cuda                # simulate check for specific compute device
 udr check --cve                        # check lock file for known CVEs
 udr check --license                    # check lock file for license compliance
+udr check --deprecated                 # check lock file for deprecated/yanked packages
+udr check --policy                     # check policy compliance (udr-policy.yaml)
 ```
 
 **Flags:**
@@ -101,7 +103,9 @@ udr check --license                    # check lock file for license compliance
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
 | `--cve` | `False` | Check lock file packages against OSV vulnerability database |
 | `--license` | `False` | Check lock file packages for license compliance |
-| `-d, --directory` | `.` | Project directory with lock file (for `--cve`/`--license`) |
+| `--deprecated` | `False` | Check lock file for deprecated or yanked packages |
+| `--policy`, `-p` | `None` | Path to policy YAML file (default: `./udr-policy.yaml`) |
+| `-d, --directory` | `.` | Project directory with lock file (for `--cve`/`--license`/`--deprecated`/`--policy`) |
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
@@ -181,6 +185,11 @@ udr lock -i                                  # interactive manifest selection + 
 udr lock --json                              # output lock data as JSON to stdout
 udr lock -r                                  # write readable report file alongside lock file
 udr lock --cuda 12.1                         # override CUDA detection
+udr lock --target linux --platform x86_64    # cross-compilation for linux/amd64
+udr lock --sign                              # sign lock file with Ed25519 key
+udr lock --provenance                        # add SLSA provenance section
+udr lock --check                             # CI drift detection (exit 1 if out of date)
+udr lock --auto-sync                         # auto-sync stale local indexes before resolution
 ```
 
 **Flags:**
@@ -207,6 +216,12 @@ udr lock --cuda 12.1                         # override CUDA detection
 | `--block` | `None` | Block a package from resolution. Repeatable |
 | `--freeze` | `False` | Freeze all packages at their lock-file versions |
 | `--extras` | `None` | Comma-separated extras groups to activate (e.g. `dotenv,speedups`) |
+| `--target` | `None` | Target OS for cross-compilation: `linux`, `windows`, `darwin` (overrides host OS) |
+| `--platform` | `None` | Target CPU architecture: `x86_64`, `aarch64`, `arm64`, `i386`, `amd64` |
+| `--auto-sync` | `False` | Auto-sync stale local indexes before resolution |
+| `--sign` | `False` | Sign the lock file with Ed25519 key |
+| `--provenance` | `False` | Add SLSA provenance section to lock file |
+| `--check`, `-c` | `False` | CI mode: check if lock file is up to date; exit code 1 if drift detected |
 
 **Exit codes:**
 
@@ -392,6 +407,7 @@ Validate a lock file — checks that every pinned version still exists in its re
 udr verify                              # auto-detects lock file in current dir
 udr verify --workspace backend          # verify udr-backend.lock
 udr verify path/to/custom-lock.json     # specific lock file
+udr verify --signature                  # verify Ed25519 signature on lock file
 ```
 
 **Flags:**
@@ -402,6 +418,7 @@ udr verify path/to/custom-lock.json     # specific lock file
 | `--json` | `False` | Output as JSON |
 | `-d, --directory` | `.` | Project directory with lock file |
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `--signature`, `--sig` | `False` | Verify Ed25519 signature on the lock file |
 
 **Exit codes:**
 
@@ -488,13 +505,16 @@ udr update torch --cuda 12.1            # update with CUDA override
 udr update flask --dry-run              # preview changes without writing
 udr update flask --workspace backend    # update in udr-backend.lock
 udr update flask -l /path/to/lock.json  # update in explicit lock file
+udr update --fix-cve                    # auto-fix all vulnerable packages
+udr update flask --fix-cve              # auto-fix specific vulnerable package
+udr update --target linux --platform x86_64  # cross-compilation override
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
-|---|---|---|
-| `package` | (required) | Package name to re-resolve |
+|---|---|---|---|
+| `package` | (optional with `--fix-cve`) | Package name to re-resolve |
 | `-d, --directory` | `.` | Project directory containing `udr.lock` |
 | `-i, --interactive` | `False` | Interactive conflict resolution |
 | `--dry-run` | `False` | Show what would be updated without modifying the lock file |
@@ -502,6 +522,9 @@ udr update flask -l /path/to/lock.json  # update in explicit lock file
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
+| `--fix-cve` | `False` | Update vulnerable packages to versions that fix known CVEs |
+| `--target` | `None` | Target OS for cross-compilation: `linux`, `windows`, `darwin` |
+| `--platform` | `None` | Target CPU architecture: `x86_64`, `aarch64`, `arm64`, `i386`, `amd64` |
 
 **Exit codes:**
 
@@ -544,6 +567,22 @@ udr auth list
 ### `auth list`
 
 No flags. Displays a table of all API keys with ID, name, role, active status, last used, and usage count.
+
+### `auth gen-key`
+
+Generate an Ed25519 signing key pair for lock file signing. The key pair is stored at `~/.config/udr/`.
+
+```bash
+udr auth gen-key                          # generate new Ed25519 key pair
+```
+
+### `auth show-key`
+
+Display the current Ed25519 public signing key for verification.
+
+```bash
+udr auth show-key                         # show the public key
+```
 
 ---
 
@@ -777,6 +816,39 @@ udr diff --workspace backend           # compare udr.lock vs udr-backend.lock
 
 ---
 
+## `sbom`
+
+Generate an SPDX 2.3 or CycloneDX 1.5 Software Bill of Materials from the lock file.
+
+**Usage:**
+
+```bash
+udr sbom                                        # SPDX 2.3 JSON to stdout
+udr sbom --format cyclonedx                     # CycloneDX 1.5 format
+udr sbom --output sbom.json                     # write to file
+udr sbom --workspace backend                    # lock file from workspace
+udr sbom --lock-file /path/to/udr.lock          # explicit lock file
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-d, --directory` | `.` | Project directory with lock file |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
+| `-f, --format` | `spdx` | SBOM format: `spdx` (SPDX 2.3) or `cyclonedx` (CycloneDX 1.5) |
+| `-o, --output` | `None` | Output file path (default: print to stdout) |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | SBOM generated successfully |
+| `1` | Lock file not found or generation failed |
+
+---
+
 ## `search`
 
 Search for packages across ecosystems in registries.
@@ -922,7 +994,7 @@ Running `udr lock` on a GPU machine records GPU info. Running the lock file on a
 
 Every CLI subcommand has a corresponding REST API endpoint when `udr serve` is running:
 
-All **18 CLI subcommands** have corresponding API endpoints when `udr serve` is running:
+All **19 CLI subcommands** have corresponding API endpoints when `udr serve` is running:
 
 | CLI Command | API Endpoint | Method | Notes |
 |---|---|---|---|
@@ -956,6 +1028,11 @@ All **18 CLI subcommands** have corresponding API endpoints when `udr serve` is 
 | `udr index build` | `/api/v1/index/build` | POST | Builds index from package data |
 | `udr index status` | `/api/v1/index/status` | GET | Shows local offline index status |
 | `udr completion` | `/api/v1/completion/{shell}` | GET | Returns shell completion script as text/plain |
+| `udr sbom` | `/api/v1/sbom` | POST | Generates SPDX/CycloneDX SBOM |
+| `udr lock --sign` | — | — | CLI-only: local Ed25519 signing with auto-generated key |
+| `udr verify --signature` | — | — | CLI-only: local signature verification |
+| `udr check --policy` | — | — | CLI-only: policy YAML file evaluation |
+| `udr update --fix-cve` | — | — | CLI-only: CVE auto-fix using lock file + OSV data |
 
 **Key differences:**
 - The API returns JSON only; CLI supports `--json`, text tables, and interactive TUI modes.

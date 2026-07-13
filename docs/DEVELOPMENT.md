@@ -44,7 +44,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **1839 unit tests** + **10 CLI e2e** + **5 JSON compliance** + **13 problem-statement** + **46 edge-cases**. Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed.
+Total: **2407 unit tests** + **96 integration** + **74 e2e** (CLI black-box, problem-statement, JSON compliance). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed. Coverage threshold: `fail_under = 60`.
 
 ## Code quality
 
@@ -59,10 +59,10 @@ ruff format backend/
 backend/
 ├── api/               # FastAPI routes, middleware, auth, schemas
 │   └── routes/        # packages.py, system.py, auth.py, scan.py, lock.py
-├── cli/               # CLI package (18 modules, 1 per command)
+├── cli/               # CLI package (19 modules, 1 per command)
 │   ├── main.py        # Parser setup + dispatch
 │   ├── shared.py      # Shared helpers (parse, resolve, output)
-│   └── commands/      # One file per command (serve, check, lock, resolve, …)
+│   └── commands/      # One file per command (serve, check, lock, resolve, sbom, …)
 ├── core/              # Business logic
 │   ├── conflict_resolver.py   # Z3 SAT solver
 │   ├── data_aggregator.py     # Aggregates data from all sources
@@ -72,7 +72,7 @@ backend/
 │   ├── constraint_normalizer.py # Version constraint normalization
 │   └── utils.py
 ├── manifest_detector.py  # Auto-detect manifest files
-├── data_sources/      # 20 ecosystem API clients
+├── data_sources/      # 22 ecosystem API clients (including nix, guix)
 ├── database/          # SQLAlchemy models
 ├── settings/          # Configuration (~200 lines)
 ├── tracing_config.py  # OpenTelemetry setup
@@ -85,7 +85,7 @@ desktop/
 └── package.json
 tests/
 ├── conftest.py        # Shared fixtures
-├── unit/              # 1839 tests
+├── unit/              # 2407 tests
 ├── integration/       # 96 tests
 └── e2e/               # 74 tests
 ```

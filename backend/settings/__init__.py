@@ -61,6 +61,10 @@ ECOSYSTEM_AUTH_ENV_PREFIXES = {
     "homebrew": "HOMEBREW",
     "apt": "APT",
     "apk": "APK",
+    "vcpkg": "VCPKG",
+    "conan": "CONAN",
+    "helm": "HELM",
+    "terraform": "TERRAFORM",
 }
 
 # =============================================================================
@@ -94,6 +98,10 @@ RATE_LIMITS = {
     "gomodules": int(os.getenv("GOMODULES_RATE_LIMIT", 600)),
     "nix": int(os.getenv("NIX_RATE_LIMIT", 300)),
     "guix": int(os.getenv("GUIX_RATE_LIMIT", 300)),
+    "vcpkg": int(os.getenv("VCPKG_RATE_LIMIT", 300)),
+    "conan": int(os.getenv("CONAN_RATE_LIMIT", 300)),
+    "helm": int(os.getenv("HELM_RATE_LIMIT", 60)),
+    "terraform": int(os.getenv("TERRAFORM_RATE_LIMIT", 60)),
 }
 
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 30))

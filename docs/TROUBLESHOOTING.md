@@ -92,6 +92,21 @@ export LD_LIBRARY_PATH=$(python3 -c "import z3; import os; print(os.path.dirname
 export DYLD_LIBRARY_PATH=$(python3 -c "import z3; import os; print(os.path.dirname(z3.__file__))")/lib:$DYLD_LIBRARY_PATH
 ```
 
+### Lock file signing key not found
+
+```text
+Error: No Ed25519 signing key found. Run 'udr auth gen-key' first.
+```
+
+**Cause**: `udr lock --sign` requires a signing key that doesn't exist yet.
+
+**Solution**:
+
+```bash
+udr auth gen-key                          # generate a new key pair
+udr auth show-key                         # show the public key
+```
+
 ### `SECRET_KEY` not set
 
 ```text
@@ -264,6 +279,24 @@ udr resolve requests numpy torch
 udr resolve requests numpy
 ```
 
+### "Solver capacity exceeded"
+
+```text
+Solver variables exceed SOLVER_MAX_VARIABLES (50000). Try reducing the dependency graph.
+```
+
+**Cause**: The dependency graph is too large for the solver's variable cap.
+
+**Solution**:
+
+```bash
+# Increase the cap
+export SOLVER_MAX_VARIABLES=100000
+udr lock
+
+# Or reduce scope by resolving fewer packages at once
+```
+
 ### "No versions found" for a package
 
 ```text
@@ -285,6 +318,61 @@ No versions found for package 'my-package'
    export HTTP_PROXY=http://proxy:8080
    export HTTPS_PROXY=http://proxy:8080
    ```
+
+### Policy check fails
+
+```text
+╭────────────────────────────────── Error ──────────────────────────────────╮
+│ Blocked package 'example' found in resolution                            │
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+**Cause**: The `udr-policy.yaml` policy file has rules that blocked a package or exceeded a threshold.
+
+**Solution**:
+
+1. Check `udr-policy.yaml` in the project root
+2. View policy rules: `udr check --policy` shows a compliance table with per-rule results
+3. Temporarily disable: move `udr-policy.yaml` aside
+4. Adjust thresholds: `max-vulnerabilities: 20` instead of `0`
+
+### Lock file signature verification fails
+
+```text
+╭────────────────────────────────── Error ──────────────────────────────────╮
+│ Signature verification failed: key mismatch or file tampered              │
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+**Cause**: The lock file was modified after signing, or the wrong signing key is being used.
+
+**Solution**:
+
+1. Regenerate the lock file: `udr lock --sign`
+2. Check the correct public key: `udr auth show-key`
+3. Distribute the public key to verifiers
+
+### SBOM generation fails
+
+```text
+Error: Lock file not found. Run 'udr lock' first.
+```
+
+**Cause**: No `udr.lock` exists in the target directory.
+
+**Solution**: Run `udr lock` first, or specify an explicit lock file path with `--lock-file`.
+
+### CI drift check reports drift
+
+```text
+╭────────────────────────────────── Drift ──────────────────────────────────╮
+│ Package numpy: locked 1.24.0 vs resolved 1.26.0                          │
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+**Cause**: The lock file doesn't match a fresh resolution — packages have newer versions, or the lock file is stale.
+
+**Solution**: Run `udr lock` to regenerate. In CI, this is expected to happen when dependencies change.
 
 ### CUDA version mismatch
 

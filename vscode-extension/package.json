@@ -1,0 +1,166 @@
+{
+  "name": "udr-vscode",
+  "displayName": "UDR - Universal Dependency Resolver",
+  "description": "Dependency management for 20+ ecosystems — lock file viewer, CVE diagnostics, manifest editing, and udr CLI integration",
+  "version": "0.1.0",
+  "publisher": "udr",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "dependencies",
+    "udr",
+    "lockfile",
+    "cve",
+    "sbom"
+  ],
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:yaml",
+    "workspaceContains:udr.lock",
+    "workspaceContains:requirements.txt",
+    "workspaceContains:package.json",
+    "workspaceContains:Cargo.toml",
+    "workspaceContains:pyproject.toml",
+    "workspaceContains:go.mod",
+    "workspaceContains:udr-policy.yaml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "udr.check",
+        "title": "UDR: Check lock file (CVE + deprecated)"
+      },
+      {
+        "command": "udr.updatePackage",
+        "title": "UDR: Update package"
+      },
+      {
+        "command": "udr.generateSbom",
+        "title": "UDR: Generate SBOM"
+      },
+      {
+        "command": "udr.verify",
+        "title": "UDR: Verify lock"
+      },
+      {
+        "command": "udr.checkPolicies",
+        "title": "UDR: Check policies"
+      },
+      {
+        "command": "udr.fixCves",
+        "title": "UDR: Fix CVEs"
+      },
+      {
+        "command": "udr.lock",
+        "title": "UDR: Lock (resolve)"
+      },
+      {
+        "command": "udr.lockCheck",
+        "title": "UDR: Lock check (CI mode)"
+      },
+      {
+        "command": "udr.showGraph",
+        "title": "UDR: Show dependency graph"
+      },
+      {
+        "command": "udr.refreshLockView",
+        "title": "UDR: Refresh lock view"
+      },
+      {
+        "command": "udr.addDependency",
+        "title": "UDR: Add dependency"
+      },
+      {
+        "command": "udr.updateDependency",
+        "title": "UDR: Update dependency"
+      },
+      {
+        "command": "udr.removeDependency",
+        "title": "UDR: Remove dependency"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "udrLockView",
+          "name": "UDR Lock"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "udr_manifest_menu",
+          "group": "udr",
+          "when": "resourceFilename =~ /(requirements\\.txt|pyproject\\.toml|package\\.json|Cargo\\.toml|go\\.mod|Gemfile|composer\\.json|build\\.gradle|build\\.gradle\\.kts|pom\\.xml|Pipfile|pubspec\\.yaml|mix\\.exs|environment\\.yml|Podfile|*.cabal|Brewfile|apt-packages\\.txt|apk-packages\\.txt)/"
+        }
+      ],
+      "udr_manifest_menu": [
+        {
+          "command": "udr.addDependency",
+          "group": "udr@1"
+        },
+        {
+          "command": "udr.updateDependency",
+          "group": "udr@2"
+        },
+        {
+          "command": "udr.removeDependency",
+          "group": "udr@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "UDR",
+      "properties": {
+        "udr.cliPath": {
+          "type": "string",
+          "default": "udr",
+          "description": "Path to the udr CLI executable"
+        },
+        "udr.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8199",
+          "description": "Backend API URL for the UDR server"
+        },
+        "udr.lockFileName": {
+          "type": "string",
+          "default": "udr.lock",
+          "description": "Name of the lock file to look for in workspace"
+        },
+        "udr.autoCheckOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically run CVE check when lock file is saved"
+        },
+        "udr.cveSeverityThreshold": {
+          "type": "string",
+          "default": "MEDIUM",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "description": "Minimum severity to show in Problems panel"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/extension.test.js",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

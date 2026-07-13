@@ -20,7 +20,7 @@ class TestNormalizeConstraint:
         assert _normalize_constraint("*", "pypi") == ">=0.0.0"
 
     def test_pypi_spec_passthrough(self):
-        assert _normalize_constraint(">=1.0.0,<3", "pypi") == ">=1.0.0,<3"
+        assert _normalize_constraint(">=1.0.0,<3", "pypi") == ">=1.0.0,<3.0.0"
 
     def test_exact_version(self):
         assert _normalize_constraint("==1.2.3", "pypi") == "==1.2.3"

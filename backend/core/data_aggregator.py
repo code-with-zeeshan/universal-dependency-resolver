@@ -168,6 +168,11 @@ _register_builtin("rubygems", "backend.data_sources.rubygems_plugin")
 _register_builtin("custom_db", "backend.data_sources.custom_db_plugin")
 _register_builtin("nix", "backend.data_sources.nix_plugin")
 _register_builtin("guix", "backend.data_sources.guix_plugin")
+_register_builtin("vcpkg", "backend.data_sources.vcpkg_plugin")
+_register_builtin("conan", "backend.data_sources.conan_plugin")
+_register_builtin("docker", "backend.data_sources.docker_plugin")
+_register_builtin("helm", "backend.data_sources.helm_plugin")
+_register_builtin("terraform", "backend.data_sources.terraform_plugin")
 import_builtin_plugins()
 
 

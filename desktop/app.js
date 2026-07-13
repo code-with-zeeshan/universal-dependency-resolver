@@ -388,6 +388,115 @@ function formatUpdateResult(data) {
   }
 }
 
+// ===================== New Format Functions =====================
+
+function formatSBOMResult(data) {
+  const sbom = data.sbom || data
+  return '<pre style="max-height:500px">' + JSON.stringify(sbom, null, 2) + '</pre>'
+}
+
+function formatPolicyViolations(data) {
+  const violations = data.violations || data.results || data
+  const arr = Array.isArray(violations) ? violations : []
+  if (!arr.length) return '<div class="alert success">No policy violations found</div>'
+  let h = '<div class="alert ' + (arr.some(v=>v.severity==='error')?'warning':'info') + '">' + arr.length + ' policy violation(s) found</div>'
+  h += '<table class="result-table"><tr><th>Rule</th><th>Severity</th><th>Package</th><th>Message</th></tr>'
+  for (const v of arr) {
+    const sev = v.severity === 'error' ? '<span class="badge red">ERROR</span>' : v.severity === 'warning' ? '<span class="badge yellow">WARN</span>' : '<span class="badge blue">INFO</span>'
+    h += '<tr><td>' + (v.rule||'-') + '</td><td>' + sev + '</td><td><strong>' + (v.package||v.name||'-') + '</strong></td><td>' + (v.message||v.description||'-') + '</td></tr>'
+  }
+  h += '</table>'
+  return h
+}
+
+function formatCveFixResult(data) {
+  const fixed = data.fixed_packages || []
+  const summary = data.summary || {}
+  let h = '<div class="alert success">CVE auto-fix complete</div>'
+  if (summary && Object.keys(summary).length) {
+    h += '<div class="info-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:8px">'
+    h += '<div class="info-item"><div class="label">Fixed</div><div class="value good">' + (summary.fixed||0) + '</div></div>'
+    h += '<div class="info-item"><div class="label">Unfixable</div><div class="value bad">' + (summary.unfixable||0) + '</div></div>'
+    h += '<div class="info-item"><div class="label">Total CVEs</div><div class="value">' + (summary.total_cves||0) + '</div></div>'
+    h += '</div>'
+  }
+  if (fixed.length) {
+    h += '<table class="result-table"><tr><th>Package</th><th>Old Version</th><th>New Version</th><th>Fixed CVEs</th></tr>'
+    for (const p of fixed) {
+      h += '<tr><td><strong>' + (p.package||p.name) + '</strong></td><td>' + (p.old_version||'-') + '</td><td><span class="badge green">' + (p.new_version||'-') + '</span></td><td>' + ((p.fixed_cves||[]).join(', ')||'-') + '</td></tr>'
+    }
+    h += '</table>'
+  }
+  return h
+}
+
+function formatCheckResults(data) {
+  const results = data.results || data
+  let h = '<div class="alert success">All checks complete</div>'
+  if (results.cve) {
+    const vulns = results.cve.vulnerabilities || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">🔍 CVE Scan (' + vulns.length + ' vulns)</h3>'
+    if (vulns.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>CVE</th><th>Severity</th><th>Fix Version</th></tr>'
+      for (const v of vulns) {
+        const sev = v.severity === 'CRITICAL' ? '<span class="badge red">CRITICAL</span>' : v.severity === 'HIGH' ? '<span class="badge yellow">HIGH</span>' : '<span class="badge blue">' + (v.severity||'INFO') + '</span>'
+        h += '<tr><td><strong>' + (v.package||v.name) + '</strong></td><td>' + (v.id||v.cve_id) + '</td><td>' + sev + '</td><td>' + (v.fixed_version||'-') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.deprecated) {
+    const dep = results.deprecated.packages || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">⚠ Deprecated (' + dep.length + ')</h3>'
+    if (dep.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>Message</th></tr>'
+      for (const d of dep) {
+        h += '<tr><td><strong>' + (d.package||d.name) + '</strong></td><td>' + (d.message||'Deprecated') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.license) {
+    const issues = results.license.issues || []
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">📄 License (' + issues.length + ' issues)</h3>'
+    if (issues.length) {
+      h += '<table class="result-table"><tr><th>Package</th><th>License</th><th>Issue</th></tr>'
+      for (const l of issues) {
+        h += '<tr><td><strong>' + (l.package||l.name) + '</strong></td><td>' + (l.license||'-') + '</td><td>' + (l.issue||'-') + '</td></tr>'
+      }
+      h += '</table>'
+    }
+  }
+  if (results.policy) {
+    h += '<h3 style="font-size:13px;margin:12px 0 4px;color:var(--accent-light)">📋 Policy</h3>'
+    const policyArr = results.policy.violations || results.policy.results || results.policy
+    h += formatPolicyViolations(Array.isArray(policyArr) ? {results: policyArr} : results.policy)
+  }
+  return h
+}
+
+function formatLockSignResult(data) {
+  if (data.signed_lock) {
+    return '<div class="alert success">Lock file signed successfully</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify({signature: data.signature||'present', key_id: data.key_id||'-', provenance: data.provenance ? 'included' : 'none'}, null, 2) + '</pre>'
+  }
+  return '<div class="alert success">' + (data.message||'Operation completed') + '</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify(data, null, 2) + '</pre>'
+}
+
+function formatCICheckDiff(data) {
+  const changes = data.changes || data.diff || []
+  if (!changes || !changes.length) {
+    return '<div class="alert success">Lock file is up to date ✓</div>'
+  }
+  let h = '<div class="alert ' + (data.status==='drift'?'warning':'info') + '">' + changes.length + ' change(s) detected</div>'
+  h += '<table class="result-table"><tr><th>Type</th><th>Package</th><th>Current</th><th>Expected</th></tr>'
+  for (const c of changes) {
+    const cls = c.type === 'added' ? 'green' : c.type === 'removed' ? 'red' : 'yellow'
+    h += '<tr><td><span class="badge ' + cls + '">' + (c.type||'changed') + '</span></td><td><strong>' + (c.package||c.name) + '</strong></td><td>' + (c.current||'-') + '</td><td>' + (c.expected||c.resolved||'-') + '</td></tr>'
+  }
+  h += '</table>'
+  return h
+}
+
 // ===================== Ecosystem Loading =====================
 
 let ECOSYSTEMS = []
@@ -1116,5 +1225,265 @@ document.getElementById('depPkgInput').addEventListener('keydown', e => { if (e.
 document.getElementById('comPkgInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('comBtn').click() })
 document.getElementById('graphPkgInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('graphBtn').click() })
 document.getElementById('scanGithubUrl').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('scanGithubBtn').click() })
+
+// ===================== SBOM Tab =====================
+document.getElementById('sbomLoadBtn').addEventListener('click', () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json,.lock'
+  input.onchange = async e => {
+    const text = await e.target.files[0].text()
+    document.getElementById('sbomLockInput').value = text
+  }
+  input.click()
+})
+
+document.getElementById('sbomGenBtn').addEventListener('click', async () => {
+  const text = document.getElementById('sbomLockInput').value.trim()
+  if (!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('sbomResult')); return }
+  const fmt = document.getElementById('sbomFormatSelect').value
+  const btn = document.getElementById('sbomGenBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'
+  const card = document.getElementById('sbomResultCard')
+  const div = document.getElementById('sbomResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Generating SBOM...</div>'
+  try {
+    const result = await api('POST', '/api/v1/packages/sbom', {lock_data: lockData, format: fmt}, LONG_API_TIMEOUT)
+    div.innerHTML = formatSBOMResult(result)
+    const raw = document.getElementById('sbomRaw')
+    raw.textContent = JSON.stringify(result, null, 2)
+    document.getElementById('sbomDownloadBtn').disabled = false
+    window.__sbomData = result.sbom || result
+    window.__sbomFormat = fmt
+    showToast('SBOM generated (' + fmt + ')', 'success')
+  } catch(e) {
+    // Fallback: parse lock directly
+    try {
+      const sbom = generateSBOMFromLock(lockData, fmt)
+      div.innerHTML = formatSBOMResult({sbom})
+      document.getElementById('sbomDownloadBtn').disabled = false
+      window.__sbomData = sbom
+      window.__sbomFormat = fmt
+      showToast('SBOM generated locally', 'info')
+    } catch(e2) {
+      showError(e.message + ' | Local fallback: ' + e2.message, div)
+    }
+  }
+  btn.disabled = false; btn.textContent = 'Generate SBOM'
+})
+
+document.getElementById('sbomDownloadBtn').addEventListener('click', () => {
+  const data = window.__sbomData
+  if (!data) return
+  const text = JSON.stringify(data, null, 2)
+  const blob = new Blob([text], {type:'application/json'})
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'sbom.' + (window.__sbomFormat||'spdx') + '.json'
+  a.click()
+  URL.revokeObjectURL(a.href)
+})
+
+function generateSBOMFromLock(lockData, format) {
+  const pkgs = lockData.packages || lockData.resolved_packages || {}
+  const pkgNames = Object.keys(pkgs)
+  const now = new Date().toISOString()
+  const spdxId = 'SPDXRef-DOCUMENT'
+  if (format === 'cyclonedx') {
+    const components = pkgNames.map(name => {
+      const info = pkgs[name] || {}
+      return {
+        type: 'library',
+        name: name,
+        version: info.version || info.resolved_version || info.constraint || '',
+        'bom-ref': 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||''),
+        licenses: [],
+        purl: 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||''),
+      }
+    })
+    return {bomFormat: 'CycloneDX', specVersion: '1.5', version: 1, metadata: {timestamp: now, tools: [{name: 'UDR Desktop', vendor: 'UDR'}]}, components}
+  }
+  const packages = pkgNames.map(name => {
+    const info = pkgs[name] || {}
+    return {
+      SPDXID: 'SPDXRef-' + name.replace(/[^a-zA-Z0-9]/g, '-'),
+      name: name,
+      versionInfo: info.version || info.resolved_version || '',
+      supplier: 'NOASSERTION',
+      downloadLocation: 'NOASSERTION',
+      licenseConcluded: 'NOASSERTION',
+      externalRefs: [{referenceCategory: 'PACKAGE-MANAGER', referenceType: 'purl', referenceLocator: 'pkg:' + (info.ecosystem||'generic') + '/' + name + '@' + (info.version||'')}],
+    }
+  })
+  return {spdxVersion: 'SPDX-2.3', dataLicense: 'CC0-1.0', SPDXID: spdxId, name: 'UDR SBOM', documentNamespace: 'https://spdx.org/spdxdocs/udr-sbom-' + Date.now(), creationInfo: {created: now, creators: ['Tool: UDR Desktop']}, packages}
+}
+
+// ===================== Lock Tab =====================
+document.getElementById('lockLoadBtn').addEventListener('click', () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json,.lock'
+  input.onchange = async e => {
+    const text = await e.target.files[0].text()
+    document.getElementById('lockInput').value = text
+  }
+  input.click()
+})
+
+document.getElementById('lockSignBtn').addEventListener('click', async () => {
+  const text = document.getElementById('lockInput').value.trim()
+  if (!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('lockResult')); return }
+  const sign = document.getElementById('lockSignCheck').checked
+  const provenance = document.getElementById('lockProvenanceCheck').checked
+  const btn = document.getElementById('lockSignBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Signing...'
+  const card = document.getElementById('lockResultCard')
+  const div = document.getElementById('lockResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Signing lock file...</div>'
+  try {
+    const result = await api('POST', '/api/v1/lock/sign', {lock_data: lockData, sign, provenance}, LONG_API_TIMEOUT)
+    div.innerHTML = formatLockSignResult(result)
+    document.getElementById('lockRaw').textContent = JSON.stringify(result, null, 2)
+    if (result.signed_lock) {
+      const blob = new Blob([JSON.stringify(result.signed_lock, null, 2)], {type:'application/json'})
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = 'udr-signed.lock'
+      a.click()
+      URL.revokeObjectURL(a.href)
+      showToast('Signed lock file downloaded', 'success')
+    }
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'Sign & Save'
+})
+
+document.getElementById('lockCICheckBtn').addEventListener('click', async () => {
+  const text = document.getElementById('lockInput').value.trim()
+  if (!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('lockResult')); return }
+  const btn = document.getElementById('lockCICheckBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Checking...'
+  const card = document.getElementById('lockResultCard')
+  const div = document.getElementById('lockResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running CI check...</div>'
+  try {
+    const result = await api('POST', '/api/v1/lock/check', {lock_data: lockData}, LONG_API_TIMEOUT)
+    div.innerHTML = formatCICheckDiff(result)
+    document.getElementById('lockRaw').textContent = JSON.stringify(result, null, 2)
+    showToast('CI check complete', (result.up_to_date !== false) ? 'success' : 'warning')
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'CI Check (diff)'
+})
+
+// ===================== Check Tab =====================
+document.getElementById('checkLoadBtn').addEventListener('click', () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json,.lock'
+  input.onchange = async e => {
+    const text = await e.target.files[0].text()
+    document.getElementById('checkLockInput').value = text
+  }
+  input.click()
+})
+
+document.getElementById('checkPolicyCb').addEventListener('change', e => {
+  document.getElementById('checkPolicyRow').style.display = e.target.checked ? 'flex' : 'none'
+})
+
+document.getElementById('checkRunAllBtn').addEventListener('click', async () => {
+  const text = document.getElementById('checkLockInput').value.trim()
+  if (!text) return
+  let lockData
+  try { lockData = JSON.parse(text) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('checkResult')); return }
+  const checks = []
+  if (document.getElementById('checkCveCb').checked) checks.push('cve')
+  if (document.getElementById('checkDeprecatedCb').checked) checks.push('deprecated')
+  if (document.getElementById('checkLicenseCb').checked) checks.push('license')
+  if (document.getElementById('checkPolicyCb').checked) checks.push('policy')
+  if (!checks.length) { showWarning('Select at least one check type', document.getElementById('checkResult')); return }
+  const btn = document.getElementById('checkRunAllBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Running...'
+  const card = document.getElementById('checkResultCard')
+  const div = document.getElementById('checkResult')
+  card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running checks...</div>'
+  try {
+    const body = {lock_data: lockData, checks}
+    if (checks.includes('policy')) {
+      const policyText = document.getElementById('checkPolicyInput').value.trim()
+      if (policyText) body.policy_yaml = policyText
+    }
+    const result = await api('POST', '/api/v1/check', body, LONG_API_TIMEOUT)
+    div.innerHTML = formatCheckResults(result)
+    document.getElementById('checkRaw').textContent = JSON.stringify(result, null, 2)
+    const totalIssues = result.summary ? (result.summary.total_issues||0) : (result.cve && result.cve.vulnerabilities ? result.cve.vulnerabilities.length : '?')
+    showToast('All checks complete — ' + totalIssues + ' issue(s)', totalIssues > 0 ? 'warning' : 'success')
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'Run All Checks'
+})
+
+// ===================== Verify Tab — Policy Check =====================
+document.getElementById('verifyPolicyBtn').addEventListener('click', async () => {
+  const lockText = document.getElementById('verifyInput').value.trim()
+  const policyText = document.getElementById('verifyPolicyInput').value.trim()
+  if (!policyText) { showWarning('Enter policy YAML', document.getElementById('verifyPolicyResult')); return }
+  if (!lockText) { showWarning('Enter lock file JSON', document.getElementById('verifyPolicyResult')); return }
+  let lockData
+  try { lockData = JSON.parse(lockText) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('verifyPolicyResult')); return }
+  const btn = document.getElementById('verifyPolicyBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Running...'
+  const div = document.getElementById('verifyPolicyResult')
+  div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Checking policy...</div>'
+  try {
+    const result = await api('POST', '/api/v1/verify/policy', {lock_data: lockData, policy_yaml: policyText}, LONG_API_TIMEOUT)
+    div.innerHTML = formatPolicyViolations(result)
+    showToast('Policy check complete', 'info')
+  } catch(e) {
+    // Try generic /api/v1/check as fallback
+    try {
+      const result = await api('POST', '/api/v1/check', {lock_data: lockData, checks: ['policy'], policy_yaml: policyText}, LONG_API_TIMEOUT)
+      const policyResult = result.results ? result.results.policy : result
+      div.innerHTML = formatPolicyViolations(policyResult)
+      showToast('Policy check complete (fallback)', 'info')
+    } catch(e2) {
+      showError(e.message + ' | Fallback: ' + e2.message, div)
+    }
+  }
+  btn.disabled = false; btn.textContent = 'Run Policy'
+})
+
+// ===================== Update Tab — CVE Auto-fix =====================
+document.getElementById('updateFixAllBtn').addEventListener('click', async () => {
+  const lockText = document.getElementById('updateLockInput').value.trim()
+  if (!lockText) return
+  let lockData
+  try { lockData = JSON.parse(lockText) } catch(e) { showError('Invalid JSON: ' + e.message, document.getElementById('updateCveResult')); return }
+  const btn = document.getElementById('updateFixAllBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Fixing CVEs...'
+  const div = document.getElementById('updateCveResult')
+  div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Scanning and fixing CVEs...</div>'
+  try {
+    const result = await api('POST', '/api/v1/update', {lock_data: lockData, fix_cve: true, all_packages: true}, LONG_API_TIMEOUT)
+    div.innerHTML = formatCveFixResult(result)
+    document.getElementById('updateRaw').textContent = JSON.stringify(result, null, 2)
+    document.getElementById('updateResultCard').style.display = 'block'
+    document.getElementById('updateResult').innerHTML = ''
+    showToast('CVE auto-fix complete', 'success')
+  } catch(e) {
+    showError(e.message, div)
+  }
+  btn.disabled = false; btn.textContent = 'Fix All'
+})
 
 init()
