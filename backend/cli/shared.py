@@ -1160,6 +1160,18 @@ def _get_manifest_updater(filename: str):
         return _update_gemspec_dependency
     if filename.endswith(".cabal"):
         return _update_cabal
+    # Check plugin registry for ecosystem-specific updaters
+    try:
+        from backend.core.plugin import get_all_plugins
+
+        for eco, cls in get_all_plugins().items():
+            for mf in cls.manifests:
+                if mf.glob == filename:
+                    update_method = getattr(cls, f"update_{mf.parser}", None)
+                    if update_method is not None:
+                        return update_method
+    except ImportError:
+        pass
     return None
 
 

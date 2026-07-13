@@ -37,3 +37,12 @@ repos:
           - types-requests
         exclude: tests/
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: check-arch-imports
+        name: Check architecture import rules
+        entry: python scripts/check_arch_imports.py
+        language: python
+        pass_filenames: false
+        always_run: true

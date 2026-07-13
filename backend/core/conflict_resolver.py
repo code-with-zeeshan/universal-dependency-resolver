@@ -218,6 +218,13 @@ class ConflictResolver:
                 if scc_result is not None:
                     return scc_result
 
+            # Try per-ecosystem isolation (independent ecosystems resolved separately)
+            eco_result = self._isolate_by_ecosystem(
+                normalized_packages, system_info, prefer_compatibility, solver_timeout
+            )
+            if eco_result is not None:
+                return eco_result
+
             constraints = self._create_constraints(normalized_packages, system_info)
             logger.debug(
                 "Constraints prepared",
@@ -411,6 +418,110 @@ class ConflictResolver:
             logger.warning("Batch SCC resolution failed: %s", exc)
             self._batch_active = False
             return None
+
+    def _isolate_by_ecosystem(
+        self,
+        normalized_packages: list[dict],
+        system_info: dict,
+        prefer_compatibility: bool,
+        solver_timeout: int | None,
+    ) -> dict | None:
+        """Resolve packages by isolating per-ecosystem groups.
+
+        Groups packages by ecosystem, builds an ecosystem-level dependency
+        graph, and resolves each ecosystem with its own solver instance.
+        Cross-ecosystem dependencies are pinned from upstream ecosystems.
+
+        Returns None if only one ecosystem is present or if cross-ecosystem
+        cycles prevent isolation (falls back to combined resolution).
+        """
+        eco_groups: dict[str, list[dict]] = {}
+        for pkg in normalized_packages:
+            eco = pkg.get("ecosystem", "unknown")
+            eco_groups.setdefault(eco, []).append(pkg)
+
+        if len(eco_groups) <= 1:
+            return None
+
+        eco_graph = nx.DiGraph()
+        for eco in eco_groups:
+            eco_graph.add_node(eco)
+        for pkg in normalized_packages:
+            pkg_eco = pkg.get("ecosystem", "unknown")
+            for dep_eco, deps in pkg.get("dependencies", {}).items():
+                if dep_eco != pkg_eco and dep_eco in eco_groups and deps:
+                    eco_graph.add_edge(dep_eco, pkg_eco)
+
+        try:
+            topo_eco_order = list(nx.topological_sort(eco_graph))
+        except nx.NetworkXUnfeasible:
+            logger.info(
+                "Cross-ecosystem cycles detected — cannot isolate per ecosystem",
+                extra={"event": "eco_isolation_cycle_detected"},
+            )
+            return None
+
+        resolved_versions: dict[str, str] = {}
+        all_results: dict[str, dict] = {}
+
+        for eco in topo_eco_order:
+            pkgs = copy.deepcopy(eco_groups[eco])
+            eco_pkg_names = {p["name"] for p in pkgs}
+
+            for pkg in pkgs:
+                for dep_eco, deps in list(pkg.get("dependencies", {}).items()):
+                    if dep_eco == eco:
+                        continue
+                    for dep_name in list(deps.keys()):
+                        if dep_name in resolved_versions and dep_name not in eco_pkg_names:
+                            deps[dep_name] = f"=={resolved_versions[dep_name]}"
+
+            self._batch_active = True
+            self.version_vars.clear()
+            self.version_to_int.clear()
+            self.int_to_version.clear()
+            self._reset_solver_state(solver_timeout, len(pkgs))
+
+            try:
+                constraints = self._create_constraints(pkgs, system_info)
+                solution = self._solve_constraints(constraints, prefer_compatibility)
+
+                if solution["status"] == "satisfiable":
+                    formatted = self._format_solution(solution)
+                    for pname, pinfo in formatted.get("resolved_packages", {}).items():
+                        ver = pinfo.get("version", "")
+                        if ver:
+                            resolved_versions[pname] = ver
+                        all_results[pname] = pinfo
+                else:
+                    logger.info(
+                        "Ecosystem %s unsatisfiable — falling back to combined resolution",
+                        eco,
+                        extra={"event": "eco_isolation_unsat", "ecosystem": eco},
+                    )
+                    self._batch_active = False
+                    return None
+            except Exception as exc:
+                logger.warning(
+                    "Ecosystem %s resolution failed: %s",
+                    eco,
+                    exc,
+                    extra={"event": "eco_isolation_failed", "ecosystem": eco},
+                )
+                self._batch_active = False
+                return None
+
+        self._batch_active = False
+
+        return {
+            "status": "satisfiable",
+            "resolved_packages": all_results,
+            "dependency_tree": {},
+            "warnings": [],
+            "installation_order": list(all_results.keys()),
+            "eco_isolation": True,
+            "eco_count": len(topo_eco_order),
+        }
 
     async def resolve_batch(
         self, package_batches: list[list[dict]], system_info: dict
@@ -794,7 +905,8 @@ class ConflictResolver:
         import z3
 
         threshold = SOLVER_OPTIMIZATION_THRESHOLD
-        if self._use_optimization and package_count <= threshold:
+        self._optimization_active = self._use_optimization and package_count <= threshold
+        if self._optimization_active:
             self._solver = z3.Optimize()
             self._minimization_added = False
             self._version_weights = []
@@ -1514,9 +1626,9 @@ class ConflictResolver:
                         }
                         break
 
-            # Post-process: when optimization is disabled, upgrade each package
-            # to the newest candidate that still satisfies all constraints.
-            if not self._use_optimization:
+            # Post-process: when optimization is not actually active, upgrade
+            # each package to the newest candidate that satisfies all constraints.
+            if not getattr(self, "_optimization_active", self._use_optimization):
                 self._upgrade_to_latest(solution, constraints)
 
             return solution

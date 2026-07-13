@@ -27,26 +27,51 @@ from ..shared import (
 )
 
 
-def _extract_integrity(pkg_detail: dict, version: str, ecosystem: str) -> str | None:
+def _extract_integrity(pkg_detail: dict, version: str, ecosystem: str) -> dict | None:
     """Extract integrity hash from fetched package data by ecosystem."""
     versions = pkg_detail.get("versions") or []
     for v_entry in versions:
         if isinstance(v_entry, dict) and v_entry.get("version") == version:
             dist = v_entry.get("dist", {})
             if isinstance(dist, dict) and dist.get("integrity"):
-                return dist["integrity"]
+                raw = dist["integrity"]
+                if raw.startswith("sha512-"):
+                    return {"algorithm": "sha512", "hash": raw[len("sha512-") :]}
+                if raw.startswith("sha256-"):
+                    return {"algorithm": "sha256", "hash": raw[len("sha256-") :]}
+                if raw.startswith("sha1-"):
+                    return {"algorithm": "sha1", "hash": raw[len("sha1-") :]}
+                return {"algorithm": "unknown", "hash": raw}
             if isinstance(dist, dict) and dist.get("shasum"):
-                return f"sha1:{dist['shasum']}"
+                return {"algorithm": "sha1", "hash": dist["shasum"]}
             return None
     return None
 
 
 def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[str, dict]]:
-    """Parse ecosystem lock files (package-lock.json, yarn.lock) and return lock tree.
+    """Parse ecosystem lock files and return combined lock tree.
 
     Returns {ecosystem: {package_name: {version, dependencies: {dep_name: constraint}}}}
     """
     from backend.manifest_detector import ManifestDetector
+
+    LOCK_TREE_PARSERS: dict[str, tuple[str, ...]] = {
+        "package-lock.json": ("npm",),
+        "Cargo.lock": ("crates",),
+        "composer.lock": ("packagist",),
+        "Gemfile.lock": ("rubygems",),
+        "poetry.lock": ("pypi",),
+        "pnpm-lock.yaml": ("npm",),
+    }
+
+    # Extend with plugin-defined lock files
+    try:
+        from backend.core.plugin import get_all_plugins, get_plugin, list_plugin_lock_files
+
+        for glob, eco, parser_name in list_plugin_lock_files():
+            LOCK_TREE_PARSERS.setdefault(glob, []).append(eco)
+    except ImportError:
+        pass
 
     tree: dict[str, dict[str, dict]] = {}
     for m in manifests:
@@ -55,10 +80,33 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
         mpath = directory / m["path"] if m["path"].startswith(str(directory)) else Path(m["path"])
         if not mpath.is_file():
             continue
-        if fname == "package-lock.json" and eco == "npm":
-            parsed = ManifestDetector.parse_package_lock_tree(str(mpath))
-            if parsed:
-                tree[eco] = parsed
+        if fname not in LOCK_TREE_PARSERS:
+            continue
+        if eco not in LOCK_TREE_PARSERS[fname]:
+            continue
+        # Try ManifestDetector static methods first, then plugin parsers
+        parser_name = f"parse_{fname.replace('.', '_').replace('-', '_')}_tree"
+        parser = getattr(ManifestDetector, parser_name, None)
+        if parser is None:
+            try:
+                plugin_cls = get_plugin(eco)
+                if plugin_cls is not None:
+                    for lf in plugin_cls.lock_files:
+                        if lf.glob == fname:
+                            method = getattr(plugin_cls, lf.parser, None)
+                            if method:
+                                content_fn = lambda p, m=method: m(
+                                    Path(p).read_text(encoding="utf-8")
+                                )
+                                parser = content_fn
+                            break
+            except Exception:
+                pass
+        if parser is None:
+            continue
+        parsed = parser(str(mpath))
+        if parsed:
+            tree[eco] = parsed
     return tree
 
 
@@ -243,7 +291,7 @@ def cmd_lock(args):
                         }
                     else:
                         pkg_extras = pkg.get("extras")
-                        if args.extras and pkg_extras is not None:
+                        if getattr(args, "extras", None) and pkg_extras is not None:
                             combined = list(set(pkg_extras + args.extras))
                         elif args.extras:
                             combined = args.extras
@@ -595,6 +643,8 @@ def cmd_lock(args):
                         console.print(f"[red]Export failed:[/red] {e}")
 
         if getattr(args, "dry_run", False):
+            if getattr(args, "json", False):
+                _output_json(lock_data, args)
             console.print("[yellow]── dry run — no files modified ──[/yellow]")
             return 0
 

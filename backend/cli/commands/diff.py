@@ -22,7 +22,7 @@ def _read_lock(path: str) -> dict:
         console.print(f"[red]Invalid lock file {path}:[/red] {e}")
         sys.exit(1)
     ver = data.get("version", "0.0")
-    if ver not in ("1.0", "2.0"):
+    if ver not in ("1.0", "2.0", "2.1"):
         console.print(f"[red]Unsupported lock file version: {ver} in {path}[/red]")
         sys.exit(1)
     return data

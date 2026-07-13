@@ -295,3 +295,149 @@ class TestFetchDepInfo:
 
         result = await _fetch_dep_info(aggregator, "bad-pkg", "pypi")
         assert result is None
+
+
+class TestBuildDepPkgDevOnlyFiltering:
+    """_build_dep_pkg should exclude dev_only deps from dependencies dict."""
+
+    def test_excludes_dev_only_deps(self):
+        DepObj = type(
+            "DepObj",
+            (),
+            {"name": "dev-lib", "version_spec": "^1.0", "dev_only": True, "ecosystem": None},
+        )
+        Dep = type("Dep", (), {"name": "mypkg", "version_spec": "*", "ecosystem": None})
+        dep_info = {
+            "version": "1.0.0",
+            "versions": {"npm": [{"version": "1.0.0"}]},
+            "dependencies": {
+                "npm": {
+                    "all": [
+                        DepObj(),
+                        type(
+                            "DepObj",
+                            (),
+                            {
+                                "name": "runtime-lib",
+                                "version_spec": "^2.0",
+                                "dev_only": False,
+                                "ecosystem": None,
+                            },
+                        )(),
+                    ]
+                }
+            },
+            "system_requirements": {},
+        }
+        result = _build_dep_pkg(Dep(), "npm", dep_info, "npm", "some-pkg")
+        assert result is not None
+        npm_deps = result["dependencies"].get("npm", {})
+        assert "dev-lib" not in npm_deps, "dev_only dep should be excluded"
+        assert "runtime-lib" in npm_deps, "runtime dep should be included"
+
+    def test_includes_all_when_no_dev(self):
+        DepObj = type(
+            "DepObj",
+            (),
+            {"name": "lib-a", "version_spec": ">=1.0", "dev_only": False, "ecosystem": None},
+        )
+        DepObj2 = type(
+            "DepObj2",
+            (),
+            {"name": "lib-b", "version_spec": ">=2.0", "dev_only": False, "ecosystem": None},
+        )
+        Dep = type("Dep", (), {"name": "mypkg", "version_spec": "*", "ecosystem": None})
+        dep_info = {
+            "version": "1.0.0",
+            "versions": {"pypi": [{"version": "1.0.0"}]},
+            "dependencies": {"pypi": {"all": [DepObj(), DepObj2()]}},
+            "system_requirements": {},
+        }
+        result = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "some-pkg")
+        assert result is not None
+        pypi_deps = result["dependencies"].get("pypi", {})
+        assert len(pypi_deps) == 2
+
+
+class TestAggregatorToResolverInputDevOnlyFiltering:
+    """_aggregator_to_resolver_input should skip dev_only deps."""
+
+    def test_skips_dev_only_deps(self):
+        from backend.orchestrator.resolve import _aggregator_to_resolver_input
+
+        DepObj = type(
+            "DepObj",
+            (),
+            {"name": "dev-dep", "version_spec": ">=1.0", "dev_only": True, "ecosystem": None},
+        )
+        agg_data = {
+            "name": "mypkg",
+            "versions": {"npm": [{"version": "1.0.0"}]},
+            "dependencies": {
+                "npm": {
+                    "all": [
+                        DepObj(),
+                        type(
+                            "DepObj",
+                            (),
+                            {
+                                "name": "run-dep",
+                                "version_spec": ">=2.0",
+                                "dev_only": False,
+                                "ecosystem": None,
+                            },
+                        )(),
+                    ]
+                }
+            },
+        }
+        result = _aggregator_to_resolver_input(agg_data, "npm")
+        deps = result.get("dependencies", {}).get("npm", {})
+        assert "dev-dep" not in deps, "dev_only dep should be excluded"
+        assert "run-dep" in deps, "runtime dep should be included"
+
+    def test_includes_all_when_no_dev_flag(self):
+        from backend.orchestrator.resolve import _aggregator_to_resolver_input
+
+        DepObj = type(
+            "DepObj",
+            (),
+            {"name": "dep-a", "version_spec": ">=1.0", "dev_only": False, "ecosystem": None},
+        )
+        agg_data = {
+            "name": "mypkg",
+            "versions": {"pypi": [{"version": "1.0.0"}]},
+            "dependencies": {"pypi": {"all": [DepObj()]}},
+        }
+        result = _aggregator_to_resolver_input(agg_data, "pypi")
+        deps = result.get("dependencies", {}).get("pypi", {})
+        assert "dep-a" in deps
+
+
+class TestCollectCurrentDepsFormatHandling:
+    """_collect_current_deps should handle both {"all": [...]} and {name: constraint} formats."""
+
+    def test_handles_both_formats_through_build_dep_pkg(self):
+        """Verify _build_dep_pkg output (flat format) is compatible with _collect_current_deps inputs."""
+        DepObj = type(
+            "DepObj",
+            (),
+            {"name": "transitive", "version_spec": ">=1.0", "dev_only": False, "ecosystem": None},
+        )
+        Dep = type("Dep", (), {"name": "rootpkg", "version_spec": "*", "ecosystem": None})
+        dep_info = {
+            "version": "1.0.0",
+            "versions": {"pypi": [{"version": "1.0.0"}]},
+            "dependencies": {"pypi": {"all": [DepObj()]}},
+            "system_requirements": {},
+        }
+        pkg = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "rootpkg")
+        assert pkg is not None
+        # The flat format should be {name: constraint}, not {"all": [...]}
+        deps = pkg["dependencies"]
+        assert "pypi" in deps
+        assert "transitive" in deps["pypi"]
+        assert isinstance(deps["pypi"]["transitive"], str), (
+            "constraint should be a string in flat format"
+        )
+        assert "all" not in deps["pypi"], "flat format should not have 'all' key"

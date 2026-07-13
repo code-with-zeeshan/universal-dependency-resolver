@@ -11,6 +11,7 @@ It supports the same ``resolve_dependencies(system_info)`` interface as
 
 import logging
 import platform
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -105,21 +106,26 @@ class PubGrubSolver:
             versions = pkg.get("available_versions", [])
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
-                dep_info = pkg.get("dependencies", {}).get(eco, {})
-                dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
+                # Collect dependencies from ALL ecosystems (cross-eco support)
                 dep_specs: dict[str, str] = {}
-                for dep in dep_list:
-                    d_name = dep if isinstance(dep, str) else dep.get("name", "")
-                    d_spec = (
-                        "*"
-                        if isinstance(dep, str)
-                        else (dep.get("version_spec") or dep.get("version", "*"))
-                    )
-                    if d_name:
-                        dep_specs[d_name] = _normalize_constraint(d_spec, eco)
-                if name not in deps_map:
-                    deps_map[name] = {}
-                deps_map[name][ver_str] = dep_specs
+                all_deps = pkg.get("dependencies", {})
+                for dep_eco, dep_info in all_deps.items():
+                    dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
+                    for dep in dep_list:
+                        if isinstance(dep, str):
+                            d_name = dep
+                            d_spec = "*"
+                        elif isinstance(dep, dict):
+                            d_name = dep.get("name", "")
+                            d_spec = dep.get("version_spec") or dep.get("version", "*")
+                        else:
+                            d_name = getattr(dep, "name", "")
+                            d_spec = getattr(dep, "version_spec", "*") or getattr(
+                                dep, "version", "*"
+                            )
+                        if d_name:
+                            dep_specs[d_name] = _normalize_constraint(d_spec, eco)
+                deps_map.setdefault(name, {})[ver_str] = dep_specs
 
             for ver_str, deps in deps_map.get(name, {}).items():
                 resolver.add_package(name, ver_str, deps)
@@ -156,18 +162,25 @@ class PubGrubSolver:
 
             versions = pkg.get("available_versions", [])
             for ver_str in versions:
-                dep_info = pkg.get("dependencies", {}).get(eco, {})
-                dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
+                # Collect dependencies from ALL ecosystems (cross-eco support)
                 dep_specs: dict[str, str] = {}
-                for dep in dep_list:
-                    d_name = dep if isinstance(dep, str) else dep.get("name", "")
-                    d_spec = (
-                        "*"
-                        if isinstance(dep, str)
-                        else (dep.get("version_spec") or dep.get("version", "*"))
-                    )
-                    if d_name:
-                        dep_specs[d_name] = _normalize_constraint(d_spec, eco)
+                all_deps = pkg.get("dependencies", {})
+                for dep_eco, dep_info in all_deps.items():
+                    dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
+                    for dep in dep_list:
+                        if isinstance(dep, str):
+                            d_name = dep
+                            d_spec = "*"
+                        elif isinstance(dep, dict):
+                            d_name = dep.get("name", "")
+                            d_spec = dep.get("version_spec") or dep.get("version", "*")
+                        else:
+                            d_name = getattr(dep, "name", "")
+                            d_spec = getattr(dep, "version_spec", "*") or getattr(
+                                dep, "version", "*"
+                            )
+                        if d_name:
+                            dep_specs[d_name] = _normalize_constraint(d_spec, eco)
                 solver.add_package(name, ver_str, dep_specs)
 
         try:
@@ -187,8 +200,15 @@ class PubGrubSolver:
         return {"status": "satisfiable", "resolved_packages": resolved_packages}
 
 
+def _to_semver(v: str) -> str:
+    """Ensure a version string has 3 semver parts (e.g. ``"4.18"`` → ``"4.18.0"``)."""
+    parts = v.strip().split(".")
+    while len(parts) < 3:
+        parts.append("0")
+    return ".".join(parts[:3])
+
+
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:
-    """Normalize a version constraint to PEP 440 / PubGrub-compatible form."""
     """Normalize a version constraint to PEP 440 / PubGrub-compatible form."""
     c = constraint.strip()
     if not c:
@@ -196,14 +216,27 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
     if c == "*":
         return ">=0.0.0"
     if c.startswith("^"):
-        parts = c.lstrip("^").split(".", 2)
-        major = int(parts[0]) if parts else 0
-        if len(parts) >= 2:
-            return f">={major}.{parts[1]},<{major + 1}.0.0"
-        return f">={major}.0.0,<{major + 1}.0.0"
+        inner = c.removeprefix("^=").removeprefix("^")
+        if not re.fullmatch(r"\d+(\.\d+)*", inner):
+            return c  # not a valid semver, pass through raw
+        parts = inner.split(".", 2)
+        major = int(parts[0])
+        if len(parts) >= 2 and parts[1] and parts[1][0].isdigit():
+            low = _to_semver(f"{major}.{parts[1]}")
+            return f">={low},<{major + 1}.0.0"
+        return f">={_to_semver(str(major))},<{major + 1}.0.0"
     if c.startswith("~"):
-        parts = c.lstrip("~").split(".", 2)
+        inner = c.removeprefix("~=").removeprefix("~")
+        if not re.fullmatch(r"\d+(\.\d+)*", inner):
+            return c  # not a valid semver, pass through raw
+        parts = inner.split(".", 2)
         if len(parts) >= 2:
-            return f">={parts[0]}.{parts[1]},<{parts[0]}.{int(parts[1]) + 1}.0"
-        return f">={parts[0]}.0,<{int(parts[0]) + 1}.0.0"
+            low = _to_semver(f"{parts[0]}.{parts[1]}")
+            minor = int(parts[1])
+            return f">={low},<{parts[0]}.{minor + 1}.0"
+        return f">={_to_semver(parts[0])},<{int(parts[0]) + 1}.0.0"
+    # Pad bare version strings to 3 parts for pubgrub-py compatibility
+    # Only apply when the string looks like a clean version (digits and dots only)
+    if c[0].isdigit() and c.count(".") < 2 and all(ch.isdigit() or ch == "." for ch in c):
+        return f"=={_to_semver(c)}"
     return c

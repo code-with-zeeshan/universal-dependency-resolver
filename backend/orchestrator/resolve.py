@@ -21,10 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
-    """Create a solver instance based on USE_PUBGRUB_SOLVER / USE_HYBRID_SOLVER settings.
+    """Create a solver instance.
 
-    Priority: USE_HYBRID_SOLVER > USE_PUBGRUB_SOLVER > ConflictResolver (Z3 default).
+    Default order (can be overridden via env vars):
+      1. USE_HYBRID_SOLVER=true  → HybridSolver (PubGrub per-eco + Z3 cross-eco)
+      2. Default                 → PubGrubSolver (when pubgrub-py installed)
+      3. Fallback                → ConflictResolver (Z3)
+
+    Set USE_Z3_SOLVER=true to skip PubGrub and use Z3 directly.
     """
+    from backend.settings import USE_Z3_SOLVER
+
     if USE_HYBRID_SOLVER:
         try:
             from backend.core.hybrid_solver import HybridSolver
@@ -37,26 +44,33 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
         except ImportError:
             logger.warning(
                 "USE_HYBRID_SOLVER is true but hybrid_solver module not available; "
-                "falling back to Z3 ConflictResolver"
+                "falling back to PubGrub/Z3"
             )
+
+    if USE_Z3_SOLVER:
+        from backend.core.conflict_resolver import ConflictResolver
+
+        logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
+        return ConflictResolver(
+            use_optimization=use_optimization,
+        )
 
     if USE_PUBGRUB_SOLVER:
-        try:
-            # Check that pubgrub-py is actually importable (not just the wrapper class)
-            from pubgrub_py import Resolver as _PubGrubResolver  # noqa: F401
+        logger.info("USE_PUBGRUB_SOLVER=true is set — PubGrub is the default regardless")
+        # Intentional fallthrough
 
-            from backend.core.pubgrub_solver import PubGrubSolver
+    # Default: PubGrubSolver (handles Rust-backed vs pure-Python internally)
+    try:
+        from backend.core.pubgrub_solver import PubGrubSolver
 
-            logger.info("Using PubGrub solver")
-            return PubGrubSolver(
-                use_optimization=use_optimization,
-                solver_timeout=solver_timeout,
-            )
-        except ImportError:
-            logger.warning(
-                "USE_PUBGRUB_SOLVER is true but pubgrub-py is not installed; "
-                "falling back to Z3 ConflictResolver"
-            )
+        logger.info("Using PubGrub solver (default)")
+        return PubGrubSolver(
+            use_optimization=use_optimization,
+            solver_timeout=solver_timeout,
+        )
+    except ImportError:
+        logger.info("PubGrubSolver not available; falling back to Z3")
+
     from backend.core.conflict_resolver import ConflictResolver
 
     return ConflictResolver(
@@ -146,6 +160,8 @@ def _aggregator_to_resolver_input(
     eco_deps = agg_data.get("dependencies", {})
     eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
     for dep in eco_deps.get("all", []):
+        if getattr(dep, "dev_only", False):
+            continue
         deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
     if extras:
         extra_map = eco_deps.get("extras", {})
@@ -221,7 +237,9 @@ def _build_dep_pkg(
     dep_deps_all = dep_info.get("dependencies", {})
     for d_eco, d_data in dep_deps_all.items():
         dep_pkg["dependencies"][d_eco] = {
-            d.name: normalize_constraint(d.version_spec, d_eco) for d in d_data.get("all", [])
+            d.name: normalize_constraint(d.version_spec, d_eco)
+            for d in d_data.get("all", [])
+            if not getattr(d, "dev_only", False)
         }
     dep_reqs_all = dep_info.get("system_requirements", {})
     for req_list in dep_reqs_all.values():
@@ -426,7 +444,16 @@ async def _resolve_transitive(
         if not deps_by_eco and isinstance(pkg, dict) and "dependencies" not in pkg:
             return
         for dep_eco, dep_data in deps_by_eco.items():
-            for dep in dep_data.get("all", []):
+            if isinstance(dep_data, dict) and "all" in dep_data:
+                deps_iter: list = dep_data["all"]
+            elif isinstance(dep_data, dict):
+                deps_iter = [
+                    type("_Dep", (), {"name": k, "version_spec": v, "ecosystem": dep_eco})()
+                    for k, v in dep_data.items()
+                ]
+            else:
+                continue
+            for dep in deps_iter:
                 dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg_eco)
                 key = (dep.name, dep_ecosystem_val)
                 if key in visited or key in all_packages or key in pre_resolved:
@@ -502,6 +529,8 @@ async def _resolve_transitive(
             all_deps = info.get("dependencies", {})
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
+                    if getattr(dep, "dev_only", False):
+                        continue
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, eco)
                     dep_key = (dep.name, dep_ecosystem_val)
                     if dep_ecosystem_val != eco:

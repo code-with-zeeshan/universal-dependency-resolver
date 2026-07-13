@@ -25,6 +25,10 @@ def cmd_resolve(args):
     from backend.core import DataAggregator, SystemScanner
     from backend.orchestrator.resolve import create_solver
 
+    # Support --json shorthand (overrides --format)
+    if getattr(args, "json", False):
+        args.format = "json"
+
     async def _resolve():
         """Resolve."""
         aggregator = DataAggregator()
@@ -144,39 +148,42 @@ def cmd_resolve(args):
         if args.format == "json":
             json.dump(resolved, sys.stdout, indent=2, default=str)
             print()
-        else:
+            await aggregator.close()
             if not resolved_pkgs:
-                console.print("[yellow]No packages resolved.[/yellow]")
-            else:
-                table = _build_resolved_table(resolved)
-                if table:
-                    console.print(table)
+                return 1
+            return 0
+        if not resolved_pkgs:
+            console.print("[yellow]No packages resolved.[/yellow]")
+        else:
+            table = _build_resolved_table(resolved)
+            if table:
+                console.print(table)
 
-            vulns_found = []
-            for pkg_name, detail in package_details.items():
-                for v in detail.get("security", {}).get("vulnerabilities", []):
-                    if v.get("id"):
-                        vulns_found.append((pkg_name, v))
-            if vulns_found:
-                critical_high = [
-                    v for v in vulns_found if _extract_severity(v[1]) in ("CRITICAL", "HIGH")
-                ]
-                others = len(vulns_found) - len(critical_high)
+        vulns_found = []
+        for pkg_name, detail in package_details.items():
+            for v in detail.get("security", {}).get("vulnerabilities", []):
+                if v.get("id"):
+                    vulns_found.append((pkg_name, v))
+        if vulns_found:
+            critical_high = [
+                v for v in vulns_found if _extract_severity(v[1]) in ("CRITICAL", "HIGH")
+            ]
+            others = len(vulns_found) - len(critical_high)
+            console.print(
+                f"\n[red]⚠ {len(vulns_found)} known vulnerabilities"
+                f" ({len(critical_high)} CRITICAL/HIGH, {others} LOW/MEDIUM/UNKNOWN)[/red]"
+            )
+            for pname, v in critical_high[:10]:
+                sev = _extract_severity(v)
                 console.print(
-                    f"\n[red]⚠ {len(vulns_found)} known vulnerabilities"
-                    f" ({len(critical_high)} CRITICAL/HIGH, {others} LOW/MEDIUM/UNKNOWN)[/red]"
+                    f"  {pname}: {v.get('id', '?')} ([red]{sev}[/red]) — {v.get('summary', '')[:80]}"
                 )
-                for pname, v in critical_high[:10]:
-                    sev = _extract_severity(v)
-                    console.print(
-                        f"  {pname}: {v.get('id', '?')} ([red]{sev}[/red]) — {v.get('summary', '')[:80]}"
-                    )
-                if len(critical_high) > 10:
-                    console.print(f"  ... and {len(critical_high) - 10} more critical/high")
+            if len(critical_high) > 10:
+                console.print(f"  ... and {len(critical_high) - 10} more critical/high")
 
-            warnings = resolved.get("warnings", [])
-            for w in warnings:
-                console.print(f"  [yellow]⚠[/yellow] {w}")
+        warnings = resolved.get("warnings", [])
+        for w in warnings:
+            console.print(f"  [yellow]⚠[/yellow] {w}")
 
         await aggregator.close()
         if not resolved_pkgs:

@@ -26,16 +26,19 @@ class TestNormalizeConstraint:
         assert _normalize_constraint("==1.2.3", "pypi") == "==1.2.3"
 
     def test_caret_with_major_minor(self):
-        assert _normalize_constraint("^4.18", "npm") == ">=4.18,<5.0.0"
+        # pubgrub-py requires 3-part semver
+        assert _normalize_constraint("^4.18", "npm") == ">=4.18.0,<5.0.0"
 
     def test_caret_major_only(self):
         assert _normalize_constraint("^1", "npm") == ">=1.0.0,<2.0.0"
 
     def test_tilde_with_major_minor(self):
-        assert _normalize_constraint("~1.2", "npm") == ">=1.2,<1.3.0"
+        # pubgrub-py requires 3-part semver
+        assert _normalize_constraint("~1.2", "npm") == ">=1.2.0,<1.3.0"
 
     def test_tilde_major_only(self):
-        assert _normalize_constraint("~1", "npm") == ">=1.0,<2.0.0"
+        # pubgrub-py requires 3-part semver
+        assert _normalize_constraint("~1", "npm") == ">=1.0.0,<2.0.0"
 
     def test_npm_prefixed_passthrough(self):
         assert _normalize_constraint(">=1.0.0", "npm") == ">=1.0.0"

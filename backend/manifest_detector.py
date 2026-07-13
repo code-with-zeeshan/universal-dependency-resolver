@@ -52,6 +52,7 @@ EXCLUDED_DIRS = {
 
 
 # Map filename patterns → (ecosystem, parser_func)
+# Start with built-in manifests, then extend with plugin manifests
 MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("requirements.txt", "pypi", "requirements"),
     ("requirements.in", "pypi", "requirements"),
@@ -99,6 +100,14 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("Package.resolved", "swift", "package_resolved"),
     ("udr.lock", "pypi", "udr_lock"),
 ]
+
+# Extend with plugin-defined manifest patterns
+try:
+    from backend.core.plugin import list_plugin_manifests
+
+    MANIFEST_PATTERNS.extend(list_plugin_manifests())
+except ImportError:
+    pass
 
 
 class ManifestDetector:
@@ -244,6 +253,26 @@ class ManifestDetector:
             logger.warning("Failed to parse %s using %s", path, parser_key, exc_info=True)
             return []
 
+    def _get_plugin_parser(self, key: str):
+        """Look up a parser method from registered plugins.
+
+        Returns a callable ``(content: str) -> list[dict]`` or ``None``.
+        """
+        from backend.core.plugin import get_all_plugins
+
+        for eco, cls in get_all_plugins().items():
+            for mf in cls.manifests:
+                if mf.parser == key:
+                    method = getattr(cls, mf.parser, None)
+                    if method is not None:
+                        return method
+            for lf in cls.lock_files:
+                if lf.parser == key:
+                    method = getattr(cls, lf.parser, None)
+                    if method is not None:
+                        return method
+        return None
+
     def parse_all(self, manifests: list[dict]) -> list[dict]:
         """Parse all manifests and return a unified package list with ecosystem info."""
         # Pre-load workspace config for workspace:* / catalog: resolution
@@ -287,26 +316,13 @@ class ManifestDetector:
                 name = raw_name
             constraint = pkg.get("version", "*") or "*"
 
-            # Resolve workspace:* to exact version from workspace package.json
-            if constraint == "workspace:*" and getattr(self, "_workspace_found", False):
-                resolved_ver = self._workspace_versions.get(name)
-                if resolved_ver:
-                    pkg["_workspace_resolved"] = True
-                    constraint = f"=={resolved_ver}"
-                else:
-                    # Unresolvable workspace ref — fall back to ==0.0.0
-                    pkg["_workspace_resolved"] = True
-                    constraint = "==0.0.0"
-
             # Resolve catalog: or catalog:<name> from pnpm-workspace.yaml catalog
             if constraint.startswith("catalog:") and getattr(self, "_workspace_found", False):
                 catalog_name = constraint[len("catalog:") :].strip()
                 if catalog_name and catalog_name in self._catalog_versions:
-                    # Named catalog: look up the package name within the named catalog dict
                     named = self._catalog_versions.get(catalog_name, {})
                     catalog_ver = named.get(name) if isinstance(named, dict) else None
                 else:
-                    # Default catalog: use the package name directly
                     default = self._catalog_versions.get("_default", {})
                     catalog_ver = (
                         default.get(catalog_name or name) if isinstance(default, dict) else None
@@ -314,6 +330,17 @@ class ManifestDetector:
                 if catalog_ver:
                     pkg["_workspace_resolved"] = False
                     constraint = catalog_ver
+
+            # Resolve workspace: protocols (workspace:*, workspace:^, workspace:~, etc.)
+            # to exact version from workspace package.json
+            if constraint.startswith("workspace:") and getattr(self, "_workspace_found", False):
+                resolved_ver = self._workspace_versions.get(name)
+                if resolved_ver:
+                    pkg["_workspace_resolved"] = True
+                    constraint = f"=={resolved_ver}"
+                else:
+                    pkg["_workspace_resolved"] = True
+                    constraint = "==0.0.0"
 
             entry = {
                 "name": name,
@@ -366,7 +393,12 @@ class ManifestDetector:
             "package_resolved": self._parse_package_resolved,
             "udr_lock": self._parse_udr_lock,
         }
-        return parsers[key]
+        parser = parsers.get(key)
+        if parser is None:
+            parser = self._get_plugin_parser(key)
+        if parser is None:
+            raise KeyError(f"No parser found for {key!r}")
+        return parser
 
     def _parse_requirements(self, content: str) -> list[dict]:
         """Parse requirements."""
@@ -770,6 +802,149 @@ class ManifestDetector:
                 "version": info.get("version", "0.0.0"),
                 "dependencies": deps,
             }
+        return tree if tree else None
+
+    @staticmethod
+    def parse_cargo_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse Cargo.lock and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            import tomllib
+
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = tomllib.loads(content)
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        for pkg in data.get("package", []):
+            name = pkg.get("name", "")
+            version = pkg.get("version", "0.0.0")
+            deps: dict[str, str] = {}
+            for dep in pkg.get("dependencies", []):
+                dep_name = dep.split(" ")[0]
+                deps[dep_name] = "*"
+            tree[name] = {"version": version, "dependencies": deps}
+        return tree if tree else None
+
+    @staticmethod
+    def parse_composer_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse composer.lock and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = loads(content)
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        for section in ("packages", "packages-dev"):
+            for entry in data.get(section, []):
+                name = entry.get("name", "")
+                version = entry.get("version", "0.0.0")
+                deps: dict[str, str] = {}
+                for dep_name, dep_ver in entry.get("require", {}).items():
+                    deps[dep_name] = dep_ver
+                tree[name] = {"version": version, "dependencies": deps}
+        return tree if tree else None
+
+    @staticmethod
+    def parse_poetry_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse poetry.lock and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            import tomllib
+
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = tomllib.loads(content)
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        for entry in data.get("package", []):
+            name = entry.get("name", "")
+            version = entry.get("version", "0.0.0")
+            deps: dict[str, str] = {}
+            deps_raw = entry.get("dependencies", {})
+            if isinstance(deps_raw, dict):
+                for dep_name, dep_spec in deps_raw.items():
+                    if isinstance(dep_spec, str):
+                        deps[dep_name] = dep_spec
+                    elif isinstance(dep_spec, dict):
+                        deps[dep_name] = dep_spec.get("version", "*")
+                    else:
+                        deps[dep_name] = "*"
+            tree[name] = {"version": version, "dependencies": deps}
+        return tree if tree else None
+
+    @staticmethod
+    def parse_gemfile_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse Gemfile.lock and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            content = Path(lock_path).read_text(encoding="utf-8")
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        in_specs = False
+        current_gem: str | None = None
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped == "specs:":
+                in_specs = True
+                continue
+            if not in_specs:
+                continue
+            if stripped == "":
+                continue
+            indent = len(line) - len(line.lstrip())
+            if indent == 0:
+                break
+            if indent == 4:
+                m = re.match(r"(\S+)\s+\(([^)]+)\)", stripped)
+                if m:
+                    current_gem = m.group(1)
+                    tree[current_gem] = {"version": m.group(2), "dependencies": {}}
+            elif indent >= 6 and current_gem:
+                dep_m = re.match(r"(\S+)\s*(?:\((.+)\))?", stripped)
+                if dep_m:
+                    dep_name = dep_m.group(1)
+                    dep_ver = dep_m.group(2) or ">= 0"
+                    tree[current_gem]["dependencies"][dep_name] = dep_ver
+        return tree if tree else None
+
+    @staticmethod
+    def parse_pnpm_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse pnpm-lock.yaml and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            import yaml
+
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = yaml.safe_load(content)
+        except Exception:
+            return None
+        tree: dict[str, dict] = {}
+        for key, info in data.get("packages", {}).items():
+            if key == ".":
+                continue
+            entry = key[1:] if key.startswith("/") else key
+            at_pos = entry.rfind("@")
+            if at_pos <= 0:
+                continue
+            name = entry[:at_pos]
+            version = entry[at_pos + 1 :]
+            deps: dict[str, str] = {}
+            for dep_name, dep_ver in info.get("dependencies", {}).items():
+                deps[dep_name] = dep_ver
+            tree[name] = {"version": version, "dependencies": deps}
         return tree if tree else None
 
     def _parse_yarn_lock(self, content: str) -> list[dict]:

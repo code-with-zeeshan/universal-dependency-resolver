@@ -127,6 +127,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--format", "-f", default="text", choices=["text", "json"], help="Output format"
     )
     resolve_p.add_argument(
+        "--json", action="store_true", help="Output as JSON (shorthand for --format json)"
+    )
+    resolve_p.add_argument(
         "--interactive",
         "-i",
         action="store_true",

@@ -267,14 +267,37 @@ async def _check_license(args):
         return True
 
     package_licenses: dict[str, str | list[str]] = {}
+    missing_licenses: list[tuple[str, str]] = []
     for pname, pinfo in packages.items():
         raw_license = pinfo.get("license")
         if raw_license:
             package_licenses[pname] = raw_license
+        else:
+            eco = pinfo.get("ecosystem", "pypi")
+            missing_licenses.append((pname, eco))
+
+    if missing_licenses:
+        from backend.core import DataAggregator
+
+        aggregator = DataAggregator()
+        for pname, eco in missing_licenses:
+            try:
+                data = await aggregator.get_package_info(
+                    pname, ecosystem=eco, include_dependencies=False, include_versions=False
+                )
+                if data:
+                    lic = data.get("license") or data.get("info", {}).get("license", "")
+                    if lic:
+                        package_licenses[pname] = lic
+            except Exception:
+                pass
+        await aggregator.close()
 
     if not package_licenses:
-        console.print("[yellow]No license information found in lock file.[/yellow]")
-        console.print("Run [bold]udr lock[/bold] to obtain license data from registries.")
+        console.print("[yellow]No license information found in lock file or registries.[/yellow]")
+        console.print(
+            "Some registries (e.g., PyPI) include license data; others may require manual entry."
+        )
         return True
 
     results = check_license_compatibility(package_licenses)

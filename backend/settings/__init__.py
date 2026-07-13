@@ -240,6 +240,7 @@ FEATURES = {
 
 USE_PUBGRUB_SOLVER = os.getenv("USE_PUBGRUB_SOLVER", "false").lower() == "true"
 USE_HYBRID_SOLVER = os.getenv("USE_HYBRID_SOLVER", "false").lower() == "true"
+USE_Z3_SOLVER = os.getenv("USE_Z3_SOLVER", "false").lower() == "true"
 SOLVER_REJECT_DEPRECATED = os.getenv("SOLVER_REJECT_DEPRECATED", "false").lower() == "true"
 TARGET_OS = os.getenv("TARGET_OS", "")
 TARGET_ARCH = os.getenv("TARGET_ARCH", "")

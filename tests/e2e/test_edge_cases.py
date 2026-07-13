@@ -327,12 +327,12 @@ class TestJSONOutput:
             assert "packages" in data, "missing packages"
             assert len(data["packages"]) >= 3, f"Expected >=3 packages, got {len(data['packages'])}"
 
-    def test_17_info_json(self):
-        """Info --json produces valid JSON with system info."""
-        result = _run("info", "--json", timeout=60)
-        assert result.returncode == 0, f"info json failed: {result.stderr}"
+    def test_17_check_json(self):
+        """Check --json produces valid JSON with system info."""
+        result = _run("check", "--json", timeout=60)
+        assert result.returncode == 0, f"check json failed: {result.stderr}"
         data = json.loads(result.stdout)
-        assert len(data) > 0, "info json is empty"
+        assert len(data) > 0, "check json is empty"
 
     def test_18_resolve_cross_ecosystem_json(self):
         """Cross-ecosystem resolve with JSON output."""
@@ -526,12 +526,12 @@ class TestOffline:
         # Should exit gracefully — either 0 (with cached data) or error message
         assert "Traceback" not in result.stderr, f"traceback: {result.stderr[:200]}"
 
-    def test_34_offline_info(self):
-        """--offline info provides info without network."""
-        result = _run("--offline", "info", "--json", timeout=30)
-        assert result.returncode == 0, f"offline info failed: {result.stderr[:200]}"
+    def test_34_offline_check(self):
+        """--offline check provides system info without network."""
+        result = _run("--offline", "check", "--json", timeout=30)
+        assert result.returncode == 0, f"offline check failed: {result.stderr[:200]}"
         data = json.loads(result.stdout)
-        assert len(data) > 0, "offline info empty"
+        assert len(data) > 0, "offline check empty"
 
 
 # ═══════════════════════════════════════════════════════════════════════

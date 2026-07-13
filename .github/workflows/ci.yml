@@ -51,6 +51,10 @@ jobs:
         run: |
           mypy backend --ignore-missing-imports
 
+      - name: Check architecture import rules
+        run: |
+          python scripts/check_arch_imports.py
+
       - name: Run unit tests
         env:
           TESTING: "true"
@@ -70,7 +74,7 @@ jobs:
           fi
           python -m pytest tests/unit/ -v --tb=long -k "not data_source" \
             $TARGETS \
-            --cov-report=term-missing --cov-report=xml --cov-fail-under=46
+            --cov-report=term-missing --cov-report=xml --cov-fail-under=55
 
       - name: CLI end-to-end smoke tests
         env:

@@ -1636,17 +1636,18 @@ class TestNPMClient:
     async def test_get_artifact_hash_returns_integrity(self, client):
         """get_artifact_hash extracts sha512 from dist.integrity."""
         sample = {
-            "dist-tags": {"latest": "4.18.2"},
-            "versions": {"4.18.2": {"dist": {"integrity": "sha512-abc123def456=="}}},
+            "name": "express",
+            "version": "4.18.2",
+            "dist": {"integrity": "sha512-abc123def456=="},
         }
-        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=sample):
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample):
             result = await client.get_artifact_hash("express", "4.18.2")
-        assert result == {"algorithm": "sha512", "value": "abc123def456=="}
+        assert result == {"algorithm": "sha512", "hash": "abc123def456=="}
 
     @pytest.mark.asyncio
     async def test_get_artifact_hash_none_when_no_dist(self, client):
         """get_artifact_hash returns None when no dist key."""
-        sample = {"dist-tags": {"latest": "4.18.2"}, "versions": {"4.18.2": {}}}
-        with patch.object(client, "cached_get", new_callable=AsyncMock, return_value=sample):
+        sample = {"name": "express", "version": "4.18.2"}
+        with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=sample):
             result = await client.get_artifact_hash("express", "4.18.2")
         assert result is None

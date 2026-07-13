@@ -1,6 +1,6 @@
 """Integration tests for the FastAPI application with real database and services."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -173,7 +173,7 @@ class TestDependencyResolution:
     """Test the dependency resolution flow end-to-end."""
 
     @pytest.fixture(autouse=True)
-    def _mock_data_sources(self):
+    def _mock_data_sources(self, test_client):
         from unittest.mock import patch as _patch
 
         agg_patcher = _patch("backend.api.dependencies.get_data_aggregator")
@@ -190,9 +190,8 @@ class TestDependencyResolution:
         aggregator.sources = {}
         mock_get_agg.return_value = aggregator
 
-        res_patcher = _patch("backend.core.conflict_resolver.ConflictResolver.resolve_dependencies")
-        mock_resolve = res_patcher.start()
-        mock_resolve.return_value = {
+        mock_resolver = MagicMock()
+        mock_resolver.resolve_dependencies.return_value = {
             "status": "success",
             "resolved_packages": {
                 "flask": {
@@ -203,11 +202,26 @@ class TestDependencyResolution:
             },
             "warnings": [],
         }
+        mock_resolver._get_default_system_info.return_value = {
+            "os": {"system": "Linux", "release": "6.12"},
+            "cpu": "x86_64",
+            "python": "3.13",
+            "gpu": None,
+            "cuda": None,
+        }
+
+        # Use FastAPI dependency_overrides instead of monkey-patching module references
+        from backend.api.dependencies import get_conflict_resolver
+        from backend.api.main import app
+
+        app.dependency_overrides[get_conflict_resolver] = lambda: mock_resolver
+
+        self._mock_resolver = mock_resolver
 
         yield
 
         agg_patcher.stop()
-        res_patcher.stop()
+        app.dependency_overrides.pop(get_conflict_resolver, None)
 
     def test_resolve_with_packages(self, api_client, app_url, db_session):
         response = api_client.post(

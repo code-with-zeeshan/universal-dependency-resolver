@@ -136,8 +136,35 @@ _register_client(Ecosystem.CUSTOM_DB, "backend.database.compatibility_db", "Comp
 _register_client(Ecosystem.PUB, "backend.data_sources.pub_client", "PubClient")
 _register_client(Ecosystem.GRADLE, "backend.data_sources.gradle_client", "GradleClient")
 _register_client(Ecosystem.SWIFT, "backend.data_sources.swift_client", "SwiftClient")
-_register_client(Ecosystem.HEX, "backend.data_sources.hex_client", "HexClient")
 _register_client(Ecosystem.HASKELL, "backend.data_sources.haskell_client", "HaskellClient")
+
+# Plugin-based clients (registered via @register_ecosystem)
+from backend.core.plugin import (
+    _register_builtin,
+    get_plugin,
+    import_builtin_plugins,
+)
+
+_register_builtin("npm", "backend.data_sources.npm_plugin")
+_register_builtin("pypi", "backend.data_sources.pypi_plugin")
+_register_builtin("crates", "backend.data_sources.crates_plugin")
+_register_builtin("hex", "backend.data_sources.hex_plugin")
+_register_builtin("haskell", "backend.data_sources.haskell_plugin")
+_register_builtin("pub", "backend.data_sources.pub_plugin")
+_register_builtin("gradle", "backend.data_sources.gradle_plugin")
+_register_builtin("swift", "backend.data_sources.swift_plugin")
+_register_builtin("maven", "backend.data_sources.maven_plugin")
+_register_builtin("conda", "backend.data_sources.conda_plugin")
+_register_builtin("gomodules", "backend.data_sources.gomodules_plugin")
+_register_builtin("apt", "backend.data_sources.apt_plugin")
+_register_builtin("apk", "backend.data_sources.apk_plugin")
+_register_builtin("cocoapods", "backend.data_sources.cocoapods_plugin")
+_register_builtin("homebrew", "backend.data_sources.homebrew_plugin")
+_register_builtin("nuget", "backend.data_sources.nuget_plugin")
+_register_builtin("packagist", "backend.data_sources.packagist_plugin")
+_register_builtin("rubygems", "backend.data_sources.rubygems_plugin")
+_register_builtin("custom_db", "backend.data_sources.custom_db_plugin")
+import_builtin_plugins()
 
 
 class DataAggregator:
@@ -157,13 +184,22 @@ class DataAggregator:
         return {eco.value: client for eco, client in self._sources.items()}
 
     def _get_client(self, ecosystem: Ecosystem) -> Any:
-        """Lazily create and cache a data source client."""
+        """Lazily create and cache a data source client.
+
+        Priority:
+          1. Plugin registry (``@register_ecosystem``)
+          2. Legacy ``_CLIENT_BUILDERS`` dict
+        """
         client = self._sources.get(ecosystem)
         if client is None:
-            builder = _CLIENT_BUILDERS.get(ecosystem)
-            if builder is None:
-                raise ValueError(f"Unknown ecosystem: {ecosystem}")
-            client = builder()
+            plugin_cls = get_plugin(ecosystem.value)
+            if plugin_cls is not None:
+                client = plugin_cls()
+            else:
+                builder = _CLIENT_BUILDERS.get(ecosystem)
+                if builder is None:
+                    raise ValueError(f"Unknown ecosystem: {ecosystem}")
+                client = builder()
             self._sources[ecosystem] = client
         return client
 

@@ -58,16 +58,18 @@ async def _cmd_verify_async(args):
                 }
             if _pin_integrity and info.get("integrity"):
                 stored = info["integrity"]
+                if isinstance(stored, str):
+                    stored = {"algorithm": "unknown", "hash": stored}
                 actual = await aggregator.get_artifact_hash(name, eco, ver)
                 if actual and (
-                    stored.get("value") != actual.get("value")
+                    stored.get("hash") != actual.get("hash")
                     or stored.get("algorithm") != actual.get("algorithm")
                 ):
                     return {
                         "name": name,
                         "issue": (
-                            f"Integrity mismatch: stored={stored.get('value', '?')[:12]}..., "
-                            f"actual={actual.get('value', '?')[:12]}..."
+                            f"Integrity mismatch: stored={stored.get('hash', '?')[:12]}..., "
+                            f"actual={actual.get('hash', '?')[:12]}..."
                         ),
                         "severity": "error",
                     }

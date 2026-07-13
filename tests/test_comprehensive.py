@@ -462,7 +462,7 @@ class TestCUDAConflicts:
         result = await _run_resolution(aggregator, resolver, system_info, specs)
         assert _resolution_ok(result), f"Resolution failed: {result}"
 
-        from backend.cli.shared import _apply_cuda_variants
+        from backend.orchestrator.resolve import _apply_cuda_variants
 
         enriched = _apply_cuda_variants(result, {}, system_info)
         pkgs = _get_resolved(enriched)

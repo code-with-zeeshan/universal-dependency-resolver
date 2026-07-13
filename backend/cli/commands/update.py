@@ -82,7 +82,9 @@ def cmd_update(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["type"] = "cuda"
 
-        specs = [(package_name, ecosystem, None)]
+        existing_constraint = pkg_info.get("original_constraint")
+        constraint = existing_constraint or f">={pkg_info.get('resolved_version', '0.0.0')}"
+        specs = [(package_name, ecosystem, constraint)]
         resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:

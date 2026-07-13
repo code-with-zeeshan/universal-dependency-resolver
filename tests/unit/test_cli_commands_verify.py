@@ -165,7 +165,7 @@ class TestCmdVerify:
                 "requests": {
                     "ecosystem": "pypi",
                     "resolved_version": "2.31.0",
-                    "integrity": {"algorithm": "sha256", "value": "abc123"},
+                    "integrity": {"algorithm": "sha256", "hash": "abc123"},
                 },
             }
         }
@@ -179,7 +179,7 @@ class TestCmdVerify:
                             return_value={"versions": {"pypi": [{"version": "2.31.0"}]}}
                         )
                         mock_agg.get_artifact_hash = AsyncMock(
-                            return_value={"algorithm": "sha256", "value": "abc123"}
+                            return_value={"algorithm": "sha256", "hash": "abc123"}
                         )
                         mock_agg.close = AsyncMock()
                         mock_agg_cls.return_value = mock_agg
@@ -201,7 +201,7 @@ class TestCmdVerify:
                 "requests": {
                     "ecosystem": "pypi",
                     "resolved_version": "2.31.0",
-                    "integrity": {"algorithm": "sha256", "value": "stored_hash"},
+                    "integrity": {"algorithm": "sha256", "hash": "stored_hash"},
                 },
             }
         }
@@ -215,7 +215,7 @@ class TestCmdVerify:
                             return_value={"versions": {"pypi": [{"version": "2.31.0"}]}}
                         )
                         mock_agg.get_artifact_hash = AsyncMock(
-                            return_value={"algorithm": "sha256", "value": "registry_hash"}
+                            return_value={"algorithm": "sha256", "hash": "registry_hash"}
                         )
                         mock_agg.close = AsyncMock()
                         mock_agg_cls.return_value = mock_agg
