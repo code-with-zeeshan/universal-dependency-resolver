@@ -19,17 +19,41 @@ logger = logging.getLogger(__name__)
 
 SOLVER_MAX_VARIABLES = int(os.environ.get("SOLVER_MAX_VARIABLES", "50000"))
 
-_HAS_PUBGRUB_PY = False
-try:
-    from pubgrub_py import ResolutionError as _PubGrubPyError
-    from pubgrub_py import Resolver as _PubGrubPyResolver
+_HAS_PUBGRUB_PY: bool | None = None
+"""Whether pubgrub-py is available. ``None`` means not yet checked."""
 
-    _HAS_PUBGRUB_PY = True
-except ImportError:
-    logger.info("pubgrub-py not installed — using pure-Python fallback")
-    from backend.core.pubgrub_core import PubGrubCoreSolver
-    from backend.core.pubgrub_core import ResolutionError as _PubGrubCoreError
-    from backend.core.pubgrub_core import ResolutionError as _PubGrubPyError
+_PUBGRUB_PY_RESOLVER: type | None = None  # lazy-imported
+_PUBGRUB_PY_ERROR: type = Exception  # overwritten on successful import
+
+_PUBGRUB_CORE_SOLVER: type | None = None  # lazy-imported
+_PUBGRUB_CORE_ERROR: type = Exception  # overwritten on failed import
+
+
+def _check_pubgrub_py() -> bool:
+    """Lazy-check whether the Rust-backed pubgrub-py is available."""
+    global _HAS_PUBGRUB_PY, _PUBGRUB_PY_RESOLVER, _PUBGRUB_PY_ERROR
+    global _PUBGRUB_CORE_SOLVER, _PUBGRUB_CORE_ERROR
+
+    if _HAS_PUBGRUB_PY is not None:
+        return _HAS_PUBGRUB_PY
+
+    try:
+        from pubgrub_py import ResolutionError as _NEW_ERROR
+        from pubgrub_py import Resolver as _NEW_RESOLVER
+
+        _PUBGRUB_PY_RESOLVER = _NEW_RESOLVER
+        _PUBGRUB_PY_ERROR = _NEW_ERROR
+        _HAS_PUBGRUB_PY = True
+    except ImportError:
+        logger.info("pubgrub-py not installed — using pure-Python fallback")
+        from backend.core.pubgrub_core import PubGrubCoreSolver as _NEW_CORE
+        from backend.core.pubgrub_core import ResolutionError as _NEW_CORE_ERR
+
+        _PUBGRUB_CORE_SOLVER = _NEW_CORE
+        _PUBGRUB_CORE_ERROR = _NEW_CORE_ERR
+        _HAS_PUBGRUB_PY = False
+
+    return _HAS_PUBGRUB_PY
 
 
 class PubGrubSolver:
@@ -105,14 +129,14 @@ class PubGrubSolver:
                 "resolved_packages": {},
             }
 
-        if _HAS_PUBGRUB_PY:
+        if _check_pubgrub_py():
             return self._resolve_via_pubgrub_py(packages)
         return self._resolve_via_pure_python(packages)
 
     def _resolve_via_pubgrub_py(self, packages: list[dict]) -> dict:
         """Resolve using the Rust-backed ``pubgrub-py``."""
         """Resolve using the Rust-backed ``pubgrub-py``."""
-        resolver = _PubGrubPyResolver()
+        resolver = _PUBGRUB_PY_RESOLVER()
         requirements: dict[str, str] = {}
 
         for pkg in packages:
@@ -153,7 +177,7 @@ class PubGrubSolver:
 
         try:
             result = resolver.resolve(requirements)
-        except _PubGrubPyError as e:
+        except _PUBGRUB_PY_ERROR as e:
             logger.warning("pubgrub-py resolution failed: %s", e)
             return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
 
@@ -170,7 +194,7 @@ class PubGrubSolver:
     def _resolve_via_pure_python(self, packages: list[dict]) -> dict:
         """Resolve using the pure-Python ``PubGrubCoreSolver``."""
         """Resolve using the pure-Python ``PubGrubCoreSolver``."""
-        solver = PubGrubCoreSolver()
+        solver = _PUBGRUB_CORE_SOLVER()
         requirements: dict[str, str] = {}
 
         for pkg in packages:
@@ -207,7 +231,7 @@ class PubGrubSolver:
 
         try:
             result = solver.resolve(requirements)
-        except (_PubGrubPyError, _PubGrubCoreError) as e:
+        except (_PUBGRUB_PY_ERROR, _PUBGRUB_CORE_ERROR) as e:
             logger.warning("Pure-Python PubGrub resolution failed: %s", e)
             return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
 

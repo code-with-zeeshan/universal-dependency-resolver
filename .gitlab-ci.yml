@@ -4,10 +4,11 @@ stages:
 udr-lock-check:
   stage: udr-lock
   image: python:3.12-slim
+  timeout: 5 minutes
   before_script:
     - pip install udr
   script:
-    - udr lock --check
+    - udr verify
   only:
     - merge_requests
     - main

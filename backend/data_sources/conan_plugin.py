@@ -33,8 +33,9 @@ class ConanPlugin(EcosystemPlugin):
             pkg/1.2.3
             pkg/1.2.3@user/channel
         """
+        if not isinstance(content, str):
+            return []
         deps: list[dict] = []
-        in_requires = False
 
         for line in content.splitlines():
             stripped = line.strip()
@@ -62,6 +63,8 @@ class ConanPlugin(EcosystemPlugin):
         """Parse conanfile.py for ``self.requires("pkg/1.2.3")`` or
         ``requires = ("pkg/1.2.3",)`` patterns.
         """
+        if not isinstance(content, str):
+            return []
         deps: list[dict] = []
         seen: set[str] = set()
 

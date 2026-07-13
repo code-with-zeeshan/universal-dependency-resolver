@@ -120,6 +120,14 @@ jobs:
         run: |
           python -m pytest tests/e2e/test_json_compliance.py -v --tb=long -q
 
+      - name: Run plugin ecosystem tests
+        env:
+          TESTING: "true"
+          SECRET_KEY: test-secret-key-for-ci
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/unit/test_vcpkg_plugin.py tests/unit/test_conan_plugin.py tests/unit/test_docker_plugin.py tests/unit/test_helm_plugin.py tests/unit/test_terraform_plugin.py tests/unit/test_nix_plugin.py tests/unit/test_guix_plugin.py -v --tb=short
+
       - name: Verify CLI imports
         run: |
           python3 -c "from backend.cli import main; print('CLI package OK')"

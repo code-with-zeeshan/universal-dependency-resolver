@@ -31,9 +31,11 @@ class VcpkgPlugin(EcosystemPlugin):
           - String deps: ``{"dependencies": ["fmt", "spdlog"]}``
           - Object deps: ``{"dependencies": [{"name": "fmt", "version>=": "7.1.3"}]}``
         """
+        if not isinstance(content, str):
+            return []
         try:
             data = json.loads(content)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             return []
 
         if not isinstance(data, dict):

@@ -47,9 +47,9 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: udr-lock-check
-        name: UDR lock check
-        description: Check that udr.lock is up-to-date with current manifests
-        entry: udr lock --check
+      - id: udr-verify
+        name: UDR lock file verification
+        description: Validate lock file integrity and package consistency
+        entry: udr verify
         language: system
         pass_filenames: false

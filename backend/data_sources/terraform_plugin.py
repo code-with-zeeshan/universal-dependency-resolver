@@ -37,6 +37,8 @@ class TerraformPlugin(EcosystemPlugin):
         Returns a list of dicts with ``name`` set to the provider source
         (e.g. ``hashicorp/aws``) and ``version`` from the ``version`` attribute.
         """
+        if not isinstance(content, str):
+            return []
         deps: list[dict] = []
         current_source: str | None = None
         in_block = False

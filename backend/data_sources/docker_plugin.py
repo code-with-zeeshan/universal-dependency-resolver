@@ -32,6 +32,8 @@ class DockerPlugin(EcosystemPlugin):
     @staticmethod
     def parse_dockerfile(content: str) -> list[dict]:
         """Parse a Dockerfile and extract FROM image references."""
+        if not isinstance(content, str):
+            return []
         deps: list[dict] = []
 
         for line in content.splitlines():

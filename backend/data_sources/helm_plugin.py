@@ -37,6 +37,8 @@ class HelmPlugin(EcosystemPlugin):
         tracking indentation, and looking for ``name:`` / ``version:`` keys
         inside a ``dependencies:`` block.
         """
+        if not isinstance(content, str):
+            return []
         deps: list[dict] = []
         in_dependencies = False
         dep_indent = 0
@@ -93,9 +95,11 @@ class HelmPlugin(EcosystemPlugin):
     @staticmethod
     def parse_chart_lock(content: str) -> dict[str, dict[str, Any]]:
         """Parse Chart.lock (JSON) into a name → {version} map."""
+        if not isinstance(content, str):
+            return {}
         try:
             data = json.loads(content)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             return {}
 
         packages: dict[str, dict[str, Any]] = {}
