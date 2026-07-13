@@ -140,7 +140,7 @@ udr serve
 ### `lock` command finds no manifests
 
 - `udr lock` scans the current directory for manifest files
-- Supported: requirements.txt, requirements.in, requirements-dev.txt, Pipfile, Pipfile.lock, pyproject.toml, poetry.lock, uv.lock, package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.toml, Cargo.lock, go.mod, environment.yml, environment.yaml, Gemfile, Gemfile.lock, composer.json, composer.lock, pubspec.yaml, build.gradle, build.gradle.kts, Package.swift, Package.resolved, mix.exs, mix.lock, *.cabal, pom.xml, Podfile, Podfile.lock, packages.config, Brewfile, Brewfile.lock.json, apt-packages.txt, apk-packages.txt, udr.lock
+- Supported: requirements.txt, requirements.in, requirements-dev.txt, Pipfile, Pipfile.lock, pyproject.toml, poetry.lock, uv.lock, package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.toml, Cargo.lock, go.mod, go.sum, environment.yml, environment.yaml, Gemfile, Gemfile.lock, composer.json, composer.lock, pubspec.yaml, build.gradle, build.gradle.kts, Package.swift, Package.resolved, mix.exs, mix.lock, *.cabal, pom.xml, Podfile, Podfile.lock, packages.config, Brewfile, Brewfile.lock.json, apt-packages.txt, apk-packages.txt, default.nix, shell.nix, flake.nix, flake.lock, guix.scm, manifest.scm, udr.lock
 - Use `--manifest path/to/file` to specify explicitly
 
 ## API / Server

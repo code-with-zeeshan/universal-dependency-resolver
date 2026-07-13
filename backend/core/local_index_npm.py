@@ -206,7 +206,7 @@ class NpmIndexManager:
                 )
                 conn.commit()
             except Exception:
-                pass
+                logger.debug("Failed to update index metadata for npm changes sync", exc_info=True)
             finally:
                 conn.close()
 

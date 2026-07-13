@@ -1,5 +1,6 @@
 """Show detailed package info — versions, dependencies, metadata."""
 
+import argparse
 import asyncio
 import json
 import sys
@@ -11,7 +12,7 @@ from rich.table import Table
 from ..shared import console, err_console
 
 
-async def _cmd_details_async(args):
+async def _cmd_details_async(args: argparse.Namespace) -> int:
     """Show package details."""
     from backend.core import DataAggregator
 
@@ -38,7 +39,7 @@ async def _cmd_details_async(args):
         console.print(f"[yellow]No data found for {package} ({ecosystem})[/yellow]")
         return 1
 
-    if getattr(args, "json", False):
+    if args.json:
         json.dump(data, sys.stdout, indent=2, default=str)
         print()
         return 0
@@ -88,7 +89,7 @@ async def _cmd_details_async(args):
     return 0
 
 
-def cmd_details(args):
+def cmd_details(args: argparse.Namespace) -> None:
     """Show package details."""
     try:
         sys.exit(asyncio.run(_cmd_details_async(args)))

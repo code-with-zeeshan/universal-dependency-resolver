@@ -1,9 +1,13 @@
 """List packages with newer versions available in registries."""
 
+import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from packaging.version import parse as parse_version
 from rich import box
@@ -14,15 +18,15 @@ from rich.table import Table
 from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
 
 
-async def _cmd_outdated_async(args):
+async def _cmd_outdated_async(args: argparse.Namespace) -> int:
     """Cmd outdated async."""
     from backend.core import DataAggregator
 
     directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     ).resolve()
     if not lock_path.is_file():
         console.print(f"[red]Lock file not found:[/red] {lock_path}")
@@ -32,7 +36,7 @@ async def _cmd_outdated_async(args):
     aggregator = DataAggregator()
 
     packages = lock_data.get("packages", {})
-    ecosystem_filter = getattr(args, "ecosystem", None)
+    ecosystem_filter = args.ecosystem
     outdated_list = []
 
     with Progress(
@@ -44,7 +48,7 @@ async def _cmd_outdated_async(args):
     ) as progress:
         check_task = progress.add_task("Checking for updates...", total=len(packages))
 
-        async def check_pkg(name: str, info: dict):
+        async def check_pkg(name: str, info: dict) -> None:
             """Check pkg."""
             eco = info.get("ecosystem", "pypi")
             if ecosystem_filter and eco != ecosystem_filter:
@@ -80,15 +84,24 @@ async def _cmd_outdated_async(args):
                             }
                         )
             except Exception:
-                pass
+                logger.warning("Failed to check outdated status for %s", name, exc_info=True)
             progress.advance(check_task)
 
-        await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
+        _outdated_sem = asyncio.Semaphore(20)
+
+        async def _bounded_check(n, i):
+            async with _outdated_sem:
+                await check_pkg(n, i)
+
+        await asyncio.gather(
+            *[_bounded_check(n, i) for n, i in packages.items()],
+            return_exceptions=True,
+        )
 
     await aggregator.close()
     outdated_list.sort(key=lambda x: x["name"])
 
-    if getattr(args, "json", False):
+    if args.json:
         json.dump(outdated_list, sys.stdout, indent=2, default=str)
         print()
         return 0 if not outdated_list else 1
@@ -113,7 +126,7 @@ async def _cmd_outdated_async(args):
     return 1
 
 
-def cmd_outdated(args):
+def cmd_outdated(args: argparse.Namespace) -> None:
     """Cmd outdated."""
     try:
         sys.exit(asyncio.run(_cmd_outdated_async(args)))

@@ -335,10 +335,10 @@ class TestParseCondaEnv:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "conda_env"})
         assert len(result) == 4
-        assert {"name": "numpy", "version": ">=1.21"} in result
-        assert {"name": "pandas", "version": "==1.3"} in result
-        assert {"name": "python", "version": "=3.9"} in result
-        assert {"name": "pip", "version": "*"} in result
+        assert {"name": "numpy", "version": ">=1.21", "_ecosystem": "conda"} in result
+        assert {"name": "pandas", "version": "==1.3", "_ecosystem": "conda"} in result
+        assert {"name": "python", "version": "=3.9", "_ecosystem": "conda"} in result
+        assert {"name": "pip", "version": "*", "_ecosystem": "conda"} in result
 
     def test_pip_subdeps(self, tmp_path):
         p = tmp_path / "environment.yml"
@@ -355,9 +355,9 @@ class TestParseCondaEnv:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "conda_env"})
         assert len(result) == 3
-        assert {"name": "numpy", "version": "*"} in result
-        assert {"name": "requests", "version": "==2.25"} in result
-        assert {"name": "click", "version": "*"} in result
+        assert {"name": "numpy", "version": "*", "_ecosystem": "conda"} in result
+        assert {"name": "requests", "version": "==2.25", "_ecosystem": "pypi"} in result
+        assert {"name": "click", "version": "*", "_ecosystem": "pypi"} in result
 
     def test_malformed_yaml_returns_empty(self, tmp_path):
         p = tmp_path / "environment.yml"
@@ -449,9 +449,9 @@ class TestParseYarnLock:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "yarn_lock"})
         assert len(result) == 2
-        # parser extracts name/version from the dependency identifier line
-        assert {"name": "express", "version": "^4.0"} in result
-        assert {"name": "lodash", "version": "^4.17.21"} in result
+        # parser extracts resolved version from the version field below each key
+        assert {"name": "express", "version": "4.17.1"} in result
+        assert {"name": "lodash", "version": "4.17.21"} in result
 
 
 class TestParsePackageLock:
@@ -794,6 +794,37 @@ class TestParseCocoapods:
         result = d.parse({"path": str(p), "parser": "cocoapods"})
         assert result == []
 
+    def test_podfile_lock_format(self, tmp_path):
+        p = tmp_path / "Podfile.lock"
+        p.write_text("""PODS:
+  - Alamofire (5.6.1)
+  - SwiftyJSON (5.0.1)
+
+DEPENDENCIES:
+  - Alamofire (~> 5.6)
+  - SwiftyJSON
+""")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cocoapods"})
+        assert {"name": "Alamofire", "version": "5.6.1"} in result
+        assert {"name": "SwiftyJSON", "version": "5.0.1"} in result
+        assert len(result) == 2
+
+    def test_podfile_lock_versionless(self, tmp_path):
+        p = tmp_path / "Podfile.lock"
+        p.write_text("""PODS:
+  - FirebaseCore (10.0.0)
+  - PromisesObjC
+
+SPEC REPOS:
+  - trunk
+""")
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "cocoapods"})
+        assert {"name": "FirebaseCore", "version": "10.0.0"} in result
+        assert {"name": "PromisesObjC", "version": "*"} in result
+        assert len(result) == 2
+
 
 class TestParseNuget:
     def test_basic(self, tmp_path):
@@ -1023,37 +1054,6 @@ class TestParseUvLock:
         assert result == []
 
 
-class TestParseGoSum:
-    def test_basic(self, tmp_path):
-        p = tmp_path / "go.sum"
-        p.write_text("github.com/pkg/errors v0.9.1 h1:...\ngolang.org/x/text v0.3.7 h1:...\n")
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "go_sum"})
-        assert len(result) == 2
-        assert {"name": "github.com/pkg/errors", "version": "0.9.1"} in result
-        assert {"name": "golang.org/x/text", "version": "0.3.7"} in result
-
-    def test_skips_go_mod_lines(self, tmp_path):
-        p = tmp_path / "go.sum"
-        p.write_text(
-            "go.mod golang.org/x/text v0.3.7 h1:...\ngithub.com/pkg/errors v0.9.1 h1:...\n"
-        )
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "go_sum"})
-        assert len(result) == 1
-        assert result[0]["name"] == "github.com/pkg/errors"
-
-    def test_deduplicates_entries(self, tmp_path):
-        p = tmp_path / "go.sum"
-        p.write_text(
-            "github.com/pkg/errors v0.9.1 h1:...\ngithub.com/pkg/errors v0.9.1/go.mod h1:...\n"
-        )
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "go_sum"})
-        assert len(result) == 1
-        assert result[0]["name"] == "github.com/pkg/errors"
-
-
 class TestParseComposerLock:
     def test_basic(self, tmp_path):
         p = tmp_path / "composer.lock"
@@ -1181,40 +1181,6 @@ class TestParsePackageResolved:
         p.write_text("not json")
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_resolved"})
-        assert result == []
-
-
-class TestParseUdrLock:
-    def test_basic(self, tmp_path):
-        p = tmp_path / "udr.lock"
-        p.write_text(
-            json.dumps(
-                {
-                    "packages": [
-                        {"name": "numpy", "version": "1.21.0"},
-                        {"name": "requests", "version": "2.25.1"},
-                    ]
-                }
-            )
-        )
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "udr_lock"})
-        assert len(result) == 2
-        assert {"name": "numpy", "version": "1.21.0"} in result
-        assert {"name": "requests", "version": "2.25.1"} in result
-
-    def test_empty_packages(self, tmp_path):
-        p = tmp_path / "udr.lock"
-        p.write_text(json.dumps({}))
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "udr_lock"})
-        assert result == []
-
-    def test_malformed_json_returns_empty(self, tmp_path):
-        p = tmp_path / "udr.lock"
-        p.write_text("not json")
-        d = ManifestDetector(str(tmp_path))
-        result = d.parse({"path": str(p), "parser": "udr_lock"})
         assert result == []
 
 

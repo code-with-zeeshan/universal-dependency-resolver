@@ -14,7 +14,7 @@ from backend import settings as _settings
 logger = logging.getLogger(__name__)
 
 
-def get_local_index(ecosystem: str):
+def get_local_index(ecosystem: str) -> object | None:
     """Return a per-ecosystem local index manager, or ``None``.
 
     Parameters

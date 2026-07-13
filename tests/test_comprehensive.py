@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from backend.core.conflict_resolver import ConflictResolver
 from backend.core.data_aggregator import DataAggregator
+from backend.orchestrator import create_solver
 from backend.manifest_detector import ManifestDetector
 
 pytestmark = [
@@ -164,8 +164,8 @@ def aggregator():
 
 @pytest.fixture(scope="module")
 def resolver():
-    """Shared ConflictResolver."""
-    return ConflictResolver()
+    """Shared solver (Z3/PubGrub based on env config)."""
+    return create_solver()
 
 
 @pytest.fixture
@@ -183,7 +183,7 @@ def _write_manifest(path: Path, filename: str, content: str):
 
 async def _run_resolution(
     aggregator: DataAggregator,
-    resolver: ConflictResolver,
+    resolver: Any,
     system_info: dict[str, Any],
     specs: list[tuple],
 ) -> dict[str, Any]:

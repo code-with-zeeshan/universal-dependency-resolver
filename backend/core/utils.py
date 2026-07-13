@@ -12,11 +12,74 @@ from typing import Any
 from packaging import version
 from packaging.version import Version
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
+
+
+CLI_COMMANDS = (
+    "auth",
+    "check",
+    "completion",
+    "details",
+    "diff",
+    "graph",
+    "index",
+    "install",
+    "list-ecosystems",
+    "lock",
+    "outdated",
+    "resolve",
+    "sbom",
+    "scan",
+    "search",
+    "serve",
+    "update",
+    "verify",
+    "why",
+)
+
+# ---------------------------------------------------------------------------
+# Package URL (purl) — purl-spec 1.0
+# ---------------------------------------------------------------------------
+
+ECOSYSTEM_PURL_TYPE: dict[str, str] = {
+    "pypi": "pypi",
+    "npm": "npm",
+    "crates": "cargo",
+    "gomodules": "golang",
+    "maven": "maven",
+    "nuget": "nuget",
+    "rubygems": "gem",
+    "packagist": "composer",
+    "cocoapods": "cocoapods",
+    "pub": "pub",
+    "homebrew": "brew",
+    "conda": "conda",
+    "hex": "hex",
+    "haskell": "hackage",
+    "apt": "deb",
+    "apk": "alpine",
+    "gradle": "maven",
+    "swift": "swift",
+    "nix": "nix",
+    "guix": "guix",
+    "docker": "docker",
+    "vcpkg": "vcpkg",
+    "conan": "conan",
+    "helm": "helm",
+    "terraform": "terraform",
+}
+
+
+def make_purl(name: str, version: str, ecosystem: str) -> str:
+    ptype = ECOSYSTEM_PURL_TYPE.get(ecosystem, ecosystem)
+    purl = f"pkg:{ptype}/{_purl_encode(name)}"
+    if version:
+        purl += f"@{_purl_encode(version)}"
+    return purl
+
+
+def _purl_encode(value: str) -> str:
+    return value.replace("%", "%25").replace("@", "%40").replace("/", "%2F")
 
 
 def run_async(coro: Coroutine) -> Any:
@@ -61,8 +124,10 @@ def is_compatible_version(version_str: str, spec: str) -> bool:
         from packaging.specifiers import SpecifierSet
 
         return version.parse(version_str) in SpecifierSet(spec)
-    except Exception as e:
-        logger.error(f"Version compatibility check failed for {version_str} against {spec}: {e}")
+    except Exception:
+        logger.warning(
+            "Version compatibility check failed for %s against %s", version_str, spec, exc_info=True
+        )
         return False
 
 
@@ -70,31 +135,6 @@ def is_compatible_version(version_str: str, spec: str) -> bool:
 def normalize_package_name(name: str) -> str:
     """Normalize package name (e.g., convert to lowercase, replace underscores)."""
     return re.sub(r"[-_.]+", "-", name).lower()
-
-
-def extract_requirements(content: str, file_type: str) -> list[dict[str, Any]]:
-    """Extract package requirements from various file formats."""
-    requirements = []
-    if file_type == "requirements.txt":
-        for line in content.split("\n"):
-            line = line.strip()
-            if line and not line.startswith("#"):
-                match = re.match(r"^([a-zA-Z0-9][a-zA-Z0-9._-]*)(?:[>=<]=.*)?$", line)
-                if match:
-                    requirements.append({"name": match.group(1), "version_spec": line})
-    elif file_type == "environment.yml":
-        try:
-            import yaml  # type: ignore[import-untyped]
-
-            data = yaml.safe_load(content)
-            for dep in data.get("dependencies", []):
-                if isinstance(dep, str):
-                    match = re.match(r"^([a-zA-Z0-9][a-zA-Z0-9._-]*)(?:[>=<]=.*)?$", dep)
-                    if match:
-                        requirements.append({"name": match.group(1), "version_spec": dep})
-        except Exception as e:
-            logger.error(f"Failed to parse environment.yml: {e}")
-    return requirements
 
 
 def hash_system_info(system_info: dict[str, Any]) -> str:
@@ -166,7 +206,6 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
         "spm": "swift",
         # Hex / Elixir
         "elixir": "hex",
-        "exlixir": "hex",
         # Haskell / Cabal
         "cabal": "haskell",
         "haskell": "haskell",
@@ -181,6 +220,24 @@ def sanitize_ecosystem_name(ecosystem: str) -> str:
         # Guix
         "guix": "guix",
         "guixsd": "guix",
+        # Docker
+        "docker": "docker",
+        "container": "docker",
+        # Terraform
+        "terraform": "terraform",
+        "tf": "terraform",
+        # Helm
+        "helm": "helm",
+        "chart": "helm",
+        # Vcpkg
+        "vcpkg": "vcpkg",
+        "cpp": "vcpkg",
+        "c++": "vcpkg",
+        # Conan
+        "conan": "conan",
+        "conan.io": "conan",
+        # Haskell (hackage alias)
+        "hackage": "haskell",
     }
     ecosystem_lower = ecosystem.lower().strip()
     return ecosystem_aliases.get(ecosystem_lower, ecosystem_lower)

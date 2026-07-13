@@ -17,7 +17,7 @@
 | `local` | None (anonymous user) | Yes | `udr serve` / `udr serve --mode local` |
 | `saas` | JWT Bearer + API key | Yes | `udr serve --mode saas` |
 
-In `local` mode, the `get_current_user` dependency returns a mock anonymous user (id=1, username="anonymous"). All auth endpoints are **not mounted** in `local` mode.
+In `local` mode (`ENABLE_AUTH` defaults to `true`), the `get_current_user` dependency returns a mock anonymous user (id=1, username="anonymous"). All auth endpoints are **not mounted** in `local` mode.
 
 In `saas` mode (`ENABLE_AUTH=true`), all endpoints require authentication via:
 1. **JWT Bearer** in `Authorization: Bearer <token>` header (from `/auth/login` or `/auth/token`)
@@ -63,6 +63,8 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 
 ## Endpoint Summary
 
+The API exposes **63 endpoints** organized into the following categories:
+
 | # | Method | Path | Auth | Rate Limit |
 |---|---|---|---|---|
 | 1 | GET | `/` | No | 10/min |
@@ -82,46 +84,62 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 | 14 | GET | `/api/v1/auth/verify` | Yes | 60/min |
 | 15 | POST | `/api/v1/auth/check-username` | No | 30/min |
 | 16 | POST | `/api/v1/auth/check-email` | No | 30/min |
+| 17 | GET | `/api/v1/auth/signing-key` | Yes | 30/min |
+| 18 | POST | `/api/v1/auth/gen-key` | Yes | 10/day |
 | **System** | | | | |
-| 17 | GET | `/api/v1/system/info` | Yes | 30/min |
-| 18 | POST | `/api/v1/system/check-compatibility` | Yes | 10/min |
+| 19 | GET | `/api/v1/system/info` | Yes | 30/min |
+| 20 | POST | `/api/v1/system/check-compatibility` | Yes | 10/min |
 | **Packages** | | | | |
-| 19 | POST | `/api/v1/packages/resolve` | Yes | 10/min |
-| 20 | POST | `/api/v1/packages/export` | Yes | 20/min |
-| 21 | GET | `/api/v1/packages/export-formats` | Yes | 60/min |
-| 22 | GET | `/api/v1/packages/search` | Yes | 60/min |
-| 23 | GET | `/api/v1/packages/{eco}/{name}/details` | Yes | 120/min |
-| 24 | GET | `/api/v1/packages/{eco}/{name}/versions` | Yes | 120/min |
-| 25 | GET | `/api/v1/packages/{eco}/{name}/dependencies` | Yes | 120/min |
-| 26 | GET | `/api/v1/packages/{eco}/{name}/compatibility` | Yes | 120/min |
-| 27 | GET | `/api/v1/packages/ecosystems` | Yes | 60/min |
+| 21 | POST | `/api/v1/packages/resolve` | Yes | 10/min |
+| 22 | POST | `/api/v1/packages/export` | Yes | 20/min |
+| 23 | GET | `/api/v1/packages/export-formats` | Yes | 60/min |
+| 24 | GET | `/api/v1/packages/search` | Yes | 60/min |
+| 25 | GET | `/api/v1/packages/{eco}/{name}/details` | Yes | 120/min |
+| 26 | GET | `/api/v1/packages/{eco}/{name}/versions` | Yes | 120/min |
+| 27 | GET | `/api/v1/packages/{eco}/{name}/dependencies` | Yes | 120/min |
+| 28 | GET | `/api/v1/packages/{eco}/{name}/compatibility` | Yes | 120/min |
+| 29 | GET | `/api/v1/packages/ecosystems` | Yes | 60/min |
 | **Scan** | | | | |
-| 28 | POST | `/api/v1/scan/github` | Yes | none |
-| 29 | POST | `/api/v1/scan/upload` | Yes | none |
-| 30 | POST | `/api/v1/scan/local` | Yes | none |
+| 30 | POST | `/api/v1/scan/github` | Yes | none |
+| 31 | POST | `/api/v1/scan/upload` | Yes | none |
+| 32 | POST | `/api/v1/scan/local` | Yes | none |
 | **Lock** | | | | |
-| 31 | POST | `/api/v1/verify` | Yes | none |
-| 32 | POST | `/api/v1/graph` | Yes | none |
-| 33 | POST | `/api/v1/update` | Yes | none |
-| 34 | POST | `/api/v1/generate-lock` | Yes | none |
-| 35 | POST | `/api/v1/install-commands` | Yes | none |
-| 36 | POST | `/api/v1/restore-commands` | Yes | none |
-| 37 | POST | `/api/v1/why` | Yes | none |
-| 38 | POST | `/api/v1/outdated` | Yes | none |
-| 39 | POST | `/api/v1/diff` | Yes | none |
+| 33 | POST | `/api/v1/verify` | Yes | none |
+| 34 | POST | `/api/v1/graph` | Yes | none |
+| 35 | POST | `/api/v1/update` | Yes | none |
+| 36 | POST | `/api/v1/generate-lock` | Yes | none |
+| 37 | POST | `/api/v1/install-commands` | Yes | none |
+| 38 | POST | `/api/v1/restore-commands` | Yes | none |
+| 39 | POST | `/api/v1/why` | Yes | none |
+| 40 | POST | `/api/v1/outdated` | Yes | none |
+| 41 | POST | `/api/v1/diff` | Yes | none |
+| 42 | POST | `/api/v1/lock/check` | Yes | none |
+| 43 | POST | `/api/v1/lock/sign` | Yes | none |
+| 44 | POST | `/api/v1/lock/update-with-fix` | Yes | none |
+| 45 | POST | `/api/v1/lock/update-manifests` | Yes | none |
+| 46 | POST | `/api/v1/lock/report` | Yes | none |
+| 47 | POST | `/api/v1/lock/apply-pinning` | Yes | none |
 | **Index Management** | | | | |
-| 40 | GET | `/api/v1/index/status` | Yes | 30/min |
-| 41 | POST | `/api/v1/index/pull` | Yes | 10/min |
-| 42 | POST | `/api/v1/index/build` | Yes | 10/min |
+| 48 | GET | `/api/v1/index/status` | Yes | 30/min |
+| 49 | POST | `/api/v1/index/pull` | Yes | 10/min |
+| 50 | POST | `/api/v1/index/build` | Yes | 10/min |
+| 51 | POST | `/api/v1/index/sync-all` | Yes | 10/min |
+| **Check** | | | | |
+| 52 | POST | `/api/v1/check/cve` | Yes | 10/min |
+| 53 | POST | `/api/v1/check/license` | Yes | 10/min |
+| 54 | POST | `/api/v1/check/deprecated` | Yes | 10/min |
+| 55 | POST | `/api/v1/check/policy` | Yes | 10/min |
+| **SBOM** | | | | |
+| 56 | POST | `/api/v1/sbom` | Yes | 10/min |
 | **Completion** | | | | |
-| 43 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
+| 57 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
 | **Infrastructure** | | | | |
-| 44 | GET | `/healthz` | No | none |
-| 45 | GET | `/readyz` | No | none |
-| 46 | GET | `/metrics` | No | none |
-| 47 | GET | `/api/v1/docs` | No | none |
-| 48 | GET | `/api/v1/redoc` | No | none |
-| 49 | GET | `/api/v1/openapi.json` | No | none |
+| 58 | GET | `/healthz` | No | none |
+| 59 | GET | `/readyz` | No | none |
+| 60 | GET | `/metrics` | No | none |
+| 61 | GET | `/api/v1/docs` | No | none |
+| 62 | GET | `/api/v1/redoc` | No | none |
+| 63 | GET | `/api/v1/openapi.json` | No | none |
 
 ---
 
@@ -139,7 +157,7 @@ Root endpoint — returns API metadata and links.
 ```json
 {
   "name": "Universal Dependency Resolver API",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "documentation": {
     "openapi": "/api/v1/docs",
     "redoc": "/api/v1/redoc"
@@ -175,7 +193,7 @@ Health check — verifies database connection, Redis (if configured), and extern
 {
   "status": "healthy",
   "timestamp": "2026-06-28T12:00:00",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "checks": {
     "database": {"status": "healthy"},
     "redis": {"status": "healthy"},
@@ -586,6 +604,62 @@ Check if an email is available for registration.
   "available": true
 }
 ```
+
+---
+
+### `GET /api/v1/auth/signing-key`
+
+Show the current Ed25519 public signing key for lock-file signing. Mirrors `udr auth show-key`.
+
+**Rate limit:** 30/minute  
+**Auth:** JWT Bearer or API key
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "algorithm": "Ed25519",
+  "public_key_base64": "MCowBQYDK2VwAyEA...",
+  "fingerprint": "a1b2c3d4e5f6...",
+  "key_directory": "/home/user/.config/udr"
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Key shown |
+| `404` | No signing key found |
+
+---
+
+### `POST /api/v1/auth/gen-key`
+
+Generate a new Ed25519 signing key pair for lock-file signing. Keys are stored in `~/.config/udr/`. Mirrors `udr auth gen-key`.
+
+**Rate limit:** 10/day  
+**Auth:** JWT Bearer or API key
+
+**Response (201 Created):**
+
+```json
+{
+  "status": "success",
+  "message": "Ed25519 signing key generated",
+  "public_key_base64": "MCowBQYDK2VwAyEA...",
+  "fingerprint": "a1b2c3d4e5f6...",
+  "key_directory": "/home/user/.config/udr"
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `201` | Key generated |
+| `500` | Key generation failed |
 
 ---
 
@@ -1267,7 +1341,7 @@ Scan a local directory path. Only works when backend runs on the same machine.
 
 ## Lock
 
-Lock endpoints mirror `udr verify`, `udr graph`, and `udr update` CLI commands. They accept and return lock data as JSON so clients can manage lock state without file system access.
+Lock endpoints mirror `udr verify`, `udr graph`, `udr update`, `udr lock --check`, `udr lock --sign`, `udr lock --report`, `udr lock --pin/--block/--freeze`, `udr update --fix-cve`, and `udr auth gen-key/show-key` CLI commands. They accept and return lock data as JSON so clients can manage lock state without file system access.
 
 ---
 
@@ -1738,6 +1812,245 @@ Compare two lock data objects and report package differences. Mirrors `udr diff 
 
 ---
 
+### `POST /api/v1/lock/check`
+
+CI drift detection — re-resolves manifests and compares against the existing lock data without writing. Mirrors `udr lock --check`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request:**
+
+```json
+{
+  "manifest_contents": {
+    "requirements.txt": "numpy>=1.20\nflask>=2.0\n"
+  },
+  "existing_lock_data": {
+    "packages": {
+      "numpy": {"ecosystem": "pypi", "resolved_version": "1.26.0", "direct": true}
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `manifest_contents` | dict | yes | Filename → raw content of manifest files |
+| `existing_lock_data` | dict | yes | The current lock data to check against |
+
+**Response (no drift):**
+
+```json
+{
+  "status": "ok",
+  "drift_detected": false,
+  "added": [],
+  "removed": [],
+  "changed": [],
+  "unchanged_count": 5
+}
+```
+
+**Response (drift detected):**
+
+```json
+{
+  "status": "drift",
+  "drift_detected": true,
+  "added": [{"name": "new-pkg", "version": "1.0.0", "ecosystem": "pypi"}],
+  "removed": [{"name": "old-pkg", "version": "0.5.0", "ecosystem": "pypi"}],
+  "changed": [{"name": "numpy", "ecosystem": "pypi", "from": "1.25.0", "to": "1.26.0"}],
+  "unchanged_count": 3
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Re-resolution complete; check `drift_detected` to determine outcome |
+
+---
+
+### `POST /api/v1/lock/sign`
+
+Sign lock data with Ed25519 key. Mirrors `udr lock --sign`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {"packages": {}}
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "lock_data": {
+    "packages": {},
+    "signature": {
+      "algorithm": "ed25519",
+      "value": "base64...",
+      "public_key": "base64..."
+    }
+  },
+  "signature": "base64...",
+  "public_key": "base64...",
+  "algorithm": "ed25519"
+}
+```
+
+The `lock_data` object is returned with the `signature` section embedded inside it. The top-level fields (`signature`, `public_key`, `algorithm`) mirror the embedded values for convenience.
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Signed successfully |
+| `400` | No signing key found (generate one with `POST /auth/gen-key`) |
+
+---
+
+### `POST /api/v1/lock/update-with-fix`
+
+Check packages for known CVEs and automatically bump constraints to fixed versions. Mirrors `udr update --fix-cve`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {
+    "packages": {
+      "numpy": {"ecosystem": "pypi", "resolved_version": "1.24.0"}
+    }
+  },
+  "package": "numpy"
+}
+```
+
+If `package` is omitted, all packages are checked.
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "fixes": {"numpy": "1.24.3"},
+  "lock_data": {"packages": {"numpy": {"ecosystem": "pypi", "resolved_version": "1.24.0", "constraint": ">=1.24.3"}}}
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Check complete (check `fixes` count) |
+
+---
+
+### `POST /api/v1/lock/update-manifests`
+
+Suggest version bump targets from lock data. Mirrors `udr update`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {"packages": {"flask": {"ecosystem": "pypi", "resolved_version": "3.0.0", "constraint": ">=2.0"}}},
+  "manifest_contents": {"requirements.txt": "flask>=2.0\n"}
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "suggestions": {
+    "pypi": [{"package": "flask", "current_constraint": ">=2.0", "resolved_version": "3.0.0", "ecosystem": "pypi"}]
+  },
+  "note": "Use `udr update` to apply manifest changes (requires filesystem access)."
+}
+```
+
+This endpoint is analysis-only. It does not write to files — use the CLI for actual manifest updates.
+
+---
+
+### `POST /api/v1/lock/report`
+
+Generate a human-readable summary report from lock data. Mirrors `udr lock --report`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {"packages": {"numpy": {"ecosystem": "pypi", "resolved_version": "1.26.0", "direct": true}}}
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "report": "=== Dependency Lock Report ===\n...",
+  "summary": {"total": 1, "direct": 1, "transitive": 0, "ecosystems": {"pypi": 1}, "vulnerabilities": 0},
+  "cves": [
+    {"package": "numpy", "id": "CVE-2023-1234", "severity": "HIGH"}
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `report` | string | Formatted plain-text report |
+| `summary` | object | Aggregated counts (total, direct, transitive, ecosystems, vulnerabilities) |
+| `cves` | array | CVE entries found in packages (empty if none) |
+
+---
+
+### `POST /api/v1/lock/apply-pinning`
+
+Apply pin/block/freeze constraints to lock data. Mirrors `udr lock --pin/--block/--freeze --pin-mode`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Request body:**
+
+```json
+{
+  "lock_data": {"packages": {"numpy": {"ecosystem": "pypi", "resolved_version": "1.26.0", "direct": true}}},
+  "pin": ["numpy==1.25.0"],
+  "block": ["torch"],
+  "pin_mode": "major",
+  "freeze": false
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "lock_data": {"packages": {"numpy": {"ecosystem": "pypi", "resolved_version": "1.25.0", "direct": true, "constraint": "==1.25.0"}}},
+  "pinning_policy": {"pinned": {"numpy": "1.25.0"}}
+}
+```
+
+---
+
 ## Index Management
 
 Manage offline SQLite indexes used for local package resolution without network access. Mirrors the `udr index` CLI subcommand.
@@ -1884,6 +2197,263 @@ Build an offline index from package version data.
 
 ---
 
+### `POST /api/v1/index/sync-all`
+
+Sync local indexes for all ecosystems from remote registries. Mirrors `udr index sync --all`.
+
+**Auth:** Yes (anonymous in local mode)
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "results": [
+    {"ecosystem": "pypi", "status": "ok", "packages_synced": 15000},
+    {"ecosystem": "npm", "status": "error", "error": "timeout"}
+  ],
+  "total": 15000
+}
+```
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Sync completed (individual results may have errors) |
+
+---
+
+## Check
+
+Check endpoints scan lock file package data for security, compliance, and policy violations.
+
+### `POST /api/v1/check/cve`
+
+Scan lock file packages against the OSV vulnerability database for known CVEs. Mirrors `udr check --cve`.
+
+**Rate limit:** 10/minute  
+**Auth:** Yes (anonymous in local mode)
+
+**Request:**
+
+```json
+{
+  "packages": {
+    "numpy": {"ecosystem": "pypi", "resolved_version": "1.24.0"},
+    "flask": {"ecosystem": "pypi", "resolved_version": "2.0.0"}
+  }
+}
+```
+
+The `packages` dict maps package name → metadata dict (must include `ecosystem` and `resolved_version`).
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "total_vulnerabilities": 2,
+  "results": [
+    {
+      "package": "numpy",
+      "version": "1.24.0",
+      "cve_id": "CVE-2023-1234",
+      "severity": "HIGH",
+      "summary": "Buffer overflow in numpy.ufunc"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"success"` always |
+| `total_vulnerabilities` | int | Count of found CVEs |
+| `results` | array | Per-package CVE entries (package, version, cve_id, severity, summary) |
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | Scan complete |
+
+---
+
+### `POST /api/v1/check/license`
+
+Check lock file packages for license compliance using the SPDX alias table. Mirrors `udr check --license`.
+
+**Rate limit:** 10/minute  
+**Auth:** Yes (anonymous in local mode)
+
+**Request:** Same shape as `/check/cve` — `{"packages": {"name": {"ecosystem": "...", "resolved_version": "..."}}}`.
+
+**Response:**
+
+```json
+{
+  "status": "violation",
+  "total_checked": 5,
+  "denied": ["package-a"],
+  "warnings": ["package-b"],
+  "results": {
+    "package-a": {"license": "GPL-3.0", "status": "denied"},
+    "package-b": {"license": "LGPL-2.1", "status": "warning"},
+    "package-c": {"license": "MIT", "status": "allowed"}
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"ok"`, `"warning"`, or `"violation"` |
+| `total_checked` | int | Number of packages with license data |
+| `denied` | array | Package names with denied licenses |
+| `warnings` | array | Package names with warning-level licenses |
+| `results` | dict | Package → `{license, status}` mapping |
+
+---
+
+### `POST /api/v1/check/deprecated`
+
+Check lock file packages for deprecated/yanked version markers. Mirrors `udr check --deprecated`.
+
+**Rate limit:** 10/minute  
+**Auth:** Yes (anonymous in local mode)
+
+**Request:** Same shape as `/check/cve`.
+
+**Response:**
+
+```json
+{
+  "status": "issues_found",
+  "total_deprecated": 1,
+  "has_yanked": true,
+  "results": [
+    {"package": "old-pkg", "version": "0.5.0", "status": "yanked"}
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"success"` if no issues, `"issues_found"` if any deprecated/yanked |
+| `total_deprecated` | int | Count of deprecated/yanked packages |
+| `has_yanked` | bool | Whether any are yanked (vs just deprecated) |
+| `results` | array | Per-package entries with `status`: `"deprecated"` or `"yanked"` |
+
+---
+
+### `POST /api/v1/check/policy`
+
+Evaluate lock file packages against a policy file with 10 rule types. Mirrors `udr check --policy`.
+
+**Rate limit:** 10/minute  
+**Auth:** Yes (anonymous in local mode)
+
+**Request:**
+
+```json
+{
+  "packages": {
+    "numpy": {"ecosystem": "pypi", "resolved_version": "1.24.0", "license": "BSD-3-Clause"}
+  },
+  "policy_yaml": "rules:\n  - rule: no-gpl\n    severity: error\n  - rule: max-vulnerabilities\n    max: 3\n    severity: warning\n"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `packages` | dict | yes | Package name → metadata (same shape as `/check/cve`) |
+| `policy_yaml` | string | no | Inline YAML policy content. If omitted, reads `udr-policy.yaml` from server filesystem |
+
+**Response:**
+
+```json
+{
+  "status": "violation",
+  "total_violations": 1,
+  "results": [
+    {"rule": "no-gpl", "severity": "error", "message": "numpy is under GPL-3.0 license"},
+    {"rule": "max-vulnerabilities", "severity": "warning", "message": "3 vulnerabilities found (max 3)"}
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"ok"`, `"warning"`, or `"violation"` based on error-severity violations |
+| `total_violations` | int | Count of all violations (error + warning) |
+| `results` | array | Per-rule violations with `rule`, `severity`, and `message` |
+
+---
+
+## SBOM
+
+### `POST /api/v1/sbom`
+
+Generate a Software Bill of Materials from lock data in SPDX 2.3 or CycloneDX 1.5 format. Mirrors `udr sbom`.
+
+**Rate limit:** 10/minute  
+**Auth:** Yes (anonymous in local mode)
+
+**Request:**
+
+```json
+{
+  "lock_data": {
+    "packages": {
+      "numpy": {"ecosystem": "pypi", "resolved_version": "1.26.0", "license": "BSD-3-Clause"}
+    }
+  },
+  "format": "spdx"
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `lock_data` | dict | (required) | Lock file data with packages section |
+| `format` | string | `"spdx"` | Output format: `"spdx"` or `"cyclonedx"` |
+
+**Response (SPDX):**
+
+```json
+{
+  "status": "success",
+  "format": "spdx",
+  "sbom": {
+    "spdxVersion": "SPDX-2.3",
+    "dataLicense": "CC0-1.0",
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "name": "udr-sbom",
+    "packages": [
+      {
+        "SPDXID": "SPDXRef-numpy",
+        "name": "numpy",
+        "versionInfo": "1.26.0",
+        "supplier": "NOASSERTION",
+        "licenseConcluded": "BSD-3-Clause",
+        "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:pypi/numpy@1.26.0"}]
+      }
+    ],
+    "relationships": []
+  }
+}
+```
+
+With `"format": "cyclonedx"`, the `sbom` object follows the CycloneDX 1.5 JSON schema instead.
+
+**Status codes:**
+
+| Code | Condition |
+|---|---|
+| `200` | SBOM generated |
+| `400` | Unsupported format |
+
+---
+
 ## Completion
 
 ### `GET /api/v1/completion/{shell}`
@@ -1963,11 +2533,25 @@ Every API endpoint maps to a CLI command when `udr serve` is running:
 | `GET /api/v1/index/status` | GET | `udr index status` | Same response shape |
 | `POST /api/v1/index/pull` | POST | `udr index pull` | Same |
 | `POST /api/v1/index/build` | POST | `udr index build` | Same |
+| `POST /api/v1/index/sync-all` | POST | `udr index sync --all` | Same |
+| `POST /api/v1/check/cve` | POST | `udr check --cve` | CVE scanning from lock data |
+| `POST /api/v1/check/license` | POST | `udr check --license` | License compliance |
+| `POST /api/v1/check/deprecated` | POST | `udr check --deprecated` | Deprecated/yanked check |
+| `POST /api/v1/check/policy` | POST | `udr check --policy` | Policy engine |
+| `POST /api/v1/sbom` | POST | `udr sbom` | SPDX/CycloneDX SBOM |
+| `POST /api/v1/lock/check` | POST | `udr lock --check` | CI drift detection |
+| `POST /api/v1/lock/sign` | POST | `udr lock --sign` | Ed25519 signing |
+| `POST /api/v1/lock/update-with-fix` | POST | `udr update --fix-cve` | CVE auto-fix |
+| `POST /api/v1/lock/update-manifests` | POST | `udr update` | Suggests version bumps |
+| `POST /api/v1/lock/report` | POST | `udr lock --report` | Human-readable summary |
+| `POST /api/v1/lock/apply-pinning` | POST | `udr lock --pin/--block/--freeze` | Pin/block/freeze constraints |
+| `GET /api/v1/auth/signing-key` | GET | `udr auth show-key` | Show signing key |
+| `POST /api/v1/auth/gen-key` | POST | `udr auth gen-key` | Generate signing key |
 | `GET /api/v1/completion/{shell}` | GET | `udr completion {shell}` | Returns raw shell script |
 
-**API-only endpoints** (no CLI equivalent): `/api/v1/packages/{eco}/{name}/versions`, `/api/v1/packages/{eco}/{name}/dependencies`, `/api/v1/packages/{eco}/{name}/compatibility`, `/api/v1/packages/export-formats`, `/api/v1/system/check-compatibility`, auth endpoints.
+**API-only endpoints** (no CLI equivalent): `/api/v1/packages/{eco}/{name}/versions`, `/api/v1/packages/{eco}/{name}/dependencies`, `/api/v1/packages/{eco}/{name}/compatibility`, `/api/v1/packages/export-formats`, `/api/v1/system/check-compatibility`, `/api/v1/lock/*`, `/api/v1/check/*`, `/api/v1/sbom`, auth endpoints.
 
-**CLI-only features** (no API equivalent): `udr serve` (starts the API), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), `lock -r/--report`, local package manager execution (`install`), `check --cve`, `check --license`.
+**CLI-only features** (no API equivalent): `udr serve` (starts the API), interactive TUI modes (`-i/--interactive`), manifest file writing (`lock -y`, `lock --dry-run`), local package manager execution (`install`), `udr why --all`.
 
 ---
 
@@ -2007,3 +2591,10 @@ Requests pass through middleware in this order:
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `UDR_STANDALONE` | `false` | Skip database check on startup |
 | `DATABASE_URL` | — | Database connection string (required unless standalone) |
+| `SOLVER_REJECT_DEPRECATED` | `false` | Reject deprecated/yanked packages during resolution |
+| `TARGET_OS` | — | Target OS for cross-compilation (`linux`, `windows`, `darwin`) |
+| `TARGET_ARCH` | — | Target CPU architecture for cross-compilation (`x86_64`, `aarch64`) |
+| `TARGET_CUDA` | — | Target CUDA version for cross-compilation (e.g. `12.1`) |
+| `PIN_INTEGRITY` | `false` | Verify package integrity hashes in lock file |
+| `BFS_BATCH_SIZE` | `20` | Batch size for parallel BFS dependency fetching |
+| `INDEX_AUTO_SYNC` | `false` | Auto-sync stale local indexes before resolution |

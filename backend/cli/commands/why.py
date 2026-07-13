@@ -1,5 +1,6 @@
 """Explain why a package version was selected — show dependency chain."""
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -167,13 +168,13 @@ def _explain_package_json(
     return data
 
 
-def cmd_why(args):
+def cmd_why(args: argparse.Namespace):
     """Cmd why."""
     directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     ).resolve()
     if not lock_path.is_file():
         console.print(f"[red]Lock file not found:[/red] {lock_path}")
@@ -183,11 +184,11 @@ def cmd_why(args):
     packages = lock_data.get("packages", {})
     rev_deps = _build_reverse_deps(packages)
 
-    all_flag = getattr(args, "all", False)
-    target = getattr(args, "package", None)
+    all_flag = args.all
+    target = args.package
 
     if all_flag:
-        if getattr(args, "json", False):
+        if args.json:
             results: list[dict] = []
             for pkg_name in sorted(packages):
                 results.append(_explain_package_json(packages, rev_deps, pkg_name))
@@ -229,7 +230,7 @@ def cmd_why(args):
         console.print(f"[yellow]{target} has no resolved version[/yellow]")
         return
 
-    if getattr(args, "json", False):
+    if args.json:
         data = _explain_package_json(packages, rev_deps, target)
         json.dump(data, sys.stdout, indent=2, default=str)
         print()

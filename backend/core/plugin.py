@@ -25,6 +25,7 @@ from __future__ import annotations
 import abc
 import dataclasses
 import logging
+import threading
 from typing import Any, ClassVar
 
 from backend.data_sources.base_client import BaseDataSourceClient
@@ -206,12 +207,22 @@ class EcosystemPlugin(BaseDataSourceClient, abc.ABC):
         """
         raise NotImplementedError
 
+    # -- Lifecycle hooks ---------------------------------------------------
+
+    async def close(self):
+        """Release any HTTP sessions or other resources held by this plugin.
+
+        Subclasses with persistent sessions should override this method.
+        The base implementation is a no-op.
+        """
+
 
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 _plugin_registry: dict[str, type[EcosystemPlugin]] = {}
+_plugin_lock: Any = threading.Lock()
 
 
 def register_ecosystem(
@@ -238,10 +249,12 @@ def register_ecosystem(
             cls.display_name = name
         if auth_prefix:
             cls.auth_prefix = auth_prefix
-        if ecosystem in _plugin_registry:
-            logger.warning("Overriding existing plugin for ecosystem %r", ecosystem)
-        _plugin_registry[ecosystem] = cls
-        logger.debug("Registered plugin %s for ecosystem %r", cls.__name__, ecosystem)
+        with _plugin_lock:
+            if ecosystem in _plugin_registry:
+                logger.debug("Plugin %r already registered (skipping duplicate)", ecosystem)
+                return cls
+            _plugin_registry[ecosystem] = cls
+            logger.debug("Registered plugin %s for ecosystem %r", cls.__name__, ecosystem)
         return cls
 
     return _wrapper
@@ -249,12 +262,14 @@ def register_ecosystem(
 
 def get_plugin(ecosystem: str) -> type[EcosystemPlugin] | None:
     """Return the registered plugin class for *ecosystem* (or ``None``)."""
-    return _plugin_registry.get(ecosystem)
+    with _plugin_lock:
+        return _plugin_registry.get(ecosystem)
 
 
 def get_all_plugins() -> dict[str, type[EcosystemPlugin]]:
-    """Return a copy of the plugin registry."""
-    return dict(_plugin_registry)
+    """Return a thread-safe copy of the plugin registry."""
+    with _plugin_lock:
+        return dict(_plugin_registry)
 
 
 def list_plugin_manifests() -> list[tuple[str, str, str]]:
@@ -262,20 +277,22 @@ def list_plugin_manifests() -> list[tuple[str, str, str]]:
 
     Returns entries suitable for appending to ``MANIFEST_PATTERNS``.
     """
-    result: list[tuple[str, str, str]] = []
-    for eco, cls in _plugin_registry.items():
-        for mf in cls.manifests:
-            result.append((mf.glob, eco, mf.parser))
-    return result
+    with _plugin_lock:
+        result: list[tuple[str, str, str]] = []
+        for eco, cls in _plugin_registry.items():
+            for mf in cls.manifests:
+                result.append((mf.glob, eco, mf.parser))
+        return result
 
 
 def list_plugin_lock_files() -> list[tuple[str, str, str]]:
     """Aggregate ``(glob, ecosystem, parser_name)`` triples from all plugins."""
-    result: list[tuple[str, str, str]] = []
-    for eco, cls in _plugin_registry.items():
-        for lf in cls.lock_files:
-            result.append((lf.glob, eco, lf.parser))
-    return result
+    with _plugin_lock:
+        result: list[tuple[str, str, str]] = []
+        for eco, cls in _plugin_registry.items():
+            for lf in cls.lock_files:
+                result.append((lf.glob, eco, lf.parser))
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -308,3 +325,82 @@ def import_builtin_plugins():
                     module_path,
                     exc,
                 )
+
+
+def discover_third_party_plugins():
+    """Discover third-party plugins via ``udr.plugins`` entry points.
+
+    Any installed package that declares a ``[project.entry-points."udr.plugins"]``
+    section will have its plugin class loaded and registered automatically.
+    """
+
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:
+        return
+
+    try:
+        eps = entry_points(group="udr.plugins")
+    except TypeError:
+        return
+
+    for ep in eps:
+        with _plugin_lock:
+            if ep.name in _plugin_registry:
+                continue
+        try:
+            loaded = ep.load()
+            if loaded is not None and not (
+                isinstance(loaded, type) and issubclass(loaded, EcosystemPlugin)
+            ):
+                logger.warning(
+                    "Third-party plugin %r does not inherit from EcosystemPlugin — rejected",
+                    ep.name,
+                )
+                with _plugin_lock:
+                    _plugin_registry.pop(ep.name, None)
+        except Exception as exc:
+            logger.warning(
+                "Failed to load third-party plugin %r: %s",
+                ep.name,
+                exc,
+            )
+
+
+def discover_all_plugins():
+    """Load all plugins — built-in + third-party."""
+    import_builtin_plugins()
+    discover_third_party_plugins()
+
+
+# ---------------------------------------------------------------------------
+# Register all built-in plugin modules for auto-discovery.
+# These populate _BUILTIN_PLUGIN_MODULES so that import_builtin_plugins()
+# knows which modules to import.
+# ---------------------------------------------------------------------------
+_register_builtin("npm", "backend.data_sources.npm_plugin")
+_register_builtin("pypi", "backend.data_sources.pypi_plugin")
+_register_builtin("crates", "backend.data_sources.crates_plugin")
+_register_builtin("hex", "backend.data_sources.hex_plugin")
+_register_builtin("haskell", "backend.data_sources.haskell_plugin")
+_register_builtin("pub", "backend.data_sources.pub_plugin")
+_register_builtin("gradle", "backend.data_sources.gradle_plugin")
+_register_builtin("swift", "backend.data_sources.swift_plugin")
+_register_builtin("maven", "backend.data_sources.maven_plugin")
+_register_builtin("conda", "backend.data_sources.conda_plugin")
+_register_builtin("gomodules", "backend.data_sources.gomodules_plugin")
+_register_builtin("apt", "backend.data_sources.apt_plugin")
+_register_builtin("apk", "backend.data_sources.apk_plugin")
+_register_builtin("cocoapods", "backend.data_sources.cocoapods_plugin")
+_register_builtin("homebrew", "backend.data_sources.homebrew_plugin")
+_register_builtin("nuget", "backend.data_sources.nuget_plugin")
+_register_builtin("packagist", "backend.data_sources.packagist_plugin")
+_register_builtin("rubygems", "backend.data_sources.rubygems_plugin")
+_register_builtin("custom_db", "backend.data_sources.custom_db_plugin")
+_register_builtin("nix", "backend.data_sources.nix_plugin")
+_register_builtin("guix", "backend.data_sources.guix_plugin")
+_register_builtin("vcpkg", "backend.data_sources.vcpkg_plugin")
+_register_builtin("conan", "backend.data_sources.conan_plugin")
+_register_builtin("docker", "backend.data_sources.docker_plugin")
+_register_builtin("helm", "backend.data_sources.helm_plugin")
+_register_builtin("terraform", "backend.data_sources.terraform_plugin")

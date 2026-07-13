@@ -1,6 +1,7 @@
 """GitHub repository download — shared by CLI and API."""
 
 import io
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -25,12 +26,16 @@ async def _download_github_repo(url: str, branch: str) -> Path:
             raise ValueError(f"GitHub API returned {resp.status} for {url}")
         data = await resp.read()
     tmp = Path(tempfile.mkdtemp(prefix="udr_scan_"))
-    z = zipfile.ZipFile(io.BytesIO(data))
-    _safe_extractall(z, tmp)
-    contents = list(tmp.iterdir())
-    if contents and contents[0].is_dir():
-        return contents[0]
-    return tmp
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        _safe_extractall(z, tmp)
+        contents = list(tmp.iterdir())
+        if contents and contents[0].is_dir():
+            return contents[0]
+        return tmp
+    except:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
 
 
 def _safe_extractall(z: zipfile.ZipFile, target_dir: Path) -> None:

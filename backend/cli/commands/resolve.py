@@ -1,12 +1,15 @@
 """Module docstring."""
 
+import argparse
 import asyncio
 import json
-import os
 import sys
+from typing import Any
 
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+
+from backend.settings import SOLVER_TIMEOUT
 
 from ..shared import (
     _aggregator_to_resolver_input,
@@ -21,18 +24,18 @@ from ..shared import (
 )
 
 
-def cmd_resolve(args):
+def cmd_resolve(args: argparse.Namespace) -> None:
     """Cmd resolve."""
     from backend.core import DataAggregator, SystemScanner
     from backend.orchestrator.resolve import create_solver
 
     # Support --json shorthand (overrides --format)
-    if getattr(args, "json", False):
+    if args.json:
         args.format = "json"
 
-    async def _resolve():
+    async def _resolve() -> int:
         """Resolve."""
-        auto_sync = getattr(args, "auto_sync", False)
+        auto_sync = args.auto_sync
         if auto_sync:
             await _check_and_sync_indexes(auto_sync=True)
 
@@ -73,6 +76,13 @@ def cmd_resolve(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["cuda"] = ""
                 system_info["gpu"]["mps"] = True
+                system_info["gpu"]["metal"] = "3.0"
+            elif args.device == "rocm":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["cuda"] = ""
+                system_info["gpu"]["rocm"] = "6.0.0"
             elif args.device == "cuda":
                 if "gpu" not in system_info:
                     system_info["gpu"] = {}
@@ -92,7 +102,7 @@ def cmd_resolve(args):
         ) as progress:
             fetch_task = progress.add_task("Fetching package metadata...", total=len(specs))
 
-            async def fetch_one(pkg_name, eco):
+            async def fetch_one(pkg_name: str, eco: str) -> tuple[str, Any] | None:
                 """Fetch one."""
                 progress.update(
                     fetch_task,
@@ -112,10 +122,15 @@ def cmd_resolve(args):
                     err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")
                 return None
 
-            results = await asyncio.gather(*[fetch_one(n, e) for n, e, _ in specs])
+            results = await asyncio.gather(
+                *[fetch_one(n, e) for n, e, _ in specs],
+                return_exceptions=True,
+            )
 
             for spec, result in zip(specs, results):
-                if result:
+                if isinstance(result, Exception):
+                    logger.warning("Fetch failed for %s: %s", spec[0], result)
+                elif result:
                     pkg_name, data = result
                     package_details[pkg_name] = data
                     rinput = _aggregator_to_resolver_input(
@@ -143,8 +158,7 @@ def cmd_resolve(args):
                 system_info,
                 package_details,
                 interactive=args.interactive,
-                timeout=getattr(args, "timeout", None)
-                or int(os.environ.get("SOLVER_TIMEOUT", 120)),
+                timeout=args.timeout or SOLVER_TIMEOUT,
                 pinning_policy=_build_pinning_policy(args),
             )
 

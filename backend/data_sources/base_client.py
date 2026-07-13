@@ -71,6 +71,7 @@ class BaseDataSourceClient:
             explicit_headers=auth_headers,
         )
         self._request_timestamps: list = []
+        self._throttle_lock = asyncio.Lock()
         self._circuit_state = "CLOSED"
         self._circuit_failure_count = 0
         self._circuit_failure_threshold = CIRCUIT_BREAKER_FAILURE_THRESHOLD
@@ -78,6 +79,7 @@ class BaseDataSourceClient:
         self._circuit_last_open_time: datetime | None = None
         self._circuit_half_open_successes = 0
         self._circuit_half_open_max_successes = 2
+        self._circuit_lock = asyncio.Lock()
 
     async def __aenter__(self):
         """async   aenter."""
@@ -85,7 +87,7 @@ class BaseDataSourceClient:
         _sessions_registry.append(self.session)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, *args):
         """async   aexit."""
         if self.session and not self.session.closed:
             await self.session.close()
@@ -127,13 +129,20 @@ class BaseDataSourceClient:
     async def _throttle(self):
         now = datetime.now()
         cutoff = now - timedelta(seconds=60)
-        self._request_timestamps = [t for t in self._request_timestamps if t > cutoff]
-        if len(self._request_timestamps) >= self.rate_limit:
-            sleep_for = (self._request_timestamps[0] - cutoff).total_seconds()
-            if sleep_for > 0:
-                logger.debug(f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s")
-                await asyncio.sleep(sleep_for)
-        self._request_timestamps.append(now)
+
+        # Purge expired timestamps under the lock to avoid race
+        async with self._throttle_lock:
+            self._request_timestamps = [t for t in self._request_timestamps if t > cutoff]
+            if len(self._request_timestamps) >= self.rate_limit:
+                sleep_for = (self._request_timestamps[0] - cutoff).total_seconds()
+                if sleep_for > 0:
+                    logger.debug(f"Rate limited for {self.ecosystem}, sleeping {sleep_for:.1f}s")
+                    await asyncio.sleep(sleep_for)
+                    # Re-check after sleep — another coroutine may have advanced the window
+                    now = datetime.now()
+                    cutoff = now - timedelta(seconds=60)
+                    self._request_timestamps = [t for t in self._request_timestamps if t > cutoff]
+            self._request_timestamps.append(now)
 
     async def _make_request(self, method: str, url: str, **kwargs) -> dict | None:
         """Actual HTTP request without circuit breaker.
@@ -185,49 +194,53 @@ class BaseDataSourceClient:
         """Execute request with circuit breaker pattern.
         404s (None results) do NOT count as circuit failures.
         """
-        now = datetime.now()
+        async with self._circuit_lock:
+            now = datetime.now()
 
-        if self._circuit_state == "OPEN":
-            if (
-                self._circuit_last_open_time
-                and (now - self._circuit_last_open_time).total_seconds() >= self._circuit_open_time
-            ):
-                logger.debug(f"Circuit half-opening for {self.ecosystem}")
-                self._circuit_state = "HALF_OPEN"
-                self._circuit_half_open_successes = 0
-            else:
-                logger.warning(f"Circuit OPEN for {self.ecosystem}, skipping request to {url}")
+            if self._circuit_state == "OPEN":
+                if (
+                    self._circuit_last_open_time
+                    and (now - self._circuit_last_open_time).total_seconds()
+                    >= self._circuit_open_time
+                ):
+                    logger.debug(f"Circuit half-opening for {self.ecosystem}")
+                    self._circuit_state = "HALF_OPEN"
+                    self._circuit_half_open_successes = 0
+                else:
+                    logger.warning(f"Circuit OPEN for {self.ecosystem}, skipping request to {url}")
+                    return None
+
+            try:
+                result = await self._make_request(method, url, **kwargs)
+            except OSError:
+                self._circuit_failure_count += 1
+                logger.debug(
+                    f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}"
+                )
+                if self._circuit_state == "HALF_OPEN":
+                    self._circuit_state = "OPEN"
+                    self._circuit_last_open_time = datetime.now()
+                    logger.warning(
+                        f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure"
+                    )
+                elif self._circuit_failure_count >= self._circuit_failure_threshold:
+                    self._circuit_state = "OPEN"
+                    self._circuit_last_open_time = datetime.now()
+                    logger.warning(
+                        f"Circuit OPENED for {self.ecosystem} after {self._circuit_failure_count} failures"
+                    )
                 return None
 
-        try:
-            result = await self._make_request(method, url, **kwargs)
-        except OSError:
-            self._circuit_failure_count += 1
-            logger.debug(
-                f"Circuit failure count incremented to {self._circuit_failure_count} for {self.ecosystem}"
-            )
             if self._circuit_state == "HALF_OPEN":
-                self._circuit_state = "OPEN"
-                self._circuit_last_open_time = datetime.now()
-                logger.warning(f"Circuit re-OPENED for {self.ecosystem} after HALF_OPEN failure")
-            elif self._circuit_failure_count >= self._circuit_failure_threshold:
-                self._circuit_state = "OPEN"
-                self._circuit_last_open_time = datetime.now()
-                logger.warning(
-                    f"Circuit OPENED for {self.ecosystem} after {self._circuit_failure_count} failures"
-                )
-            return None
-
-        if self._circuit_state == "HALF_OPEN":
-            self._circuit_half_open_successes += 1
-            if self._circuit_half_open_successes >= self._circuit_half_open_max_successes:
-                self._circuit_state = "CLOSED"
+                self._circuit_half_open_successes += 1
+                if self._circuit_half_open_successes >= self._circuit_half_open_max_successes:
+                    self._circuit_state = "CLOSED"
+                    self._circuit_failure_count = 0
+                    logger.info(
+                        f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes"
+                    )
+            else:
                 self._circuit_failure_count = 0
-                logger.info(
-                    f"Circuit CLOSED for {self.ecosystem} after successful HALF_OPEN probes"
-                )
-        else:
-            self._circuit_failure_count = 0
 
         return result
 
@@ -265,7 +278,6 @@ class BaseDataSourceClient:
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
         """cached get."""
-        import os as _os
         import time as _time
 
         cached = await self._cache_get(cache_key)
@@ -307,12 +319,14 @@ class BaseDataSourceClient:
                                 await self._cache_set(cache_key, wrapped)
                                 return new_data
                     except Exception:
-                        pass
+                        logger.debug("ETag revalidation failed for %s", url, exc_info=True)
                     return data
                 return data
             return cached
 
-        if _os.environ.get("UDR_OFFLINE", "").lower() == "true":
+        from backend.settings import UDR_OFFLINE
+
+        if UDR_OFFLINE:
             logger.warning(f"Offline mode: skipping network request for {url}")
             return None
 

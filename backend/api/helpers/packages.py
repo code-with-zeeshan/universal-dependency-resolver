@@ -6,8 +6,58 @@ from typing import Any
 from backend.api.helpers.compatibility import (
     _check_python_compatibility,
 )
+from backend.settings import ACTIVE_ECOSYSTEMS, ECOSYSTEM_NAMES
 
 logger = logging.getLogger(__name__)
+
+# Known ecosystem set for SSRF prevention and input validation
+KNOWN_ECOSYSTEMS: set[str] = (
+    set(ECOSYSTEM_NAMES.keys())
+    | set(ACTIVE_ECOSYSTEMS)
+    | {
+        "pypi",
+        "npm",
+        "maven",
+        "rubygems",
+        "packagist",
+        "crates",
+        "golang",
+        "gomodules",
+        "nuget",
+        "conda",
+        "pub",
+        "cocoapods",
+        "homebrew",
+        "gradle",
+        "swift",
+        "hex",
+        "haskell",
+        "apt",
+        "apk",
+        "nix",
+        "guix",
+        "vcpkg",
+        "conan",
+        "helm",
+        "terraform",
+        "docker",
+    }
+)
+
+
+def validate_ecosystem(ecosystem: str) -> str | None:
+    """Validate an ecosystem name against known ecosystems.
+
+    Returns the sanitized ecosystem name if valid, ``None`` otherwise.
+    Prevents SSRF by rejecting ``file://``, ``http://``, or other
+    non-ecosystem strings that could be used as registry URLs.
+    """
+    eco = ecosystem.strip().lower()
+    if not eco or eco.startswith(("file://", "http://", "https://", "../", "/")):
+        return None
+    if eco in KNOWN_ECOSYSTEMS:
+        return eco
+    return None
 
 
 def _filter_by_python_version(results: list[dict], python_version: str) -> list[dict]:
@@ -157,6 +207,7 @@ async def _detect_package_ecosystem(package_name: str, aggregator) -> str:
             if source and await source.package_exists(package_name):
                 return eco
         except Exception:
+            logger.debug("Failed to check package existence in ecosystem %s", eco, exc_info=True)
             continue
     return "pypi"
 

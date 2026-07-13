@@ -1,17 +1,17 @@
 # UDR Roadmap
 
-## Current State (v4.0.0)
+## Current State (v1.4.0)
 
 | Area | Status |
 |------|--------|
-| Supported ecosystems | 27 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, vcpkg, conan, docker, helm, terraform, nix, guix, docs, custom_db) |
+| Supported ecosystems | 20 active (22 total registered; 27 with plugin-only ecosystems) |
 | Resolution engine | PubGrub SAT solver (Rust-backed, default) + Z3 fallback (`USE_Z3_SOLVER=true`) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
 | In-place manifest update | **18/18 resolvable ecosystems** — all ecosystems with local manifests can be written back after `udr lock` |
 | CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index`, `sbom` |
 | Lock file | `udr.lock` (supports `--workspace` for multi-workspace projects) |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | Dependency graph visualization | Interactive D3.js force-directed graph in WASM frontend (`#graph` page) |
-| Tests | 2514 unit + 94 integration = **2608 total** (zero regressions) |
+| Tests | 2846 unit + 96 integration + 75 e2e = **3017 total** (zero regressions) |
 | All 21 bottlenecks | ✅ Fixed — P0×4 (wrong results), P1×4 (reliability), P2×5 (scalability), P3×8 (code quality) |
 | Architecture violations | 0 — enforced via CI + pre-commit |
 | Ruff violations | 0 in `backend/` |
@@ -46,7 +46,7 @@
 ## Remaining Limitations (Lower Priority)
 
 ### 5. Solver Capacity: 50000-variable limit
-- **What**: `SOLVER_MAX_VARS=50000` caps total Z3 boolean variables.
+- **What**: `SOLVER_MAX_VARIABLES=50000` caps total Z3 boolean variables.
 - **Mitigation**: PubGrub (default, Rust-backed) handles 200+ packages in synthetic tests. SCC batch partitioning + dynamic version clustering handle larger projects. Z3 fallback via `USE_Z3_SOLVER=true`.
 - **Remaining gap**: Very large monorepos (>500 packages) may still hit the limit.
 
@@ -124,7 +124,7 @@
 | 9.5 | Terraform provider locks | P3 | ✅ Done | `.terraform.lock.hcl` |
 | 9.6 | Dockerfile FROM parsing | P3 | ✅ Done | Base image dependency tracking |
 
-All Phase 9 items complete — **27 ecosystems total**.
+All Phase 9 items complete — **22 ecosystems total (20 active resolution + docs/custom_db), with plugin support for terraform, docker, conan, vcpkg, helm**.
 
 ## Phase 10 — Developer Experience
 
@@ -141,9 +141,7 @@ All Phase 9 items complete — **27 ecosystems total**.
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.3 | All 21 bottlenecks fixed, Phase 5 complete, 0 ruff violations | ✅ Released | Q3 2026 |
-| v1.4 | CVE scanning, license compliance, PubGrub pure-Python, workspace awareness, private registry auth | ✅ Released | Q3 2026 |
-| v1.5 | Cross-compilation flags + offline-first auto-indexing + per-ecosystem solver isolation | ✅ Released | Q4 2026 |
-| v2.0 | CVE auto-fix + SBOM generation + GitHub Actions CI drift check | ✅ Released | Q1 2027 |
-| v3.0 | Policy engine + supply chain attestation + signed lock files | ✅ Released | Q2 2027 |
-| v4.0 | WASM frontend + Desktop app (Tauri) + VSCode extension | ✅ Released | Q3 2027 |
+| v1.3 | Core resolution, 20 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
+| v1.4 | WASM frontend, Tauri-based desktop, complete manifest updaters, PubGrub solver, CVE/license/deprecation checking, policy engine, SBOM, supply chain attestation | ✅ Current | 2026-07-14 |
+| v1.5 | Incremental resolution, VSCode extension, Tauri-based desktop | 🔜 Planned | Q4 2026 |
+| v2.0 | WASM frontend, Tauri-based desktop, complete manifest updaters | 🔮 Future | Q1 2027 |

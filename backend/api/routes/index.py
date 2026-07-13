@@ -5,10 +5,15 @@ Mirrors ``udr index {status,pull,build}``.
 
 import logging
 import shutil
+import socket
 import tempfile
+from ipaddress import ip_address, ip_network
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -23,6 +28,35 @@ from backend.core.offline_index import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_PRIVATE_NETWORKS = [
+    ip_network("127.0.0.0/8"),
+    ip_network("10.0.0.0/8"),
+    ip_network("172.16.0.0/12"),
+    ip_network("192.168.0.0/16"),
+    ip_network("169.254.0.0/16"),
+    ip_network("::1/128"),
+    ip_network("fc00::/7"),
+    ip_network("fe80::/10"),
+]
+
+
+def _validate_external_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="URL must use http:// or https://")
+    if not parsed.netloc:
+        raise HTTPException(status_code=400, detail="URL must have a valid hostname")
+    hostname = parsed.hostname
+    try:
+        addr = socket.getaddrinfo(hostname, 80, family=socket.AF_INET)[0][4][0]
+    except (socket.gaierror, OSError):
+        raise HTTPException(status_code=400, detail="Could not resolve hostname")
+    ip = ip_address(addr)
+    for net in _PRIVATE_NETWORKS:
+        if ip in net:
+            raise HTTPException(status_code=400, detail="Private/internal URLs are not allowed")
+    return url
 
 
 class IndexPullRequest(BaseModel):
@@ -70,9 +104,7 @@ async def pull_index(
 
     Mirrors ``udr index pull <url>``.
     """
-    url = req.url
-    if not url.startswith("http://") and not url.startswith("https://"):
-        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    url = _validate_external_url(req.url)
 
     tmp = Path(tempfile.mkdtemp(prefix="udr_index_pull_"))
     try:
@@ -107,13 +139,14 @@ async def pull_index(
             status_code=502,
             detail=f"Download failed: {e.response.status_code} {e.response.text[:200]}",
         )
-    except httpx.RequestError as e:
+    except httpx.RequestError:
         raise HTTPException(
             status_code=502,
-            detail=f"Download failed — network error: {e}",
+            detail="Download failed — network error",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Unexpected error downloading index")
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -142,3 +175,46 @@ async def build_index(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sync-all")
+async def sync_all_indexes(
+    current_user=Depends(get_current_user),
+):
+    """Sync local indexes for all ecosystems from remote registries.
+
+    Mirrors ``udr index sync --all``.
+    """
+    from backend.core.data_aggregator import DataAggregator
+    from backend.settings import ECOSYSTEMS as _ECOSYSTEMS
+
+    ecosystems = [e for e in _ECOSYSTEMS if e not in ("docs", "custom_db")]
+
+    aggregator = DataAggregator()
+    try:
+        results: list[dict] = []
+        for eco in ecosystems:
+            try:
+                n = await aggregator.sync_local_index(eco)
+                results.append(
+                    {
+                        "ecosystem": eco,
+                        "status": "ok",
+                        "packages_synced": n or 0,
+                    }
+                )
+            except Exception as e:
+                results.append(
+                    {
+                        "ecosystem": eco,
+                        "status": "error",
+                        "error": str(e),
+                    }
+                )
+        return {
+            "status": "success",
+            "results": results,
+            "total": sum(r.get("packages_synced", 0) for r in results),
+        }
+    finally:
+        await aggregator.close()

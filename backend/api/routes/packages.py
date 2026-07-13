@@ -3,6 +3,7 @@
 # backend/api/routes/packages.py
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from packaging import version
@@ -30,9 +31,11 @@ from backend.api.helpers.packages import (
     _get_package_metrics,
     _get_recursive_dependencies,
     _sort_search_results,
+    validate_ecosystem,
 )
 from backend.api.schemas import (
     ExportRequest,
+    PackageRequest,
     ResolveRequest,
 )
 from backend.core.cache import cache_manager
@@ -66,7 +69,7 @@ async def resolve_dependencies(
     aggregator: DataAggregator = Depends(get_data_aggregator),
     resolver: ConflictResolver = Depends(get_conflict_resolver),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Resolve dependencies for multiple packages."""
     try:
         # Get system info if needed (cached for 5 minutes)
@@ -81,7 +84,7 @@ async def resolve_dependencies(
             system_info = {}
 
         # Get package information concurrently
-        async def _fetch_pkg_info(pkg):
+        async def _fetch_pkg_info(pkg: PackageRequest) -> dict[str, Any] | None:
             """Fetch pkg info."""
             info = await aggregator.get_package_info(pkg.name, pkg.ecosystem)
             if info is None:
@@ -113,7 +116,7 @@ async def export_configuration(
     export_request: ExportRequest,
     generator: ExportGenerator = Depends(get_export_generator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Export resolved dependencies to various formats."""
     try:
         system_info = export_request.system_info
@@ -139,7 +142,9 @@ async def export_configuration(
 
 @router.get("/export-formats")
 @limiter.limit("60/minute")
-async def get_export_formats(request: Request, current_user: User = Depends(get_current_user)):
+async def get_export_formats(
+    request: Request, current_user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     """Get available export formats."""
     try:
         formats = [
@@ -168,7 +173,7 @@ async def search_packages(
     python_version: str | None = Query(None, description="Filter by Python version compatibility"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Search for packages across multiple ecosystems."""
     try:
         logger.info(f"Searching for packages: query='{q}', ecosystems={ecosystems}")
@@ -227,8 +232,10 @@ async def get_package_details(
     include_metrics: bool = Query(False, description="Include download and usage metrics"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get detailed information about a specific package."""
+    if not validate_ecosystem(ecosystem):
+        raise HTTPException(status_code=400, detail=f"Invalid ecosystem: {ecosystem}")
     try:
         logger.info(f"Getting package details: {ecosystem}/{package_name}")
 
@@ -287,8 +294,10 @@ async def get_package_versions(
     include_prerelease: bool = Query(False, description="Include pre-release versions"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get all available versions of a package."""
+    if not validate_ecosystem(ecosystem):
+        raise HTTPException(status_code=400, detail=f"Invalid ecosystem: {ecosystem}")
     try:
         logger.info(f"Getting versions for: {ecosystem}/{package_name}")
 
@@ -368,8 +377,10 @@ async def get_package_dependencies(
     max_depth: int = Query(3, ge=1, le=5, description="Maximum recursion depth"),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get dependencies for a specific package version."""
+    if not validate_ecosystem(ecosystem):
+        raise HTTPException(status_code=400, detail=f"Invalid ecosystem: {ecosystem}")
     try:
         logger.info(f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}")
 
@@ -419,8 +430,10 @@ async def get_package_compatibility(
     compatibility_db: CompatibilityDB = Depends(get_compatibility_db),
     aggregator: DataAggregator = Depends(get_data_aggregator),
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Get known compatibility information for a package."""
+    if not validate_ecosystem(ecosystem):
+        raise HTTPException(status_code=400, detail=f"Invalid ecosystem: {ecosystem}")
     try:
         logger.info(
             f"Getting compatibility info for: {ecosystem}/{package_name}@{version or 'latest'}"
@@ -468,7 +481,7 @@ async def get_package_compatibility(
 @limiter.limit("60/minute")
 async def get_supported_ecosystems(
     request: Request, current_user: User = Depends(get_current_user)
-):
+) -> dict[str, Any]:
     """Get list of supported package ecosystems with their capabilities."""
     ecosystems = {
         "pypi": {
@@ -574,6 +587,78 @@ async def get_supported_ecosystems(
             "supports_search": True,
             "supports_versions": True,
             "supports_dependencies": True,
+        },
+        "pub": {
+            "name": "Dart Pub",
+            "language": "Dart/Flutter",
+            "package_manager": "dart pub",
+            "supports_search": True,
+            "supports_versions": True,
+            "supports_dependencies": True,
+        },
+        "gradle": {
+            "name": "Gradle Plugin Portal",
+            "language": "Java/Kotlin",
+            "package_manager": "gradle",
+            "supports_search": False,
+            "supports_versions": True,
+            "supports_dependencies": True,
+        },
+        "swift": {
+            "name": "Swift Package Index",
+            "language": "Swift",
+            "package_manager": "swift",
+            "supports_search": False,
+            "supports_versions": True,
+            "supports_dependencies": True,
+        },
+        "hex": {
+            "name": "Hex.pm",
+            "language": "Elixir",
+            "package_manager": "mix",
+            "supports_search": True,
+            "supports_versions": True,
+            "supports_dependencies": True,
+        },
+        "haskell": {
+            "name": "Hackage",
+            "language": "Haskell",
+            "package_manager": "cabal/stack",
+            "supports_search": True,
+            "supports_versions": True,
+            "supports_dependencies": True,
+        },
+        "nix": {
+            "name": "Nix Packages",
+            "language": "Nix",
+            "package_manager": "nix",
+            "supports_search": False,
+            "supports_versions": False,
+            "supports_dependencies": True,
+        },
+        "guix": {
+            "name": "GNU Guix",
+            "language": "Guile Scheme",
+            "package_manager": "guix",
+            "supports_search": False,
+            "supports_versions": False,
+            "supports_dependencies": True,
+        },
+        "docs": {
+            "name": "Documentation",
+            "language": "N/A",
+            "package_manager": "N/A",
+            "supports_search": False,
+            "supports_versions": False,
+            "supports_dependencies": False,
+        },
+        "custom_db": {
+            "name": "Custom Database",
+            "language": "N/A",
+            "package_manager": "custom",
+            "supports_search": False,
+            "supports_versions": True,
+            "supports_dependencies": False,
         },
     }
 

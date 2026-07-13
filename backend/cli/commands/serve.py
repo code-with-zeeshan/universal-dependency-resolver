@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import argparse
 import sys
 
 from rich.panel import Panel
@@ -7,7 +8,7 @@ from rich.panel import Panel
 from ..shared import console
 
 
-def cmd_serve(args):
+def cmd_serve(args: argparse.Namespace) -> None:
     """Cmd serve."""
     try:
         import uvicorn

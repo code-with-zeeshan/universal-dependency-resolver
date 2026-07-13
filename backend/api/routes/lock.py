@@ -1,15 +1,16 @@
 """Module docstring."""
 
+from __future__ import annotations
+
 # backend/api/routes/lock.py
 import asyncio
 import logging
-import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 from backend.api.auth import get_current_user
 from backend.api.dependencies import get_data_aggregator
@@ -24,8 +25,7 @@ from backend.orchestrator import (
     create_solver,
 )
 from backend.orchestrator.install import _generate_install_command
-
-SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
+from backend.settings import SOLVER_API_TIMEOUT
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,9 +69,9 @@ class GenerateLockRequest(BaseModel):
     manifest_contents: dict[str, str] | None = None
     manifest_filter: str | None = None
 
-    @validator("manifest_contents")
-    def validate_manifest_contents(cls, v):
-        """Validate manifest contents."""
+    @field_validator("manifest_contents")
+    @classmethod
+    def validate_manifest_contents(cls, v: dict[str, str] | None) -> dict[str, str] | None:
         if v is None:
             return v
         if len(v) > 50:
@@ -122,8 +122,8 @@ class RestoreRequest(BaseModel):
 @router.post("/verify")
 async def verify_lock(
     req: VerifyRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Validate a lock file — check all resolved versions still exist.
     Mirrors `udr verify`.
     """
@@ -132,6 +132,7 @@ async def verify_lock(
     packages = lock_data.get("packages", {})
 
     if not packages:
+        await aggregator.close()
         raise HTTPException(status_code=400, detail="No packages in lock data")
 
     issues = []
@@ -166,27 +167,34 @@ async def verify_lock(
             return {"name": name, "issue": str(exc), "severity": "error"}
         return None
 
-    results = await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
+    results = await asyncio.gather(
+        *[check_pkg(n, i) for n, i in packages.items()], return_exceptions=True
+    )
     for result in results:
-        if result:
+        if isinstance(result, Exception):
+            logger.debug("Outdated check failed for package: %s", result)
+        elif result:
             issues.append(result)
         else:
             ok_count += 1
 
-    return {
-        "status": "ok" if not any(i["severity"] == "error" for i in issues) else "issues",
-        "total": len(packages),
-        "ok": ok_count,
-        "issues": issues,
-    }
+    try:
+        return {
+            "status": "ok" if not any(i["severity"] == "error" for i in issues) else "issues",
+            "total": len(packages),
+            "ok": ok_count,
+            "issues": issues,
+        }
+    finally:
+        await aggregator.close()
 
 
 @router.post("/graph")
 async def dependency_graph(
     req: GraphRequest,
     aggregator: DataAggregator = Depends(get_data_aggregator),
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Get dependency tree for one or more packages.
     Mirrors `udr graph`.
     """
@@ -225,6 +233,7 @@ async def dependency_graph(
                 system_info,
                 solver_timeout=solver_ms,
                 bfs_timeout=bfs_budget,
+                cross_deps=None,
             ),
             timeout=SOLVER_API_TIMEOUT,
         )
@@ -265,89 +274,94 @@ async def dependency_graph(
 @router.post("/update")
 async def update_package(
     req: UpdateRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Re-resolve a single package and return updated lock data.
     Mirrors `udr update <package> --directory <path> --json`.
     """
     aggregator = DataAggregator()
     resolver = create_solver()
     scanner = SystemScanner()
-
-    lock_data = req.lock_data
-    package_name = req.package
-    packages_in_lock = lock_data.get("packages", {})
-    if package_name not in packages_in_lock:
-        raise HTTPException(
-            status_code=404, detail=f"Package '{package_name}' not found in lock data"
-        )
-
-    pkg_info = packages_in_lock[package_name]
-    ecosystem = req.ecosystem or pkg_info.get("ecosystem", "pypi")
-
-    system_info = await scanner.scan_all()
-
-    resolver_inputs = []
-    package_details = {}
-
     try:
-        data = await aggregator.get_package_info(
-            package_name,
-            ecosystem=ecosystem,
-            include_dependencies=True,
-            include_versions=True,
-        )
-        if data:
-            package_details[package_name] = data
-            resolver_inputs.append(_aggregator_to_resolver_input(data, ecosystem))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch {package_name}: {e}")
+        lock_data = req.lock_data
+        package_name = req.package
+        packages_in_lock = lock_data.get("packages", {})
+        if package_name not in packages_in_lock:
+            raise HTTPException(
+                status_code=404, detail=f"Package '{package_name}' not found in lock data"
+            )
 
-    if not resolver_inputs:
-        raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
+        pkg_info = packages_in_lock[package_name]
+        ecosystem = req.ecosystem or pkg_info.get("ecosystem", "pypi")
 
-    try:
-        bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
-        solver_ms = max(5000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
-        resolved = await asyncio.wait_for(
-            _resolve_transitive(
-                aggregator,
-                resolver,
-                resolver_inputs,
-                system_info,
-                solver_timeout=solver_ms,
-                bfs_timeout=bfs_budget,
-            ),
-            timeout=SOLVER_API_TIMEOUT,
-        )
-    except (TimeoutError, Exception):
-        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        system_info = await scanner.scan_all()
 
-    resolved = _apply_cuda_variants(resolved, package_details, system_info)
-    rp = resolved.get("resolved_packages", {})
-    new_version = rp.get(package_name, {}).get("version") if rp else None
+        resolver_inputs = []
+        package_details = {}
 
-    if not new_version:
-        raise HTTPException(status_code=500, detail=f"Could not resolve {package_name}")
+        try:
+            data = await aggregator.get_package_info(
+                package_name,
+                ecosystem=ecosystem,
+                include_dependencies=True,
+                include_versions=True,
+            )
+            if data:
+                package_details[package_name] = data
+                resolver_inputs.append(_aggregator_to_resolver_input(data, ecosystem))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch {package_name}: {e}")
 
-    old_version = pkg_info.get("resolved_version")
+        if not resolver_inputs:
+            raise HTTPException(status_code=404, detail=f"No data found for {package_name}")
 
-    lock_data["packages"][package_name] = {
-        **pkg_info,
-        "resolved_version": new_version,
-        "cuda_variant": rp[package_name].get("cuda_variant", False),
-        "cuda_version": rp[package_name].get("cuda_version"),
-    }
-    lock_data["generated_at"] = __import__("datetime").datetime.now().isoformat()
+        try:
+            bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
+            solver_ms = max(5000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
+            resolved = await asyncio.wait_for(
+                _resolve_transitive(
+                    aggregator,
+                    resolver,
+                    resolver_inputs,
+                    system_info,
+                    solver_timeout=solver_ms,
+                    bfs_timeout=bfs_budget,
+                    cross_deps=None,
+                ),
+                timeout=SOLVER_API_TIMEOUT,
+            )
+        except (TimeoutError, Exception):
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
 
-    return {
-        "status": "success",
-        "package": package_name,
-        "old_version": old_version,
-        "new_version": new_version,
-        "updated": new_version != old_version,
-        "lock_data": lock_data,
-    }
+        resolved = _apply_cuda_variants(resolved, package_details, system_info)
+        rp = resolved.get("resolved_packages", {})
+        new_version = rp.get(package_name, {}).get("version") if rp else None
+
+        if not new_version:
+            raise HTTPException(status_code=500, detail=f"Could not resolve {package_name}")
+
+        old_version = pkg_info.get("resolved_version")
+
+        lock_data["packages"][package_name] = {
+            **pkg_info,
+            "resolved_version": new_version,
+            "cuda_variant": rp[package_name].get("cuda_variant", False),
+            "cuda_version": rp[package_name].get("cuda_version"),
+        }
+        lock_data["generated_at"] = __import__("datetime").datetime.now().isoformat()
+
+        return {
+            "status": "success",
+            "package": package_name,
+            "old_version": old_version,
+            "new_version": new_version,
+            "updated": new_version != old_version,
+            "lock_data": lock_data,
+        }
+    finally:
+        await aggregator.close()
+        if hasattr(scanner, "close"):
+            await scanner.close()
 
 
 async def _run_lock_pipeline(
@@ -429,6 +443,7 @@ async def _run_lock_pipeline(
                     system_info,
                     solver_timeout=solver_ms,
                     bfs_timeout=bfs_budget,
+                    cross_deps=None,
                 ),
                 timeout=SOLVER_API_TIMEOUT,
             )
@@ -571,7 +586,7 @@ def _build_lock_from_synthesis(
 MANIFEST_MAX_BYTES = 10 * 1024 * 1024
 
 
-async def _check_request_body(request: Request):
+async def _check_request_body(request: Request) -> None:
     content_type = request.headers.get("content-type", "")
     if "application/json" not in content_type:
         raise HTTPException(status_code=415, detail="Content-Type must be application/json")
@@ -587,8 +602,8 @@ async def generate_lock(
     export_format: str | None = Query(
         None, description="Optional export format (e.g. requirements.txt, Dockerfile)"
     ),
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Generate a udr.lock from project manifests or pre-parsed data.
 
     Two modes:
@@ -668,8 +683,8 @@ async def generate_lock(
 @router.post("/install-commands")
 async def install_commands(
     req: InstallCommandsRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Generate native install commands grouped by ecosystem from lock data.
     Mirrors `udr install <package>` using locked versions.
     """
@@ -728,8 +743,8 @@ def _find_dep_chain(
 @router.post("/why")
 async def why_package(
     req: WhyRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Explain why a package version was selected — dependency chain, constraint, direct/transitive.
     Mirrors `udr why <package>`.
     """
@@ -767,8 +782,8 @@ async def why_package(
 @router.post("/outdated")
 async def outdated_packages(
     req: OutdatedRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Check all packages against registries for newer versions.
     Mirrors `udr outdated --json`.
     """
@@ -809,10 +824,14 @@ async def outdated_packages(
                         }
                     )
         except Exception:
-            pass
+            logger.warning("Failed to check outdated status for %s", name, exc_info=True)
 
-    await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
-    await aggregator.close()
+    try:
+        await asyncio.gather(
+            *[check_pkg(n, i) for n, i in packages.items()], return_exceptions=True
+        )
+    finally:
+        await aggregator.close()
     outdated_list.sort(key=lambda x: x["name"])
 
     return {
@@ -825,8 +844,8 @@ async def outdated_packages(
 @router.post("/diff")
 async def diff_lock_files(
     req: DiffRequest,
-    current_user=Depends(get_current_user),
-):
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
     """Compare two lock data objects and report package differences.
     Mirrors `udr diff <file_a> <file_b> --json`.
     """
@@ -878,29 +897,402 @@ async def diff_lock_files(
 @router.post("/restore-commands")
 async def restore_commands(
     req: RestoreRequest,
-    current_user=Depends(get_current_user),
-):
-    """Generate install commands for ALL packages in lock data (direct + transitive).
-    Mirrors `udr restore <lockfile>`.
-    """
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Generate install commands for ALL packages in lock data."""
     lock_data = req.lock_data
     packages = lock_data.get("packages", {})
     ecosystem_groups: dict[str, list[tuple]] = {}
-
     for name, info in packages.items():
         eco = info.get("ecosystem", "pypi")
         ver = info.get("resolved_version")
         if ver:
             ecosystem_groups.setdefault(eco, []).append((name, ver))
-
     commands = []
     for eco, pkgs in sorted(ecosystem_groups.items()):
         cmd = _generate_install_command(eco, pkgs)
         if cmd:
             commands.append({"ecosystem": eco, "command": cmd, "package_count": len(pkgs)})
-
     return {
         "status": "success",
         "commands": commands,
         "total_packages": sum(g["package_count"] for g in commands),
+    }
+
+
+class LockCheckRequest(BaseModel):
+    manifest_contents: dict[str, str] | None = None
+    existing_lock_data: dict[str, Any] | None = None
+
+
+class SignedLockData(BaseModel):
+    lock_data: dict[str, Any]
+
+
+class UpdateFixRequest(BaseModel):
+    lock_data: dict[str, Any]
+    package: str | None = None
+
+
+@router.post("/lock/check")
+async def lock_check(
+    req: LockCheckRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from backend.core.data_aggregator import DataAggregator
+    from backend.manifest_detector import ManifestDetector
+
+    if not req.manifest_contents:
+        raise HTTPException(status_code=400, detail="manifest_contents is required")
+    detector = ManifestDetector()
+    manifests = []
+    for filename, content in req.manifest_contents.items():
+        result = detector.parse_source(content, filename=filename)
+        if result:
+            manifests.append({"filename": filename, "dependencies": result})
+    if not manifests:
+        raise HTTPException(status_code=400, detail="Could not parse any manifests")
+    all_deps: dict[str, list] = {}
+    for m in manifests:
+        for dep in m["dependencies"]:
+            name = dep.get("name", "")
+            if name:
+                all_deps.setdefault(name, []).append(dep)
+    aggregator = DataAggregator()
+    resolver = create_solver()
+    system_scanner = SystemScanner()
+    system_info = await system_scanner.scan_all()
+    try:
+        resolved_packages = {}
+        for name, deps_list in all_deps.items():
+            eco = deps_list[0].get("ecosystem", "pypi")
+            constraint = deps_list[0].get("constraint", "")
+            info = await aggregator.get_package_info(name, ecosystem=eco)
+            if info:
+                versions = info.get("versions", {}).get(eco, [])
+                version_strings = [
+                    v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
+                ]
+                resolved_packages[name] = {
+                    "name": name,
+                    "ecosystem": eco,
+                    "versions": version_strings,
+                    "constraint": constraint,
+                }
+        resolver_input = {
+            "packages": {
+                n: {"name": n, "ecosystem": p["ecosystem"], "versions": p["versions"]}
+                for n, p in resolved_packages.items()
+            },
+            "root_packages": list(resolved_packages.keys()),
+            "constraints": {
+                n: p["constraint"] for n, p in resolved_packages.items() if p["constraint"]
+            },
+            "system_info": system_info,
+        }
+        resolution = resolver.resolve_dependencies(**resolver_input)
+        new_pkgs = resolution.get("packages", {})
+        old_pkgs = (req.existing_lock_data or {}).get("packages", {})
+        all_names = sorted(set(list(new_pkgs.keys()) + list(old_pkgs.keys())))
+        added, removed, changed = [], [], []
+        for name in all_names:
+            old_info = old_pkgs.get(name)
+            new_info = new_pkgs.get(name)
+            if old_info is None:
+                added.append(
+                    {
+                        "name": name,
+                        "version": new_info.get("resolved_version", "?"),
+                        "direct": new_info.get("direct", False),
+                    }
+                )
+            elif new_info is None:
+                removed.append(
+                    {
+                        "name": name,
+                        "version": old_info.get("resolved_version", "?"),
+                        "direct": old_info.get("direct", False),
+                    }
+                )
+            elif old_info.get("resolved_version") != new_info.get("resolved_version"):
+                changed.append(
+                    {
+                        "name": name,
+                        "from": old_info.get("resolved_version", "?"),
+                        "to": new_info.get("resolved_version", "?"),
+                    }
+                )
+        return {
+            "status": "drift" if (added or removed or changed) else "ok",
+            "drift_detected": bool(added or removed or changed),
+            "added": added,
+            "removed": removed,
+            "changed": changed,
+            "unchanged_count": len(all_names) - len(added) - len(removed) - len(changed),
+        }
+    finally:
+        await aggregator.close()
+
+
+@router.post("/lock/sign")
+async def lock_sign(
+    req: SignedLockData,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    import base64
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    lock_data = req.lock_data
+    config_dir = Path.home() / ".config" / "udr"
+    key_path = config_dir / "signing.key"
+    if key_path.is_file():
+        private_key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+        if not isinstance(private_key, ed25519.Ed25519PrivateKey):
+            private_key = ed25519.Ed25519PrivateKey.generate()
+            config_dir.mkdir(parents=True, exist_ok=True)
+            key_path.write_bytes(
+                private_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+            )
+            key_path.chmod(0o600)
+    else:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        key_path.write_bytes(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        key_path.chmod(0o600)
+    pub_key_bytes = private_key.public_key().public_bytes_raw()
+    (config_dir / "signing.pub").write_text(base64.b64encode(pub_key_bytes).decode() + "\n")
+    exclude_keys = {"signature", "provenance"}
+    canonical = json.dumps(
+        {k: v for k, v in sorted(lock_data.items()) if k not in exclude_keys},
+        sort_keys=True,
+        default=str,
+        ensure_ascii=False,
+    )
+    lock_data["signature"] = {
+        "algorithm": "ed25519",
+        "value": base64.b64encode(
+            private_key.sign(hashlib.sha256(canonical.encode("utf-8")).digest())
+        ).decode(),
+        "public_key": base64.b64encode(pub_key_bytes).decode(),
+    }
+    return {
+        "status": "success",
+        "lock_data": lock_data,
+        "signature": lock_data["signature"]["value"],
+        "public_key": lock_data["signature"]["public_key"],
+        "algorithm": "ed25519",
+    }
+
+
+@router.post("/lock/update-with-fix")
+async def lock_update_with_fix(
+    req: UpdateFixRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from backend.core.data_aggregator import DataAggregator
+
+    aggregator = DataAggregator()
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    targets = (
+        {n: i for n, i in packages.items() if n == req.package} if req.package else dict(packages)
+    )
+    vuln_map: dict[str, list[str]] = {}
+    for pname, pinfo in targets.items():
+        eco, ver = pinfo.get("ecosystem", ""), pinfo.get("resolved_version", "")
+        if not eco or not ver:
+            continue
+        try:
+            for v in await aggregator.check_vulnerabilities(pname, eco, ver):
+                fixed = v.get("fixed_version")
+                if fixed:
+                    vuln_map.setdefault(pname, []).append(fixed)
+        except Exception:
+            logger.warning("CVE check failed for %s", pname, exc_info=True)
+    await aggregator.close()
+    if not vuln_map:
+        return {
+            "status": "ok",
+            "message": "No vulnerabilities found with available fixes.",
+            "lock_data": lock_data,
+        }
+    for pname, fixes in vuln_map.items():
+        best = sorted(
+            fixes,
+            key=lambda x: tuple(int(p) if p.lstrip("-").isdigit() else 99999 for p in x.split(".")),
+        )[-1]
+        if pname in packages:
+            packages[pname]["constraint"] = f">={best}"
+    return {
+        "status": "success",
+        "fixes": {p: sorted(f)[-1] for p, f in vuln_map.items()},
+        "lock_data": lock_data,
+    }
+
+
+class UpdateManifestsRequest(BaseModel):
+    lock_data: dict[str, Any]
+    manifest_contents: dict[str, str]
+
+
+@router.post("/lock/update-manifests")
+async def lock_update_manifests(
+    req: UpdateManifestsRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Suggest version bump targets from lock data for each manifest file.
+
+    Returns per-ecosystem suggestions for packages whose resolved version
+    differs from their original constraint. Use the CLI ``udr update`` to
+    apply these changes, since manifest file mutation requires filesystem access.
+    """
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    suggestions: dict[str, list[dict]] = {}
+
+    for pname, pinfo in packages.items():
+        eco = pinfo.get("ecosystem", "")
+        ver = pinfo.get("resolved_version", "")
+        constraint = pinfo.get("constraint", "")
+        if constraint and constraint != f"=={ver}":
+            suggestions.setdefault(eco, []).append(
+                {
+                    "package": pname,
+                    "current_constraint": constraint,
+                    "resolved_version": ver,
+                    "ecosystem": eco,
+                }
+            )
+
+    return {
+        "status": "success",
+        "suggestions": suggestions,
+        "note": "Use `udr update` to apply manifest changes (requires filesystem access).",
+    }
+
+
+class LockReportRequest(BaseModel):
+    lock_data: dict[str, Any]
+
+
+@router.post("/lock/report")
+async def lock_report(
+    req: LockReportRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Generate a human-readable summary report from lock data.
+
+    Mirrors the report step of ``udr lock --report``.
+    """
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+    total = len(packages)
+    direct = sum(1 for p in packages.values() if p.get("direct"))
+    transitive = total - direct
+    ecosystems: dict[str, int] = {}
+    for p in packages.values():
+        eco = p.get("ecosystem", "unknown")
+        ecosystems[eco] = ecosystems.get(eco, 0) + 1
+
+    resolver = lock_data.get("resolver", "?")
+    host_system = lock_data.get("system", {})
+    vuln_count = 0
+    cves = []
+    for pname, pinfo in packages.items():
+        if "cves" in pinfo:
+            vuln_count += len(pinfo["cves"])
+            for c in pinfo["cves"]:
+                cves.append(
+                    {"package": pname, "id": c.get("id", "?"), "severity": c.get("severity", "?")}
+                )
+
+    report_lines = [
+        "=" * 60,
+        "Dependency Lock Report",
+        "=" * 60,
+        f"Resolver:              {resolver}",
+        f"Total packages:        {total}",
+        f"  Direct dependencies: {direct}",
+        f"  Transitive:          {transitive}",
+        f"Ecosystems:            {', '.join(f'{k}={v}' for k, v in sorted(ecosystems.items()))}",
+        f"System:                {host_system.get('os', '?')}",
+    ]
+    if vuln_count:
+        report_lines.append(f"Known vulnerabilities: {vuln_count}")
+    report_lines.append("")
+    report_lines.append(f"{'Package':40s} {'Version':20s} {'Type':10s} {'Vulns'}")
+    report_lines.append("-" * 80)
+    for pname in sorted(packages):
+        pinfo = packages[pname]
+        ver = pinfo.get("resolved_version", "?")
+        ptype = "direct" if pinfo.get("direct") else "transitive"
+        c = next((c["id"] for c in cves if c["package"] == pname), "")
+        report_lines.append(f"{pname:40s} {ver:20s} {ptype:10s} {c}")
+
+    return {
+        "status": "success",
+        "report": "\n".join(report_lines),
+        "summary": {
+            "total": total,
+            "direct": direct,
+            "transitive": transitive,
+            "ecosystems": ecosystems,
+            "vulnerabilities": vuln_count,
+        },
+        "cves": cves,
+    }
+
+
+class ApplyPinningRequest(BaseModel):
+    lock_data: dict[str, Any]
+    pin: list[str] | None = None
+    block: list[str] | None = None
+    pin_mode: str | None = None
+    freeze: bool = False
+
+
+@router.post("/lock/apply-pinning")
+async def lock_apply_pinning(
+    req: ApplyPinningRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Apply pin/block/freeze constraints to lock data.
+
+    Mirrors ``udr lock --pin --block --freeze --pin-mode``.
+    """
+    from dataclasses import asdict
+
+    from backend.core.pinning import PinningPolicy
+
+    lock_data = req.lock_data
+    packages = lock_data.get("packages", {})
+
+    pp = PinningPolicy(
+        pinned=dict(p.split("==", 1) for p in (req.pin or []) if "==" in p),
+        blocked=set(req.block or []),
+        pin_mode=req.pin_mode or "major",
+        freeze=req.freeze,
+    )
+
+    pp.apply(packages)
+
+    return {
+        "status": "success",
+        "lock_data": lock_data,
+        "pinning_policy": {k: v for k, v in asdict(pp).items() if v},
     }

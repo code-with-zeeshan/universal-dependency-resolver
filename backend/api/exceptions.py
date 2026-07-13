@@ -12,7 +12,7 @@ class DependencyResolverError(Exception):
         error_code: str,
         status_code: int = 500,
         details: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         """Initialize."""
         self.message = message
         self.error_code = error_code
@@ -24,7 +24,7 @@ class DependencyResolverError(Exception):
 class ValidationError(DependencyResolverError):
     """Raised when input validation fails."""
 
-    def __init__(self, message: str, field: str | None = None):
+    def __init__(self, message: str, field: str | None = None) -> None:
         """Initialize."""
         super().__init__(
             message=message,
@@ -37,7 +37,7 @@ class ValidationError(DependencyResolverError):
 class PackageNotFoundError(DependencyResolverError):
     """Raised when a package cannot be found."""
 
-    def __init__(self, package_name: str, ecosystem: str | None = None):
+    def __init__(self, package_name: str, ecosystem: str | None = None) -> None:
         """Initialize."""
         super().__init__(
             message=f"Package '{package_name}' not found",
@@ -50,7 +50,7 @@ class PackageNotFoundError(DependencyResolverError):
 class EcosystemNotSupportedError(DependencyResolverError):
     """Raised when an ecosystem is not supported."""
 
-    def __init__(self, ecosystem: str):
+    def __init__(self, ecosystem: str) -> None:
         """Initialize."""
         super().__init__(
             message=f"Ecosystem '{ecosystem}' is not supported",
@@ -63,7 +63,7 @@ class EcosystemNotSupportedError(DependencyResolverError):
 class ConflictResolutionError(DependencyResolverError):
     """Raised when dependency conflicts cannot be resolved."""
 
-    def __init__(self, message: str, conflicts: list[dict] | None = None):
+    def __init__(self, message: str, conflicts: list[dict] | None = None) -> None:
         """Initialize."""
         super().__init__(
             message=message,
@@ -76,7 +76,7 @@ class ConflictResolutionError(DependencyResolverError):
 class RateLimitExceededError(DependencyResolverError):
     """Raised when rate limit is exceeded."""
 
-    def __init__(self, retry_after: int | None = None):
+    def __init__(self, retry_after: int | None = None) -> None:
         """Initialize."""
         super().__init__(
             message="Rate limit exceeded",

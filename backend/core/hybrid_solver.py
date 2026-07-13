@@ -1,41 +1,42 @@
-"""Hybrid PubGrub+Z3 dependency solver.
+"""Hybrid PubGrub+Z3 dependency solver — "best of both worlds".
 
 Strategy
 --------
-Phase 1 — Per-ecosystem PubGrub (fast CDCL):
-  Group packages by ecosystem. Resolve each ecosystem independently
-  using PubGrub's CDCL algorithm (pure-Python fallback or Rust-backed
-  ``pubgrub-py``).  Intra-ecosystem constraints are solved here —
-  this is the 95% case that PubGrub handles in microseconds.
+Phase 0 — Profile and decompose:
+  Identify which packages have cross-ecosystem dependencies vs pure intra-eco.
+  Cross-eco packages need Z3's Bool encoding for CUDA/system constraints;
+  intra-eco packages are fully solved by PubGrub.
 
-Phase 2 — Cross-ecosystem Z3 reconciliation (small encoding):
-  Pin every package to the version PubGrub chose (1 version per
-  package).  Feed this to Z3 with CUDA conflict rules, system
-  constraints, and cross-ecosystem dependency edges.  With 1 Bool
-  per package instead of (package × version), Z3's encoding is
-  200× smaller and solves in microseconds.
+Phase 1 — Parallel per-ecosystem PubGrub (fast CDCL):
+  Each ecosystem group resolved independently via ThreadPoolExecutor.
+  Intra-ecosystem constraints are solved here — the 95% case PubGrub
+  handles in microseconds.
 
-If Phase 1 fails (unsatisfiable ecosystem), times out, or Phase 2
-finds a cross-ecosystem conflict, fall back to full Z3 (current default).
+Phase 2 — Z3 with constrained candidate space:
+  * Intra-eco packages: pinned to PubGrub's chosen version (1 Bool each).
+  * Cross-eco packages: keep ALL clustered versions (full flexibility).
+  * Z3 gets PubGrub's preferred version as the optimization target.
+  Encoding: (cross_eco_pkgs ✕ versions) + (intra_eco_pkgs ✕ 1)
+  — typically 3-10× smaller than full Z3.
 
-This avoids Z3's encoding explosion (10K+ Bool vars for 500×50)
-while handling cross-ecosystem constraints that PubGrub alone can't.
+Phase 3 — Full Z3 fallback:
+  Only reached when cross-eco conflicts can't be resolved with constrained
+  candidates. Falls back to monolithic Z3 with full version space.
 """
 
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_PUBGRUB_TIMEOUT = 30  # seconds per ecosystem before falling back to Z3
+_PUBGRUB_TIMEOUT = 30
 
 
 class HybridSolver:
-    """Two-phase solver: PubGrub per ecosystem + Z3 cross-eco reconciliation."""
-
-    """Two-phase solver: PubGrub per ecosystem + Z3 cross-eco reconciliation."""
+    """Three-phase solver: parallel PubGrub + constrained Z3 + full Z3 fallback."""
 
     def __init__(
         self,
@@ -43,15 +44,12 @@ class HybridSolver:
         use_optimization: bool = True,
         solver_timeout: int | None = None,
     ) -> None:
-        """Initialize."""
         self._use_optimization = use_optimization
         self._solver_timeout = solver_timeout
         self._prefer_compatibility: bool = True
         self._fallback_timeout: int | None = solver_timeout
 
     def _get_default_system_info(self) -> dict:
-        """Provide default system info (drop-in for ConflictResolver compatibility)."""
-        """Provide default system info (drop-in for ConflictResolver compatibility)."""
         import platform
 
         return {
@@ -63,7 +61,7 @@ class HybridSolver:
             "gpu": {"available": False, "cuda": None},
         }
 
-    # ── Public API (same shape as ConflictResolver) ────────────────────────
+    # ── Public API ──────────────────────────────────────────────────────────
 
     def resolve_dependencies(
         self,
@@ -72,37 +70,49 @@ class HybridSolver:
         prefer_compatibility: bool = True,
         solver_timeout: int | None = None,
     ) -> dict[str, Any]:
-        """Resolve dependencies using hybrid PubGrub+Z3 strategy.
-
-        Returns same ``{"status", "resolved_packages", ...}`` format as
-        ``ConflictResolver.resolve_dependencies()``.
-        """
+        """Resolve dependencies using hybrid PubGrub+Z3 strategy."""
         self._prefer_compatibility = prefer_compatibility
-        fallback_timeout = solver_timeout or self._solver_timeout
-        self._fallback_timeout = fallback_timeout
+        self._fallback_timeout = solver_timeout or self._solver_timeout
 
-        # Phase 1: PubGrub per ecosystem
-        eco_result = self._try_pubgrub_per_eco(packages)
+        # Phase 0: decompose into cross-eco vs intra-eco
+        cross_eco_names = _find_cross_eco_packages(packages)
+        logger.debug(
+            "HybridSolver: %d total pkgs, %d cross-eco, %d intra-eco",
+            len(packages),
+            len(cross_eco_names),
+            len(packages) - len(cross_eco_names),
+        )
+
+        # Phase 1: parallel PubGrub per ecosystem
+        eco_result = self._parallel_pubgrub(packages)
         if eco_result["status"] != "satisfiable":
-            logger.info("PubGrub per-ecosystem failed — falling back to full Z3")
+            logger.info("Phase 1 failed — falling back to full Z3")
             return self._full_z3_fallback(packages, system_info)
 
-        # Phase 2: Pin PubGrub choices and verify cross-eco constraints with Z3
         pubgrub_versions: dict[str, dict] = eco_result.get("resolved_packages", {})
         if not pubgrub_versions:
             return eco_result
 
-        z3_result = self._verify_cross_eco(packages, pubgrub_versions, system_info)
+        # Phase 2: Z3 verification — validate PubGrub's choices and handle cross-eco
+        z3_result = self._constrained_z3(packages, pubgrub_versions, cross_eco_names, system_info)
         if z3_result.get("status") == "satisfiable":
-            logger.info("Hybrid solver succeeded: PubGrub + Z3 cross-eco check passed")
-            return eco_result
+            # Merge: PubGrub versions for intra-eco, Z3 versions for cross-eco
+            merged = dict(pubgrub_versions)
+            for name, info in z3_result.get("resolved_packages", {}).items():
+                if name in cross_eco_names:
+                    merged[name] = info
+            merged_result = dict(eco_result)
+            merged_result["resolved_packages"] = merged
+            logger.info("HybridSolver Phase 2 succeeded — verified PubGrub choices")
+            return merged_result
 
-        logger.info("Cross-ecosystem conflict detected — falling back to full Z3")
+        logger.info("Phase 2 failed — PubGrub constraint violation or cross-eco conflict")
         return self._full_z3_fallback(packages, system_info)
 
-    # ── Phase 1: PubGrub per ecosystem ────────────────────────────────────
+    # ── Phase 1: Parallel PubGrub ───────────────────────────────────────────
 
-    def _try_pubgrub_per_eco(self, packages: list[dict[str, Any]]) -> dict[str, Any]:
+    def _parallel_pubgrub(self, packages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Resolve each ecosystem group with PubGrub in parallel."""
         from backend.core.pubgrub_solver import PubGrubSolver
 
         eco_groups: dict[str, list[dict[str, Any]]] = {}
@@ -110,12 +120,31 @@ class HybridSolver:
             eco = pkg.get("ecosystem", "pypi")
             eco_groups.setdefault(eco, []).append(pkg)
 
+        if not eco_groups:
+            return {"status": "satisfiable", "resolved_packages": {}}
+        if len(eco_groups) <= 1:
+            eco = next(iter(eco_groups))
+            return self._resolve_one_eco(PubGrubSolver, packages, eco)
+
         all_resolved: dict[str, dict[str, Any]] = {}
-        for eco, pkgs in eco_groups.items():
-            result = self._resolve_one_eco(PubGrubSolver, pkgs, eco)
-            if result.get("status") != "satisfiable":
-                return {"status": "unsatisfiable", "resolved_packages": {}}
-            all_resolved.update(result.get("resolved_packages", {}))
+        futures = {}
+
+        with ThreadPoolExecutor(max_workers=len(eco_groups)) as executor:
+            for eco, pkgs in eco_groups.items():
+                future = executor.submit(self._resolve_one_eco, PubGrubSolver, pkgs, eco)
+                futures[future] = eco
+
+            for future in as_completed(futures):
+                eco = futures[future]
+                try:
+                    result = future.result(timeout=_PUBGRUB_TIMEOUT + 10)
+                    if result.get("status") != "satisfiable":
+                        logger.warning("PubGrub failed for ecosystem '%s'", eco)
+                        return {"status": "unsatisfiable", "resolved_packages": {}}
+                    all_resolved.update(result.get("resolved_packages", {}))
+                except Exception as exc:
+                    logger.warning("PubGrub exception for ecosystem '%s': %s", eco, exc)
+                    return {"status": "unsatisfiable", "resolved_packages": {}}
 
         return {"status": "satisfiable", "resolved_packages": all_resolved}
 
@@ -125,12 +154,7 @@ class HybridSolver:
         pkgs: list[dict[str, Any]],
         ecosystem: str,
     ) -> dict[str, Any]:
-        """Resolve a single ecosystem group with PubGrub (with timeout).
-
-        The pure-Python PubGrub fallback can hang on unsatisfiable
-        dependency graphs.  We run it in a daemon thread with a 30s
-        timeout and fall back to Z3 if it doesn't complete.
-        """
+        """Resolve a single ecosystem group with PubGrub (thread with timeout)."""
         import threading
 
         solver = solver_cls(
@@ -153,40 +177,40 @@ class HybridSolver:
 
         if thread.is_alive():
             logger.warning(
-                "PubGrub timed out after %ds for ecosystem '%s' — falling back to full Z3",
+                "PubGrub timed out after %ds for '%s'",
                 _PUBGRUB_TIMEOUT,
                 ecosystem,
             )
             return {"status": "unsatisfiable", "resolved_packages": {}}
 
         if error_container[0] is not None:
-            logger.warning(
-                "PubGrub failed for ecosystem '%s': %s — falling back to full Z3",
-                ecosystem,
-                error_container[0],
-            )
+            logger.warning("PubGrub failed for '%s': %s", ecosystem, error_container[0])
             return {"status": "unsatisfiable", "resolved_packages": {}}
 
         return result_container[0] if result_container[0] else {}
 
-    # ── Phase 2: Z3 cross-eco verification ────────────────────────────────
+    # ── Phase 2: Constrained Z3 ────────────────────────────────────────────
 
-    def _verify_cross_eco(
+    def _constrained_z3(
         self,
         original_packages: list[dict[str, Any]],
         pubgrub_versions: dict[str, dict[str, Any]],
+        cross_eco_names: set[str],
         system_info: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        """Pin each package to the version PubGrub chose and verify with Z3.
+        """Z3 with limited versions for cross-eco packages, pinned for intra-eco.
 
-        Each package gets exactly 1 ``available_versions`` entry.  Z3 then
-        has nothing to *solve* — it just checks CUDA conflict rules,
-        system constraints, and cross-ecosystem dependency edges.
-        With 1 Bool per package the encoding is 200× smaller.
+        Cross-eco packages get their top-N versions (N = AUTO_SOLVER_TOP_N)
+        so Z3 can explore alternatives to resolve cross-ecosystem conflicts.
+        Intra-eco packages are pinned to PubGrub's chosen version.
+
+        This keeps the Z3 encoding at ~N × cross_eco_count — even for 500
+        package graphs with 50 cross-eco packages, that's 250 Bool vars.
         """
         from backend.core.conflict_resolver import ConflictResolver
+        from backend.settings import AUTO_SOLVER_TOP_N
 
-        pinned_packages: list[dict[str, Any]] = []
+        constrained: list[dict[str, Any]] = []
         for pkg in original_packages:
             name = pkg.get("name", "")
             resolved = pubgrub_versions.get(name)
@@ -195,24 +219,27 @@ class HybridSolver:
             version = resolved.get("version", "")
             if not version:
                 continue
-            pinned = dict(pkg)
-            pinned["available_versions"] = [version]
-            pinned_packages.append(pinned)
 
-        if not pinned_packages:
+            cp = dict(pkg)
+            if name in cross_eco_names:
+                all_vers = pkg.get("available_versions", [])
+                cp["available_versions"] = all_vers[:AUTO_SOLVER_TOP_N]
+            else:
+                cp["available_versions"] = [version]
+            constrained.append(cp)
+
+        if not constrained:
             return {"status": "satisfiable", "resolved_packages": {}}
 
-        resolver = ConflictResolver(
-            use_optimization=self._use_optimization,
-        )
+        resolver = ConflictResolver(use_optimization=self._use_optimization)
         return resolver.resolve_dependencies(
-            pinned_packages,
+            constrained,
             system_info,
             prefer_compatibility=self._prefer_compatibility,
             solver_timeout=self._fallback_timeout,
         )
 
-    # ── Fallback: full Z3 (current default) ───────────────────────────────
+    # ── Phase 3: Full Z3 fallback ───────────────────────────────────────────
 
     def _full_z3_fallback(
         self,
@@ -221,12 +248,28 @@ class HybridSolver:
     ) -> dict[str, Any]:
         from backend.core.conflict_resolver import ConflictResolver
 
-        resolver = ConflictResolver(
-            use_optimization=self._use_optimization,
-        )
+        resolver = ConflictResolver(use_optimization=self._use_optimization)
         return resolver.resolve_dependencies(
             packages,
             system_info,
             prefer_compatibility=self._prefer_compatibility,
             solver_timeout=self._fallback_timeout,
         )
+
+
+def _find_cross_eco_packages(packages: list[dict[str, Any]]) -> set[str]:
+    """Return names of packages that have dependencies in a different ecosystem."""
+    pkg_eco: dict[str, str] = {}
+    for pkg in packages:
+        pkg_eco[pkg.get("name", "")] = pkg.get("ecosystem", "pypi")
+
+    cross_eco: set[str] = set()
+    for pkg in packages:
+        name = pkg.get("name", "")
+        my_eco = pkg_eco.get(name, "pypi")
+        deps = pkg.get("dependencies", {})
+        for dep_eco in deps:
+            if dep_eco != my_eco:
+                cross_eco.add(name)
+                break
+    return cross_eco

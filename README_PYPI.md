@@ -45,12 +45,12 @@ pip install ud-resolver
 | Capability | Detail |
 |---|---|
 | **20 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Docs DB, Custom DB |
-| **SAT-solver resolution** | Z3-based conflict resolver handles complex cross-ecosystem version constraints |
+| **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection, and DFS backtracking fallback |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| **18 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index |
-| **49 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
+| **59 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |
@@ -126,7 +126,7 @@ Your request ──► Fetch metadata from registry APIs
               Scan target system (OS, GPU, CUDA, runtimes)
                       │
                       ▼
-              Resolve conflicts with Z3 SAT solver
+               Resolve conflicts with AutoSolver (Z3 / PubGrub / Hybrid)
                       │
                       ▼
               Export to 12 formats or write lock file

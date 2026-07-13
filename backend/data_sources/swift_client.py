@@ -43,7 +43,6 @@ class SwiftClient(BaseDataSourceClient):
         self,
         cache_ttl: int | None = None,
         max_retries: int | None = None,
-        rate_limit_delay: float | None = None,
     ):
         """Initialize."""
         config = get_ecosystem_config("swift")

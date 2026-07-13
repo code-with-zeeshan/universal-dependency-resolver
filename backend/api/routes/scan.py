@@ -4,7 +4,6 @@
 import asyncio
 import io
 import logging
-import os
 import tempfile
 import zipfile
 from pathlib import Path
@@ -22,8 +21,7 @@ from backend.orchestrator import (
     _apply_cuda_variants,
     _resolve_transitive,
 )
-
-SOLVER_API_TIMEOUT = int(os.environ.get("SOLVER_API_TIMEOUT", "60"))
+from backend.settings import SOLVER_API_TIMEOUT
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,125 +45,140 @@ from backend.orchestrator import _download_github_repo, create_solver
 
 async def _run_resolution_pipeline(project_dir: Path, export_format: str | None = None) -> dict:
     """Run manifest detection + resolution on a project directory."""
+    from backend.core.config_loader import ProjectConfig
+
     detector = ManifestDetector(str(project_dir))
+    config = ProjectConfig(str(project_dir))
+    config.load()
+    cross_deps = config.cross_deps
     aggregator = DataAggregator()
     resolver = create_solver()
     scanner = SystemScanner()
     exporter = ExportGenerator() if export_format else None
 
-    manifests = detector.detect()
-    if not manifests:
-        return {
-            "status": "no_manifests",
-            "manifests": [],
-            "packages": [],
-            "resolution": None,
-        }
-
-    packages = detector.normalize(detector.parse_all(manifests))
-    if not packages:
-        return {
-            "status": "no_packages",
-            "manifests": manifests,
-            "packages": [],
-            "resolution": None,
-        }
-
-    seen = set()
-    resolver_inputs = []
-    package_details = {}
-
-    for pkg in packages:
-        key = (pkg["name"], pkg["ecosystem"])
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            data = await aggregator.get_package_info(
-                pkg["name"],
-                ecosystem=pkg["ecosystem"],
-                include_dependencies=True,
-                include_versions=True,
-            )
-            if data:
-                package_details[pkg["name"]] = data
-                rinput = _aggregator_to_resolver_input(
-                    data, pkg["ecosystem"], extras=pkg.get("extras")
-                )
-                resolver_inputs.append(rinput)
-        except Exception as e:
-            logger.warning(f"Failed to fetch {pkg['name']}: {e}")
-
-    system_info = await scanner.scan_all()
-
     try:
-        solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
-        bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
-        resolved = await asyncio.wait_for(
-            _resolve_transitive(
-                aggregator,
-                resolver,
-                resolver_inputs,
-                system_info,
-                solver_timeout=solver_ms,
-                bfs_timeout=bfs_budget,
-            ),
-            timeout=SOLVER_API_TIMEOUT,
-        )
-    except (TimeoutError, Exception):
-        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
-
-    resolved = _apply_cuda_variants(resolved, package_details, system_info)
-
-    resolved_pkgs = resolved.get("resolved_packages", {})
-
-    export_content = None
-    if export_format and exporter:
-        try:
-            export_content = exporter.generate(
-                {
-                    p["name"]: {
-                        "version": resolved_pkgs.get(p["name"], {}).get("version"),
-                        "ecosystem": p["ecosystem"],
-                    }
-                    for p in packages
-                },
-                format=export_format,
-                system_info=system_info,
-            )
-        except Exception as e:
-            logger.warning("Export failed: %s", e)
-
-    return {
-        "status": "success",
-        "manifests": [{"filename": m["filename"], "ecosystem": m["ecosystem"]} for m in manifests],
-        "packages": [
-            {
-                "name": p["name"],
-                "ecosystem": p["ecosystem"],
-                "constraint": p["constraint"],
-                "resolved_version": resolved_pkgs.get(p["name"], {}).get("version"),
-                "cuda_variant": resolved_pkgs.get(p["name"], {}).get("cuda_variant", False),
-                "cuda_version": resolved_pkgs.get(p["name"], {}).get("cuda_version"),
+        manifests = detector.detect()
+        if not manifests:
+            return {
+                "status": "no_manifests",
+                "manifests": [],
+                "packages": [],
+                "resolution": None,
             }
-            for p in packages
-        ],
-        "resolution": resolved,
-        "system": {
-            "os": f"{system_info.get('platform', {}).get('system', 'Unknown')} {system_info.get('platform', {}).get('release', 'Unknown')}",
-            "python": system_info.get("runtime_versions", {})
-            .get("python", {})
-            .get("version", "Unknown"),
-            "cpu": system_info.get("cpu", {}).get("brand", "Unknown"),
-            "gpu": system_info.get("gpu", {}).get("devices", [{}])[0].get("name", "Unknown")
-            if system_info.get("gpu", {}).get("available", False)
-            else None,
-            "cuda": system_info.get("gpu", {}).get("cuda")
-            if system_info.get("gpu", {}).get("available", False)
-            else None,
-        },
-        "export": export_content,
-    }
+
+        packages = detector.normalize(detector.parse_all(manifests))
+        if not packages:
+            return {
+                "status": "no_packages",
+                "manifests": manifests,
+                "packages": [],
+                "resolution": None,
+            }
+
+        seen = set()
+        resolver_inputs = []
+        package_details = {}
+
+        for pkg in packages:
+            key = (pkg["name"], pkg["ecosystem"])
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                data = await aggregator.get_package_info(
+                    pkg["name"],
+                    ecosystem=pkg["ecosystem"],
+                    include_dependencies=True,
+                    include_versions=True,
+                )
+                if data:
+                    package_details[pkg["name"]] = data
+                    rinput = _aggregator_to_resolver_input(
+                        data, pkg["ecosystem"], extras=pkg.get("extras")
+                    )
+                    resolver_inputs.append(rinput)
+            except Exception as e:
+                logger.warning(f"Failed to fetch {pkg['name']}: {e}")
+
+        system_info = await scanner.scan_all()
+
+        try:
+            solver_ms = max(10000, int(SOLVER_API_TIMEOUT * 0.8 * 1000))
+            bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
+            resolved = await asyncio.wait_for(
+                _resolve_transitive(
+                    aggregator,
+                    resolver,
+                    resolver_inputs,
+                    system_info,
+                    solver_timeout=solver_ms,
+                    bfs_timeout=bfs_budget,
+                    cross_deps=cross_deps,
+                ),
+                timeout=SOLVER_API_TIMEOUT,
+            )
+        except TimeoutError:
+            logger.warning("Solver timed out — falling back to _resolve_with_alternatives")
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        except Exception:
+            logger.exception("Unexpected solver error — falling back to _resolve_with_alternatives")
+            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+
+        resolved = _apply_cuda_variants(resolved, package_details, system_info)
+
+        resolved_pkgs = resolved.get("resolved_packages", {})
+
+        export_content = None
+        if export_format and exporter:
+            try:
+                export_content = exporter.generate(
+                    {
+                        p["name"]: {
+                            "version": resolved_pkgs.get(p["name"], {}).get("version"),
+                            "ecosystem": p["ecosystem"],
+                        }
+                        for p in packages
+                    },
+                    format=export_format,
+                    system_info=system_info,
+                )
+            except Exception as e:
+                logger.warning("Export failed: %s", e)
+
+        return {
+            "status": "success",
+            "manifests": [
+                {"filename": m["filename"], "ecosystem": m["ecosystem"]} for m in manifests
+            ],
+            "packages": [
+                {
+                    "name": p["name"],
+                    "ecosystem": p["ecosystem"],
+                    "constraint": p["constraint"],
+                    "resolved_version": resolved_pkgs.get(p["name"], {}).get("version"),
+                    "cuda_variant": resolved_pkgs.get(p["name"], {}).get("cuda_variant", False),
+                    "cuda_version": resolved_pkgs.get(p["name"], {}).get("cuda_version"),
+                }
+                for p in packages
+            ],
+            "resolution": resolved,
+            "system": {
+                "os": f"{system_info.get('platform', {}).get('system', 'Unknown')} {system_info.get('platform', {}).get('release', 'Unknown')}",
+                "python": system_info.get("runtime_versions", {})
+                .get("python", {})
+                .get("version", "Unknown"),
+                "cpu": system_info.get("cpu", {}).get("brand", "Unknown"),
+                "gpu": system_info.get("gpu", {}).get("devices", [{}])[0].get("name", "Unknown")
+                if system_info.get("gpu", {}).get("available", False)
+                else None,
+                "cuda": system_info.get("gpu", {}).get("cuda")
+                if system_info.get("gpu", {}).get("available", False)
+                else None,
+            },
+            "export": export_content,
+        }
+    finally:
+        await aggregator.close()
 
 
 @router.post("/scan/github")
@@ -207,11 +220,14 @@ async def scan_upload(
     try:
         content = await file.read()
         z = zipfile.ZipFile(io.BytesIO(content))
+        tmp_resolved = tmp.resolve()
         for entry in z.infolist():
+            # Extract per-entry to avoid TOCTOU race between check and extractall
+            z.extract(entry, path=str(tmp))
             dest = (tmp / entry.filename).resolve()
-            if not str(dest).startswith(str(tmp.resolve())):
+            if not str(dest).startswith(str(tmp_resolved)):
+                shutil.rmtree(str(tmp), ignore_errors=True)
                 raise HTTPException(status_code=400, detail="Illegal path in zip archive")
-        z.extractall(path=str(tmp))
         # Try to find project root (handle single top-level dir)
         project_dir = tmp
         contents = sorted(tmp.iterdir())

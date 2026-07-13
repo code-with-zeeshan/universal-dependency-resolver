@@ -126,7 +126,7 @@ class BackendAPI {
   diffLocks(lockData1, lockData2) {
     return this._fetch(`${this.apiPrefix}/diff`, {
       method: 'POST',
-      body: JSON.stringify({ lock_data_a: lockData1, lock_data_b: lockData2 }),
+      body: JSON.stringify({ lock_a: lockData1, lock_b: lockData2 }),
     });
   }
 

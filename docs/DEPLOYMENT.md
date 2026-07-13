@@ -36,7 +36,7 @@ graph TB
         PYPI_REG["PyPI"]
         NPM_REG["npm"]
         CRATES_REG["Crates.io"]
-        MORE_REG["+ 13 more registries"]
+        MORE_REG["+ 17 more registries"]
     end
 
     DEV -->|"direct CLI"| API

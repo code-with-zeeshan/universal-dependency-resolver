@@ -8,6 +8,7 @@ import base64
 import logging
 import os
 from netrc import NetrcParseError, netrc
+from pathlib import Path
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -69,11 +70,22 @@ def resolve_auth_headers(
     password = os.getenv(f"{prefix}_AUTH_PASSWORD", "")
 
     if token:
-        _apply_auth_header(headers, token, auth_type)
+        if token == "" or token == "your_token_here":
+            logger.warning("Empty or default %s_AUTH_TOKEN for %s — skipping", prefix, ecosystem)
+        else:
+            _apply_auth_header(headers, token, auth_type)
         return headers
 
     if username and password:
-        _apply_basic_auth(headers, username, password)
+        if not username or not password or username == "your_username_here":
+            logger.warning(
+                "Empty or default %s_AUTH_USERNAME/%s_AUTH_PASSWORD for %s — skipping",
+                prefix,
+                prefix,
+                ecosystem,
+            )
+        else:
+            _apply_basic_auth(headers, username, password)
         return headers
 
     # ---- Priority 3: .netrc ----
@@ -107,6 +119,18 @@ def _apply_netrc(headers: dict[str, str], url: str) -> None:
         host = urlparse(url).hostname
         if not host:
             return
+
+        # Validate .netrc permissions (must be owner-only on Unix)
+        netrc_path = Path.home() / ".netrc"
+        if netrc_path.is_file():
+            perms = netrc_path.stat().st_mode & 0o777
+            if perms & 0o077:  # group/other have any permissions
+                logger.warning(
+                    ".netrc has loose permissions (%03o) at %s — expected 0600",
+                    perms,
+                    netrc_path,
+                )
+
         n = netrc()
         auth = n.authenticators(host)
         if auth:

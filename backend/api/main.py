@@ -2,13 +2,14 @@
 
 # backend/api/main.py
 import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
 import structlog
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -34,10 +35,14 @@ except ImportError:
 
 # Use absolute imports
 from backend import __version__
+from backend.api.auth import get_current_user
 from backend.api.dependencies import limiter
 from backend.api.middleware import setup_middleware
 from backend.api.routes import (
     auth as auth_routes,
+)
+from backend.api.routes import (
+    check as check_routes,
 )
 from backend.api.routes import (
     completion as completion_routes,
@@ -53,10 +58,26 @@ from backend.api.routes import (
     scan,
     system,
 )
+from backend.api.routes import (
+    sbom as sbom_routes,
+)
+from backend.core.shutdown import ShutdownFlag, register_signal_handlers
 from backend.data_sources.base_client import close_all_sessions
 from backend.logging_config import setup_logging
-from backend.settings import API_KEY, API_KEY_HEADER, FEATURES
+from backend.settings import (
+    ALLOWED_ORIGINS,
+    API_KEY,
+    API_KEY_HEADER,
+    ENABLE_AUTH,
+    ENV,
+    FEATURES,
+    SENTRY_DSN,
+    UDR_STANDALONE,
+)
 from backend.tracing_config import setup_tracing
+
+# Global shutdown flag for graceful shutdown
+SHUTDOWN_FLAG = ShutdownFlag()
 
 # Configure structured logging
 setup_logging()
@@ -69,6 +90,9 @@ async def lifespan(app: FastAPI):
     """Handle application lifecycle events."""
     # Startup
     logger.info("Starting Universal Dependency Resolver API...")
+
+    # Register signal handlers for graceful shutdown
+    register_signal_handlers(SHUTDOWN_FLAG)
 
     # Configure OpenTelemetry tracing
     setup_tracing(app=app)
@@ -87,9 +111,24 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Universal Dependency Resolver API...")
 
+    # Mark shutdown flag
+    SHUTDOWN_FLAG.request_shutdown()
+
+    # Gracefully shut down the OpenTelemetry tracer provider
+    try:
+        from opentelemetry import trace as otel_trace
+
+        provider = otel_trace.get_tracer_provider()
+        if hasattr(provider, "shutdown"):
+            provider.shutdown()
+        logger.info("OpenTelemetry tracer provider shut down")
+    except Exception as e:
+        logger.warning(f"Error shutting down tracer: {e}")
+
     # Dispose of database connections
     try:
         from backend.orchestrator.db_service import get_db_engine
+
         get_db_engine().dispose()
         logger.info("Database connections disposed")
     except Exception as e:
@@ -121,13 +160,13 @@ app.add_middleware(SlowAPIMiddleware)
 setup_middleware(app)
 
 # Setup monitoring
-sentry_dsn = os.getenv("SENTRY_DSN")
-if sentry_dsn and SENTRY_AVAILABLE:
+if SENTRY_DSN and SENTRY_AVAILABLE:
     sentry_sdk.init(
-        dsn=sentry_dsn,
+        dsn=SENTRY_DSN,
         integrations=[FastApiIntegration()],
-        traces_sample_rate=1.0,
-        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        environment=ENV,
     )
     logger.info("Sentry monitoring enabled")
 
@@ -136,7 +175,10 @@ if PROMETHEUS_AVAILABLE:
     logger.info("Prometheus metrics enabled at /metrics")
 
 # Configure CORS
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+allowed_origins = [o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()]
+# Add file:// for desktop Electron app
+if "file://" not in allowed_origins:
+    allowed_origins.append("file://")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -166,7 +208,7 @@ async def api_key_middleware(request: Request, call_next):
         )
 
     # 1. Check against env var API_KEY (super-admin, backward compat)
-    if api_key == API_KEY:
+    if secrets.compare_digest(api_key, API_KEY):
         request.state.api_key_name = "env-super-admin"
         request.state.api_key_role = "admin"
         return await call_next(request)
@@ -175,13 +217,13 @@ async def api_key_middleware(request: Request, call_next):
     try:
         from backend.orchestrator.db_service import authenticate_api_key
 
-        result = authenticate_api_key(api_key)
+        result = await asyncio.to_thread(authenticate_api_key, api_key)
         if result is not None:
             request.state.api_key_name = result["name"]
             request.state.api_key_role = result["role"]
             return await call_next(request)
     except Exception:
-        pass
+        logger.exception("Auth middleware error during API key validation")
 
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -234,7 +276,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 # Environment validation function
 async def validate_environment() -> None:
     """Validate environment configuration on startup."""
-    standalone = os.getenv("UDR_STANDALONE", "false").lower() == "true"
+    standalone = UDR_STANDALONE
 
     optional_env_vars = [
         "REDIS_URL",
@@ -266,9 +308,7 @@ async def validate_environment() -> None:
             logger.warning(f"Optional variable {var} is not set")
 
     # Guard: production must have auth enabled
-    env = os.getenv("ENV", "development")
-    enable_auth = os.getenv("ENABLE_AUTH", "true").lower() == "true"
-    if env == "production" and not enable_auth:
+    if ENV == "production" and not ENABLE_AUTH:
         raise RuntimeError(
             "Refusing to start in production mode with ENABLE_AUTH=false. "
             "Set ENABLE_AUTH=true and configure SECRET_KEY."
@@ -297,21 +337,6 @@ async def validate_environment() -> None:
             logger.info("Redis connection successful")
         except Exception as e:
             logger.warning(f"Redis connection failed: {e}. Falling back to in-memory cache.")
-
-
-# Shutdown handler for graceful tracer shutdown
-@app.on_event("shutdown")
-async def shutdown_tracing():
-    """Gracefully shut down the OpenTelemetry tracer provider."""
-    try:
-        from opentelemetry import trace as otel_trace
-
-        provider = otel_trace.get_tracer_provider()
-        if hasattr(provider, "shutdown"):
-            provider.shutdown()
-        logger.info("OpenTelemetry tracer provider shut down")
-    except Exception as e:
-        logger.warning(f"Error shutting down tracer: {e}")
 
 
 # Root endpoint
@@ -346,68 +371,34 @@ async def readyz():
     return {"status": "ok"}
 
 
-# Health check endpoint with dependency checks
+# Health check endpoint with dependency checks (requires auth — reveals infrastructure)
 @app.get("/api/v1/health", tags=["General"])
 @limiter.limit("30/minute")
-async def health_check(request: Request) -> dict:
+async def health_check(request: Request, _user=Depends(get_current_user)) -> dict:
     """Health check endpoint that verifies all critical dependencies.
-    Returns detailed status of each component.
+    Returns detailed status of each component (requires authentication).
     """
     health_status: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "version": __version__,
-        "checks": {},
     }
 
-    # Check database with detailed health information
     try:
         from backend.orchestrator.db_service import check_health
 
         db_health = check_health()
-        health_status["checks"]["database"] = db_health
-        if db_health["status"] == "unhealthy":
+        if db_health.get("status") == "unhealthy":
             health_status["status"] = "unhealthy"
-    except Exception as e:
-        health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+    except Exception:
         health_status["status"] = "unhealthy"
-
-    # Check Redis if configured
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        try:
-            import redis
-
-            r = redis.from_url(redis_url)
-            r.ping()
-            health_status["checks"]["redis"] = {"status": "healthy"}
-        except Exception as e:
-            health_status["checks"]["redis"] = {"status": "unhealthy", "error": str(e)}
-            # Redis is optional, so don't mark overall status as unhealthy
-
-    # Check external APIs — verify at least one upstream registry is reachable
-    try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=5.0) as hc:
-            r = await hc.get("https://pypi.org/pypi/pip/json")
-            health_status["checks"]["external_apis"] = {
-                "status": "healthy" if r.is_success else "degraded",
-                "pypi": r.status_code,
-            }
-    except Exception as e:
-        health_status["checks"]["external_apis"] = {
-            "status": "degraded",
-            "error": str(e),
-        }
 
     return health_status
 
 
 # Include routers with versioned prefix
 # Register auth router only when auth is enabled (saas mode)
-enable_auth = os.getenv("ENABLE_AUTH", "true").lower() == "true"
-if enable_auth:
+if ENABLE_AUTH:
     app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
 else:
     logger.info("Auth endpoints disabled (ENABLE_AUTH=false)")
@@ -422,6 +413,8 @@ app.include_router(lock_routes.router, prefix="/api/v1", tags=["Lock"])
 
 app.include_router(index_routes.router, prefix="/api/v1/index", tags=["Index"])
 app.include_router(completion_routes.router, prefix="/api/v1", tags=["Completion"])
+app.include_router(check_routes.router, prefix="/api/v1", tags=["Check"])
+app.include_router(sbom_routes.router, prefix="/api/v1", tags=["SBOM"])
 
 
 # Optional: Add middleware for response time tracking
@@ -463,7 +456,10 @@ async def log_requests(request: Request, call_next):
         method=method,
         path=path,
         request_id=request_id,
-        query_params=dict(request.query_params),
+        query_params={
+            k: "***" if "token" in k.lower() or "key" in k.lower() or "password" in k.lower() else v
+            for k, v in request.query_params.items()
+        },
         client_host=request.client.host if request.client else None,
     )
 
@@ -506,5 +502,5 @@ if __name__ == "__main__":
         "backend.api.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=os.getenv("ENVIRONMENT", "development") == "development",
+        reload=ENV == "development",
     )

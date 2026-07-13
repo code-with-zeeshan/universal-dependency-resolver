@@ -1,5 +1,6 @@
 """Shell completion script generation for bash, zsh, and fish."""
 
+import argparse
 import os
 import sys
 
@@ -36,15 +37,15 @@ _BASH_COMPLETION = """_{prog}_completion() {{
             COMPREPLY=( $(compgen -W "12.8 12.7 12.6 12.5 12.4 12.3 12.2 12.1 12.0 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0" -- "${{cur}}") )
             ;;
         lock)
-            local lock_flags="--directory --manifest --export --yes --dry-run --interactive --cuda --device --json --report --include-dev --timeout --extras --pin --pin-mode --block --freeze --workspace --prefix --force --target --platform --auto-sync --sign --provenance --check"
-            COMPREPLY=( $(compgen -W "${{lock_flags}}" -- "${{cur}}") )
+            local lock_flags="--directory --manifest --export --yes --dry-run --interactive --cuda --device --json --report --include-dev --timeout --extras --pin --pin-mode --block --freeze --workspace --prefix --force --target --platform --auto-sync --sign --provenance --check --with-dev --without-optional"
+            COMPREPLY=( $(compgen -W "${lock_flags}" -- "${cur}") )
             ;;
         check)
             local check_flags="--verbose --deps --json --cuda --cve --license --deprecated --device --directory --workspace --lock-file --policy"
-            COMPREPLY=( $(compgen -W "${{check_flags}}" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "${check_flags}" -- "${cur}") )
             ;;
         update)
-            local update_flags="--directory --workspace --lock-file --interactive --dry-run --cuda --device --target --platform --fix-cve"
+            local update_flags="--directory --workspace --lock-file --interactive --dry-run --cuda --device --target --platform --fix-cve --with-dev --without-optional"
             COMPREPLY=( $(compgen -W "${{update_flags}}" -- "${{cur}}") )
             ;;
         verify)
@@ -250,22 +251,19 @@ _{prog}_completion
 """
 
 
-def _list_commands():
-    """List commands."""
-    from ..main import _build_parser
+def _list_commands() -> list[str]:
+    from backend.core.utils import CLI_COMMANDS
 
-    parser = _build_parser()
-    return sorted(parser._subparsers._group_actions[0].choices.keys())
+    return CLI_COMMANDS
 
 
-def _ecosystem_list():
-    """Ecosystem list."""
-    from backend.settings import ECOSYSTEMS
+def _ecosystem_list() -> list[str]:
+    from backend.settings import ACTIVE_ECOSYSTEMS
 
-    return [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
+    return ACTIVE_ECOSYSTEMS
 
 
-def cmd_completion(args):
+def cmd_completion(args: argparse.Namespace) -> None:
     """Cmd completion."""
     shell = args.shell
     if not shell:

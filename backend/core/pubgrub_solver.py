@@ -9,15 +9,25 @@ It supports the same ``resolve_dependencies(system_info)`` interface as
 ``ConflictResolver`` so the two can be used interchangeably.
 """
 
+import asyncio
 import logging
-import os
 import platform
 import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-SOLVER_MAX_VARIABLES = int(os.environ.get("SOLVER_MAX_VARIABLES", "50000"))
+from backend.settings import SOLVER_MAX_VARIABLES
+
+try:
+    from backend.core.conflict_resolver import _cluster_versions_static as _cluster_versions
+except ImportError:
+
+    def _cluster_versions(versions: list[str], max_clusters: int = 100) -> list[str]:
+        if len(versions) <= max_clusters:
+            return versions
+        return versions[:max_clusters]
+
 
 _HAS_PUBGRUB_PY: bool | None = None
 """Whether pubgrub-py is available. ``None`` means not yet checked."""
@@ -27,6 +37,24 @@ _PUBGRUB_PY_ERROR: type = Exception  # overwritten on successful import
 
 _PUBGRUB_CORE_SOLVER: type | None = None  # lazy-imported
 _PUBGRUB_CORE_ERROR: type = Exception  # overwritten on failed import
+
+
+def _run_async_safe(coro: Any) -> Any:
+    """Run a coroutine safely whether or not an event loop is running.
+
+    ``asyncio.run()`` raises ``RuntimeError`` when called from inside a
+    running event loop (e.g. CLI ``asyncio.run(main())`` or uvicorn).
+    This helper detects that case and farms the work to a background
+    thread instead.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 def _check_pubgrub_py() -> bool:
@@ -112,6 +140,11 @@ class PubGrubSolver:
             ``{"status": "satisfiable"|"unsatisfiable",
                "resolved_packages": {name: {version, ecosystem, ...}}}``
         """
+        if system_info is None:
+            system_info = self._get_default_system_info()
+        self._pubgrub_sys_py_version = (
+            system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+        )
         # Guard: reject if total available versions exceed SOLVER_MAX_VARIABLES
         total_versions = sum(len(pkg.get("available_versions", []) or []) for pkg in packages)
         if total_versions > SOLVER_MAX_VARIABLES:
@@ -139,6 +172,8 @@ class PubGrubSolver:
         resolver = _PUBGRUB_PY_RESOLVER()
         requirements: dict[str, str] = {}
 
+        sanitized_to_original: dict[str, dict[str, list[str]]] = {}
+
         for pkg in packages:
             name = pkg["name"]
             eco = pkg.get("ecosystem", "pypi")
@@ -147,13 +182,35 @@ class PubGrubSolver:
                 constraint = ">=0.0.0"
             requirements[name] = _normalize_constraint(constraint, eco)
 
-            versions = pkg.get("available_versions", [])
+            ver_python_reqs = pkg.get("version_requires_python", {})
+            versions = _cluster_versions(pkg.get("available_versions", []))
+            ver_map: dict[str, list[str]] = {}
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
+                # Skip if per-version Python requirement is incompatible
+                py_req = ver_python_reqs.get(ver_str)
+                if py_req and self._pubgrub_sys_py_version:
+                    try:
+                        from packaging.specifiers import SpecifierSet
+
+                        if self._pubgrub_sys_py_version not in SpecifierSet(py_req):
+                            continue
+                    except Exception:
+                        pass
+                safe_ver = _sanitize_version(ver_str)
+                ver_map.setdefault(safe_ver, []).append(ver_str)
                 # Collect dependencies from ALL ecosystems (cross-eco support)
                 dep_specs: dict[str, str] = {}
                 all_deps = pkg.get("dependencies", {})
                 for dep_eco, dep_info in all_deps.items():
+                    if (
+                        isinstance(dep_info, dict)
+                        and dep_info
+                        and all(isinstance(v, str) for v in dep_info.values())
+                    ):
+                        for d_name, d_spec in dep_info.items():
+                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                        continue
                     dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
                     for dep in dep_list:
                         if isinstance(dep, str):
@@ -168,24 +225,52 @@ class PubGrubSolver:
                                 dep, "version", "*"
                             )
                         if d_name:
-                            dep_specs[d_name] = _normalize_constraint(d_spec, eco)
-                deps_map.setdefault(name, {})[ver_str] = dep_specs
+                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                deps_map.setdefault(name, {})[safe_ver] = dep_specs
+                sanitized_to_original[name] = ver_map
 
-            for ver_str, deps in deps_map.get(name, {}).items():
-                safe_ver = _sanitize_version(ver_str)
+            for safe_ver, deps in deps_map.get(name, {}).items():
                 resolver.add_package(name, safe_ver, deps)
 
         try:
-            result = resolver.resolve(requirements)
+            if self._solver_timeout:
+
+                async def _resolve_with_timeout():
+                    loop = asyncio.get_event_loop()
+                    return await asyncio.wait_for(
+                        loop.run_in_executor(None, resolver.resolve, requirements),
+                        timeout=self._solver_timeout / 1000.0,
+                    )
+
+                result = _run_async_safe(_resolve_with_timeout())
+            else:
+                result = resolver.resolve(requirements)
         except _PUBGRUB_PY_ERROR as e:
             logger.warning("pubgrub-py resolution failed: %s", e)
             return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
+        except TimeoutError:
+            logger.warning("pubgrub-py resolution timed out after %d ms", self._solver_timeout)
+            return {
+                "status": "unsatisfiable",
+                "resolution_error": "timeout",
+                "resolved_packages": {},
+            }
 
         resolved_packages: dict[str, dict] = {}
         for r_name, r_ver in result.items():
             pkg = next((p for p in packages if p["name"] == r_name), None)
+            candidates = sanitized_to_original.get(r_name, {}).get(str(r_ver), [])
+            if candidates:
+                exact = [v for v in candidates if v == str(r_ver)]
+                if exact:
+                    final_ver = exact[0]
+                else:
+                    stable = [v for v in candidates if not _has_prerelease_suffix(v)]
+                    final_ver = (stable or candidates)[0]
+            else:
+                final_ver = str(r_ver)
             resolved_packages[r_name] = {
-                "version": str(r_ver),
+                "version": final_ver,
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
             }
 
@@ -197,6 +282,8 @@ class PubGrubSolver:
         solver = _PUBGRUB_CORE_SOLVER()
         requirements: dict[str, str] = {}
 
+        sanitized_to_original: dict[str, dict[str, list[str]]] = {}
+
         for pkg in packages:
             name = pkg["name"]
             eco = pkg.get("ecosystem", "pypi")
@@ -205,12 +292,34 @@ class PubGrubSolver:
                 constraint = ">=0.0.0"
             requirements[name] = _normalize_constraint(constraint, eco)
 
-            versions = pkg.get("available_versions", [])
+            ver_python_reqs = pkg.get("version_requires_python", {})
+            versions = _cluster_versions(pkg.get("available_versions", []))
+            ver_map: dict[str, list[str]] = {}
             for ver_str in versions:
+                # Skip if per-version Python requirement is incompatible
+                py_req = ver_python_reqs.get(ver_str)
+                if py_req and self._pubgrub_sys_py_version:
+                    try:
+                        from packaging.specifiers import SpecifierSet
+
+                        if self._pubgrub_sys_py_version not in SpecifierSet(py_req):
+                            continue
+                    except Exception:
+                        pass
+                safe_ver = _sanitize_version(ver_str)
+                ver_map.setdefault(safe_ver, []).append(ver_str)
                 # Collect dependencies from ALL ecosystems (cross-eco support)
                 dep_specs: dict[str, str] = {}
                 all_deps = pkg.get("dependencies", {})
                 for dep_eco, dep_info in all_deps.items():
+                    if (
+                        isinstance(dep_info, dict)
+                        and dep_info
+                        and all(isinstance(v, str) for v in dep_info.values())
+                    ):
+                        for d_name, d_spec in dep_info.items():
+                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                        continue
                     dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
                     for dep in dep_list:
                         if isinstance(dep, str):
@@ -225,21 +334,51 @@ class PubGrubSolver:
                                 dep, "version", "*"
                             )
                         if d_name:
-                            dep_specs[d_name] = _normalize_constraint(d_spec, eco)
-                safe_ver = _sanitize_version(ver_str)
+                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
                 solver.add_package(name, safe_ver, dep_specs)
+                sanitized_to_original[name] = ver_map
 
         try:
-            result = solver.resolve(requirements)
+            if self._solver_timeout:
+
+                async def _resolve_with_timeout():
+                    loop = asyncio.get_event_loop()
+                    return await asyncio.wait_for(
+                        loop.run_in_executor(None, solver.resolve, requirements),
+                        timeout=self._solver_timeout / 1000.0,
+                    )
+
+                result = _run_async_safe(_resolve_with_timeout())
+            else:
+                result = solver.resolve(requirements)
         except (_PUBGRUB_PY_ERROR, _PUBGRUB_CORE_ERROR) as e:
             logger.warning("Pure-Python PubGrub resolution failed: %s", e)
             return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
+        except TimeoutError:
+            logger.warning(
+                "Pure-Python PubGrub resolution timed out after %d ms", self._solver_timeout
+            )
+            return {
+                "status": "unsatisfiable",
+                "resolution_error": "timeout",
+                "resolved_packages": {},
+            }
 
         resolved_packages: dict[str, dict] = {}
         for r_name, r_ver in result.items():
             pkg = next((p for p in packages if p["name"] == r_name), None)
+            candidates = sanitized_to_original.get(r_name, {}).get(str(r_ver), [])
+            if candidates:
+                exact = [v for v in candidates if v == str(r_ver)]
+                if exact:
+                    final_ver = exact[0]
+                else:
+                    stable = [v for v in candidates if not _has_prerelease_suffix(v)]
+                    final_ver = (stable or candidates)[0]
+            else:
+                final_ver = str(r_ver)
             resolved_packages[r_name] = {
-                "version": str(r_ver),
+                "version": final_ver,
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
             }
 
@@ -286,6 +425,15 @@ def _sanitize_version(version: str) -> str:
     return ".".join(clean_parts[:3]) or version
 
 
+def _has_prerelease_suffix(v: str) -> bool:
+    """Check if a version string has a pre-release suffix stripped by _sanitize_version."""
+    parts = v.split(".")
+    for p in parts:
+        if p and not p[0].isdigit():
+            return True
+    return False
+
+
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:
     """Normalize a version constraint to PEP 440 / PubGrub-compatible form."""
     c = constraint.strip()
@@ -317,6 +465,20 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
         elif len(parts) == 1 and parts[0] and parts[0][0].isdigit():
             return f"{parts[0]}.0.0"
         return constraint_str
+
+    # Ecosystem-specific pre-processing
+    if ecosystem == "gomodules":
+        c = c.lstrip("vV ")
+    elif ecosystem == "rubygems" and c.startswith("~>"):
+        inner = c.removeprefix("~>").strip()
+        if not re.fullmatch(r"\d+(\.\d+)*", inner):
+            return c
+        parts = inner.split(".", 2)
+        if len(parts) >= 2:
+            low = _to_semver(f"{parts[0]}.{parts[1]}")
+            major = int(parts[0])
+            return f">={low},<{major + 1}.0.0"
+        return f">={_to_semver(parts[0])},<{int(parts[0]) + 1}.0.0"
 
     if c.startswith("^"):
         inner = c.removeprefix("^=").removeprefix("^")

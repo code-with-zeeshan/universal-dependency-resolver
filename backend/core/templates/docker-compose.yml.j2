@@ -25,7 +25,7 @@ services:
 {% endif %}
 {% if options.include_redis %}
   redis:
-    image: 'redis:alpine'
+    image: 'redis:7-alpine'
     networks:
       - 'app-network'
     volumes:

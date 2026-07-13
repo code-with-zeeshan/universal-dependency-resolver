@@ -1,8 +1,13 @@
 """Module docstring."""
 
+from __future__ import annotations
+
+import logging
 import re
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 from .version_utils import _get_element_text
 
@@ -13,7 +18,7 @@ if TYPE_CHECKING:
 class PomParser:
     """PomParser."""
 
-    def __init__(self, client: "MavenClient"):
+    def __init__(self, client: MavenClient) -> None:
         """Initialize."""
         self.client = client
 
@@ -113,7 +118,7 @@ class PomParser:
 
         return merged
 
-    def _extract_properties(self, root, namespaces) -> dict[str, str]:
+    def _extract_properties(self, root: Any, namespaces: dict[str, str]) -> dict[str, str]:
         properties: dict[str, str] = {}
         props_elem = root.find(".//maven:properties", namespaces) or root.find(".//properties")
 
@@ -131,7 +136,7 @@ class PomParser:
 
         pattern = re.compile(r"\$\{([^}]+)\}")
 
-        def replace_property(match):
+        def replace_property(match: re.Match) -> str:
             prop_name = match.group(1)
             if prop_name in properties:
                 return self._substitute_properties(properties[prop_name], properties)
@@ -146,7 +151,7 @@ class PomParser:
 
         return value
 
-    def _extract_parent_info(self, parent_elem, namespaces) -> dict | None:
+    def _extract_parent_info(self, parent_elem: Any, namespaces: dict[str, str]) -> dict | None:
         try:
             group_id = _get_element_text(parent_elem, "groupId", namespaces)
             artifact_id = _get_element_text(parent_elem, "artifactId", namespaces)
@@ -163,10 +168,12 @@ class PomParser:
                     "type": "parent",
                 }
         except Exception:
-            pass
+            logger.debug("Failed to parse parent POM dependency", exc_info=True)
         return None
 
-    def _parse_repositories(self, root, namespaces, properties) -> list[dict]:
+    def _parse_repositories(
+        self, root: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> list[dict]:
         repositories: list[dict] = []
 
         repos_elem = root.find(".//maven:repositories", namespaces) or root.find(".//repositories")
@@ -221,7 +228,9 @@ class PomParser:
 
         return repositories
 
-    def _parse_plugin_repositories(self, root, namespaces, properties) -> list[dict]:
+    def _parse_plugin_repositories(
+        self, root: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> list[dict]:
         repositories: list[dict] = []
 
         repos_elem = root.find(".//maven:pluginRepositories", namespaces) or root.find(
@@ -246,7 +255,7 @@ class PomParser:
         return repositories
 
     def _parse_dependency_management(
-        self, dep_mgmt_elem, namespaces, properties
+        self, dep_mgmt_elem: Any, namespaces: dict[str, str], properties: dict[str, str]
     ) -> dict[str, dict]:
         dep_management: dict[str, dict] = {}
 
@@ -264,7 +273,9 @@ class PomParser:
 
         return dep_management
 
-    def _parse_plugin_management(self, plugin_mgmt_elem, namespaces, properties) -> dict[str, dict]:
+    def _parse_plugin_management(
+        self, plugin_mgmt_elem: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> dict[str, dict]:
         plugin_management: dict[str, dict] = {}
 
         plugins_elem = plugin_mgmt_elem.find(
@@ -281,7 +292,9 @@ class PomParser:
 
         return plugin_management
 
-    def _parse_profiles(self, profiles_elem, namespaces, parent_properties) -> dict[str, dict]:
+    def _parse_profiles(
+        self, profiles_elem: Any, namespaces: dict[str, str], parent_properties: dict[str, str]
+    ) -> dict[str, dict]:
         profiles: dict[str, dict] = {}
 
         for profile in profiles_elem.findall(
@@ -341,7 +354,7 @@ class PomParser:
 
         return profiles
 
-    def _parse_activation(self, activation_elem, namespaces) -> dict:
+    def _parse_activation(self, activation_elem: Any, namespaces: dict[str, str]) -> dict:
         activation: dict[str, Any] = {}
 
         jdk = _get_element_text(activation_elem, "jdk", namespaces)
@@ -369,7 +382,11 @@ class PomParser:
         return activation
 
     def _parse_dependencies_section(
-        self, deps_elem, namespaces, properties, dep_management
+        self,
+        deps_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> list[dict]:
         dependencies: list[dict] = []
         for dep in deps_elem.findall(".//maven:dependency", namespaces) or deps_elem.findall(
@@ -384,7 +401,11 @@ class PomParser:
         return dependencies
 
     def _extract_dependency_info(
-        self, dep_elem, namespaces, properties, dep_management
+        self,
+        dep_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> dict | None:
         try:
             group_id = _get_element_text(dep_elem, "groupId", namespaces)
@@ -432,7 +453,11 @@ class PomParser:
         return None
 
     def _extract_dependency_info_with_exclusions(
-        self, dep_elem, namespaces, properties, dep_management
+        self,
+        dep_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> dict | None:
         dep_info = self._extract_dependency_info(dep_elem, namespaces, properties, dep_management)
 
@@ -469,7 +494,11 @@ class PomParser:
         return dep_info
 
     def _parse_plugins_section(
-        self, plugins_elem, namespaces, properties, plugin_management
+        self,
+        plugins_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        plugin_management: dict,
     ) -> list[dict]:
         plugins = []
 
@@ -485,7 +514,11 @@ class PomParser:
         return plugins
 
     def _extract_plugin_info(
-        self, plugin_elem, namespaces, properties, plugin_management
+        self,
+        plugin_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        plugin_management: dict,
     ) -> dict | None:
         try:
             group_id = (
@@ -558,7 +591,7 @@ class PomParser:
             print(f"Error extracting plugin: {e!s}")
         return None
 
-    def _parse_configuration(self, config_elem, properties) -> dict:
+    def _parse_configuration(self, config_elem: Any, properties: dict[str, str]) -> dict:
         config: dict[str, Any] = {}
 
         for child in config_elem:

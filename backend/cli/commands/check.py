@@ -1,8 +1,12 @@
 """Module docstring."""
 
+import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from rich import box
 from rich.panel import Panel
@@ -22,18 +26,18 @@ from ..shared import (
 )
 
 
-def cmd_check(args):
+def cmd_check(args: argparse.Namespace) -> None:
     """Cmd check."""
     from backend.core import SystemScanner
 
-    async def _check():
-        if getattr(args, "policy", None) is not None:
+    async def _check() -> bool:
+        if args.policy is not None:
             return await _check_policy(args)
-        if getattr(args, "cve", False):
+        if args.cve:
             return await _check_cve(args)
-        if getattr(args, "license", False):
+        if args.license:
             return await _check_license(args)
-        if getattr(args, "deprecated", False):
+        if args.deprecated:
             return await _check_deprecated(args)
         with Progress(
             SpinnerColumn(),
@@ -65,8 +69,14 @@ def cmd_check(args):
                 info["gpu"]["available"] = True
                 info["gpu"]["type"] = "mps"
                 info["gpu"]["cuda"] = ""
+                info["gpu"]["metal"] = "3.0"
+            elif args.device == "rocm":
+                info["gpu"]["available"] = True
+                info["gpu"]["type"] = "rocm"
+                info["gpu"]["cuda"] = ""
+                info["gpu"]["rocm"] = "6.0.0"
 
-        if getattr(args, "json", False):
+        if args.json:
             return _output_json(info, args)
 
         table = Table(title="System Compatibility", box=box.ROUNDED)
@@ -161,15 +171,15 @@ def cmd_check(args):
         sys.exit(1)
 
 
-async def _check_cve(args):
+async def _check_cve(args: argparse.Namespace) -> bool:
     """Check lock file packages against OSV vulnerability database."""
     from backend.core.data_aggregator import DataAggregator
 
-    directory = Path(getattr(args, "directory", ".")).resolve()
+    directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     )
     if not lock_path.is_file():
         console.print(f"[red]No lock file found at {lock_path.name}[/red]")
@@ -196,18 +206,24 @@ async def _check_cve(args):
             f"Checking {len(packages)} packages for CVEs...", total=len(packages)
         )
 
-        async def _check_one(name: str, info: dict):
-            eco = info.get("ecosystem", "")
-            ver = info.get("resolved_version", "")
-            try:
-                vulns = await aggregator.check_vulnerabilities(name, eco, ver)
-                for v in vulns:
-                    vuln_results.append((name, ver, v))
-            except Exception:
-                err_console.print(f"[dim]Warning: CVE check failed for {name}[/dim]")
-            progress.advance(check_task)
+        _cve_sem = asyncio.Semaphore(20)
 
-        await asyncio.gather(*[_check_one(n, i) for n, i in packages.items()])
+        async def _check_one(name: str, info: dict) -> None:
+            async with _cve_sem:
+                eco = info.get("ecosystem", "")
+                ver = info.get("resolved_version", "")
+                try:
+                    vulns = await aggregator.check_vulnerabilities(name, eco, ver)
+                    for v in vulns:
+                        vuln_results.append((name, ver, v))
+                except Exception:
+                    err_console.print(f"[dim]Warning: CVE check failed for {name}[/dim]")
+                progress.advance(check_task)
+
+        await asyncio.gather(
+            *[_check_one(n, i) for n, i in packages.items()],
+            return_exceptions=True,
+        )
 
     if not vuln_results:
         console.print("[green]✅ No known vulnerabilities found in lock file.[/green]")
@@ -249,15 +265,15 @@ async def _check_cve(args):
     return True
 
 
-async def _check_license(args):
+async def _check_license(args: argparse.Namespace) -> bool:
     """Check lock file packages for license compliance."""
     from backend.core.license_checker import check_license_compatibility
 
-    directory = Path(getattr(args, "directory", ".")).resolve()
+    directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     )
     if not lock_path.is_file():
         console.print(f"[red]No lock file found at {lock_path.name}[/red]")
@@ -294,7 +310,7 @@ async def _check_license(args):
                     if lic:
                         package_licenses[pname] = lic
             except Exception:
-                pass
+                logger.warning("Failed to fetch license for %s", pname, exc_info=True)
         await aggregator.close()
 
     if not package_licenses:
@@ -368,13 +384,13 @@ async def _check_license(args):
     return True
 
 
-async def _check_deprecated(args):
+async def _check_deprecated(args: argparse.Namespace) -> bool:
     """Check lock file packages for deprecated/yanked versions."""
-    directory = Path(getattr(args, "directory", ".")).resolve()
+    directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     )
     if not lock_path.is_file():
         console.print(f"[red]No lock file found at {lock_path.name}[/red]")
@@ -422,10 +438,10 @@ async def _check_deprecated(args):
     return True
 
 
-async def _check_policy(args):
+async def _check_policy(args: argparse.Namespace) -> bool:
     """Check lock file packages against project policy file."""
-    directory = Path(getattr(args, "directory", ".")).resolve()
-    policy_path = getattr(args, "policy", None)
+    directory = Path(args.directory).resolve()
+    policy_path = args.policy
     if not policy_path or policy_path == "udr-policy.yaml":
         candidate = directory / "udr-policy.yaml"
         if not candidate.is_file():
@@ -446,8 +462,8 @@ async def _check_policy(args):
 
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     )
     if not lock_path.is_file():
         console.print(f"[red]No lock file found at {lock_path.name}[/red]")
@@ -457,7 +473,7 @@ async def _check_policy(args):
     lock_data = _read_lock_file(lock_path)
     violations = check_policy(lock_data, policy)
 
-    if getattr(args, "json", False):
+    if args.json:
         return _output_json({"policy": str(policy_path), "violations": violations}, args)
 
     if not violations:

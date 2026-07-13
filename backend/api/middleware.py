@@ -2,9 +2,10 @@
 
 # backend/api/middleware.py
 import gzip
+import hmac
 import json
 import logging
-import os
+import secrets
 import time
 import uuid
 from collections.abc import Callable
@@ -19,6 +20,9 @@ from starlette.types import ASGIApp
 
 from backend.core.cache import cache_manager
 from backend.settings import (
+    ALLOWED_ORIGINS as _ALLOWED_ORIGINS,
+)
+from backend.settings import (
     CACHE_TTL_SHORT,
     CACHE_TTL_VERSIONS,
     ENABLE_PERFORMANCE_LOGGING,
@@ -27,6 +31,9 @@ from backend.settings import (
     MAX_REQUEST_SIZE,
     PROMETHEUS_ENABLED,
     SLOW_REQUEST_THRESHOLD,
+)
+from backend.settings import (
+    TRUSTED_PROXIES as _TRUSTED_PROXIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,9 +92,20 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         # Log request
         request_body = None
+        body_sensitive = False
         if request.method in ["POST", "PUT", "PATCH"]:
             try:
                 request_body = await request.body()
+                if request_body:
+                    try:
+                        body_text = request_body.decode("utf-8", errors="replace")
+                        # Redact sensitive fields
+                        for field in ("password", "secret", "token", "key", "credential"):
+                            if field in body_text.lower():
+                                body_sensitive = True
+                                break
+                    except Exception:
+                        pass
 
                 # Recreate request with body
                 async def receive():
@@ -96,7 +114,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
                 request._receive = receive
             except Exception:
-                pass
+                logger.debug("Failed to override request._receive", exc_info=True)
 
         # Get request info
         request_info = {
@@ -106,6 +124,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "query_params": dict(request.query_params),
             "client_host": request.client.host if request.client else None,
             "user_agent": request.headers.get("user-agent"),
+            "body_sensitive": body_sensitive if request_body else None,
         }
 
         logger.info(f"Request started: {json.dumps(request_info)}")
@@ -277,7 +296,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                         "type": "request_too_large",
                         "message": f"Request body too large. Maximum size is {self.max_size} bytes",
                         "status_code": 413,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                     }
                 },
             )
@@ -297,7 +316,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                                 "type": "request_too_large",
                                 "message": f"Request body too large. Maximum size is {self.max_size} bytes",
                                 "status_code": 413,
-                                "timestamp": datetime.utcnow().isoformat(),
+                                "timestamp": datetime.now(UTC).isoformat(),
                             }
                         },
                     )
@@ -402,7 +421,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             # Record timing metrics (using Redis sorted sets would be better)
             timing_key = (
-                f"metrics:timing:{request.url.path}:{datetime.utcnow().strftime('%Y%m%d%H')}"
+                f"metrics:timing:{request.url.path}:{datetime.now(UTC).strftime('%Y%m%d%H')}"
             )
             await cache_manager.set(timing_key, duration, ttl=86400)  # Keep for 24 hours
 
@@ -436,7 +455,7 @@ class MaintenanceModeMiddleware(BaseHTTPMiddleware):
                         "type": "maintenance_mode",
                         "message": "The service is currently under maintenance. Please try again later.",
                         "status_code": 503,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "details": maintenance_mode if isinstance(maintenance_mode, dict) else {},
                     }
                 },
@@ -488,6 +507,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     - A Bearer token in the Authorization header (API clients), or
     - A valid CSRF token in X-CSRF-Token header (browser clients).
 
+    Sets a csrf_token cookie on every response for cookie-authenticated clients.
     Safe methods (GET/HEAD/OPTIONS) are never blocked.
     """
 
@@ -496,37 +516,50 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Dispatch."""
-        if request.method in self.SAFE_METHODS:
-            return await call_next(request)
-
-        # Allow bypassing CSRF when disabled via feature flag
         from backend.settings import FEATURES
 
-        if not FEATURES.get("ENABLE_CSRF", True):
-            return await call_next(request)
+        csrf_enabled = FEATURES.get("ENABLE_CSRF", True)
+
+        # Set CSRF cookie on every response (if not already present)
+        response = await call_next(request)
+        if csrf_enabled and not request.cookies.get(self.CSRF_COOKIE_NAME):
+            csrf_token = secrets.token_hex(32)
+            response.set_cookie(
+                key=self.CSRF_COOKIE_NAME,
+                value=csrf_token,
+                httponly=True,
+                samesite="lax",
+                max_age=86400,
+            )
+
+        if request.method in self.SAFE_METHODS:
+            return response
+
+        if not csrf_enabled:
+            return response
 
         # API clients using Bearer auth are exempt
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            return await call_next(request)
+            return response
 
         # Check for CSRF token in header vs cookie (double-submit pattern)
         csrf_cookie = request.cookies.get(self.CSRF_COOKIE_NAME)
         csrf_header = request.headers.get("X-CSRF-Token")
 
-        if csrf_cookie and csrf_header and csrf_cookie == csrf_header:
-            return await call_next(request)
+        if csrf_cookie and csrf_header and hmac.compare_digest(csrf_cookie, csrf_header):
+            return response
 
         # No auth + no CSRF token — only block if same-origin can't be verified
         origin = request.headers.get("Origin")
         referer = request.headers.get("Referer")
-        allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+        allowed_origins = [o.strip() for o in _ALLOWED_ORIGINS.split(",") if o.strip()]
 
-        if origin and any(origin.strip() == o.strip() for o in allowed_origins):
-            return await call_next(request)
+        if origin and any(origin.strip() == o for o in allowed_origins):
+            return response
 
-        if referer and any(ref.strip() in referer for ref in allowed_origins if ref.strip()):
-            return await call_next(request)
+        if referer and any(ref in referer for ref in allowed_origins):
+            return response
 
         return JSONResponse(
             status_code=403,
@@ -542,22 +575,47 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
 
 # Utility middleware functions
+TRUSTED_PROXIES: list[str] = []
+_proxy_list_raw = _TRUSTED_PROXIES
+if _proxy_list_raw:
+    TRUSTED_PROXIES = [p.strip() for p in _proxy_list_raw.split(",") if p.strip()]
+
+
 async def get_client_ip(request: Request) -> str:
-    """Get client IP address from request."""
-    # Check X-Forwarded-For header first (for proxies)
+    """Get client IP address from request.
+
+    Only trusts X-Forwarded-For / X-Real-IP when the direct peer is
+    a known trusted proxy or a private IP address.
+    """
+    import ipaddress
+
+    direct_ip = request.client.host if request.client else ""
+
+    # Determine if the direct peer is a trusted proxy
+    def _is_trusted(ip_str: str) -> bool:
+        if not ip_str:
+            return False
+        if ip_str in TRUSTED_PROXIES:
+            return True
+        try:
+            addr = ipaddress.ip_address(ip_str)
+            return addr.is_private
+        except ValueError:
+            return False
+
+    # Check X-Forwarded-For header (only trust from known proxies)
     forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP in the chain
+    if forwarded_for and _is_trusted(direct_ip):
         return forwarded_for.split(",")[0].strip()
 
-    # Check X-Real-IP header
+    # Check X-Real-IP header (only trust from known proxies)
     real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
+    if real_ip and _is_trusted(direct_ip):
         return real_ip
 
     # Fall back to direct client IP
     if request.client:
-        return request.client.host
+        return direct_ip
 
     return "unknown"
 

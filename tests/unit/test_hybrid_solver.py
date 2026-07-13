@@ -164,11 +164,11 @@ print(type(solver).__module__ + '.' + type(solver).__qualname__)
             "backend.core.hybrid_solver.HybridSolver",
         )
 
-    def test_default_is_pubgrub(self):
-        """No env var returns PubGrubSolver (default)."""
+    def test_default_is_auto_solver(self):
+        """No env var returns AutoSolver (default)."""
         self._check_solver(
             {},
-            "backend.core.pubgrub_solver.PubGrubSolver",
+            "backend.core.auto_solver.AutoSolver",
         )
 
     def test_z3_when_explicitly_requested(self):

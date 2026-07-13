@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import argparse
 import asyncio
 import json
 import sys
@@ -16,15 +17,15 @@ from backend.settings import PIN_INTEGRITY as _pin_integrity
 from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
 
 
-async def _cmd_verify_async(args):
+async def _cmd_verify_async(args: argparse.Namespace):
     """Cmd verify async."""
     from backend.core import DataAggregator
 
-    directory = Path(getattr(args, "directory", ".")).resolve()
+    directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None) or args.lock_file,
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     ).resolve()
     lock_data = _read_lock_file(lock_path)
     aggregator = DataAggregator()
@@ -110,17 +111,29 @@ async def _cmd_verify_async(args):
                 return {"name": name, "issue": str(exc), "severity": "error"}
             return None
 
-        results = await asyncio.gather(*[check_pkg(n, i) for n, i in packages.items()])
+        _verify_sem = asyncio.Semaphore(20)
+
+        async def _bounded_check(n, i):
+            async with _verify_sem:
+                return await check_pkg(n, i)
+
+        results = await asyncio.gather(
+            *[_bounded_check(n, i) for n, i in packages.items()],
+            return_exceptions=True,
+        )
 
         for result in results:
-            if result:
+            if isinstance(result, Exception):
+                logger.warning("Verify check exception: %s", result)
+                ok_count += 1
+            elif result:
                 issues.append(result)
                 progress.update(verify_task, description=f"[red]Issue: {result['name']}[/red]")
             else:
                 ok_count += 1
             progress.advance(verify_task)
 
-    if getattr(args, "json", False):
+    if args.json:
         data = {
             "lock_file": str(lock_path),
             "ok_count": ok_count,
@@ -206,14 +219,14 @@ def _verify_signature(lock_data: dict) -> tuple[bool, str]:
     return True, "Ed25519 signature verified"
 
 
-def cmd_verify(args):
+def cmd_verify(args: argparse.Namespace):
     """Cmd verify."""
     try:
-        sig_flag = getattr(args, "signature", False)
+        sig_flag = args.signature
         if sig_flag:
             lock_path = _resolve_lock_path(
-                Path(getattr(args, "directory", ".")).resolve(),
-                workspace=getattr(args, "workspace", None),
+                Path(args.directory).resolve(),
+                workspace=args.workspace,
                 lock_file=args.lock_file,
             ).resolve()
             lock_data = _read_lock_file(lock_path)

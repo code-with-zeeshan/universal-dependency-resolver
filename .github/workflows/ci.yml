@@ -292,4 +292,4 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           PYTHONPATH: .
         run: |
-          python -m pytest tests/unit/ -v --tb=long -k "data_source" --cov=backend.data_sources --cov-report=term-missing --cov-fail-under=0
+          python -m pytest tests/unit/ -v --tb=long -k "data_source" --cov=backend.data_sources --cov-report=term-missing --cov-report=xml --cov-fail-under=30

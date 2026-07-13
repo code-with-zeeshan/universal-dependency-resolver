@@ -168,7 +168,7 @@ class TestAggregatorToResolverInput:
     def test_cuda_system_requirements(self):
         agg_data = {
             "name": "torch",
-            "ecosystem": {"pypi": {"system_requirements": {"cuda": {"min_version": "11.7"}}}},
+            "ecosystems": {"pypi": {"system_requirements": {"cuda": {"min_version": "11.7"}}}},
             "versions": {"pypi": [{"version": "2.1.0"}]},
             "dependencies": {"pypi": {"all": []}},
             "system_requirements": {"pypi": []},

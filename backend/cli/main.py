@@ -4,7 +4,11 @@ import argparse
 import logging
 import os
 
+from backend.core.shutdown import ShutdownFlag, register_signal_handlers
 from backend.settings import ECOSYSTEMS
+
+# Global shutdown flag for CLI commands
+SHUTDOWN_FLAG = ShutdownFlag()
 
 from .commands.auth import cmd_auth
 from .commands.check import cmd_check
@@ -40,6 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Offline mode: use cached data only, no network requests",
     )
+
     sub = parser.add_subparsers(dest="command", required=True)
 
     _eco_choices = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
@@ -96,7 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     check_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         help="Simulate system check for a specific compute device",
     )
     check_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
@@ -150,9 +155,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     resolve_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         default=None,
-        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+        help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
     resolve_p.add_argument(
         "--timeout",
@@ -207,6 +212,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Auto-sync stale local indexes before resolution",
     )
+    resolve_p.add_argument(
+        "--with-dev",
+        action="store_true",
+        default=None,
+        help="Include dev/optional dependency manifests in resolution",
+    )
+    resolve_p.add_argument(
+        "--without-optional",
+        action="store_true",
+        default=None,
+        help="Exclude optional dependencies from resolution",
+    )
 
     lock_p = sub.add_parser(
         "lock", help="Auto-detect manifests, resolve all dependencies, write lock file"
@@ -237,9 +254,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     lock_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         default=None,
-        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+        help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
     lock_p.add_argument("--json", action="store_true", help="Output lock data as JSON")
     lock_p.add_argument(
@@ -332,6 +349,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Check if lock file is up to date (CI mode). Exit code 1 if drift detected.",
     )
+    lock_p.add_argument(
+        "--with-dev",
+        action="store_true",
+        default=None,
+        help="Include dev/optional dependency manifests in resolution",
+    )
+    lock_p.add_argument(
+        "--without-optional",
+        action="store_true",
+        default=None,
+        help="Exclude optional dependencies from resolution",
+    )
 
     graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
     graph_p.add_argument(
@@ -353,9 +382,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     graph_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         default=None,
-        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+        help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
 
     verify_p = sub.add_parser("verify", help="Validate lock file — check all versions still exist")
@@ -418,9 +447,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     update_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         default=None,
-        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+        help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
     update_p.add_argument(
         "--target",
@@ -438,6 +467,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--fix-cve",
         action="store_true",
         help="Update vulnerable packages to versions that fix known CVEs",
+    )
+    update_p.add_argument(
+        "--with-dev",
+        action="store_true",
+        default=None,
+        help="Include dev/optional dependency manifests in resolution",
+    )
+    update_p.add_argument(
+        "--without-optional",
+        action="store_true",
+        default=None,
+        help="Exclude optional dependencies from resolution",
     )
 
     install_p = sub.add_parser("install", help="Install packages from udr.lock lock file")
@@ -521,9 +562,9 @@ def _build_parser() -> argparse.ArgumentParser:
     scan_p.add_argument("--cuda", help="Target CUDA version (e.g. 12.1)")
     scan_p.add_argument(
         "--device",
-        choices=["cpu", "cuda", "mps"],
+        choices=["cpu", "cuda", "mps", "rocm"],
         default=None,
-        help="Target compute device: cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)",
+        help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
     scan_p.add_argument(
         "--dry-run",
@@ -695,6 +736,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main():
     """Main."""
+    register_signal_handlers(SHUTDOWN_FLAG)
     parser = _build_parser()
     args = parser.parse_args()
 

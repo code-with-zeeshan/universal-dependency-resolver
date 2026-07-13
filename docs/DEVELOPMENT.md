@@ -12,6 +12,18 @@ pip install -e ".[dev]"
 
 No PostgreSQL, Redis, or Docker required. SQLite + in-memory cache work out of the box.
 
+## Pre-commit hooks
+
+Pre-commit hooks run `udr lock --check`, ruff linting, and ruff formatting before each commit.
+
+```bash
+# Install pre-commit hooks (requires pre-commit in your dev environment)
+pip install pre-commit       # if not already installed
+pre-commit install
+```
+
+The configuration is in `.pre-commit-config.yaml` at the project root.
+
 ## Running
 
 ```bash
@@ -44,7 +56,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **2407 unit tests** + **96 integration** + **74 e2e** (CLI black-box, problem-statement, JSON compliance). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed. Coverage threshold: `fail_under = 60`.
+Total: **2775 unit tests** + **96 integration** + **75 e2e** (CLI black-box, problem-statement, JSON compliance). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed. Coverage threshold: `fail_under = 60`.
 
 ## Code quality
 
@@ -72,7 +84,7 @@ backend/
 │   ├── constraint_normalizer.py # Version constraint normalization
 │   └── utils.py
 ├── manifest_detector.py  # Auto-detect manifest files
-├── data_sources/      # 22 ecosystem API clients (including nix, guix)
+├── data_sources/      # 26 registered ecosystem plugins (including nix, guix)
 ├── database/          # SQLAlchemy models
 ├── settings/          # Configuration (~200 lines)
 ├── tracing_config.py  # OpenTelemetry setup
@@ -85,9 +97,9 @@ desktop/
 └── package.json
 tests/
 ├── conftest.py        # Shared fixtures
-├── unit/              # 2407 tests
+├── unit/              # 2775 tests
 ├── integration/       # 96 tests
-└── e2e/               # 74 tests
+└── e2e/               # 75 tests
 ```
 
 ## Desktop development

@@ -13,6 +13,7 @@ Delegates to native installers per ecosystem:
   ...
 """
 
+import argparse
 import shlex
 import subprocess
 from pathlib import Path
@@ -22,13 +23,13 @@ from rich.prompt import Confirm
 from ..shared import _generate_install_command, _read_lock_file, _resolve_lock_path, console
 
 
-def cmd_install(args):
+def cmd_install(args: argparse.Namespace) -> int:
     """Install packages from a lock file."""
     directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     ).resolve()
 
     lock_data = _read_lock_file(lock_path)
@@ -38,7 +39,7 @@ def cmd_install(args):
         return 1
 
     # Filter by production mode (skip dev dependencies)
-    production = getattr(args, "production", False)
+    production = args.production
 
     # Group by ecosystem
     eco_groups: dict[str, list[tuple[str, str]]] = {}
@@ -58,15 +59,22 @@ def cmd_install(args):
         return 1
 
     # Filter by ecosystem argument
-    requested_eco = getattr(args, "ecosystem", None)
+    requested_eco = args.ecosystem
     if requested_eco:
         eco_groups = {k: v for k, v in eco_groups.items() if k == requested_eco}
         if not eco_groups:
             console.print(f"[red]No packages found for ecosystem '{requested_eco}'[/red]")
             return 1
 
+    # Build integrity hash lookup from lock data
+    integrity_map: dict[str, dict] = {}
+    for pkg_name, pinfo in packages.items():
+        integ = pinfo.get("integrity")
+        if isinstance(integ, dict) and integ.get("algorithm") and integ.get("hash"):
+            integrity_map[pkg_name] = integ
+
     # Generate install commands
-    cuda_version = getattr(args, "cuda", None)
+    cuda_version = args.cuda
     install_commands: list[tuple[str, str]] = []
     install_pkg_list: dict[str, list[tuple[str, str]]] = {}
     missing_tools: list[str] = []
@@ -74,6 +82,14 @@ def cmd_install(args):
     for eco, pkgs in eco_groups.items():
         cmd = _generate_install_command(eco, pkgs, cuda_version=cuda_version)
         if cmd:
+            hash_args = []
+            if eco == "pypi":
+                for pkg_name, _ in pkgs:
+                    integ = integrity_map.get(pkg_name)
+                    if integ:
+                        hash_args.append(f"--hash={integ['algorithm']}:{integ['hash']}")
+            if hash_args:
+                cmd = cmd + " " + " ".join(hash_args)
             install_commands.append((eco, cmd))
             install_pkg_list[eco] = pkgs
         else:
@@ -86,18 +102,18 @@ def cmd_install(args):
         return 1
 
     # Show plan
-    label = "Restore" if getattr(args, "restore", False) else "Install"
+    label = "Restore" if args.restore else "Install"
     console.print(f"[bold]{label} Plan[/bold]")
     for eco, cmd in install_commands:
         console.print(f"  [cyan]{eco}[/cyan] ({len(install_pkg_list[eco])} pkgs): [dim]{cmd}[/dim]")
     if missing_tools:
         console.print(f"  [yellow]Skipped (no installer): {', '.join(missing_tools)}[/yellow]")
 
-    if getattr(args, "dry_run", False):
+    if args.dry_run:
         console.print("[yellow]── dry run — no installations performed ──[/yellow]")
         return 0
 
-    if not getattr(args, "yes", False):
+    if not args.yes:
         proceed = Confirm.ask(f"\nProceed with {label.lower()}?", default=False)
         if not proceed:
             return 0

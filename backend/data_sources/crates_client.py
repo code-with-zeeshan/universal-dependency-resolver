@@ -38,7 +38,6 @@ class CratesClient(BaseDataSourceClient):
         user_agent: str | None = None,
         cache_ttl: int | None = None,
         max_retries: int | None = None,
-        rate_limit_delay: float | None = None,
     ):
         """Initialize."""
         crates_config = get_ecosystem_config("crates")
@@ -591,7 +590,9 @@ class CratesClient(BaseDataSourceClient):
                 return v == r
 
         except Exception:
-            pass
+            logger.debug(
+                "Failed to match version requirement %s %s %s", v, operator, r, exc_info=True
+            )
 
         return False
 

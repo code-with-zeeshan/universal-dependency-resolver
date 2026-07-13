@@ -56,7 +56,6 @@ class PackagistClient(BaseDataSourceClient):
         api_url: str | None = None,
         cache_ttl: int | None = None,
         max_retries: int | None = None,
-        rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
         """Initialize."""
@@ -223,7 +222,6 @@ class PackagistClient(BaseDataSourceClient):
         self,
         package_name: str,
         include_dev: bool = True,
-        include_abandoned: bool = False,
     ) -> list[dict]:
         """get versions."""
         package_name = normalize_package_name(package_name)
@@ -270,7 +268,7 @@ class PackagistClient(BaseDataSourceClient):
             if data and "package" in data:
                 return data["package"]
         except Exception:
-            pass
+            logger.debug("Failed to fetch download stats for %s", package_name, exc_info=True)
         return {"daily": 0, "monthly": 0, "total": 0}
 
     def _process_version_data(self, version_data: dict) -> dict | None:

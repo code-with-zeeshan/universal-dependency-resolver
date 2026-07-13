@@ -401,9 +401,11 @@ docs/build/
 site/
 
 # Internal assessment
+X_phase.md
 Z_phase.md
 strategy_analysis.md
 AGENTS.md
+questions.md
 
 # =============================================================================
 # Testing

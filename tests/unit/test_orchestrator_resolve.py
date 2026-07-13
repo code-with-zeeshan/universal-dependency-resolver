@@ -94,14 +94,14 @@ class TestExtractSystemRequirements:
         assert result["python"]["min_version"] == "3.9"
 
     def test_extracts_cuda_req(self):
-        data = {"ecosystem": {"pypi": {"system_requirements": {"cuda": {"min_version": "11.7"}}}}}
+        data = {"ecosystems": {"pypi": {"system_requirements": {"cuda": {"min_version": "11.7"}}}}}
         result = _extract_system_requirements(data, "pypi")
         assert "cuda" in result
         assert result["cuda"]["min_version"] == "11.7"
 
     def test_ignores_other_runtimes(self):
         Req = type("Req", (), {"type": "runtime", "name": "python", "version_spec": ">=3.8"})
-        data = {"system_requirements": {"pypi": [Req()]}, "ecosystem": {}}
+        data = {"system_requirements": {"pypi": [Req()]}, "ecosystems": {}}
         result = _extract_system_requirements(data, "npm")
         assert "python" not in result
 
@@ -140,7 +140,7 @@ class TestBuildDepPkg:
             "dependencies": {},
             "system_requirements": {},
         }
-        result = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "requests")
+        result = _build_dep_pkg(Dep(), "pypi", dep_info)
         assert result is not None
         assert result["name"] == "urllib3"
         assert result["ecosystem"] == "pypi"
@@ -154,23 +154,30 @@ class TestBuildDepPkg:
             "dependencies": {},
             "system_requirements": {},
         }
-        result = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "pkg")
+        result = _build_dep_pkg(Dep(), "pypi", dep_info)
         assert result is None
 
-    def test_cross_ecosystem_edge(self):
+    def test_passes_through_cross_ecosystem_deps_from_aggregator(self):
         Dep = type("Dep", (), {"name": "express", "version_spec": "^4.18", "ecosystem": None})
         dep_info = {
             "version": "4.18.0",
             "versions": {"npm": [{"version": "4.18.0"}]},
             "dependencies": {},
             "system_requirements": {},
+            "cross_ecosystem_deps": [
+                {
+                    "source_ecosystem": "pypi",
+                    "target_ecosystem": "npm",
+                    "dependency": "express",
+                    "version_spec": "^4.18",
+                }
+            ],
         }
-        result = _build_dep_pkg(Dep(), "npm", dep_info, "pypi", "some-pkg")
+        result = _build_dep_pkg(Dep(), "npm", dep_info)
         assert result is not None
         cross = result.get("cross_ecosystem_deps", [])
         assert len(cross) == 1
-        assert cross[0]["source"] == "some-pkg@pypi"
-        assert cross[0]["name"] == "express"
+        assert cross[0]["dependency"] == "express"
         assert cross[0]["target_ecosystem"] == "npm"
 
 
@@ -329,7 +336,7 @@ class TestBuildDepPkgDevOnlyFiltering:
             },
             "system_requirements": {},
         }
-        result = _build_dep_pkg(Dep(), "npm", dep_info, "npm", "some-pkg")
+        result = _build_dep_pkg(Dep(), "npm", dep_info)
         assert result is not None
         npm_deps = result["dependencies"].get("npm", {})
         assert "dev-lib" not in npm_deps, "dev_only dep should be excluded"
@@ -353,7 +360,7 @@ class TestBuildDepPkgDevOnlyFiltering:
             "dependencies": {"pypi": {"all": [DepObj(), DepObj2()]}},
             "system_requirements": {},
         }
-        result = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "some-pkg")
+        result = _build_dep_pkg(Dep(), "pypi", dep_info)
         assert result is not None
         pypi_deps = result["dependencies"].get("pypi", {})
         assert len(pypi_deps) == 2
@@ -431,7 +438,7 @@ class TestCollectCurrentDepsFormatHandling:
             "dependencies": {"pypi": {"all": [DepObj()]}},
             "system_requirements": {},
         }
-        pkg = _build_dep_pkg(Dep(), "pypi", dep_info, "pypi", "rootpkg")
+        pkg = _build_dep_pkg(Dep(), "pypi", dep_info)
         assert pkg is not None
         # The flat format should be {name: constraint}, not {"all": [...]}
         deps = pkg["dependencies"]
@@ -487,6 +494,46 @@ class TestSystemInfoFingerprint:
         fp = _system_info_fingerprint({"cpu": {"arch": "aarch64"}})
         assert fp.get("platform", {}).get("architecture") == "aarch64"
 
+    def test_includes_non_cuda_gpu_types(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        system_info = {
+            "gpu": {
+                "rocm": "6.0.0",
+                "intel_gpu": "1.0.0",
+                "metal": "3.0",
+                "cuda": "12.1",
+            },
+        }
+        fp = _system_info_fingerprint(system_info)
+        gpu = fp.get("gpu", {})
+        assert gpu.get("rocm") == "6.0.0"
+        assert gpu.get("intel_gpu") == "1.0.0"
+        assert gpu.get("metal") == "3.0"
+        assert gpu.get("cuda") == "12.1"
+
+    def test_non_cuda_gpu_types_with_dict_format(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        system_info = {
+            "gpu": {
+                "rocm": {"version": "5.7.0"},
+                "metal": {"version": "3.0"},
+            },
+        }
+        fp = _system_info_fingerprint(system_info)
+        gpu = fp.get("gpu", {})
+        assert gpu.get("rocm") == "5.7.0"
+        assert gpu.get("metal") == "3.0"
+
+    def test_non_cuda_gpu_types_omitted_when_missing(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        fp = _system_info_fingerprint({"gpu": {"cuda": "12.1"}})
+        assert "rocm" not in fp.get("gpu", {})
+        assert "intel_gpu" not in fp.get("gpu", {})
+        assert "metal" not in fp.get("gpu", {})
+
 
 class TestIncrementalResolution:
     @pytest.mark.asyncio
@@ -531,7 +578,11 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, [pkg], system_info, lock_data=lock_data,
+            aggregator,
+            resolver,
+            [pkg],
+            system_info,
+            lock_data=lock_data,
         )
         assert result["status"] == "satisfiable"
         assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
@@ -548,12 +599,14 @@ class TestIncrementalResolution:
         )
 
         aggregator = MagicMock()
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "requests",
-            "versions": {"pypi": [{"version": "2.31.0"}]},
-            "dependencies": {},
-            "system_requirements": {},
-        })
+        aggregator.get_package_info = AsyncMock(
+            return_value={
+                "name": "requests",
+                "versions": {"pypi": [{"version": "2.31.0"}]},
+                "dependencies": {},
+                "system_requirements": {},
+            }
+        )
         resolver = MagicMock()
         resolver.resolve_dependencies.return_value = {
             "status": "satisfiable",
@@ -611,7 +664,11 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, packages, system_info, lock_data=lock_data,
+            aggregator,
+            resolver,
+            packages,
+            system_info,
+            lock_data=lock_data,
         )
         assert result["status"] == "satisfiable"
         assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
@@ -640,7 +697,11 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, [pkg], system_info, lock_data=None,
+            aggregator,
+            resolver,
+            [pkg],
+            system_info,
+            lock_data=None,
         )
         assert result["status"] == "satisfiable"
         aggregator.get_package_info.assert_called()
@@ -688,8 +749,12 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, [pkg], system_info,
-            lock_data=lock_data, incremental=False,
+            aggregator,
+            resolver,
+            [pkg],
+            system_info,
+            lock_data=lock_data,
+            incremental=False,
         )
         assert result["status"] == "satisfiable"
         aggregator.get_package_info.assert_called()
@@ -706,23 +771,29 @@ class TestIncrementalResolution:
         )
 
         aggregator = MagicMock()
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "flask",
-            "versions": {"pypi": [{"version": "2.3.3"}]},
-            "dependencies": {
-                "pypi": {
-                    "all": [
-                        type("_Dep", (), {
-                            "name": "click",
-                            "version_spec": ">=8.0",
-                            "ecosystem": None,
-                            "dev_only": False,
-                        })()
-                    ]
-                }
-            },
-            "system_requirements": {},
-        })
+        aggregator.get_package_info = AsyncMock(
+            return_value={
+                "name": "flask",
+                "versions": {"pypi": [{"version": "2.3.3"}]},
+                "dependencies": {
+                    "pypi": {
+                        "all": [
+                            type(
+                                "_Dep",
+                                (),
+                                {
+                                    "name": "click",
+                                    "version_spec": ">=8.0",
+                                    "ecosystem": None,
+                                    "dev_only": False,
+                                },
+                            )()
+                        ]
+                    }
+                },
+                "system_requirements": {},
+            }
+        )
         resolver = MagicMock()
         resolver.resolve_dependencies.return_value = {
             "status": "satisfiable",
@@ -762,7 +833,11 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, [pkg], system_info, lock_data=lock_data,
+            aggregator,
+            resolver,
+            [pkg],
+            system_info,
+            lock_data=lock_data,
         )
         assert result["status"] == "satisfiable"
         # Since click is missing a hash, flask falls back to BFS
@@ -779,12 +854,14 @@ class TestIncrementalResolution:
         )
 
         aggregator = MagicMock()
-        aggregator.get_package_info = AsyncMock(return_value={
-            "name": "numpy",
-            "versions": {"pypi": [{"version": "1.26.0"}]},
-            "dependencies": {},
-            "system_requirements": {},
-        })
+        aggregator.get_package_info = AsyncMock(
+            return_value={
+                "name": "numpy",
+                "versions": {"pypi": [{"version": "1.26.0"}]},
+                "dependencies": {},
+                "system_requirements": {},
+            }
+        )
 
         resolver = MagicMock()
         resolver.resolve_dependencies.return_value = {
@@ -828,7 +905,11 @@ class TestIncrementalResolution:
         }
 
         result = await _resolve_transitive(
-            aggregator, resolver, packages, system_info, lock_data=lock_data,
+            aggregator,
+            resolver,
+            packages,
+            system_info,
+            lock_data=lock_data,
         )
         assert result["status"] == "satisfiable"
         assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
@@ -844,8 +925,204 @@ class TestIncrementalResolution:
         lock_data = {"packages": {}, "version": "2.1"}
 
         result = await _resolve_transitive(
-            aggregator, resolver, [], system_info, lock_data=lock_data,
+            aggregator,
+            resolver,
+            [],
+            system_info,
+            lock_data=lock_data,
         )
         assert result["status"] == "satisfiable"
         assert result["resolved_packages"] == {}
         resolver.resolve_dependencies.assert_not_called()
+
+
+class TestCrossDepsInjection:
+    """Cross-ecosystem dependency injection from config (udr.json cross_deps)."""
+
+    def _make_dep(self, name: str, version_spec: str = "*", eco: str = "pypi"):
+        return type("_Dep", (), {"name": name, "version_spec": version_spec, "ecosystem": eco})()
+
+    def _make_agg_response(self, name, ecosystem, version, deps=None):
+        return {
+            "name": name,
+            "version": version,
+            "versions": {ecosystem: [{"version": version}]},
+            "dependencies": deps or {ecosystem: {"all": []}},
+            "_version_metadata": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_cross_deps_injects_edge_to_target_package(self):
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        async def fake_get_package_info(name, ecosystem, **kwargs):
+            if name == "mypkg" and ecosystem == "pypi":
+                return self._make_agg_response("mypkg", "pypi", "1.0.0")
+            if name == "lodash" and ecosystem == "npm":
+                return self._make_agg_response("lodash", "npm", "4.17.21")
+            return None
+
+        aggregator = AsyncMock()
+        aggregator.get_package_info = fake_get_package_info
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {}
+
+        cross_deps = [
+            {
+                "from": "mypkg@pypi",
+                "dep": "lodash@npm",
+                "constraint": ">=4.17.0",
+                "target_ecosystem": "npm",
+            },
+        ]
+
+        # lodash is already in packages — cross_deps should inject edge without needing fetch
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+            {
+                "name": "lodash",
+                "ecosystem": "npm",
+                "available_versions": ["4.17.21"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+        ]
+
+        result = await _resolve_transitive(
+            aggregator,
+            resolver,
+            packages,
+            system_info,
+            cross_deps=cross_deps,
+            incremental=False,
+        )
+        assert result["status"] in ("satisfiable", "partial")
+
+    @pytest.mark.asyncio
+    async def test_cross_deps_noop_when_source_not_in_packages(self):
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        aggregator = AsyncMock()
+        aggregator.get_package_info.return_value = None
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {}
+
+        cross_deps = [
+            {
+                "from": "nonexistent@pypi",
+                "dep": "something@npm",
+                "constraint": "*",
+                "target_ecosystem": "npm",
+            },
+        ]
+
+        result = await _resolve_transitive(
+            aggregator,
+            resolver,
+            [],
+            system_info,
+            cross_deps=cross_deps,
+            incremental=False,
+        )
+        assert result["status"] == "satisfiable"
+
+    @pytest.mark.asyncio
+    async def test_cross_deps_source_already_has_deps(self):
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        aggregator = AsyncMock()
+        aggregator.get_package_info.side_effect = [
+            self._make_agg_response("mypkg", "pypi", "1.0.0"),
+        ]
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {}
+
+        cross_deps = [
+            {
+                "from": "mypkg@pypi",
+                "dep": "lodash@npm",
+                "constraint": ">=4.17",
+                "target_ecosystem": "npm",
+            },
+        ]
+
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"all": [self._make_dep("click", ">=8.0")]}},
+                "system_requirements": {},
+            },
+            {
+                "name": "lodash",
+                "ecosystem": "npm",
+                "available_versions": ["4.17.21"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+        ]
+
+        result = await _resolve_transitive(
+            aggregator,
+            resolver,
+            packages,
+            system_info,
+            cross_deps=cross_deps,
+            incremental=False,
+        )
+        assert result["status"] in ("satisfiable", "partial")
+
+    @pytest.mark.asyncio
+    async def test_cross_deps_missing_from_field_skipped(self):
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        aggregator = AsyncMock()
+        aggregator.get_package_info.return_value = self._make_agg_response("mypkg", "pypi", "1.0.0")
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {}
+
+        cross_deps = [
+            {"dep": "lodash@npm", "constraint": "*"},  # missing "from"
+        ]
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+                "system_requirements": {},
+            }
+        ]
+
+        result = await _resolve_transitive(
+            aggregator,
+            resolver,
+            packages,
+            system_info,
+            cross_deps=cross_deps,
+            incremental=False,
+        )
+        assert result["status"] in ("satisfiable", "partial")

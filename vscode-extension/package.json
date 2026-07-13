@@ -126,11 +126,6 @@
           "default": "udr",
           "description": "Path to the udr CLI executable"
         },
-        "udr.backendUrl": {
-          "type": "string",
-          "default": "http://localhost:8199",
-          "description": "Backend API URL for the UDR server"
-        },
         "udr.lockFileName": {
           "type": "string",
           "default": "udr.lock",

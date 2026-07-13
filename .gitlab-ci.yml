@@ -6,7 +6,7 @@ udr-lock-check:
   image: python:3.12-slim
   timeout: 5 minutes
   before_script:
-    - pip install udr
+    - pip install ud-resolver
   script:
     - udr verify
   only:

@@ -43,6 +43,7 @@ def mock_aggregator():
             "dependencies": {"pypi": {"all": []}},
             "system_requirements": {"pypi": []},
         }
+        instance.close = AsyncMock()
         yield m
 
 

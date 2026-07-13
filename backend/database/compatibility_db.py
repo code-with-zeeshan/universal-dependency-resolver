@@ -3,7 +3,7 @@
 # compatibility_db.py
 import hashlib
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, or_
@@ -69,7 +69,7 @@ class CompatibilityDB:
                 # Update existing package
                 package.latest_version = info.get("version", package.latest_version)
                 package.description = info.get("description", package.description)
-                package.updated_at = datetime.utcnow()
+                package.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
             db.commit()
             db.refresh(package)
@@ -119,7 +119,37 @@ class CompatibilityDB:
                 metadata_json=version_info.get("metadata", {}),
             )
             db.add(version)
-            db.commit()
+            db.flush()
+
+    def _add_package_in_session(self, db: Session, name: str, ecosystem: str, info: dict) -> int:
+        """Add or update package within an existing session."""
+        package = (
+            db.query(Package)
+            .filter(and_(Package.name == name, Package.ecosystem == ecosystem))
+            .first()
+        )
+
+        if not package:
+            package = Package(
+                name=name,
+                ecosystem=ecosystem,
+                latest_version=info.get("version"),
+                description=info.get("description"),
+                homepage=info.get("homepage"),
+                repository=info.get("repository"),
+                license=info.get("license"),
+            )
+            db.add(package)
+            db.flush()
+        else:
+            package.latest_version = info.get("version", package.latest_version)
+            package.description = info.get("description", package.description)
+            package.updated_at = datetime.now(UTC).replace(tzinfo=None)
+
+        for version_info in info.get("versions", []):
+            self._add_package_version(db, package.id, version_info)
+
+        return package.id
 
     def _extract_system_fields(self, system_info: dict) -> dict:
         """Extract flat fields from nested system_info structure."""
@@ -226,15 +256,20 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def get_compatibility_rules(self, package_name: str) -> dict:
+    def get_compatibility_rules(self, package_name: str, ecosystem: str = "pypi") -> dict:
         """Get compatibility rules for a package."""
         # Normalize package name
         package_name = normalize_package_name(package_name)
+        ecosystem = sanitize_ecosystem_name(ecosystem)
 
         db = next(get_db())
         try:
             # Find package
-            package = db.query(Package).filter(Package.name == package_name).first()
+            package = (
+                db.query(Package)
+                .filter(and_(Package.name == package_name, Package.ecosystem == ecosystem))
+                .first()
+            )
             if not package:
                 return {
                     "known_conflicts": [],
@@ -254,10 +289,14 @@ class CompatibilityDB:
                 .all()
             )
 
-            # Get verified combinations
+            # Get verified combinations — use like-based JSON search for SQLite compat
             verified = (
                 db.query(VerifiedCombination)
-                .filter(VerifiedCombination.packages.contains([{"name": package_name}]))
+                .filter(
+                    VerifiedCombination.packages.contains([{"name": package_name}])
+                    if not db.bind.dialect.name == "sqlite"
+                    else VerifiedCombination.packages.like(f'%"{package_name}"%')
+                )
                 .all()
             )
 
@@ -296,29 +335,38 @@ class CompatibilityDB:
             db.close()
 
     def bulk_import_packages(self, packages: list[dict]) -> int:
-        """Bulk import packages with normalization."""
+        """Bulk import packages with normalization in a single transaction."""
+        db = next(get_db())
         imported = 0
-        for pkg in packages:
-            try:
-                name = normalize_package_name(pkg.get("name", ""))
-                ecosystem = sanitize_ecosystem_name(pkg.get("ecosystem", ""))
-                if name and ecosystem:
-                    self.add_package(name, ecosystem, pkg)
-                    imported += 1
-            except Exception as e:
-                logger.error(f"Failed to import {pkg.get('name')}: {e}")
+        try:
+            for pkg in packages:
+                try:
+                    name = normalize_package_name(pkg.get("name", ""))
+                    ecosystem = sanitize_ecosystem_name(pkg.get("ecosystem", ""))
+                    if name and ecosystem:
+                        self._add_package_in_session(db, name, ecosystem, pkg)
+                        imported += 1
+                except Exception as e:
+                    logger.error(f"Failed to import {pkg.get('name')}: {e}")
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
         return imported
 
     def check_version_compatibility(
-        self, package_name: str, version: str, system_info: dict
+        self, package_name: str, version: str, system_info: dict, ecosystem: str = "pypi"
     ) -> dict:
         """Check if a specific version is compatible with system."""
         package_name = normalize_package_name(package_name)
+        ecosystem = sanitize_ecosystem_name(ecosystem)
 
         db = next(get_db())
         try:
             # Get package
-            package = self.get_package_by_normalized_name(package_name, "pypi")  # Default to pypi
+            package = self.get_package_by_normalized_name(package_name, ecosystem)
             if not package:
                 return {
                     "compatible": True,
@@ -392,13 +440,14 @@ class CompatibilityDB:
 
         return warnings
 
-    def get_package_stats(self, package_name: str) -> dict:
+    def get_package_stats(self, package_name: str, ecosystem: str = "pypi") -> dict:
         """Get aggregated statistics for a package."""
         package_name = normalize_package_name(package_name)
+        ecosystem = sanitize_ecosystem_name(ecosystem)
 
         db = next(get_db())
         try:
-            package = self.get_package_by_normalized_name(package_name, "pypi")
+            package = self.get_package_by_normalized_name(package_name, ecosystem)
             if not package:
                 return {"error": "Package not found"}
 
@@ -471,7 +520,7 @@ class CompatibilityDB:
         self, package_name: str, ecosystem: str, version: str | None = None
     ) -> dict:
         """Get compatibility statistics filtered by ecosystem and optional version."""
-        stats = self.get_package_stats(package_name)
+        stats = self.get_package_stats(package_name, ecosystem)
         if "error" in stats:
             return {"reports_count": 0, "success_rate": None, "version": version}
         return {
@@ -485,7 +534,7 @@ class CompatibilityDB:
         """Remove old cache entries."""
         db = next(get_db())
         try:
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
             deleted = db.query(ResolutionCache).filter(ResolutionCache.created_at < cutoff).delete()
             db.commit()
             logger.info(f"Cleaned up {deleted} old cache entries")
@@ -498,6 +547,8 @@ class CompatibilityDB:
     def _serialize_conflict(self, conflict: ConflictRule, package_id: int) -> dict:
         """Serialize conflict rule."""
         is_package1 = conflict.package1_id == package_id
+        # Avoid N+1 lazy-load: access relationship attributes in one query
+        other_pkg = conflict.package2 if is_package1 else conflict.package1
 
         return {
             "conflicting_package": conflict.package2.name
@@ -610,23 +661,35 @@ class CompatibilityDB:
         description: str,
         severity: str = "error",
         resolution: str | None = None,
+        ecosystem1: str = "unknown",
+        ecosystem2: str = "unknown",
     ):
-        """Add a known conflict rule."""
-        # Normalize package names
+        """Add a known conflict rule with ecosystem context."""
+        # Normalize package names and ecosystems
         package1 = normalize_package_name(package1)
         package2 = normalize_package_name(package2)
+        ecosystem1 = sanitize_ecosystem_name(ecosystem1)
+        ecosystem2 = sanitize_ecosystem_name(ecosystem2)
 
         db = next(get_db())
         try:
-            # Find or create packages
-            pkg1 = db.query(Package).filter(Package.name == package1).first()
+            # Find or create packages with ecosystem context
+            pkg1 = (
+                db.query(Package)
+                .filter(and_(Package.name == package1, Package.ecosystem == ecosystem1))
+                .first()
+            )
             if not pkg1:
-                pkg1 = Package(name=package1, ecosystem="unknown")
+                pkg1 = Package(name=package1, ecosystem=ecosystem1)
                 db.add(pkg1)
 
-            pkg2 = db.query(Package).filter(Package.name == package2).first()
+            pkg2 = (
+                db.query(Package)
+                .filter(and_(Package.name == package2, Package.ecosystem == ecosystem2))
+                .first()
+            )
             if not pkg2:
-                pkg2 = Package(name=package2, ecosystem="unknown")
+                pkg2 = Package(name=package2, ecosystem=ecosystem2)
                 db.add(pkg2)
 
             db.commit()
@@ -678,7 +741,7 @@ class CompatibilityDB:
                 packages=normalized_packages,
                 system_requirements=system_requirements or {},
                 verified_by=verified_by,
-                verification_date=datetime.utcnow(),
+                verification_date=datetime.now(UTC).replace(tzinfo=None),
             )
 
             db.add(combination)
@@ -713,7 +776,7 @@ class CompatibilityDB:
                 .first()
             )
 
-            if cached and cached.expires_at > datetime.utcnow():
+            if cached and cached.expires_at > datetime.now(UTC).replace(tzinfo=None):
                 # Update hit count
                 cached.hit_count += 1
                 db.commit()
@@ -758,7 +821,7 @@ class CompatibilityDB:
                 # Update existing cache
                 cached.resolution = resolution
                 cached.resolution_time_ms = resolution_time_ms
-                cached.expires_at = datetime.utcnow() + timedelta(hours=24)
+                cached.expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=24)
                 cached.success = resolution.get("status") == "success"
             else:
                 # Create new cache entry
@@ -769,7 +832,7 @@ class CompatibilityDB:
                     resolution=resolution,
                     resolution_time_ms=resolution_time_ms,
                     success=resolution.get("status") == "success",
-                    expires_at=datetime.utcnow() + timedelta(hours=24),
+                    expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=24),
                 )
                 db.add(cached)
 

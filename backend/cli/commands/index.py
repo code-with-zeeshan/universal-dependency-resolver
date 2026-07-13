@@ -9,6 +9,7 @@ status  Show which ecosystems have local indexes available.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -96,10 +97,10 @@ async def _pull_index_async(url: str, ecosystem: str | None = None) -> int:
     return 0
 
 
-def cmd_index_pull(args):
+def cmd_index_pull(args: argparse.Namespace):
     """Download pre-built indexes."""
     url = args.url
-    ecosystem = getattr(args, "ecosystem", None)
+    ecosystem = args.ecosystem
     try:
         sys.exit(asyncio.run(_pull_index_async(url, ecosystem)))
     except KeyboardInterrupt:
@@ -157,12 +158,12 @@ def _resolve_lock_path(args_dir: str | None) -> Path:
     return base / "udr.lock"
 
 
-async def _build_from_lock_async(args) -> int:
+async def _build_from_lock_async(args: argparse.Namespace) -> int:
     """Build offline indexes from packages listed in ``udr.lock``."""
     from backend.core import DataAggregator
     from backend.core.offline_index import create_or_update_index
 
-    lock_path = _resolve_lock_path(getattr(args, "directory", None))
+    lock_path = _resolve_lock_path(args.directory)
     if not lock_path.is_file():
         err_console.print(f"[red]Lock file not found: {lock_path}[/red]")
         return 1
@@ -211,13 +212,13 @@ async def _build_from_lock_async(args) -> int:
     return 0
 
 
-async def _build_from_names_async(args) -> int:
+async def _build_from_names_async(args: argparse.Namespace) -> int:
     """Build index for explicitly named packages."""
     from backend.core import DataAggregator
     from backend.core.offline_index import create_or_update_index
 
-    names = getattr(args, "packages", "").split(",")
-    ecosystem = getattr(args, "ecosystem", "pypi")
+    names = args.packages.split(",")
+    ecosystem = args.ecosystem
 
     aggregator = DataAggregator()
     sem = asyncio.Semaphore(10)
@@ -255,9 +256,9 @@ async def _build_from_names_async(args) -> int:
     return 0
 
 
-def cmd_index_build(args):
+def cmd_index_build(args: argparse.Namespace):
     """Build offline SQLite index from a lock file or explicit package list."""
-    if getattr(args, "packages", None):
+    if args.packages:
         try:
             sys.exit(asyncio.run(_build_from_names_async(args)))
         except KeyboardInterrupt:
@@ -282,7 +283,7 @@ def cmd_index_build(args):
 # ---------------------------------------------------------------------------
 
 
-def cmd_index_status(args):
+def cmd_index_status(args: argparse.Namespace):
     """Show which ecosystems have local indexes available."""
     from backend.core.offline_index import index_status, list_indexes
 
@@ -322,7 +323,7 @@ def cmd_index_status(args):
             updated,
         )
 
-    if getattr(args, "json", False):
+    if args.json:
         data = {
             "ecosystems": [
                 {
@@ -365,15 +366,15 @@ def _fmt_size(size: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _sync_index_async(args) -> int:
+async def _sync_index_async(args: argparse.Namespace) -> int:
     """Sync local indexes from remote registries."""
     from backend.core import DataAggregator
     from backend.settings import ECOSYSTEMS as _ECOSYSTEMS
 
     ecosystems = []
-    if getattr(args, "all", False):
+    if args.all:
         ecosystems = [e for e in _ECOSYSTEMS if e not in ("docs", "custom_db")]
-    elif getattr(args, "ecosystem", None):
+    elif args.ecosystem:
         ecosystems = [args.ecosystem]
     else:
         err_console.print("[red]Specify --ecosystem or --all[/red]")
@@ -389,9 +390,16 @@ async def _sync_index_async(args) -> int:
         except Exception as e:
             return eco, None, str(e)
 
-    results = await asyncio.gather(*[_sync_one(e) for e in ecosystems])
+    results = await asyncio.gather(
+        *[_sync_one(e) for e in ecosystems],
+        return_exceptions=True,
+    )
     total = 0
-    for eco, n, err in results:
+    for r in results:
+        if isinstance(r, Exception):
+            err_console.print(f"  [red]Sync failed — {r}[/red]")
+            continue
+        eco, n, err = r
         if err:
             err_console.print(f"  [red]{eco}: sync failed — {err}[/red]")
         elif n and n > 0:
@@ -405,7 +413,7 @@ async def _sync_index_async(args) -> int:
     return 0
 
 
-def cmd_index_sync(args):
+def cmd_index_sync(args: argparse.Namespace):
     """Sync local indexes from remote registries."""
     try:
         sys.exit(asyncio.run(_sync_index_async(args)))
@@ -422,7 +430,7 @@ def cmd_index_sync(args):
 # ---------------------------------------------------------------------------
 
 
-def cmd_index(args):
+def cmd_index(args: argparse.Namespace):
     """Dispatch to index subcommands."""
     dispatch = {
         "pull": cmd_index_pull,
@@ -430,7 +438,7 @@ def cmd_index(args):
         "status": cmd_index_status,
         "sync": cmd_index_sync,
     }
-    action = getattr(args, "index_action", None)
+    action = args.index_action
     if action is None:
         console.print("[red]Specify an action: pull, build, status, or sync[/red]")
         sys.exit(1)

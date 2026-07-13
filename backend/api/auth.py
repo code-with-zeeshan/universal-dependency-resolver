@@ -4,7 +4,7 @@
 import contextlib
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -38,6 +38,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Security schemes
 bearer_scheme = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
+
+# In-memory token blacklist (JWT jti → timestamp)
+# In production, replace with Redis-backed set
+_token_blacklist: dict[str, float] = {}
+TOKEN_ISSUER = "udr-api"
 
 
 # Pydantic models
@@ -94,26 +99,62 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def _make_jti() -> str:
+    """Generate a unique JWT ID."""
+    return secrets.token_urlsafe(16)
+
+
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(UTC).replace(tzinfo=None) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
 
-    to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    to_encode.update(
+        {
+            "exp": expire,
+            "type": "access",
+            "iss": TOKEN_ISSUER,
+            "aud": "udr-api",
+            "jti": _make_jti(),
+        }
+    )
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    expire = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update(
+        {
+            "exp": expire,
+            "type": "refresh",
+            "iss": TOKEN_ISSUER,
+            "aud": "udr-api",
+            "jti": _make_jti(),
+        }
+    )
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def is_token_revoked(jti: str) -> bool:
+    """Check if a token has been revoked (jti in blacklist)."""
+    # Clean expired entries
+    now = datetime.now(UTC).timestamp()
+    expired = [k for k, v in _token_blacklist.items() if v < now]
+    for k in expired:
+        _token_blacklist.pop(k, None)
+    return jti in _token_blacklist
+
+
+def revoke_token(jti: str, expiry: float) -> None:
+    """Add a token to the blacklist."""
+    _token_blacklist[jti] = expiry
 
 
 def generate_api_key() -> str:
@@ -130,11 +171,17 @@ async def get_current_user_from_token(token: str) -> User | None:
     )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token, SECRET_KEY, algorithms=[ALGORITHM], audience="udr-api", issuer=TOKEN_ISSUER
+        )
         username: str = payload.get("sub")
         token_type: str = payload.get("type")
+        jti: str = payload.get("jti", "")
 
         if username is None or token_type != "access":
+            raise credentials_exception
+
+        if jti and is_token_revoked(jti):
             raise credentials_exception
 
         token_data = TokenData(username=username, scopes=payload.get("scopes", []))
@@ -150,26 +197,33 @@ async def get_current_user_from_token(token: str) -> User | None:
         return user
 
 
-async def get_current_user_from_api_key(api_key: str) -> User | None:
-    """Validate API key and return associated user."""
-    if not api_key:
+async def get_current_user_from_api_key(raw_key: str) -> User | None:
+    """Validate API key and return associated user.
+
+    Iterates active API key records and verifies the raw key against
+    the stored bcrypt hash (API keys are never stored in plaintext).
+    """
+    if not raw_key:
         return None
 
     with db_session() as db:
-        key_record = (
-            db.query(APIKey).filter(APIKey.key == api_key, APIKey.is_active is True).first()
-        )
+        active_keys = db.query(APIKey).filter(APIKey.is_active == True).all()
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        key_record = None
+        for k in active_keys:
+            if k.expires_at and k.expires_at < now:
+                continue
+            if pwd_context.verify(raw_key, k.key):
+                key_record = k
+                break
 
         if not key_record:
             return None
 
-        # Check expiration
-        if key_record.expires_at and key_record.expires_at < datetime.utcnow():
-            return None
-
         # Update last used timestamp
-        key_record.last_used_at = datetime.utcnow()
-        key_record.usage_count += 1
+        key_record.last_used_at = now
+        key_record.usage_count = (key_record.usage_count or 0) + 1
         db.commit()
 
         return key_record.user
@@ -271,7 +325,7 @@ class AuthService:
                 hashed_password=hashed_password,
                 full_name=user_data.full_name,
                 is_active=True,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
             )
 
             db.add(user)
@@ -298,7 +352,7 @@ class AuthService:
                 return None
 
             # Update last login
-            user.last_login = datetime.utcnow()
+            user.last_login = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             db.refresh(user)
 
@@ -309,7 +363,6 @@ class AuthService:
                 "full_name": user.full_name,
                 "is_active": user.is_active,
                 "scopes": user.scopes or [],
-                "hashed_password": user.hashed_password,
             }
 
     @staticmethod
@@ -345,14 +398,27 @@ class AuthService:
     async def refresh_token(refresh_token: str) -> Token:
         """Refresh access token using refresh token."""
         try:
-            payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(
+                refresh_token,
+                SECRET_KEY,
+                algorithms=[ALGORITHM],
+                audience="udr-api",
+                issuer=TOKEN_ISSUER,
+            )
             username: str = payload.get("sub")
             token_type: str = payload.get("type")
+            jti: str = payload.get("jti", "")
 
             if username is None or token_type != "refresh":
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid refresh token",
+                )
+
+            if jti and is_token_revoked(jti):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token revoked",
                 )
 
             # Get user
@@ -385,17 +451,23 @@ class AuthService:
             )
 
     @staticmethod
-    async def create_api_key(user: User, key_data: APIKeyCreate) -> APIKey:
-        """Create a new API key for a user."""
+    async def create_api_key(user: User, key_data: APIKeyCreate) -> tuple[APIKey, str]:
+        """Create a new API key for a user.
+
+        Returns a tuple of ``(api_key_record, raw_key)`` — the raw key
+        is shown only once (it is hashed with bcrypt before storage).
+        """
+        raw_key = generate_api_key()
+        hashed_key = pwd_context.hash(raw_key)
         with db_session() as db:
             api_key = APIKey(
-                key=generate_api_key(),
+                key=hashed_key,
                 name=key_data.name,
                 description=key_data.description,
                 user_id=user.id,
                 scopes=key_data.scopes,
                 expires_at=key_data.expires_at,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
                 is_active=True,
             )
 
@@ -404,7 +476,7 @@ class AuthService:
             db.refresh(api_key)
 
             logger.info(f"API key created for user {user.username}: {api_key.name}")
-            return api_key
+            return api_key, raw_key
 
     @staticmethod
     async def revoke_api_key(user: User, key_id: int) -> bool:
@@ -418,7 +490,7 @@ class AuthService:
                 return False
 
             api_key.is_active = False
-            api_key.revoked_at = datetime.utcnow()
+            api_key.revoked_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
 
             logger.info(f"API key revoked: {api_key.name}")

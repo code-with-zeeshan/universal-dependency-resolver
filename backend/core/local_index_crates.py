@@ -147,6 +147,7 @@ class CratesIndexManager:
                         batch.append(data)
                         pkgs_found += 1
                 except Exception:
+                    logger.warning("Failed to parse crate file during sync", exc_info=True)
                     continue
                 if len(batch) >= 100:
                     create_or_update_index("crates", batch)

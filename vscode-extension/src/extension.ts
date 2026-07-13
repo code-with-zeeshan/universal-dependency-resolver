@@ -6,6 +6,20 @@ import { ManifestEditor } from './manifestEditor';
 
 export function activate(context: vscode.ExtensionContext) {
     const cli = new CliRunner();
+
+    if (!cli.isAvailable()) {
+        const action = 'Install UDR';
+        vscode.window.showErrorMessage(
+            'UDR CLI not found — install it with `pip install ud-resolver` or set `udr.cliPath`',
+            action
+        ).then(selected => {
+            if (selected === action) {
+                vscode.env.openExternal(vscode.Uri.parse('https://opencode.ai'));
+            }
+        });
+        return;
+    }
+
     const diagnostics = new CVEDiagnostics(context);
     const lockProvider = new LockFileProvider(cli);
     const manifestEditor = new ManifestEditor(cli);
@@ -24,6 +38,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('udr.fixCves', () => cli.run(['update', '--fix-cve'])),
         vscode.commands.registerCommand('udr.lock', () => cli.run(['lock'])),
         vscode.commands.registerCommand('udr.lockCheck', () => cli.run(['lock', '--check'])),
+        vscode.commands.registerCommand('udr.showGraph', () => cli.run(['graph'])),
+        vscode.commands.registerCommand('udr.showPackageDetails', (name, ecosystem) => {
+            cli.run(['resolve', name || '']);
+        }),
         vscode.commands.registerCommand('udr.addDependency', (uri) => manifestEditor.addDependency(uri)),
         vscode.commands.registerCommand('udr.updateDependency', (uri) => manifestEditor.updateDependency(uri)),
         vscode.commands.registerCommand('udr.removeDependency', (uri) => manifestEditor.removeDependency(uri)),

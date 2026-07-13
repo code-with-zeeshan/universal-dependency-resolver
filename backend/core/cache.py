@@ -32,10 +32,15 @@ from backend.settings import (
 logger = logging.getLogger(__name__)
 
 
+CACHE_DEBOUNCE_MS = 2000
+
+
 class DictCache:
     """Pure-Python in-memory + file-backed cache with TTL support.
 
     Persists to a JSON file so cached data survives process restarts.
+    Writes are debounced: multiple mutations within CACHE_DEBOUNCE_MS
+    are coalesced into a single disk write.
     """
 
     def __init__(self, persist_path: str | None = None):
@@ -44,6 +49,7 @@ class DictCache:
         self._lock = asyncio.Lock()
         self._persist_path = persist_path or os.path.join(tempfile.gettempdir(), "udr_cache.json")
         self._dirty = False
+        self._debounce_handle: asyncio.TimerHandle | None = None
         self._load_from_disk()
 
     def _load_from_disk(self):
@@ -60,7 +66,7 @@ class DictCache:
             logger.debug(f"Cache load from disk skipped: {exc}")
 
     def _save_to_disk(self):
-        """Save to disk."""
+        """Save to disk (synchronous, called from _flush)."""
         if not self._dirty:
             return
         try:
@@ -72,6 +78,26 @@ class DictCache:
             self._dirty = False
         except Exception as exc:
             logger.debug(f"Cache save to disk failed: {exc}")
+
+    def _schedule_flush(self):
+        """Schedule a debounced flush to disk."""
+        if self._debounce_handle is not None:
+            self._debounce_handle.cancel()
+        loop = asyncio.get_event_loop()
+        self._debounce_handle = loop.call_later(CACHE_DEBOUNCE_MS / 1000, self._flush)
+
+    def _flush(self):
+        """Flush dirty cache to disk (called by debounce timer)."""
+        self._debounce_handle = None
+        self._save_to_disk()
+
+    async def flush(self) -> None:
+        """Immediately flush any pending writes to disk."""
+        async with self._lock:
+            if self._debounce_handle is not None:
+                self._debounce_handle.cancel()
+                self._debounce_handle = None
+            self._save_to_disk()
 
     async def get(self, key: str) -> Any | None:
         """Get."""
@@ -92,25 +118,28 @@ class DictCache:
             expiry = (time.time() + ttl) if ttl is not None else None
             self._store[key] = (value, expiry)
             self._dirty = True
-            self._save_to_disk()
+            self._schedule_flush()
 
     async def delete(self, key: str) -> None:
         """Delete."""
         async with self._lock:
             self._store.pop(key, None)
             self._dirty = True
-            self._save_to_disk()
+            self._schedule_flush()
 
     async def clear(self) -> None:
         """Clear."""
         async with self._lock:
             self._store.clear()
             self._dirty = True
-            self._save_to_disk()
+            self._schedule_flush()
 
     async def close(self) -> None:
         """Close."""
         async with self._lock:
+            if self._debounce_handle is not None:
+                self._debounce_handle.cancel()
+                self._debounce_handle = None
             self._save_to_disk()
             self._store.clear()
 
@@ -184,14 +213,14 @@ class CacheManager:
 
         for arg in args:
             if isinstance(arg, (dict, list)):
-                key_parts.append(hashlib.md5(dumps(arg, sort_keys=True).encode()).hexdigest())
+                key_parts.append(hashlib.sha256(dumps(arg, sort_keys=True).encode()).hexdigest())
             else:
                 key_parts.append(str(arg))
 
         if kwargs:
             sorted_kwargs = sorted(kwargs.items())
             kwargs_str = dumps(sorted_kwargs)
-            key_parts.append(hashlib.md5(kwargs_str.encode()).hexdigest())
+            key_parts.append(hashlib.sha256(kwargs_str.encode()).hexdigest())
 
         return ":".join(key_parts)
 

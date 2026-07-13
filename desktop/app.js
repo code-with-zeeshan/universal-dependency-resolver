@@ -113,7 +113,10 @@ async function api(method, path, body, timeoutMs = DEFAULT_API_TIMEOUT) {
   activeController = controller
   showCancelButton(true)
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  const opts = {method,headers:{'Content-Type':'application/json'},signal:controller.signal}
+  const headers = {'Content-Type': 'application/json'}
+  const apiKey = loadSetting('apiKey', '')
+  if (apiKey) headers['X-API-Key'] = apiKey
+  const opts = {method, headers, signal: controller.signal}
   if(body) opts.body = JSON.stringify(body)
   let r
   try {
@@ -410,7 +413,8 @@ function formatPolicyViolations(data) {
 }
 
 function formatCveFixResult(data) {
-  const fixed = data.fixed_packages || []
+  const fixesRaw = data.fixes || {}
+  const fixed = Array.isArray(fixesRaw) ? fixesRaw : Object.entries(fixesRaw).map(([name, version]) => ({package: name, new_version: version, old_version: '-', fixed_cves: []}))
   const summary = data.summary || {}
   let h = '<div class="alert success">CVE auto-fix complete</div>'
   if (summary && Object.keys(summary).length) {
@@ -476,18 +480,31 @@ function formatCheckResults(data) {
 }
 
 function formatLockSignResult(data) {
-  if (data.signed_lock) {
+  const signedData = data.lock_data || data
+  if (signedData && signedData.signature) {
     return '<div class="alert success">Lock file signed successfully</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify({signature: data.signature||'present', key_id: data.key_id||'-', provenance: data.provenance ? 'included' : 'none'}, null, 2) + '</pre>'
   }
   return '<div class="alert success">' + (data.message||'Operation completed') + '</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify(data, null, 2) + '</pre>'
 }
 
 function formatCICheckDiff(data) {
-  const changes = data.changes || data.diff || []
-  if (!changes || !changes.length) {
-    return '<div class="alert success">Lock file is up to date ✓</div>'
+  const changes = []
+  for (const key of ['added', 'removed', 'changed']) {
+    const arr = data[key] || []
+    for (const item of arr) {
+      changes.push({
+        type: key,
+        package: item.name || item.package,
+        name: item.name || item.package,
+        current: item.version || item.from || item.current || '-',
+        expected: item.to || item.resolved || item.expected || '-',
+      })
+    }
   }
-  let h = '<div class="alert ' + (data.status==='drift'?'warning':'info') + '">' + changes.length + ' change(s) detected</div>'
+  if (!changes.length) {
+    return '<div class="alert success">Lock file is up to date &#x2713;</div>'
+  }
+  let h = '<div class="alert ' + (data.drift_detected ? 'warning' : 'info') + '">' + changes.length + ' change(s) detected</div>'
   h += '<table class="result-table"><tr><th>Type</th><th>Package</th><th>Current</th><th>Expected</th></tr>'
   for (const c of changes) {
     const cls = c.type === 'added' ? 'green' : c.type === 'removed' ? 'red' : 'yellow'
@@ -573,6 +590,9 @@ async function init() {
   const savedDir = loadSetting('lastDir', '')
   const dirInput = document.getElementById('scanPath')
   if (dirInput && savedDir) dirInput.value = savedDir
+  const savedApiKey = loadSetting('apiKey', '')
+  const apiKeyInput = document.getElementById('apiKeyInput')
+  if (apiKeyInput && savedApiKey) apiKeyInput.value = savedApiKey
   try {
     const health = await api('GET', '/api/v1/health')
     setStatus(true, 'connected')
@@ -1250,7 +1270,7 @@ document.getElementById('sbomGenBtn').addEventListener('click', async () => {
   const div = document.getElementById('sbomResult')
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Generating SBOM...</div>'
   try {
-    const result = await api('POST', '/api/v1/packages/sbom', {lock_data: lockData, format: fmt}, LONG_API_TIMEOUT)
+    const result = await api('POST', '/api/v1/sbom', {lock_data: lockData, format: fmt}, LONG_API_TIMEOUT)
     div.innerHTML = formatSBOMResult(result)
     const raw = document.getElementById('sbomRaw')
     raw.textContent = JSON.stringify(result, null, 2)
@@ -1348,8 +1368,9 @@ document.getElementById('lockSignBtn').addEventListener('click', async () => {
     const result = await api('POST', '/api/v1/lock/sign', {lock_data: lockData, sign, provenance}, LONG_API_TIMEOUT)
     div.innerHTML = formatLockSignResult(result)
     document.getElementById('lockRaw').textContent = JSON.stringify(result, null, 2)
-    if (result.signed_lock) {
-      const blob = new Blob([JSON.stringify(result.signed_lock, null, 2)], {type:'application/json'})
+    const signedData = result.lock_data || result
+    if (signedData && signedData.signature) {
+      const blob = new Blob([JSON.stringify(signedData, null, 2)], {type:'application/json'})
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
       a.download = 'udr-signed.lock'
@@ -1374,7 +1395,19 @@ document.getElementById('lockCICheckBtn').addEventListener('click', async () => 
   const div = document.getElementById('lockResult')
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running CI check...</div>'
   try {
-    const result = await api('POST', '/api/v1/lock/check', {lock_data: lockData}, LONG_API_TIMEOUT)
+    const packages = lockData.packages || {}
+    const manifestContents = {}
+    for (const [name, info] of Object.entries(packages)) {
+      if (info.source) {
+        const src = info.source
+        if (!manifestContents[src]) manifestContents[src] = ''
+        manifestContents[src] += name + (info.constraint ? info.constraint : '>=' + (info.resolved_version||'')) + '\n'
+      }
+    }
+    const result = await api('POST', '/api/v1/lock/check', {
+      manifest_contents: Object.keys(manifestContents).length ? manifestContents : { '_inferred': JSON.stringify(packages) },
+      existing_lock_data: lockData,
+    }, LONG_API_TIMEOUT)
     div.innerHTML = formatCICheckDiff(result)
     document.getElementById('lockRaw').textContent = JSON.stringify(result, null, 2)
     showToast('CI check complete', (result.up_to_date !== false) ? 'success' : 'warning')
@@ -1417,15 +1450,26 @@ document.getElementById('checkRunAllBtn').addEventListener('click', async () => 
   const div = document.getElementById('checkResult')
   card.style.display = 'block'; div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Running checks...</div>'
   try {
-    const body = {lock_data: lockData, checks}
-    if (checks.includes('policy')) {
-      const policyText = document.getElementById('checkPolicyInput').value.trim()
-      if (policyText) body.policy_yaml = policyText
+    const results = {}
+    const policyText = document.getElementById('checkPolicyInput').value.trim()
+    for (const check of checks) {
+      if (check === 'cve') {
+        results.cve = await api('POST', '/api/v1/check/cve', {packages: lockData.packages || lockData}, LONG_API_TIMEOUT)
+      } else if (check === 'deprecated') {
+        results.deprecated = await api('POST', '/api/v1/check/deprecated', {packages: lockData.packages || lockData}, LONG_API_TIMEOUT)
+      } else if (check === 'license') {
+        results.license = await api('POST', '/api/v1/check/license', {packages: lockData.packages || lockData}, LONG_API_TIMEOUT)
+      } else if (check === 'policy') {
+        results.policy = await api('POST', '/api/v1/check/policy', {packages: lockData.packages || lockData, policy_yaml: policyText || undefined}, LONG_API_TIMEOUT)
+      }
     }
-    const result = await api('POST', '/api/v1/check', body, LONG_API_TIMEOUT)
-    div.innerHTML = formatCheckResults(result)
-    document.getElementById('checkRaw').textContent = JSON.stringify(result, null, 2)
-    const totalIssues = result.summary ? (result.summary.total_issues||0) : (result.cve && result.cve.vulnerabilities ? result.cve.vulnerabilities.length : '?')
+    div.innerHTML = formatCheckResults({results})
+    document.getElementById('checkRaw').textContent = JSON.stringify(results, null, 2)
+    let totalIssues = 0
+    if (results.cve) totalIssues += (results.cve.vulnerabilities||[]).length
+    if (results.deprecated) totalIssues += (results.deprecated.packages||[]).length
+    if (results.license) totalIssues += (results.license.issues||[]).length
+    if (results.policy) totalIssues += (Array.isArray(results.policy) ? results.policy : results.policy.violations||[]).length
     showToast('All checks complete — ' + totalIssues + ' issue(s)', totalIssues > 0 ? 'warning' : 'success')
   } catch(e) {
     showError(e.message, div)
@@ -1446,13 +1490,13 @@ document.getElementById('verifyPolicyBtn').addEventListener('click', async () =>
   const div = document.getElementById('verifyPolicyResult')
   div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Checking policy...</div>'
   try {
-    const result = await api('POST', '/api/v1/verify/policy', {lock_data: lockData, policy_yaml: policyText}, LONG_API_TIMEOUT)
+    const result = await api('POST', '/api/v1/check/policy', {lock_data: lockData, policy_yaml: policyText}, LONG_API_TIMEOUT)
     div.innerHTML = formatPolicyViolations(result)
     showToast('Policy check complete', 'info')
   } catch(e) {
     // Try generic /api/v1/check as fallback
     try {
-      const result = await api('POST', '/api/v1/check', {lock_data: lockData, checks: ['policy'], policy_yaml: policyText}, LONG_API_TIMEOUT)
+      const result = await api('POST', '/api/v1/check/policy', {lock_data: lockData, policy_yaml: policyText}, LONG_API_TIMEOUT)
       const policyResult = result.results ? result.results.policy : result
       div.innerHTML = formatPolicyViolations(policyResult)
       showToast('Policy check complete (fallback)', 'info')
@@ -1474,7 +1518,7 @@ document.getElementById('updateFixAllBtn').addEventListener('click', async () =>
   const div = document.getElementById('updateCveResult')
   div.innerHTML = '<div class="loading-state"><span class="spinner"></span>Scanning and fixing CVEs...</div>'
   try {
-    const result = await api('POST', '/api/v1/update', {lock_data: lockData, fix_cve: true, all_packages: true}, LONG_API_TIMEOUT)
+    const result = await api('POST', '/api/v1/lock/update-with-fix', {lock_data: lockData}, LONG_API_TIMEOUT)
     div.innerHTML = formatCveFixResult(result)
     document.getElementById('updateRaw').textContent = JSON.stringify(result, null, 2)
     document.getElementById('updateResultCard').style.display = 'block'

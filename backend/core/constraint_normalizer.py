@@ -4,15 +4,22 @@ import re
 
 from .vers import VersSpec
 
+_GO_PSEUDO_VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+)-\d+\.\d{14}-[a-f0-9]{12}$")
+
 
 def normalize_version(ver: str, ecosystem: str = "pypi") -> str:
     """Normalize a version string for comparison.
 
     Strips 'v'/'V' prefixes, '=' prefixes, and converts to PEP 440 format.
+    Handles Go pseudo-versions by extracting the base semantic version.
     """
     ver = ver.strip().lstrip("=vV ")
     if not ver:
         return "0.0.0"
+    # Go pseudo-version: vX.Y.Z-0.yyyymmddhhmmss-abcdefabcdef
+    m = _GO_PSEUDO_VERSION_RE.match(ver)
+    if m:
+        return m.group(1)
     parts = ver.split(".")
     normalized = []
     for p in parts:

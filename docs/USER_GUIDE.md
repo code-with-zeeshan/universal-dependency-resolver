@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using a PubGrub SAT-solver engine (Rust-backed, default) that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -160,7 +160,7 @@ sequenceDiagram
 
 1. **Metadata fetch** — Queries registry APIs (PyPI, npmjs.org, crates.io, etc.) for each package's versions, dependencies, and system requirements
 2. **System scan** — Detects OS, CPU, GPU, CUDA version, Python version, Node.js, GCC, Java
-3. **SAT resolution** — PubGrub solver (default, Rust-backed) or Z3 (via `USE_Z3_SOLVER=true`) finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
+3. **SAT resolution** — AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) finds a set of mutually compatible versions across all packages and ecosystems. Handles cross-ecosystem constraints (e.g. `torch` on PyPI depending on `nvidia-cublas`). GPU-aware: selects CUDA variants when NVIDIA GPU detected
 4. **Export / Lock** — Writes `udr.lock` or exports to any of 15 formats
 
 ### Architecture overview
@@ -177,7 +177,7 @@ graph TB
     end
 
     subgraph CoreLayer["🧠 Core Logic"]
-        CR["<code>conflict_resolver.py</code><br/>Z3 / PubGrub solver"]
+        CR["<code>conflict_resolver.py</code><br/>AutoSolver (Z3/PubGrub/Hybrid)"]
         DA["<code>data_aggregator.py</code><br/>Async aggregation"]
         EG["<code>export_generator.py</code><br/>15 export formats"]
         SS["<code>system_scanner.py</code><br/>OS · GPU · CUDA · runtimes"]
@@ -537,7 +537,7 @@ Single-page app with a collapsible icon sidebar:
 
 ### SAT-solver resolution
 
-Uses **PubGrub** (Rust-backed, default), **Hybrid** (PubGrub per-ecosystem + Z3 cross-ecosystem, via `USE_HYBRID_SOLVER=true`), or **Z3** (via `USE_Z3_SOLVER=true`) to find compatible versions across all ecosystems simultaneously:
+Uses **AutoSolver** (default — profiles the dependency graph and selects Z3/PubGrub/Hybrid per workload). Use `USE_PUBGRUB_SOLVER=true` to force PubGrub, `USE_Z3_SOLVER=true` to force Z3, or `USE_HYBRID_SOLVER=true` for PubGrub per-ecosystem + Z3 cross-ecosystem:
 - **Per-ecosystem solver isolation**: packages grouped by ecosystem and resolved independently — a conflict in npm can't block PyPI
 - Cross-ecosystem dependencies use a unified resolution path
 - Handles complex cross-ecosystem version constraints
@@ -704,7 +704,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 | Resource | What it covers |
 |---|---|
 | [CLI Reference](CLI.md) | Every command with flags and examples |
-| [API Reference](API.md) | 49 REST endpoints with request/response schemas |
+| [API Reference](API.md) | 59 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |
 | [Development](DEVELOPMENT.md) | Setup, testing, project structure |

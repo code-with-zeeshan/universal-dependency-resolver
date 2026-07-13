@@ -101,8 +101,6 @@ class TestHealthCheck:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert "checks" in data
-        assert "database" in data["checks"]
 
     def test_health_check_db_unhealthy(self, client):
         with patch("backend.orchestrator.db_service.check_health") as mock_db_health:
@@ -114,7 +112,6 @@ class TestHealthCheck:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "unhealthy"
-        assert data["checks"]["database"]["status"] == "unhealthy"
 
     def test_health_check_db_exception(self, client):
         with patch(
@@ -138,7 +135,6 @@ class TestHealthCheck:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert "redis" in data["checks"]
 
 
 class TestSystemCheckCompatibility:

@@ -5,11 +5,12 @@ import logging
 import os
 import sys
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -24,15 +25,16 @@ from sqlalchemy import (
     event,
 )
 from sqlalchemy.event import listen
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker, validates
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker, validates
 
 # Add parent directory to path for direct execution
 _sys_path_appended = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _sys_path_appended not in sys.path:
     sys.path.insert(0, _sys_path_appended)
 
-Base: type = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Package(Base):
@@ -48,8 +50,12 @@ class Package(Base):
     homepage = Column(String(500))
     repository = Column(String(500))
     license = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
 
     # Relationships
     versions = relationship(
@@ -60,6 +66,11 @@ class Package(Base):
         "ConflictRule",
         foreign_keys="ConflictRule.package1_id",
         back_populates="package1",
+    )
+    conflicts_as_second = relationship(
+        "ConflictRule",
+        foreign_keys="ConflictRule.package2_id",
+        back_populates="package2",
     )
 
     __table_args__ = (
@@ -76,12 +87,12 @@ class PackageVersion(Base):
     __tablename__ = "package_versions"
 
     id = Column(Integer, primary_key=True)
-    package_id = Column(Integer, ForeignKey("packages.id"), nullable=False)
+    package_id = Column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     version = Column(String(50), nullable=False)
     release_date = Column(DateTime)
     python_requires = Column(String(100))
-    size_bytes = Column(Integer)
-    download_count = Column(Integer)
+    size_bytes = Column(BigInteger)
+    download_count = Column(BigInteger)
 
     # System requirements as JSON
     system_requirements = Column(JSON)  # {gpu: {...}, python: {...}, os: {...}}
@@ -91,7 +102,7 @@ class PackageVersion(Base):
 
     # Metadata
     metadata_json = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     # Relationships
     package = relationship("Package", back_populates="versions")
@@ -126,7 +137,7 @@ class CompatibilityReport(Base):
     __tablename__ = "compatibility_reports"
 
     id = Column(Integer, primary_key=True)
-    package_id = Column(Integer, ForeignKey("packages.id"), nullable=False)
+    package_id = Column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     version = Column(String(50), nullable=False)
 
     # System information
@@ -146,7 +157,7 @@ class CompatibilityReport(Base):
     notes = Column(Text)
     user_id = Column(String(100))  # Optional user identifier
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     # Relationships
     package = relationship("Package", back_populates="compatibility_reports")
@@ -154,6 +165,7 @@ class CompatibilityReport(Base):
     __table_args__ = (
         Index("idx_report_package_version", "package_id", "version"),
         Index("idx_report_created", "created_at"),
+        Index("idx_report_package_id", "package_id"),
     )
 
 
@@ -163,9 +175,9 @@ class ConflictRule(Base):
     __tablename__ = "conflict_rules"
 
     id = Column(Integer, primary_key=True)
-    package1_id = Column(Integer, ForeignKey("packages.id"), nullable=False)
+    package1_id = Column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     package1_version_spec = Column(String(100))  # e.g., ">=2.0.0"
-    package2_id = Column(Integer, ForeignKey("packages.id"), nullable=False)
+    package2_id = Column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     package2_version_spec = Column(String(100))
 
     conflict_type = Column(String(50))  # 'version', 'system', 'dependency'
@@ -175,14 +187,19 @@ class ConflictRule(Base):
     # Resolution suggestions
     resolution = Column(Text)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     verified = Column(Boolean, default=False)
 
     # Relationships
     package1 = relationship("Package", foreign_keys=[package1_id], back_populates="conflicts")
-    package2 = relationship("Package", foreign_keys=[package2_id])
+    package2 = relationship(
+        "Package", foreign_keys=[package2_id], back_populates="conflicts_as_second"
+    )
 
-    __table_args__ = (Index("idx_conflict_packages", "package1_id", "package2_id"),)
+    __table_args__ = (
+        Index("idx_conflict_packages", "package1_id", "package2_id"),
+        Index("idx_conflict_package2_id", "package2_id"),
+    )
 
 
 class VerifiedCombination(Base):
@@ -206,11 +223,15 @@ class VerifiedCombination(Base):
     test_results = Column(JSON)
 
     # Usage statistics
-    usage_count = Column(Integer, default=0)
+    usage_count = Column(BigInteger, default=0)
     success_rate = Column(Float)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
 
     __table_args__ = (
         Index("idx_combination_name", "name"),
@@ -241,7 +262,7 @@ class SystemBenchmark(Base):
     # Benchmark results
     benchmarks = Column(JSON)  # {cpu_score: ..., gpu_score: ..., etc}
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
     __table_args__ = (Index("idx_benchmark_hash", "system_hash"),)
 
@@ -266,7 +287,7 @@ class ResolutionCache(Base):
 
     # Cache metadata
     hit_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     expires_at = Column(DateTime)
 
     __table_args__ = (
@@ -293,8 +314,12 @@ class User(Base):
     scopes = Column(JSON, default=list)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
     last_login = Column(DateTime)
 
     # Relationships
@@ -307,15 +332,20 @@ class User(Base):
 
 
 class APIKey(Base):
-    """APIKey."""
+    """APIKey.
+
+    The ``key`` column stores a bcrypt hash of the actual API key
+    (not the raw key). The raw key is shown only once on creation.
+    Lookup requires iterating active keys and verifying with bcrypt.
+    """
 
     __tablename__ = "api_keys"
 
     id = Column(Integer, primary_key=True)
-    key = Column(String(255), unique=True, nullable=False)
+    key = Column(String(255), nullable=False)  # bcrypt hash of the raw API key
     name = Column(String(100), nullable=False)
     description = Column(Text)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # Permissions
     scopes = Column(JSON, default=list)
@@ -324,10 +354,8 @@ class APIKey(Base):
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime)
     last_used_at = Column(DateTime)
-    usage_count = Column(Integer, default=0)
-
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    usage_count = Column(BigInteger, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     revoked_at = Column(DateTime)
 
     # Relationships
@@ -343,7 +371,7 @@ class APIKey(Base):
 # Event listeners for normalization
 @event.listens_for(Package, "before_insert")
 @event.listens_for(Package, "before_update")
-def normalize_package_fields(mapper, connection, target):
+def normalize_package_fields(_mapper, _connection, target):
     """Normalize package fields before saving."""
     try:
         from core.utils import normalize_package_name, sanitize_ecosystem_name
@@ -390,7 +418,7 @@ def get_engine():
     return _engine
 
 
-def _enable_sqlite_fk(dbapi_connection, connection_record):
+def _enable_sqlite_fk(dbapi_connection, _connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()

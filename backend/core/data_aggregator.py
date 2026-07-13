@@ -1,11 +1,12 @@
 """Module docstring."""
 
+from __future__ import annotations
+
 # data_aggregator.py
 import asyncio
 import hashlib
 import importlib
 import logging
-import os
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
+
+_background_tasks: set[asyncio.Task] = set()
 
 import aiohttp
 
@@ -52,6 +55,11 @@ class Ecosystem(Enum):
     HASKELL = "haskell"
     NIX = "nix"
     GUIX = "guix"
+    DOCKER = "docker"
+    HELM = "helm"
+    TERRAFORM = "terraform"
+    VCPKG = "vcpkg"
+    CONAN = "conan"
     DOCS = "docs"
     CUSTOM_DB = "custom_db"
 
@@ -113,7 +121,7 @@ class CompatibilityIssue:
 _CLIENT_BUILDERS: dict[Ecosystem, Any] = {}
 
 
-def _register_client(ecosystem: Ecosystem, module: str, class_name: str):
+def _register_client(ecosystem: Ecosystem, module: str, class_name: str) -> None:
     """Register a lazy-loaded data source client builder."""
     _CLIENT_BUILDERS[ecosystem] = lambda: getattr(importlib.import_module(module), class_name)()
 
@@ -142,50 +150,28 @@ _register_client(Ecosystem.HASKELL, "backend.data_sources.haskell_client", "Hask
 
 # Plugin-based clients (registered via @register_ecosystem)
 from backend.core.plugin import (
-    _register_builtin,
+    discover_all_plugins,
     get_plugin,
-    import_builtin_plugins,
 )
 
-_register_builtin("npm", "backend.data_sources.npm_plugin")
-_register_builtin("pypi", "backend.data_sources.pypi_plugin")
-_register_builtin("crates", "backend.data_sources.crates_plugin")
-_register_builtin("hex", "backend.data_sources.hex_plugin")
-_register_builtin("haskell", "backend.data_sources.haskell_plugin")
-_register_builtin("pub", "backend.data_sources.pub_plugin")
-_register_builtin("gradle", "backend.data_sources.gradle_plugin")
-_register_builtin("swift", "backend.data_sources.swift_plugin")
-_register_builtin("maven", "backend.data_sources.maven_plugin")
-_register_builtin("conda", "backend.data_sources.conda_plugin")
-_register_builtin("gomodules", "backend.data_sources.gomodules_plugin")
-_register_builtin("apt", "backend.data_sources.apt_plugin")
-_register_builtin("apk", "backend.data_sources.apk_plugin")
-_register_builtin("cocoapods", "backend.data_sources.cocoapods_plugin")
-_register_builtin("homebrew", "backend.data_sources.homebrew_plugin")
-_register_builtin("nuget", "backend.data_sources.nuget_plugin")
-_register_builtin("packagist", "backend.data_sources.packagist_plugin")
-_register_builtin("rubygems", "backend.data_sources.rubygems_plugin")
-_register_builtin("custom_db", "backend.data_sources.custom_db_plugin")
-_register_builtin("nix", "backend.data_sources.nix_plugin")
-_register_builtin("guix", "backend.data_sources.guix_plugin")
-_register_builtin("vcpkg", "backend.data_sources.vcpkg_plugin")
-_register_builtin("conan", "backend.data_sources.conan_plugin")
-_register_builtin("docker", "backend.data_sources.docker_plugin")
-_register_builtin("helm", "backend.data_sources.helm_plugin")
-_register_builtin("terraform", "backend.data_sources.terraform_plugin")
-import_builtin_plugins()
+discover_all_plugins()
 
 
 class DataAggregator:
     """Data Aggregator functionality."""
 
-    def __init__(self, cache_ttl: int = 3600, max_workers: int = 10, enable_caching: bool = True):
+    def __init__(
+        self, cache_ttl: int = 3600, max_workers: int = 10, enable_caching: bool = True
+    ) -> None:
         """Initialize."""
         self._sources: dict[Ecosystem, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.cache_ttl = cache_ttl
         self.enable_caching = enable_caching
         self._ecosystem_cache: dict[str, list[Ecosystem]] = {}
+        self._ecosystem_pending: dict[str, asyncio.Future] = {}
+        self._cve_session: aiohttp.ClientSession | None = None
+        self._cve_semaphore = asyncio.Semaphore(10)
 
     @property
     def sources(self) -> dict[str, Any]:
@@ -212,11 +198,11 @@ class DataAggregator:
             self._sources[ecosystem] = client
         return client
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> DataAggregator:
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, *args: object) -> None:
         """Async context manager exit."""
         await self.close()
 
@@ -227,10 +213,13 @@ class DataAggregator:
         mgr = LocalIndexManager()
         return await mgr.sync(ecosystem)
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanup resources."""
         if not self.executor._shutdown:
             self.executor.shutdown(wait=True)
+        if self._cve_session and not self._cve_session.closed:
+            await self._cve_session.close()
+            self._cve_session = None
         for client in self._sources.values():
             if hasattr(client, "close"):
                 try:
@@ -238,12 +227,12 @@ class DataAggregator:
                 except Exception:
                     logger.debug("Error closing client %s", client, exc_info=True)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Ensure executor is shut down on garbage collection."""
         if hasattr(self, "executor") and not self.executor._shutdown:
             self.executor.shutdown(wait=False)
 
-    def _get_cache_key(self, method: str, *args, **kwargs) -> str:
+    def _get_cache_key(self, method: str, *args: Any, **kwargs: Any) -> str:
         """Generate cache key."""
         key_data = {"method": method, "args": args, "kwargs": kwargs}
 
@@ -379,11 +368,18 @@ class DataAggregator:
             )
 
         # Check for security vulnerabilities
-        vulnerabilities = []
+        vuln_tasks = []
+        eco_list = []
         for eco in ecosystems:
             if eco != Ecosystem.DOCS and eco != Ecosystem.CUSTOM_DB:
-                vulns = await self.check_vulnerabilities(package_name, eco.value, version)
-                vulnerabilities.extend(vulns)
+                vuln_tasks.append(self.check_vulnerabilities(package_name, eco.value, version))
+                eco_list.append(eco)
+        vuln_results = await asyncio.gather(*vuln_tasks, return_exceptions=True)
+        vulnerabilities = []
+        for result in vuln_results:
+            if isinstance(result, Exception):
+                continue
+            vulnerabilities.extend(result)
         aggregated_info["security"] = {
             "vulnerabilities": vulnerabilities,
             "vulnerability_count": len(vulnerabilities),
@@ -398,41 +394,55 @@ class DataAggregator:
         """Detect which ecosystems a package might belong to."""
         package_name = normalize_package_name(package_name)
 
+        # Fast path: already cached
         if package_name in self._ecosystem_cache:
             return self._ecosystem_cache[package_name]
 
+        # Dedup in-flight: another coroutine may have started the same probe
+        if package_name in self._ecosystem_pending:
+            return await self._ecosystem_pending[package_name]
+
+        # Create a future so concurrent callers can wait for our result
+        future = asyncio.get_event_loop().create_future()
+        self._ecosystem_pending[package_name] = future
+
         ecosystems: list[Ecosystem] = []
 
-        tasks = []
-        for eco in Ecosystem:
-            if eco == Ecosystem.DOCS:
-                continue
-            tasks.append(self._check_ecosystem_exists(eco, package_name))
-
-        timeout = DETECT_ECOSYSTEMS_TIMEOUT
         try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=timeout,
-            )
-            pending = []
-        except TimeoutError:
-            results = []
-            pending = tasks
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
-                    pending.append(t)
-            for eco, exists in zip([e for e in Ecosystem if e != Ecosystem.DOCS], results):
-                if isinstance(exists, Exception):
+            tasks = []
+            for eco in Ecosystem:
+                if eco == Ecosystem.DOCS:
                     continue
-                if exists:
-                    ecosystems.append(eco)
+                tasks.append(self._check_ecosystem_exists(eco, package_name))
 
-        if ecosystems:
-            ecosystems.append(Ecosystem.DOCS)
+            timeout = DETECT_ECOSYSTEMS_TIMEOUT
+            done, pending = await asyncio.wait(tasks, timeout=timeout)
+            for t in pending:
+                t.cancel()
+            for eco, task in zip([e for e in Ecosystem if e != Ecosystem.DOCS], tasks):
+                if task not in done:
+                    continue
+                try:
+                    exists = task.result()
+                    if exists and not isinstance(exists, Exception):
+                        ecosystems.append(eco)
+                except Exception:
+                    logger.debug(
+                        "Failed to check ecosystem existence via task result", exc_info=True
+                    )
+                    continue
 
-        self._ecosystem_cache[package_name] = ecosystems
+            if ecosystems:
+                ecosystems.append(Ecosystem.DOCS)
+
+            self._ecosystem_cache[package_name] = ecosystems
+            future.set_result(ecosystems)
+        except Exception as exc:
+            future.set_exception(exc)
+            raise
+        finally:
+            self._ecosystem_pending.pop(package_name, None)
+
         return ecosystems
 
     async def _check_ecosystem_exists(self, ecosystem: Ecosystem, package_name: str) -> bool:
@@ -480,7 +490,9 @@ class DataAggregator:
         if ecosystem.value not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
-        if os.environ.get("UDR_OFFLINE", "").lower() == "true":
+        from backend.settings import UDR_OFFLINE
+
+        if UDR_OFFLINE:
             from backend.core.offline_index import get_package_info as off_get_info
 
             off_result = off_get_info(ecosystem.value, package_name)
@@ -548,6 +560,9 @@ class DataAggregator:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
 
+            if result is None:
+                raise ValueError(f"No data returned for {package_name} from {ecosystem.value}")
+
             # Build _version_metadata from version dicts for deprecation/yanked checking
             version_meta = {}
             for ver_entry in result.get("versions") or []:
@@ -565,8 +580,13 @@ class DataAggregator:
                 result["_version_metadata"] = version_meta
 
             # Auto-index: write fetched package into offline index for future --offline use
-            if os.environ.get("UDR_OFFLINE", "").lower() != "true":
-                asyncio.create_task(self._auto_index_package(ecosystem, result))
+            from backend.settings import UDR_OFFLINE
+
+            if not UDR_OFFLINE:
+                task = asyncio.create_task(self._auto_index_package(ecosystem, result))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+
             return result
 
         except Exception as e:
@@ -603,7 +623,9 @@ class DataAggregator:
                 exc_info=True,
             )
 
-    async def _merge_ecosystem_data(self, aggregated: dict, ecosystem: Ecosystem, data: dict):
+    async def _merge_ecosystem_data(
+        self, aggregated: dict, ecosystem: Ecosystem, data: dict
+    ) -> None:
         """Merge data from an ecosystem into aggregated result."""
         # Merge basic metadata
         unified = aggregated["unified_data"]
@@ -661,6 +683,11 @@ class DataAggregator:
             aggregated["dependencies"][ecosystem.value] = self._normalize_dependencies(
                 data["dependencies"], ecosystem
             )
+            # Preserve Go replace/indirect metadata for solver
+            raw_deps = data["dependencies"]
+            if isinstance(raw_deps, dict):
+                if "replace" in raw_deps:
+                    aggregated.setdefault("_go_replace", {})[ecosystem.value] = raw_deps["replace"]
 
         # Preserve peer_dependencies for post-resolution compatibility checks
         if "peer_dependencies" in data:
@@ -824,7 +851,7 @@ class DataAggregator:
 
         return normalized
 
-    async def _analyze_cross_ecosystem_compatibility(self, aggregated: dict):
+    async def _analyze_cross_ecosystem_compatibility(self, aggregated: dict) -> None:
         """Analyze compatibility across ecosystems."""
         conflicts = []
 
@@ -1070,7 +1097,7 @@ class DataAggregator:
             logger.error(f"Error fetching custom compatibility: {e}")
             return None
 
-    async def _merge_custom_data(self, aggregated: dict, custom_data: dict):
+    async def _merge_custom_data(self, aggregated: dict, custom_data: dict) -> None:
         """Merge custom database information."""
         if "known_conflicts" in custom_data:
             for conflict in custom_data["known_conflicts"]:
@@ -1109,18 +1136,18 @@ class DataAggregator:
             if version:
                 query["package"]["version"] = version
 
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(
+            async with self._cve_semaphore:
+                if self._cve_session is None or self._cve_session.closed:
+                    self._cve_session = aiohttp.ClientSession()
+                async with self._cve_session.post(
                     OSV_API_URL, json=query, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response,
-            ):
-                if response.status == 200:
-                    data = await response.json()
-                    vulnerabilities = data.get("vulns", [])
-                    return vulnerabilities
-                logger.error(f"OSV API error: {response.status}")
-                return []
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        vulnerabilities = data.get("vulns", [])
+                        return vulnerabilities
+                    logger.error(f"OSV API error: {response.status}")
+                    return []
         except Exception as e:
             logger.error(f"Error checking vulnerabilities for {package_name}: {e}")
             return []
@@ -1146,10 +1173,19 @@ class DataAggregator:
             "haskell": "Hackage",
             "apt": "Debian",
             "apk": "Alpine",
+            "docker": "Docker",
+            "helm": "Helm",
+            "terraform": "Terraform",
+            "vcpkg": "Vcpkg",
+            "conan": "Conan",
+            "nix": "Nix",
+            "guix": "Guix",
         }
         return mapping.get(ecosystem.lower())
 
-    async def _call_client_method(self, client: Any, method_name: str, *args, **kwargs) -> Any:
+    async def _call_client_method(
+        self, client: Any, method_name: str, *args: Any, **kwargs: Any
+    ) -> Any:
         """Call a client method, handling both sync and async."""
         if hasattr(client, f"{method_name}_async"):
             method = getattr(client, f"{method_name}_async")
@@ -1282,7 +1318,7 @@ class DataAggregator:
 
         return compatibility_report
 
-    async def _check_inter_package_conflicts(self, packages: list[dict], report: dict):
+    async def _check_inter_package_conflicts(self, packages: list[dict], report: dict) -> None:
         """Check for conflicts between packages."""
         # Check for duplicate dependencies with different versions
         all_deps = defaultdict(list)
@@ -1347,7 +1383,7 @@ class DataAggregator:
             return await client.get_artifact_hash(package_name, version)
         return None
 
-    def _generate_compatibility_recommendations(self, report: dict):
+    def _generate_compatibility_recommendations(self, report: dict) -> None:
         """Generate recommendations based on compatibility analysis."""
         if not report["overall_compatible"]:
             report["recommendations"].append(

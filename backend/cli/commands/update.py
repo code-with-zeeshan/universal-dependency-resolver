@@ -1,17 +1,22 @@
 """Module docstring."""
 
+import argparse
 import asyncio
 import json
-import os
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from packaging.version import Version
 from rich import box
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+
+from backend.settings import SOLVER_TIMEOUT
 
 from ..shared import (
     _fetch_package_data_async,
@@ -34,10 +39,10 @@ def _extract_fixed_version(vuln: dict) -> str | None:
     return None
 
 
-def cmd_update(args):
+def cmd_update(args: argparse.Namespace):
     """Cmd update."""
 
-    if getattr(args, "fix_cve", False):
+    if args.fix_cve:
         sys.exit(asyncio.run(_fix_cve(args)))
 
     async def _update():
@@ -49,8 +54,8 @@ def cmd_update(args):
         directory = Path(args.directory).resolve()
         lock_path = _resolve_lock_path(
             directory,
-            workspace=getattr(args, "workspace", None),
-            lock_file=getattr(args, "lock_file", None),
+            workspace=args.workspace,
+            lock_file=args.lock_file,
         ).resolve()
         lock_data = _read_lock_file(lock_path)
         aggregator = DataAggregator()
@@ -101,6 +106,14 @@ def cmd_update(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["type"] = "mps"
                 system_info["gpu"]["cuda"] = ""
+                system_info["gpu"]["metal"] = "3.0"
+            elif args.device == "rocm":
+                if "gpu" not in system_info:
+                    system_info["gpu"] = {}
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["type"] = "rocm"
+                system_info["gpu"]["cuda"] = ""
+                system_info["gpu"]["rocm"] = "6.0.0"
             elif args.device == "cuda":
                 if "gpu" not in system_info:
                     system_info["gpu"] = {"available": True, "type": "cuda"}
@@ -124,9 +137,9 @@ def cmd_update(args):
             resolver_inputs,
             system_info,
             package_details,
-            interactive=getattr(args, "interactive", False),
+            interactive=args.interactive,
             lock_data=lock_data,
-            timeout=getattr(args, "timeout", None) or int(os.environ.get("SOLVER_TIMEOUT", 120)),
+            timeout=args.timeout or SOLVER_TIMEOUT,
         )
 
         rp = resolved.get("resolved_packages", {})
@@ -186,7 +199,7 @@ def cmd_update(args):
                     )
                 )
 
-        if getattr(args, "dry_run", False):
+        if args.dry_run:
             console.print("[yellow]── dry run — lock file not modified ──[/yellow]")
             await aggregator.close()
             return 0
@@ -215,7 +228,7 @@ def cmd_update(args):
         sys.exit(1)
 
 
-async def _fix_cve(args):
+async def _fix_cve(args: argparse.Namespace):
     """Fix vulnerable packages by updating to versions that fix known CVEs."""
     from backend.core import DataAggregator, SystemScanner
     from backend.orchestrator.resolve import create_solver
@@ -223,8 +236,8 @@ async def _fix_cve(args):
     directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     ).resolve()
     lock_data = _read_lock_file(lock_path)
     aggregator = DataAggregator()
@@ -290,7 +303,9 @@ async def _fix_cve(args):
                         if target_v > current:
                             to_fix.append((name, eco, ver, str(target_v)))
                     except Exception:
-                        pass
+                        logger.warning(
+                            "Failed to parse version for CVE fix: %s %s", name, ver, exc_info=True
+                        )
             except Exception:
                 err_console.print(f"[dim]Warning: CVE check failed for {name}[/dim]")
             progress.advance(check_task)
@@ -298,7 +313,10 @@ async def _fix_cve(args):
         if target_package:
             await _check_one(target_package, packages[target_package])
         else:
-            await asyncio.gather(*[_check_one(n, i) for n, i in to_check.items()])
+            await asyncio.gather(
+                *[_check_one(n, i) for n, i in to_check.items()],
+                return_exceptions=True,
+            )
 
     if not to_fix:
         console.print("[green]✅ No vulnerable packages need updating.[/green]")
@@ -334,9 +352,9 @@ async def _fix_cve(args):
         resolver_inputs,
         system_info,
         package_details,
-        interactive=getattr(args, "interactive", False),
+        interactive=args.interactive,
         lock_data=lock_data,
-        timeout=getattr(args, "timeout", None) or int(os.environ.get("SOLVER_TIMEOUT", 120)),
+        timeout=args.timeout or SOLVER_TIMEOUT,
     )
 
     rp = resolved.get("resolved_packages", {})
@@ -398,7 +416,7 @@ async def _fix_cve(args):
 
     lock_data["generated_at"] = datetime.now().isoformat()
 
-    if getattr(args, "dry_run", False):
+    if args.dry_run:
         console.print("[yellow]── dry run — lock file not modified ──[/yellow]")
     else:
         lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
@@ -413,7 +431,7 @@ async def _fix_cve(args):
         parts.append(f"[red]{failed_count} failed[/red]")
     console.print(" — ".join(parts))
 
-    if not getattr(args, "dry_run", False) and updated_count > 0:
+    if not args.dry_run and updated_count > 0:
         console.print(f"\n[green]Updated lock file:[/green] {lock_path}")
 
     await aggregator.close()

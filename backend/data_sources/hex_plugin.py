@@ -168,9 +168,29 @@ class HexPlugin(EcosystemPlugin):
             logger.error(f"Hex error for {package_name}: {e}")
             return None
 
+    async def get_package_versions(
+        self,
+        package_name: str,
+        filters: dict | None = None,
+    ) -> list[dict]:
+        """Use dedicated Hex.pm /packages/{name} endpoint for versions."""
+        pkg = normalize_package_name(package_name)
+        try:
+            data = await self._get(f"{self.base_url}/packages/{pkg}")
+            if not data:
+                return []
+            releases = data.get("releases", [])
+            return [
+                {"version": r.get("version", "") if isinstance(r, dict) else str(r)}
+                for r in releases
+            ]
+        except Exception as e:
+            logger.error(f"Hex get_package_versions error for {package_name}: {e}")
+            return []
+
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
         data = await self._get(
-            f"{self.base_url}/packets",
+            f"{self.base_url}/packages",
             params={"sort": "name", "search": query, "per_page": limit},
         )
         if not data:

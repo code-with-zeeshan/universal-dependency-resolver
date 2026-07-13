@@ -1,40 +1,18 @@
 """Generate SPDX 2.3 or CycloneDX 1.5 SBOM from udr.lock."""
 
+import argparse
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from backend.core.utils import make_purl
 
 from ..shared import _read_lock_file, _resolve_lock_path, console
 
-ECOSYSTEM_PURL_TYPE = {
-    "pypi": "pypi",
-    "conda": "conda",
-    "npm": "npm",
-    "crates": "cargo",
-    "maven": "maven",
-    "gomodules": "golang",
-    "apt": "deb",
-    "apk": "alpine",
-    "cocoapods": "cocoapods",
-    "homebrew": "generic",
-    "nuget": "nuget",
-    "packagist": "composer",
-    "rubygems": "gem",
-    "pub": "pub",
-    "gradle": "maven",
-    "swift": "swift",
-    "hex": "hex",
-    "haskell": "cabal",
-}
 
-
-def _purl(name: str, version: str, ecosystem: str) -> str:
-    ptype = ECOSYSTEM_PURL_TYPE.get(ecosystem, ecosystem)
-    return f"pkg:{ptype}/{name}@{version}"
-
-
-def _build_spdx(lock_data: dict, lock_path: Path) -> dict:
+def _build_spdx(lock_data: dict, lock_path: Path) -> dict[str, Any]:
     packages_raw = lock_data.get("packages", {})
     spdx_packages = []
     spdx_relationships = []
@@ -86,7 +64,7 @@ def _build_spdx(lock_data: dict, lock_path: Path) -> dict:
     }
 
 
-def _build_cyclonedx(lock_data: dict) -> dict:
+def _build_cyclonedx(lock_data: dict) -> dict[str, Any]:
     packages_raw = lock_data.get("packages", {})
     components = []
     dependencies = []
@@ -96,7 +74,7 @@ def _build_cyclonedx(lock_data: dict) -> dict:
         eco = pkg_info.get("ecosystem", "pypi")
         ver = pkg_info.get("resolved_version", "")
         lic = pkg_info.get("license")
-        purl_str = _purl(pkg_name, ver, eco)
+        purl_str = make_purl(pkg_name, ver, eco)
         purl_cache[pkg_name] = purl_str
 
         comp = {
@@ -128,13 +106,13 @@ def _build_cyclonedx(lock_data: dict) -> dict:
     }
 
 
-def cmd_sbom(args):
+def cmd_sbom(args: argparse.Namespace) -> None:
     """Generate SBOM from lock file."""
-    directory = Path(getattr(args, "directory", ".")).resolve()
+    directory = Path(args.directory).resolve()
     lock_path = _resolve_lock_path(
         directory,
-        workspace=getattr(args, "workspace", None),
-        lock_file=getattr(args, "lock_file", None),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
     )
     if not lock_path.is_file():
         console.print(f"[red]No lock file found at {lock_path}[/red]")
@@ -142,10 +120,10 @@ def cmd_sbom(args):
         sys.exit(1)
 
     lock_data = _read_lock_file(lock_path)
-    fmt = getattr(args, "format", "spdx")
+    fmt = args.format
     doc = _build_cyclonedx(lock_data) if fmt == "cyclonedx" else _build_spdx(lock_data, lock_path)
 
-    output = getattr(args, "output", None)
+    output = args.output
     json_str = json.dumps(doc, indent=2)
 
     if output:

@@ -12,11 +12,12 @@ try:
 
     __version__ = _v("ud-resolver")
 except Exception:
-    __version__ = "0.0.0"
+    __version__ = "1.4.0"
 
 if typing.TYPE_CHECKING:
     from .core import ConflictResolver, DataAggregator, ExportGenerator, SystemScanner
     from .manifest_detector import ManifestDetector
+    from .orchestrator.resolve import create_solver
 
 _LAZY_IMPORTS: dict[str, tuple[str, str, str]] = {
     "ConflictResolver": ("backend.core", "ConflictResolver"),
@@ -24,6 +25,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str, str]] = {
     "ExportGenerator": ("backend.core", "ExportGenerator"),
     "SystemScanner": ("backend.core", "SystemScanner"),
     "ManifestDetector": ("backend.manifest_detector", "ManifestDetector"),
+    "create_solver": ("backend.orchestrator.resolve", "create_solver"),
 }
 
 
@@ -48,6 +50,7 @@ __all__ = [
     "ManifestDetector",
     "SystemScanner",
     "__version__",
+    "create_solver",
     "get_ecosystem_config",
 ]
 

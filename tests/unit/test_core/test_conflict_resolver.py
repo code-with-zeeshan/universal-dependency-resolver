@@ -119,12 +119,10 @@ class TestConflictResolver:
 
         assert result["status"] == "satisfiable"
 
-    @patch("z3.Optimize.check")
-    def test_solve_constraints_unsatisfiable(self, mock_check, resolver):
+    def test_solve_constraints_unsatisfiable(self, resolver):
         """Test constraint solving when unsatisfiable."""
-        mock_check.return_value = z3.unsat
-
-        result = resolver._solve_constraints({}, False)
+        with patch.object(resolver.solver, "check", return_value=z3.unsat):
+            result = resolver._solve_constraints({}, False)
 
         assert result["status"] == "unsatisfiable"
 
@@ -418,18 +416,36 @@ class TestConflictResolver:
 
     def test_yanked_version_warns(self, resolver):
         """Yanked version generates warning when selected."""
-        packages = [
-            {
-                "name": "yanked-pkg",
-                "available_versions": ["1.0.0", "0.9.0"],
-                "_version_metadata": {
-                    "1.0.0": {"yanked": True, "deprecated": False},
-                    "0.9.0": {"yanked": False, "deprecated": False},
-                },
-                "dependencies": {"pypi": {}},
-            }
-        ]
-        result = resolver.resolve_dependencies(packages, {})
+        import os
+
+        orig = os.environ.get("USE_Z3_OPTIMIZE")
+        os.environ["USE_Z3_OPTIMIZE"] = "true"
+        try:
+            import importlib
+            import backend.core.conflict_resolver as cr
+
+            importlib.reload(cr)
+            from backend.core.conflict_resolver import ConflictResolver as CR2
+
+            res = CR2()
+            packages = [
+                {
+                    "name": "yanked-pkg",
+                    "available_versions": ["1.0.0", "0.9.0"],
+                    "_version_metadata": {
+                        "1.0.0": {"yanked": True, "deprecated": False},
+                        "0.9.0": {"yanked": False, "deprecated": False},
+                    },
+                    "dependencies": {"pypi": {}},
+                }
+            ]
+            result = res.resolve_dependencies(packages, {})
+        finally:
+            if orig is None:
+                del os.environ["USE_Z3_OPTIMIZE"]
+            else:
+                os.environ["USE_Z3_OPTIMIZE"] = orig
+            importlib.reload(cr)
         rp = result.get("resolved_packages", {})
         if "yanked-pkg" in rp:
             pkg = rp["yanked-pkg"]
@@ -443,8 +459,10 @@ class TestConflictResolver:
         """SOLVER_REJECT_DEPRECATED=true excludes deprecated versions from candidates."""
         import os
 
-        orig = os.environ.get("SOLVER_REJECT_DEPRECATED")
+        orig_reject = os.environ.get("SOLVER_REJECT_DEPRECATED")
+        orig_optimize = os.environ.get("USE_Z3_OPTIMIZE")
         os.environ["SOLVER_REJECT_DEPRECATED"] = "true"
+        os.environ["USE_Z3_OPTIMIZE"] = "true"
         try:
             import importlib
             import backend.core.conflict_resolver as cr
@@ -470,8 +488,1186 @@ class TestConflictResolver:
                 ver = rp["pkg-a"].get("version", "")
                 assert ver == "1.0.0", f"Expected 1.0.0 (non-deprecated), got {ver}"
         finally:
-            if orig is None:
+            if orig_reject is None:
                 del os.environ["SOLVER_REJECT_DEPRECATED"]
             else:
-                os.environ["SOLVER_REJECT_DEPRECATED"] = orig
+                os.environ["SOLVER_REJECT_DEPRECATED"] = orig_reject
+            if orig_optimize is None:
+                del os.environ["USE_Z3_OPTIMIZE"]
+            else:
+                os.environ["USE_Z3_OPTIMIZE"] = orig_optimize
             importlib.reload(cr)
+
+
+class TestFindCompatibleVersions:
+    """Tests for _find_compatible_versions — pure function, no Z3 needed."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    def test_no_constraints_all_versions_sorted(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "3.0.0", "2.0.0"],
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["3.0.0", "2.0.0", "1.0.0"]
+
+    def test_version_constraint_filters(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+            "version_constraint": ">=2.0.0,<3.0.0",
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0"]
+
+    def test_version_constraint_exact(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+            "version_constraint": "==2.0.0",
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0"]
+
+    def test_python_sys_req_filters(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "system_requirements": {"python": {"min_version": "3.10.0"}},
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == []
+
+    def test_python_sys_req_passes(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "system_requirements": {"python": {"min_version": "3.8.0"}},
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0", "1.0.0"]
+
+    def test_cuda_sys_req_filters(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "system_requirements": {"cuda": {"min_version": "11.0"}},
+        }
+        system_info = {
+            "gpu": {"cuda": "10.0"},
+            "runtime_versions": {"python": {"version": "3.9.0"}},
+        }
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == []
+
+    def test_cuda_sys_req_passes(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "system_requirements": {"cuda": {"min_version": "11.0"}},
+        }
+        system_info = {
+            "gpu": {"cuda": "12.0"},
+            "runtime_versions": {"python": {"version": "3.9.0"}},
+        }
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0", "1.0.0"]
+
+    def test_cuda_no_cuda_in_system_info_skips_check(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "system_requirements": {"cuda": {"min_version": "11.0"}},
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0", "1.0.0"]
+
+    def test_prerelease_excluded(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["2.0.0a1", "2.0.0b1", "2.0.0rc1", "2.0.0"],
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert "2.0.0a1" not in result
+        assert "2.0.0b1" not in result
+        assert "2.0.0rc1" not in result
+        assert result == ["2.0.0"]
+
+    def test_deprecated_included_with_warning(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "_version_metadata": {
+                "2.0.0": {"yanked": False, "deprecated": "use 3.0 instead"},
+                "1.0.0": {"yanked": False, "deprecated": False},
+            },
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        with patch("backend.settings.SOLVER_REJECT_DEPRECATED", False):
+            result = resolver._find_compatible_versions(package, system_info)
+        assert "2.0.0" in result
+        assert "1.0.0" in result
+        warnings = getattr(resolver, "_deprecation_warnings", [])
+        assert any("deprecated" in w for w in warnings)
+
+    def test_yanked_included_with_warning(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "_version_metadata": {
+                "2.0.0": {"yanked": True, "deprecated": False},
+                "1.0.0": {"yanked": False, "deprecated": False},
+            },
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        with patch("backend.settings.SOLVER_REJECT_DEPRECATED", False):
+            result = resolver._find_compatible_versions(package, system_info)
+        assert "2.0.0" in result
+        warnings = getattr(resolver, "_deprecation_warnings", [])
+        assert any("yanked" in w for w in warnings)
+
+    def test_reject_deprecated_excludes(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0"],
+            "_version_metadata": {
+                "2.0.0": {"yanked": False, "deprecated": "use 3.0"},
+                "1.0.0": {"yanked": False, "deprecated": False},
+            },
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        with patch("backend.settings.SOLVER_REJECT_DEPRECATED", True):
+            result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["1.0.0"]
+        assert "2.0.0" not in result
+
+    def test_empty_versions_returns_empty(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": [],
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == []
+
+    def test_versions_dict_format(self, resolver):
+        package = {
+            "name": "foo",
+            "versions": [{"version": "1.0.0"}, {"version": "2.0.0"}],
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert result == ["2.0.0", "1.0.0"]
+
+    def test_mixed_constraints(self, resolver):
+        package = {
+            "name": "foo",
+            "available_versions": ["1.0.0", "2.0.0", "3.0.0a1", "4.0.0"],
+            "version_constraint": ">=2.0.0",
+            "system_requirements": {"python": {"min_version": "3.8.0"}},
+        }
+        system_info = {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+        result = resolver._find_compatible_versions(package, system_info)
+        assert "3.0.0a1" not in result
+        assert "1.0.0" not in result
+        assert result == ["4.0.0", "2.0.0"]
+
+
+class TestResolveWithAlternatives:
+    """Tests for _resolve_with_alternatives — DFS backtracking with forward checking."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    @pytest.fixture
+    def system_info(self):
+        return {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+
+    def test_single_package_full_resolution(self, resolver, system_info):
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+            }
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["foo"]["version"] == "2.0.0"
+
+    def test_chain_dependencies_satisfiable(self, resolver, system_info):
+        packages = [
+            {
+                "name": "A",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"B": ">=1.0.0"}},
+            },
+            {
+                "name": "B",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {"pypi": {"C": ">=1.0.0"}},
+            },
+            {
+                "name": "C",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["A"]["version"] == "1.0.0"
+        assert result["packages"]["B"]["version"] == "2.0.0"
+        assert result["packages"]["C"]["version"] == "3.0.0"
+
+    def test_conflict_unsatisfiable_dep_constraint(self, resolver, system_info):
+        packages = [
+            {
+                "name": "A",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"B": ">=2.0.0"}},
+            },
+            {
+                "name": "B",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] in ("unsatisfiable", "partial")
+
+    def test_diamond_dependency_satisfiable(self, resolver, system_info):
+        packages = [
+            {
+                "name": "A",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"B": ">=1.0.0", "C": ">=1.0.0"}},
+            },
+            {
+                "name": "B",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {"pypi": {"C": ">=2.0.0"}},
+            },
+            {
+                "name": "C",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["A"]["version"] == "1.0.0"
+        assert result["packages"]["B"]["version"] == "2.0.0"
+        assert result["packages"]["C"]["version"] == "3.0.0"
+
+    def test_partial_solution(self, resolver, system_info):
+        """B is assigned but D fails pre-check — partial with 1/4 resolved."""
+        packages = [
+            {
+                "name": "A",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"B": ">=1.0.0"}},
+            },
+            {
+                "name": "B",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"D": ">=2.0.0"}},
+            },
+            {
+                "name": "C",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"B": ">=1.0.0"}},
+            },
+            {
+                "name": "D",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "partial"
+        assert "B" in result["packages"]
+        assert result["packages"]["B"]["version"] == "1.0.0"
+        assert any("Partial" in w for w in result.get("warnings", []))
+
+    def test_unsatisfiable_no_compatible_versions(self, resolver, system_info):
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["2.0.0a1", "2.0.0b1"],
+            }
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "unsatisfiable"
+
+    def test_prerelease_not_selected(self, resolver, system_info):
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["2.0.0a1", "2.0.0", "1.0.0"],
+            }
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["foo"]["version"] == "2.0.0"
+
+    def test_cuda_filtering_via_system_info(self, resolver):
+        system_info_cuda = {
+            "gpu": {"cuda": "10.0"},
+            "runtime_versions": {"python": {"version": "3.9.0"}},
+        }
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "system_requirements": {"cuda": {"min_version": "11.0"}},
+            }
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info_cuda)
+        assert result["status"] == "unsatisfiable"
+
+    def test_version_constraint_via_dfs(self, resolver, system_info):
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+                "version_constraint": ">=2.0.0",
+            }
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["foo"]["version"] == "3.0.0"
+
+    def test_mixed_ecosystem_deps(self, resolver, system_info):
+        packages = [
+            {
+                "name": "A",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"npm": {"B": ">=1.0.0"}},
+            },
+            {
+                "name": "B",
+                "ecosystem": "npm",
+                "available_versions": ["1.0.0", "2.0.0"],
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["packages"]["A"]["version"] == "1.0.0"
+        assert result["packages"]["B"]["version"] == "2.0.0"
+
+    def test_deprecation_warnings_surfaced(self, resolver, system_info):
+        packages = [
+            {
+                "name": "foo",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "_version_metadata": {
+                    "2.0.0": {"yanked": False, "deprecated": "use v3"},
+                    "1.0.0": {"yanked": False, "deprecated": False},
+                },
+            }
+        ]
+        with patch("backend.settings.SOLVER_REJECT_DEPRECATED", False):
+            result = resolver._resolve_with_alternatives(packages, system_info)
+        warnings = result.get("warnings", [])
+        assert any("deprecated" in w for w in warnings)
+
+
+class TestCreateConstraints:
+    """Tests for _create_constraints — builds Z3 constraint system."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    @pytest.fixture
+    def system_info(self):
+        return {"gpu": {}, "runtime_versions": {"python": {"version": "3.9.0"}}}
+
+    def test_single_package_single_version(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        assert "test-pkg" in constraints["package_versions"]
+        assert len(constraints["package_versions"]["test-pkg"]) == 1
+        assert "test-pkg" in resolver._candidate_lists
+        assert resolver._candidate_lists["test-pkg"] == ["1.0.0"]
+        assert isinstance(constraints["package_versions"]["test-pkg"][0], z3.BoolRef)
+
+    def test_single_package_multiple_versions(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        assert len(constraints["package_versions"]["test-pkg"]) == 3
+        assert "test-pkg_3.0.0" in resolver.version_vars
+        assert "test-pkg_2.0.0" in resolver.version_vars
+        assert "test-pkg_1.0.0" in resolver.version_vars
+
+    def test_version_constraint_applied(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+                "version_constraint": ">=2.0.0",
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        vars_list = constraints["package_versions"]["test-pkg"]
+        var_names = [str(v) for v in vars_list]
+        assert any("2.0.0" in n for n in var_names)
+        assert any("3.0.0" in n for n in var_names)
+        assert not any("1.0.0" in n for n in var_names)
+
+    def test_candidate_lists_populated(self, resolver, system_info):
+        packages = [
+            {
+                "name": "pkg-a",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {},
+            },
+            {
+                "name": "pkg-b",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+            },
+        ]
+        resolver._build_dependency_graph(packages)
+        resolver._create_constraints(packages, system_info)
+        assert "pkg-a" in resolver._candidate_lists
+        assert "pkg-b" in resolver._candidate_lists
+        assert len(resolver._candidate_lists["pkg-a"]) == 2
+        assert len(resolver._candidate_lists["pkg-b"]) == 1
+
+    def test_version_mapping_created(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        resolver._create_constraints(packages, system_info)
+        assert "test-pkg_2.0.0" in resolver.version_to_int
+        assert "test-pkg_1.0.0" in resolver.version_to_int
+        assert "test-pkg_2.0.0" in resolver.int_to_version
+        assert "test-pkg_1.0.0" in resolver.int_to_version
+
+    def test_constraint_dict_structure(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        assert "package_versions" in constraints
+        assert "system_requirements" in constraints
+        assert "conflicts" in constraints
+        assert "dependencies" in constraints
+        assert isinstance(constraints["package_versions"], dict)
+        assert isinstance(constraints["conflicts"], list)
+        assert isinstance(constraints["dependencies"], list)
+
+    def test_z3_assertions_added(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        resolver._create_constraints(packages, system_info)
+        assertions = list(resolver.solver.assertions())
+        assert len(assertions) >= 2
+        or_assertions = [a for a in assertions if "Or(" in str(a)]
+        atm_assertions = [a for a in assertions if "AtMost(" in str(a)]
+        assert len(or_assertions) >= 1
+        assert len(atm_assertions) >= 1
+
+    def test_prerelease_included_in_constraints(self, resolver, system_info):
+        """_create_constraints includes pre-releases (filtering done by _find_compatible_versions)."""
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": ["2.0.0a1", "2.0.0b1", "2.0.0"],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        vars_list = constraints["package_versions"]["test-pkg"]
+        var_names = [str(v) for v in vars_list]
+        assert any("2.0.0" in n and "a" not in n and "b" not in n for n in var_names)
+        assert any("a1" in n for n in var_names)
+        assert any("b1" in n for n in var_names)
+        assert len(vars_list) == 3
+
+    def test_empty_available_versions_creates_sentinel(self, resolver, system_info):
+        packages = [
+            {
+                "name": "test-pkg",
+                "ecosystem": "pypi",
+                "available_versions": [],
+                "dependencies": {},
+            }
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        assert "test-pkg" in constraints["package_versions"]
+        sentinel = constraints["package_versions"]["test-pkg"]
+        assert len(sentinel) == 1
+        assert str(sentinel[0]) == "test-pkg_no_compatible_version"
+        # The sentinel is always False, so the solver must return unsatisfiable
+        solution = resolver._solve_constraints(constraints, prefer_compatibility=True)
+        assert solution["status"] == "unsatisfiable"
+
+    def test_multiple_packages_independent(self, resolver, system_info):
+        packages = [
+            {
+                "name": "pkg-a",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+            },
+            {
+                "name": "pkg-b",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {},
+            },
+        ]
+        resolver._build_dependency_graph(packages)
+        constraints = resolver._create_constraints(packages, system_info)
+        assert "pkg-a" in constraints["package_versions"]
+        assert "pkg-b" in constraints["package_versions"]
+        assert len(constraints["package_versions"]) == 2
+
+
+class TestAddConflictConstraints:
+    """Tests for _add_conflict_constraints — CUDA and dependency rules."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    def test_cuda_range_conflict_added(self, resolver):
+        import z3
+
+        var_a = z3.Bool("pkg-11_1.0.0")
+        var_b = z3.Bool("pkg-12_1.0.0")
+        resolver.version_vars["pkg-11_1.0.0"] = var_a
+        resolver.version_vars["pkg-12_1.0.0"] = var_b
+        constraints = {
+            "package_versions": {
+                "pkg-11": [var_a],
+                "pkg-12": [var_b],
+            },
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "pkg-11", "system_requirements": {"cuda": {"min_version": "11.0"}}},
+            {"name": "pkg-12", "system_requirements": {"cuda": {"min_version": "12.0"}}},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 1
+        assert ("pkg-11", "pkg-12") in constraints["conflicts"]
+        assertions = list(resolver.solver.assertions())
+        assert len(assertions) == 1
+        assert "Not" in str(assertions[0])
+
+    def test_cuda_no_conflict_same_range(self, resolver):
+        import z3
+
+        var_a = z3.Bool("pkg-a_1.0.0")
+        var_b = z3.Bool("pkg-b_1.0.0")
+        resolver.version_vars["pkg-a_1.0.0"] = var_a
+        resolver.version_vars["pkg-b_1.0.0"] = var_b
+        constraints = {
+            "package_versions": {
+                "pkg-a": [var_a],
+                "pkg-b": [var_b],
+            },
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "pkg-a", "system_requirements": {"cuda": {"min_version": "11.0"}}},
+            {"name": "pkg-b", "system_requirements": {"cuda": {"min_version": "11.4"}}},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 0
+
+    def test_cuda_no_matching_min_version(self, resolver):
+        import z3
+
+        var_a = z3.Bool("pkg-a_1.0.0")
+        var_b = z3.Bool("pkg-b_1.0.0")
+        resolver.version_vars["pkg-a_1.0.0"] = var_a
+        resolver.version_vars["pkg-b_1.0.0"] = var_b
+        constraints = {
+            "package_versions": {
+                "pkg-a": [var_a],
+                "pkg-b": [var_b],
+            },
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "pkg-a", "system_requirements": {}},
+            {"name": "pkg-b", "system_requirements": {}},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 0
+        assert len(list(resolver.solver.assertions())) == 0
+
+    def test_dependency_rule_constraint(self, resolver):
+        constraints = {
+            "package_versions": {},
+            "conflicts": [],
+        }
+        packages = [
+            {
+                "name": "tensorflow",
+                "available_versions": ["2.15.0"],
+                "dependencies": {"pypi": {"numpy": ">=1.24.0"}},
+            },
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert "dependency_constraints" in constraints
+        assert "numpy" in constraints["dependency_constraints"]
+        assert "<1.28" in constraints["dependency_constraints"]["numpy"]
+
+    def test_dependency_rule_no_matching_package(self, resolver):
+        constraints = {
+            "package_versions": {},
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "some-other-pkg", "available_versions": ["1.0.0"]},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert "dependency_constraints" not in constraints
+
+    def test_cuda_cross_product_too_large_skipped(self, resolver):
+        import z3
+
+        constraints = {
+            "package_versions": {},
+            "conflicts": [],
+        }
+        packages = []
+        for i in range(30):
+            pkg = {
+                "name": f"cuda11-pkg-{i}",
+                "system_requirements": {"cuda": {"min_version": "11.0"}},
+            }
+            packages.append(pkg)
+            var = z3.Bool(f"cuda11-pkg-{i}_1.0.0")
+            constraints["package_versions"][f"cuda11-pkg-{i}"] = [var]
+            resolver.version_vars[f"cuda11-pkg-{i}_1.0.0"] = var
+        for i in range(20):
+            pkg = {
+                "name": f"cuda12-pkg-{i}",
+                "system_requirements": {"cuda": {"min_version": "12.0"}},
+            }
+            packages.append(pkg)
+            var = z3.Bool(f"cuda12-pkg-{i}_1.0.0")
+            constraints["package_versions"][f"cuda12-pkg-{i}"] = [var]
+            resolver.version_vars[f"cuda12-pkg-{i}_1.0.0"] = var
+
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 0
+
+    def test_empty_packages_no_conflicts(self, resolver):
+        constraints = {
+            "package_versions": {},
+            "conflicts": [],
+        }
+        resolver._add_conflict_constraints([], constraints)
+        assert constraints["conflicts"] == []
+        assert len(list(resolver.solver.assertions())) == 0
+
+
+class TestUpgradeToLatest:
+    """Tests for _upgrade_to_latest — post-processing to newest compatible version."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    def test_simple_upgrade(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["2.0.0", "1.0.0"],
+            "B": ["1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "2.0.0"
+
+    def test_blocked_upgrade_dependency_violation(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["1.0.0"],
+            "B": ["2.0.0", "1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint="==1.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["B"]["version"] == "1.0.0"
+
+    def test_partial_upgrade(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["1.0.0"],
+            "B": ["2.0.0", "1.5.0", "1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0,<2.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["B"]["version"] == "1.5.0"
+
+    def test_noop_when_already_latest(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["1.0.0"],
+            "B": ["1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "1.0.0"
+        assert solution["packages"]["B"]["version"] == "1.0.0"
+
+    def test_noop_when_no_candidate_lists(self, resolver):
+        resolver._candidate_lists = {}
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "1.0.0"
+
+    def test_noop_when_no_packages_in_solution(self, resolver):
+        resolver._candidate_lists = {"A": ["2.0.0", "1.0.0"]}
+        solution = {"packages": {}}
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"] == {}
+
+    def test_large_candidate_lists_skipped(self, resolver):
+        resolver._candidate_lists = {f"pkg-{i}": ["1.0.0"] for i in range(301)}
+        solution = {
+            "packages": {
+                "pkg-0": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["pkg-0"]["version"] == "1.0.0"
+
+    def test_package_not_in_current_skipped(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["2.0.0", "1.0.0"],
+            "B": ["2.0.0", "1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "2.0.0"
+        assert "B" not in solution["packages"]
+
+    def test_multiple_packages_upgrade_in_sorted_order(self, resolver):
+        resolver._candidate_lists = {
+            "B": ["2.0.0", "1.0.0"],
+            "A": ["2.0.0", "1.0.0"],
+        }
+        resolver.dependency_graph.add_node("A@pypi", name="A", ecosystem="pypi")
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "2.0.0"
+        assert solution["packages"]["B"]["version"] == "2.0.0"
+
+
+class TestGpuConstraints:
+    """Tests for non-CUDA GPU constraint checking."""
+
+    @pytest.fixture
+    def resolver(self):
+        return ConflictResolver()
+
+    def test_get_gpu_version_dict_format(self):
+        from backend.core.conflict_resolver import _get_gpu_version
+
+        sys_info = {"gpu": {"rocm": {"version": "5.7.0"}}}
+        assert _get_gpu_version(sys_info, "rocm") == "5.7.0"
+
+    def test_get_gpu_version_string_format(self):
+        from backend.core.conflict_resolver import _get_gpu_version
+
+        sys_info = {"gpu": {"rocm": "6.0.0"}}
+        assert _get_gpu_version(sys_info, "rocm") == "6.0.0"
+
+    def test_get_gpu_version_missing_type(self):
+        from backend.core.conflict_resolver import _get_gpu_version
+
+        sys_info = {"gpu": {"cuda": "12.1"}}
+        assert _get_gpu_version(sys_info, "rocm") == ""
+
+    def test_get_gpu_version_missing_gpu(self):
+        from backend.core.conflict_resolver import _get_gpu_version
+
+        assert _get_gpu_version({}, "rocm") == ""
+
+    def test_rocm_system_constraint_blocks_version(self, resolver):
+        import z3
+
+        resolver._solver = z3.Solver()
+        var = z3.Bool("pkg_1.0.0")
+        system_info = {"gpu": {"rocm": None}}
+        constraints: dict = {}
+        resolver._add_system_constraints(
+            var,
+            {"rocm": {"min_version": "5.0.0"}},
+            system_info,
+            constraints,
+        )
+        resolver.solver.add(var)
+        assert resolver.solver.check() == z3.unsat
+
+    def test_rocm_system_constraint_allows_version(self, resolver):
+        import z3
+
+        resolver._solver = z3.Solver()
+        var = z3.Bool("pkg_1.0.0")
+        system_info = {"gpu": {"rocm": "6.0.0"}}
+        constraints: dict = {}
+        resolver._add_system_constraints(
+            var,
+            {"rocm": {"min_version": "5.0.0"}},
+            system_info,
+            constraints,
+        )
+        resolver.solver.add(var)
+        assert resolver.solver.check() == z3.sat
+
+    def test_intel_gpu_system_constraint_blocks_version(self, resolver):
+        import z3
+
+        resolver._solver = z3.Solver()
+        var = z3.Bool("pkg_1.0.0")
+        system_info = {"gpu": {"intel_gpu": None}}
+        constraints: dict = {}
+        resolver._add_system_constraints(
+            var,
+            {"intel_gpu": {"min_version": "1.0.0"}},
+            system_info,
+            constraints,
+        )
+        resolver.solver.add(var)
+        assert resolver.solver.check() == z3.unsat
+
+    def test_metal_system_constraint_blocks_version(self, resolver):
+        import z3
+
+        resolver._solver = z3.Solver()
+        var = z3.Bool("pkg_1.0.0")
+        system_info = {"gpu": {"metal": "2.0"}}
+        constraints: dict = {}
+        resolver._add_system_constraints(
+            var,
+            {"metal": {"min_version": "3.0"}},
+            system_info,
+            constraints,
+        )
+        resolver.solver.add(var)
+        assert resolver.solver.check() == z3.unsat
+
+    def test_rocm_conflict_range_added(self, resolver):
+        import z3
+
+        var_a = z3.Bool("pkg-rocm5_1.0.0")
+        var_b = z3.Bool("pkg-rocm6_1.0.0")
+        resolver.version_vars["pkg-rocm5_1.0.0"] = var_a
+        resolver.version_vars["pkg-rocm6_1.0.0"] = var_b
+        constraints = {
+            "package_versions": {
+                "pkg-rocm5": [var_a],
+                "pkg-rocm6": [var_b],
+            },
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "pkg-rocm5", "system_requirements": {"rocm": {"min_version": "5.0.0"}}},
+            {"name": "pkg-rocm6", "system_requirements": {"rocm": {"min_version": "6.0.0"}}},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 1
+        assert ("pkg-rocm5", "pkg-rocm6") in constraints["conflicts"]
+        assertions = list(resolver.solver.assertions())
+        assert len(assertions) == 1
+        assert "Not" in str(assertions[0])
+
+    def test_rocm_no_conflict_same_range(self, resolver):
+        import z3
+
+        var_a = z3.Bool("pkg-a_1.0.0")
+        var_b = z3.Bool("pkg-b_1.0.0")
+        resolver.version_vars["pkg-a_1.0.0"] = var_a
+        resolver.version_vars["pkg-b_1.0.0"] = var_b
+        constraints = {
+            "package_versions": {
+                "pkg-a": [var_a],
+                "pkg-b": [var_b],
+            },
+            "conflicts": [],
+        }
+        packages = [
+            {"name": "pkg-a", "system_requirements": {"rocm": {"min_version": "5.0.0"}}},
+            {"name": "pkg-b", "system_requirements": {"rocm": {"min_version": "5.4.0"}}},
+        ]
+        resolver._add_conflict_constraints(packages, constraints)
+        assert len(constraints["conflicts"]) == 0
+
+    def test_upgrade_to_latest_blocked_by_rocm(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["2.0.0", "1.0.0"],
+            "B": ["1.0.0"],
+        }
+        resolver.dependency_graph.add_node(
+            "A@pypi",
+            name="A",
+            ecosystem="pypi",
+            system_requirements={"rocm": {"min_version": "6.0.0"}},
+        )
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        resolver._sys_rocm_version = "5.0.0"
+        resolver._sys_cuda_version = ""
+        resolver._sys_intel_gpu_version = ""
+        resolver._sys_metal_version = ""
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "1.0.0"
+
+    def test_upgrade_to_latest_blocked_by_metal(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["2.0.0", "1.0.0"],
+            "B": ["1.0.0"],
+        }
+        resolver.dependency_graph.add_node(
+            "A@pypi",
+            name="A",
+            ecosystem="pypi",
+            system_requirements={"metal": {"min_version": "3.0"}},
+        )
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        resolver._sys_metal_version = "2.0"
+        resolver._sys_cuda_version = ""
+        resolver._sys_rocm_version = ""
+        resolver._sys_intel_gpu_version = ""
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "1.0.0"
+
+    def test_upgrade_to_latest_rocm_met(self, resolver):
+        resolver._candidate_lists = {
+            "A": ["2.0.0", "1.0.0"],
+            "B": ["1.0.0"],
+        }
+        resolver.dependency_graph.add_node(
+            "A@pypi",
+            name="A",
+            ecosystem="pypi",
+            system_requirements={"rocm": {"min_version": "5.0.0"}},
+        )
+        resolver.dependency_graph.add_node("B@pypi", name="B", ecosystem="pypi")
+        resolver.dependency_graph.add_edge("A@pypi", "B@pypi", constraint=">=1.0.0")
+        resolver._sys_rocm_version = "6.0.0"
+        resolver._sys_cuda_version = ""
+        resolver._sys_intel_gpu_version = ""
+        resolver._sys_metal_version = ""
+        solution = {
+            "packages": {
+                "A": {"version": "1.0.0", "ecosystem": "pypi"},
+                "B": {"version": "1.0.0", "ecosystem": "pypi"},
+            }
+        }
+        resolver._upgrade_to_latest(solution, {})
+        assert solution["packages"]["A"]["version"] == "2.0.0"
+
+    def test_check_version_compatibility_rocm_blocked(self, resolver):
+        version_info = {
+            "system_requirements": {"rocm": {"min_version": "6.0.0"}},
+        }
+        system_info = {"gpu": {"rocm": "5.0.0"}}
+        assert not resolver._check_version_compatibility(version_info, system_info)
+
+    def test_check_version_compatibility_rocm_met(self, resolver):
+        version_info = {
+            "system_requirements": {"rocm": {"min_version": "5.0.0"}},
+        }
+        system_info = {"gpu": {"rocm": "6.0.0"}}
+        assert resolver._check_version_compatibility(version_info, system_info)
+
+    def test_check_version_compatibility_metal_blocked(self, resolver):
+        version_info = {
+            "system_requirements": {"metal": {"min_version": "3.0"}},
+        }
+        system_info = {"gpu": {"metal": "2.0"}}
+        assert not resolver._check_version_compatibility(version_info, system_info)
+
+    def test_check_version_compatibility_intel_blocked(self, resolver):
+        version_info = {
+            "system_requirements": {"intel_gpu": {"min_version": "2.0.0"}},
+        }
+        system_info = {"gpu": {"intel_gpu": "1.0.0"}}
+        assert not resolver._check_version_compatibility(version_info, system_info)
+
+    def test_check_version_compatibility_intel_missing(self, resolver):
+        version_info = {
+            "system_requirements": {"intel_gpu": {"min_version": "1.0.0"}},
+        }
+        system_info = {"gpu": {"intel_gpu": None}}
+        assert not resolver._check_version_compatibility(version_info, system_info)
+
+    def test_dfs_check_assignments_rocm_blocked(self, resolver):
+        system_info = {"gpu": {"rocm": None}}
+        packages = [
+            {
+                "name": "pkg-a",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "system_requirements": {"rocm": {"min_version": "5.0.0"}},
+                "dependencies": {},
+            },
+            {
+                "name": "pkg-b",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "system_requirements": {},
+                "dependencies": {},
+            },
+        ]
+        result = resolver._resolve_with_alternatives(packages, system_info)
+        assert result["status"] != "satisfiable"
+
+    def test_create_constraints_stores_gpu_versions(self, resolver):
+        system_info = {
+            "gpu": {
+                "rocm": "6.0.0",
+                "intel_gpu": "1.0.0",
+                "metal": "3.0",
+                "cuda": "",
+            },
+            "runtime_versions": {"python": {"version": "3.10"}},
+        }
+        packages = [
+            {
+                "name": "pkg-a",
+                "available_versions": ["1.0.0"],
+                "ecosystem": "pypi",
+                "version_constraint": "*",
+            },
+        ]
+        resolver._create_constraints(packages, system_info)
+        assert resolver._sys_rocm_version == "6.0.0"
+        assert resolver._sys_intel_gpu_version == "1.0.0"
+        assert resolver._sys_metal_version == "3.0"

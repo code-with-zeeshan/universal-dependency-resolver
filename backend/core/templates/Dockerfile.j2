@@ -56,7 +56,7 @@ COPY --from=builder /usr/local /usr/local
 {% if options.health_check != false %}
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD {{ options.health_check_cmd|default('curl -f http://localhost:8080/health || exit 1') }}
+  CMD {{ options.health_check_cmd|default('curl -f http://localhost:8080/api/v1/health || exit 1') }}
 {% endif %}
 
 {% if options.non_root_user != false %}
@@ -124,7 +124,7 @@ RUN npm install -g {{ pkg.name }}@{{ pkg.version }}
 {% if options.health_check != false %}
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD {{ options.health_check_cmd|default('curl -f http://localhost:8080/health || exit 1') }}
+  CMD {{ options.health_check_cmd|default('curl -f http://localhost:8080/api/v1/health || exit 1') }}
 {% endif %}
 
 # Entrypoint

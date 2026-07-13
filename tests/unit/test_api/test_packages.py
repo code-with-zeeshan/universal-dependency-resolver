@@ -181,7 +181,7 @@ class TestGetPackageVersions:
         response = client.get("/api/v1/packages/invalideco/pkg/versions")
         assert response.status_code == 400
         data = response.json()
-        assert "Unknown ecosystem" in data["error"]["message"]
+        assert "Invalid ecosystem" in data.get("error", {}).get("message", data.get("detail", ""))
 
     def _setup_mock_source(self, mock_aggregator, return_value=None, side_effect=None):
         """Helper to mock _get_client instead of sources dict."""

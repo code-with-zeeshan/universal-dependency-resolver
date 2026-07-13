@@ -23,6 +23,150 @@ class TestSystemScanner:
         assert scanner.deep_scan is False
         assert scanner.system_info == {}
 
+    # -- _safe_read_file ----------------------------------------------------
+
+    def test_safe_read_file_success(self, scanner, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("hello world\nline2")
+        assert scanner._safe_read_file(str(f)) == "hello world\nline2"
+
+    def test_safe_read_file_not_found(self, scanner, tmp_path):
+        assert scanner._safe_read_file(tmp_path / "nope.txt") is None
+
+    def test_safe_read_file_permission_error(self, scanner, tmp_path):
+        f = tmp_path / "noaccess.txt"
+        f.write_text("secret")
+        f.chmod(0o000)
+        try:
+            result = scanner._safe_read_file(str(f))
+            assert result is None
+        finally:
+            f.chmod(0o644)
+
+    # -- _get_cache_key -----------------------------------------------------
+
+    @patch("platform.system", return_value="Linux")
+    @patch("platform.node", return_value="host1")
+    @patch("platform.release", return_value="6.2.0")
+    @patch("platform.machine", return_value="x86_64")
+    def test_get_cache_key_consistent(
+        self, mock_machine, mock_release, mock_node, mock_system, scanner
+    ):
+        k1 = scanner._get_cache_key("cpu")
+        k2 = scanner._get_cache_key("cpu")
+        assert k1 == k2
+
+    @patch("platform.system", return_value="Linux")
+    @patch("platform.node", return_value="host1")
+    @patch("platform.release", return_value="6.2.0")
+    @patch("platform.machine", return_value="x86_64")
+    def test_get_cache_key_diff_category(
+        self, mock_machine, mock_release, mock_node, mock_system, scanner
+    ):
+        k_cpu = scanner._get_cache_key("cpu")
+        k_mem = scanner._get_cache_key("memory")
+        assert k_cpu != k_mem
+
+    # -- _set_cache / _get_cached ------------------------------------------
+
+    def test_cache_hit(self, scanner):
+        scanner._set_cache("k1", {"data": 42})
+        assert scanner._get_cached("k1") == {"data": 42}
+
+    def test_cache_disabled(self, scanner):
+        scanner.enable_cache = False
+        scanner._set_cache("k1", 1)
+        assert scanner._get_cached("k1") is None
+
+    def test_cache_expiry(self, scanner):
+        scanner.cache_ttl = -1  # expired immediately
+        scanner._set_cache("k1", "val")
+        assert scanner._get_cached("k1") is None
+
+    def test_cache_miss(self, scanner):
+        assert scanner._get_cached("nonexistent") is None
+
+    # -- _check_output ------------------------------------------------------
+
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_check_output_success(self, mock_run, scanner):
+        from subprocess import CompletedProcess
+
+        mock_run.return_value = CompletedProcess(["echo", "ok"], 0, stdout="ok\n")
+        assert scanner._check_output(["echo", "ok"]) == "ok"
+
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_check_output_failure(self, mock_run, scanner):
+        from subprocess import CompletedProcess
+
+        mock_run.return_value = CompletedProcess(["false"], 1, stdout="")
+        assert scanner._check_output(["false"]) is None
+
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_check_output_none(self, mock_run, scanner):
+        mock_run.return_value = None
+        assert scanner._check_output(["missing"]) is None
+
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_check_output_merge_stderr(self, mock_run, scanner):
+        from subprocess import CompletedProcess
+
+        mock_run.return_value = CompletedProcess(["cmd"], 0, stdout="", stderr="warn\n")
+        assert scanner._check_output(["cmd"], merge_stderr=True) == "warn"
+
+    # -- _run_subprocess ----------------------------------------------------
+
+    @patch("subprocess.run")
+    def test_run_subprocess_file_not_found(self, mock_run, scanner):
+        mock_run.side_effect = FileNotFoundError()
+        assert scanner._run_subprocess(["nonexistent"]) is None
+
+    @patch("subprocess.run")
+    def test_run_subprocess_timeout(self, mock_run, scanner):
+        from subprocess import TimeoutExpired
+
+        mock_run.side_effect = TimeoutExpired("cmd", 10)
+        assert scanner._run_subprocess(["sleep", "100"]) is None
+
+    @patch("subprocess.run")
+    def test_run_subprocess_permission_error(self, mock_run, scanner):
+        mock_run.side_effect = PermissionError()
+        assert scanner._run_subprocess(["restricted"]) is None
+
+    # -- _parse_dotnet_sdks / _parse_dotnet_runtimes ------------------------
+
+    DOTNET_INFO_SAMPLE = r"""
+.NET SDK:
+ Version: 8.0.100
+
+.NET SDKs installed:
+  6.0.420 [/usr/share/dotnet/sdk]
+  7.0.410 [/usr/share/dotnet/sdk]
+  8.0.100 [/usr/share/dotnet/sdk]
+
+.NET runtimes installed:
+  Microsoft.AspNetCore.App 6.0.28 [/usr/share/dotnet/shared]
+  Microsoft.AspNetCore.App 7.0.18 [/usr/share/dotnet/shared]
+  Microsoft.NETCore.App 8.0.0 [/usr/share/dotnet/shared]
+
+Other:
+  random line
+"""
+
+    def test_parse_dotnet_sdks(self, scanner):
+        versions = scanner._parse_dotnet_sdks(self.DOTNET_INFO_SAMPLE)
+        assert versions == ["6.0.420", "7.0.410", "8.0.100"]
+
+    def test_parse_dotnet_runtimes(self, scanner):
+        versions = scanner._parse_dotnet_runtimes(self.DOTNET_INFO_SAMPLE)
+        assert versions == ["6.0.28", "7.0.18", "8.0.0"]
+
+    def test_parse_dotnet_sdks_empty(self, scanner):
+        assert scanner._parse_dotnet_sdks("no .NET SDKs installed:") == []
+
+    def test_parse_dotnet_runtimes_empty(self, scanner):
+        assert scanner._parse_dotnet_runtimes("not found") == []
+
     @patch("platform.system")
     def test_detect_os_type_linux(self, mock_system, scanner):
         mock_system.return_value = "Linux"
@@ -186,27 +330,32 @@ class TestSystemScanner:
         assert runtime_info["python"]["version"] is not None
 
     @patch("platform.architecture")
-    @patch("subprocess.check_output")
-    def test_detect_runtime_versions_node(self, mock_check_output, mock_arch, scanner):
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_detect_runtime_versions_node(self, mock_run_subprocess, mock_arch, scanner):
+        from subprocess import CompletedProcess
+
         mock_arch.return_value = ("64bit", "ELF")
 
         def side_effect(cmd, *args, **kwargs):
             if cmd == ["node", "--version"]:
-                return b"v18.17.0\n"
+                return CompletedProcess(cmd, 0, stdout="v18.17.0\n")
             if cmd == ["npm", "--version"]:
-                return b"9.6.7\n"
-            raise Exception("unexpected call: " + str(cmd))
+                return CompletedProcess(cmd, 0, stdout="9.6.7\n")
 
-        mock_check_output.side_effect = side_effect
+        mock_run_subprocess.side_effect = side_effect
 
         runtime_info = scanner.detect_runtime_versions()
         assert runtime_info["nodejs"]["version"] == "18.17.0"
 
     @patch("platform.architecture")
-    @patch("subprocess.check_output")
-    def test_detect_runtime_versions_java(self, mock_check_output, mock_arch, scanner):
+    @patch.object(SystemScanner, "_run_subprocess")
+    def test_detect_runtime_versions_java(self, mock_run_subprocess, mock_arch, scanner):
+        from subprocess import CompletedProcess
+
         mock_arch.return_value = ("64bit", "ELF")
-        mock_check_output.return_value = b'openjdk version "17.0.8" 2023-07-18\n'
+        mock_run_subprocess.return_value = CompletedProcess(
+            ["java", "-version"], 0, stdout="", stderr='openjdk version "17.0.8" 2023-07-18\n'
+        )
         runtime_info = scanner.detect_runtime_versions()
         assert "java" in runtime_info
         assert "17.0.8" in runtime_info["java"]["version"]

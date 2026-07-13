@@ -16,6 +16,8 @@ from backend.core.utils import (
 )
 from backend.settings import (
     CACHE_TTL,
+    GOPROXY_AUTH_BASIC,
+    GOPROXY_AUTH_TOKEN,
     RETRY_BACKOFF_FACTOR,
     get_ecosystem_config,
 )
@@ -45,9 +47,17 @@ class GoModulesClient(BaseDataSourceClient):
         """Initialize."""
         go_config = get_ecosystem_config("gomodules")
 
+        # Support GOPROXY_AUTH_TOKEN / GOPROXY_AUTH_BASIC as convenience aliases
+        go_auth_headers = None
+        if GOPROXY_AUTH_TOKEN:
+            go_auth_headers = {"Authorization": f"Bearer {GOPROXY_AUTH_TOKEN}"}
+        elif GOPROXY_AUTH_BASIC:
+            go_auth_headers = {"Authorization": f"Basic {GOPROXY_AUTH_BASIC}"}
+
         super().__init__(
             ecosystem="gomodules",
             base_url=go_config.get("url", "https://proxy.golang.org"),
+            auth_headers=go_auth_headers,
         )
 
         self.sum_db_url = go_config.get("sum_db_url", "https://sum.golang.org")

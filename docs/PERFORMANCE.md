@@ -72,7 +72,7 @@ flowchart TB
 - Exactly-one constraint enforced via `z3.Or()` + `z3.AtMost(1)` per package
 - Dependency constraints use `z3.Implies(pkg_var, Or(valid_dep_vars))`
 - CUDA 11 vs 12 conflict: `z3.Not(And(var11, var12))` for each pair
-- `SOLVER_MAX_VARS` env var (default 50000) prevents memory blowup
+- `SOLVER_MAX_VARIABLES` env var (default 50000) prevents memory blowup
 - Version clustering caps at 50 versions per package via `SOLVER_MAX_VERSIONS_PER_PKG`
 - When UNSAT/timeout, falls back to DFS backtracking in `_resolve_with_alternatives()`
 
@@ -80,7 +80,7 @@ flowchart TB
 
 The CLI starts in ~0.85s on a modern machine. This is achieved through:
 
-- **Lazy `import z3`**: Z3 is imported inside 7 methods of `ConflictResolver`, not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
+- **Lazy `import z3`**: Z3 is imported inside the `create_solver()` factory (AutoSolver), not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
 - **Lazy data source clients**: All 20 ecosystem clients are registered via `importlib.import_module()` in `_register_client()` builders. They are only imported when first accessed.
 - **Lazy aggregator**: `DataAggregator` creates clients on demand.
 

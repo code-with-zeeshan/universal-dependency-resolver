@@ -92,7 +92,7 @@ class APKClient(BaseDataSourceClient):
                             if len(results) >= limit:
                                 return results
         except Exception:
-            pass
+            logger.debug("Failed to search packages with query", exc_info=True)
 
         return results
 

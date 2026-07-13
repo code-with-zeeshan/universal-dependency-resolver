@@ -184,7 +184,8 @@ function formatPolicyViolations(data) {
 }
 
 function formatCveFixResult(data) {
-  const fixed = data.fixed_packages || []
+  const fixesRaw = data.fixes || {}
+  const fixed = Array.isArray(fixesRaw) ? fixesRaw : Object.entries(fixesRaw).map(([name, version]) => ({package: name, new_version: version, old_version: '-', fixed_cves: []}))
   const summary = data.summary || {}
   let h = '<div class="alert success">CVE auto-fix complete</div>'
   if (summary && Object.keys(summary).length) {
@@ -250,18 +251,31 @@ function formatCheckResults(data) {
 }
 
 function formatLockSignResult(data) {
-  if (data.signed_lock) {
+  const signedData = data.lock_data || data
+  if (signedData && signedData.signature) {
     return '<div class="alert success">Lock file signed successfully</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify({signature: data.signature||'present', key_id: data.key_id||'-', provenance: data.provenance ? 'included' : 'none'}, null, 2) + '</pre>'
   }
   return '<div class="alert success">' + (data.message||'Operation completed') + '</div><pre style="max-height:200px;margin-top:8px">' + JSON.stringify(data, null, 2) + '</pre>'
 }
 
 function formatCICheckDiff(data) {
-  const changes = data.changes || data.diff || []
-  if (!changes || !changes.length) {
+  const changes = []
+  for (const key of ['added', 'removed', 'changed']) {
+    const arr = data[key] || []
+    for (const item of arr) {
+      changes.push({
+        type: key,
+        package: item.name || item.package,
+        name: item.name || item.package,
+        current: item.version || item.from || item.current || '-',
+        expected: item.to || item.resolved || item.expected || '-',
+      })
+    }
+  }
+  if (!changes.length) {
     return '<div class="alert success">Lock file is up to date &#x2713;</div>'
   }
-  let h = '<div class="alert ' + (data.status==='drift'?'warning':'info') + '">' + changes.length + ' change(s) detected</div>'
+  let h = '<div class="alert ' + (data.drift_detected ? 'warning' : 'info') + '">' + changes.length + ' change(s) detected</div>'
   h += '<table class="result-table"><tr><th>Type</th><th>Package</th><th>Current</th><th>Expected</th></tr>'
   for (const c of changes) {
     const cls = c.type === 'added' ? 'green' : c.type === 'removed' ? 'red' : 'yellow'

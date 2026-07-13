@@ -1,6 +1,5 @@
-"""Module docstring."""
+"""Run the UDR API server."""
 
-import os
 import sys
 
 import bcrypt  # noqa: F401
@@ -15,11 +14,12 @@ import passlib.handlers.bcrypt  # noqa: F401
 import uvicorn
 
 from backend.api.main import app
+from backend.settings import UDR_HOST, UDR_LOG_LEVEL, UDR_PORT
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("UDR_PORT", "8199"))
-    host = os.environ.get("UDR_HOST", "127.0.0.1")
-    log_level = os.environ.get("UDR_LOG_LEVEL", "info")
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else UDR_PORT
+    host = sys.argv[2] if len(sys.argv) > 2 else UDR_HOST
+    log_level = UDR_LOG_LEVEL
 
     uvicorn.run(
         app,

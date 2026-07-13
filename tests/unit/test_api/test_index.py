@@ -50,7 +50,7 @@ class TestIndexPull:
     def test_rejects_bad_url(self, client):
         resp = client.post("/api/v1/index/pull", json={"url": "not-a-url"})
         assert resp.status_code == 400
-        assert "URL must start with" in resp.text
+        assert "URL must use http:// or https://" in resp.text
 
     def test_rejects_empty_body(self, client):
         resp = client.post("/api/v1/index/pull", json={})
@@ -60,13 +60,13 @@ class TestIndexPull:
         resp = client.post("/api/v1/index/pull", json={"ecosystem": "pypi"})
         assert resp.status_code == 422
 
-    def test_network_error_returns_502(self, client):
+    def test_rejects_unresolvable_hostname(self, client):
         resp = client.post(
             "/api/v1/index/pull",
             json={"url": "http://nonexistent-domain-xyz.example/db.db"},
         )
-        assert resp.status_code == 502
-        assert "Download failed" in resp.text
+        assert resp.status_code == 400
+        assert "Could not resolve hostname" in resp.text
 
 
 class TestIndexBuild:

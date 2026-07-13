@@ -1,9 +1,11 @@
 """Module docstring."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 class MavenClient(BaseDataSourceClient):
     """MavenClient."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize."""
         maven_config = get_ecosystem_config("maven")
 
@@ -53,7 +55,8 @@ class MavenClient(BaseDataSourceClient):
             return False
         return "search" not in url
 
-    async def _make_request(self, url: str, params: dict | None = None) -> Any:  # type: ignore[override]
+    async def _make_request(self, method: str = "GET", url: str = "", **kwargs: Any) -> Any:  # type: ignore[override]
+        params: dict[str, Any] | None = kwargs.get("params")
         session = self._get_session()
 
         cache_key = f"{url}:{params!s}"
@@ -102,7 +105,7 @@ class MavenClient(BaseDataSourceClient):
             detail=f"Failed after {self.max_retries} attempts: {last_error}",
         )
 
-    def _clean_cache(self):
+    def _clean_cache(self) -> None:
         if not self._pom_cache:
             return
 
@@ -142,7 +145,7 @@ class MavenClient(BaseDataSourceClient):
     def _should_include_transitive_dependency(self, parent_scope: str, dep_scope: str) -> bool:
         return _should_include_transitive_dependency(parent_scope, dep_scope)
 
-    def _get_element_text(self, parent, tag: str, namespaces: dict) -> str | None:
+    def _get_element_text(self, parent: Any, tag: str, namespaces: dict) -> str | None:
         return _get_element_text(parent, tag, namespaces)
 
     # -- pom_parser wrappers (backward compat) --
@@ -150,75 +153,108 @@ class MavenClient(BaseDataSourceClient):
     def _merge_poms(self, parent_pom: dict, child_pom: dict) -> dict:
         return self._pom_parser._merge_poms(parent_pom, child_pom)
 
-    def _extract_properties(self, root, namespaces) -> dict[str, str]:
+    def _extract_properties(self, root: Any, namespaces: dict[str, str]) -> dict[str, str]:
         return self._pom_parser._extract_properties(root, namespaces)
 
     def _substitute_properties(self, value: str, properties: dict[str, str]) -> str:
         return self._pom_parser._substitute_properties(value, properties)
 
-    def _extract_parent_info(self, parent_elem, namespaces) -> dict | None:
+    def _extract_parent_info(self, parent_elem: Any, namespaces: dict[str, str]) -> dict | None:
         return self._pom_parser._extract_parent_info(parent_elem, namespaces)
 
-    def _parse_repositories(self, root, namespaces, properties) -> list[dict]:
+    def _parse_repositories(
+        self, root: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> list[dict]:
         return self._pom_parser._parse_repositories(root, namespaces, properties)
 
-    def _parse_plugin_repositories(self, root, namespaces, properties) -> list[dict]:
+    def _parse_plugin_repositories(
+        self, root: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> list[dict]:
         return self._pom_parser._parse_plugin_repositories(root, namespaces, properties)
 
     def _parse_dependency_management(
-        self, dep_mgmt_elem, namespaces, properties
+        self, dep_mgmt_elem: Any, namespaces: dict[str, str], properties: dict[str, str]
     ) -> dict[str, dict]:
         return self._pom_parser._parse_dependency_management(dep_mgmt_elem, namespaces, properties)
 
-    def _parse_plugin_management(self, plugin_mgmt_elem, namespaces, properties) -> dict[str, dict]:
+    def _parse_plugin_management(
+        self, plugin_mgmt_elem: Any, namespaces: dict[str, str], properties: dict[str, str]
+    ) -> dict[str, dict]:
         return self._pom_parser._parse_plugin_management(plugin_mgmt_elem, namespaces, properties)
 
-    def _parse_profiles(self, profiles_elem, namespaces, parent_properties) -> dict[str, dict]:
+    def _parse_profiles(
+        self, profiles_elem: Any, namespaces: dict[str, str], parent_properties: dict[str, str]
+    ) -> dict[str, dict]:
         return self._pom_parser._parse_profiles(profiles_elem, namespaces, parent_properties)
 
-    def _parse_activation(self, activation_elem, namespaces) -> dict:
+    def _parse_activation(self, activation_elem: Any, namespaces: dict[str, str]) -> dict:
         return self._pom_parser._parse_activation(activation_elem, namespaces)
 
     def _parse_dependencies_section(
-        self, deps_elem, namespaces, properties, dep_management
+        self,
+        deps_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> list[dict]:
         return self._pom_parser._parse_dependencies_section(
             deps_elem, namespaces, properties, dep_management
         )
 
     def _extract_dependency_info(
-        self, dep_elem, namespaces, properties, dep_management
+        self,
+        dep_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> dict | None:
         return self._pom_parser._extract_dependency_info(
             dep_elem, namespaces, properties, dep_management
         )
 
     def _extract_dependency_info_with_exclusions(
-        self, dep_elem, namespaces, properties, dep_management
+        self,
+        dep_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        dep_management: dict,
     ) -> dict | None:
         return self._pom_parser._extract_dependency_info_with_exclusions(
             dep_elem, namespaces, properties, dep_management
         )
 
     def _parse_plugins_section(
-        self, plugins_elem, namespaces, properties, plugin_management
+        self,
+        plugins_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        plugin_management: dict,
     ) -> list[dict]:
         return self._pom_parser._parse_plugins_section(
             plugins_elem, namespaces, properties, plugin_management
         )
 
     def _extract_plugin_info(
-        self, plugin_elem, namespaces, properties, plugin_management
+        self,
+        plugin_elem: Any,
+        namespaces: dict[str, str],
+        properties: dict[str, str],
+        plugin_management: dict,
     ) -> dict | None:
         return self._pom_parser._extract_plugin_info(
             plugin_elem, namespaces, properties, plugin_management
         )
 
-    def _parse_configuration(self, config_elem, properties) -> dict:
+    def _parse_configuration(self, config_elem: Any, properties: dict[str, str]) -> dict:
         return self._pom_parser._parse_configuration(config_elem, properties)
 
     def _parse_pom_comprehensive(
-        self, pom_xml, group_id, artifact_id, version, active_profiles=None
+        self,
+        pom_xml: str,
+        group_id: str,
+        artifact_id: str,
+        version: str,
+        active_profiles: list[str] | None = None,
     ) -> dict:
         return self._pom_parser._parse_pom_comprehensive(
             pom_xml, group_id, artifact_id, version, active_profiles
@@ -340,7 +376,7 @@ class MavenClient(BaseDataSourceClient):
                         "group_id": group_id,
                         "artifact_id": artifact_id,
                         "latest_version": doc.get("latestVersion", "unknown"),
-                        "last_updated": doc.get("timestamp", datetime.utcnow().isoformat()),
+                        "last_updated": doc.get("timestamp", datetime.now(UTC).isoformat()),
                         "repository_count": doc.get("repositoryCount", 0),
                         "available_versions": doc.get("versionCount", 0),
                     },
@@ -382,7 +418,7 @@ class MavenClient(BaseDataSourceClient):
 
                     version_info = {
                         "version": version_str,
-                        "release_date": doc.get("timestamp", datetime.utcnow().isoformat()),
+                        "release_date": doc.get("timestamp", datetime.now(UTC).isoformat()),
                         "system_requirements": {"java_versions": ["8+"], "os": ["any"]},
                     }
 
@@ -631,6 +667,7 @@ class MavenClient(BaseDataSourceClient):
                 if pom_content:
                     return pom_content
             except Exception:
+                logger.warning("Failed to fetch POM from %s", pom_url, exc_info=True)
                 continue
 
         return None

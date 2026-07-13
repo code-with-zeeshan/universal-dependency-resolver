@@ -5,13 +5,16 @@ parses them into a uniform package list, and maps each
 package to its ecosystem for resolution.
 """
 
+import concurrent.futures
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 from .core._json import loads
 from .core.utils import normalize_package_name
+from .settings import MAX_MANIFEST_SIZE as _MAX_MANIFEST_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,9 @@ def _strip_inline_comment(line: str) -> str:
             return line[:i].rstrip()
     return line
 
+
+# Precompiled regex for detecting glob wildcards in pattern strings
+glob_chars_re = re.compile(r"[*?\[\]]")
 
 # Directories to exclude from manifest detection
 EXCLUDED_DIRS = {
@@ -66,6 +72,7 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("Cargo.toml", "cargo", "cargo_toml"),
     ("Cargo.lock", "cargo", "cargo_lock"),
     ("go.mod", "go", "go_mod"),
+    ("go.work", "go", "go_work"),
     ("environment.yml", "conda", "conda_env"),
     ("environment.yaml", "conda", "conda_env"),
     ("Gemfile", "rubygems", "gemfile"),
@@ -101,11 +108,17 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("udr.lock", "pypi", "udr_lock"),
 ]
 
-# Extend with plugin-defined manifest patterns
+# Extend with plugin-defined manifest patterns and lock files
 try:
-    from backend.core.plugin import list_plugin_manifests
+    from backend.core.plugin import (
+        import_builtin_plugins,
+        list_plugin_lock_files,
+        list_plugin_manifests,
+    )
 
+    import_builtin_plugins()
     MANIFEST_PATTERNS.extend(list_plugin_manifests())
+    MANIFEST_PATTERNS.extend(list_plugin_lock_files())
 except ImportError:
     pass
 
@@ -132,13 +145,13 @@ class ManifestDetector:
         try:
             import yaml
         except ImportError:
-            return {}, {}
+            return {}, {}, False
 
         try:
             raw = ws_path.read_text(encoding="utf-8")
             ws_config = yaml.safe_load(raw) or {}
         except Exception:
-            return {}, {}
+            return {}, {}, False
 
         workspace_version_map: dict[str, str] = {}
         catalog_map: dict[str, dict[str, str]] = {}  # named_catalogs -> {pkg_name: constraint}
@@ -192,23 +205,75 @@ class ManifestDetector:
         found = []
         seen_paths = set()
         excluded = set() if include_dev else EXCLUDED_DIRS
-        for fname, raw_ecosystem, parser_key in MANIFEST_PATTERNS:
-            ecosystem = self.ECOSYSTEM_ALIASES.get(raw_ecosystem, raw_ecosystem)
-            for fp in self.directory.rglob(fname):
-                if not fp.is_file() or str(fp) in seen_paths:
-                    continue
-                rel = fp.relative_to(self.directory)
-                if any(part in excluded for part in rel.parts):
-                    continue
-                seen_paths.add(str(fp))
+
+        # Group patterns: exact filenames (fast dict lookup) vs glob patterns
+        exact: dict[str, list[tuple[str, str]]] = {}
+        globs: list[tuple[str, str, str]] = []
+        for fname, raw_eco, parser_key in MANIFEST_PATTERNS:
+            if glob_chars_re.search(fname):
+                globs.append((fname, raw_eco, parser_key))
+            else:
+                exact.setdefault(fname, []).append((raw_eco, parser_key))
+
+        # Single directory walk instead of N rglob calls
+        for fp in self.directory.rglob("*"):
+            if not fp.is_file():
+                continue
+            str_path = str(fp)
+            if str_path in seen_paths:
+                continue
+            rel = fp.relative_to(self.directory)
+            if any(part in excluded for part in rel.parts):
+                continue
+
+            # Skip project config files that look like manifests (e.g. udr.json)
+            if fp.name == "udr.json":
+                continue
+
+            # Fast path: exact filename match
+            matched: tuple[str, str] | None = None
+            if fp.name in exact:
+                raw_eco, parser_key = exact[fp.name][0]
+                matched = (raw_eco, parser_key)
+
+            # Slow path: glob pattern match
+            if matched is None and globs:
+                for fname, raw_eco, parser_key in globs:
+                    if rel.match(fname) or rel.match(f"**/{fname}"):
+                        matched = (raw_eco, parser_key)
+                        break
+
+            if matched is not None:
+                raw_eco, parser_key = matched
+                ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
+                seen_paths.add(str_path)
                 found.append(
                     {
-                        "path": str(fp),
-                        "filename": fname,
+                        "path": str_path,
+                        "filename": rel.name,
                         "ecosystem": ecosystem,
                         "parser": parser_key,
                     }
                 )
+            else:
+                # Content-based fallback: sniff file content for known types
+                from backend.core.content_detector import sniff_content, suggest_parsers
+
+                content_type = sniff_content(str_path)
+                if content_type:
+                    suggested = suggest_parsers(content_type)
+                    if suggested:
+                        raw_eco = suggested[0]
+                        seen_paths.add(str_path)
+                        found.append(
+                            {
+                                "path": str_path,
+                                "filename": rel.name,
+                                "ecosystem": raw_eco,
+                                "parser": raw_eco,
+                            }
+                        )
+
         unique_ecosystems = set(m["ecosystem"] for m in found)
         if len(unique_ecosystems) > 1:
             logger.warning(
@@ -219,6 +284,16 @@ class ManifestDetector:
 
     def _read_with_encoding_fallback(self, path: Path) -> str:
         """Read with encoding fallback."""
+        file_size = path.stat().st_size
+        max_size = _MAX_MANIFEST_SIZE
+        if file_size > max_size:
+            logger.warning(
+                "Manifest too large: %s (%d bytes, max %d bytes)",
+                path,
+                file_size,
+                max_size,
+            )
+            return ""
         raw: Any = path.read_bytes()
         if raw[:3] == b"\xef\xbb\xbf":
             raw = raw[3:]
@@ -248,7 +323,14 @@ class ManifestDetector:
         parser_key = manifest["parser"]
         parser = self._get_parser(parser_key)
         try:
-            return parser(content)
+            if parser_key == "requirements":
+                packages = parser(content, manifest_dir=str(path.parent))
+            else:
+                packages = parser(content)
+            # Apply inline annotation overrides (# udr:ecosystem=...)
+            from backend.core.config_loader import apply_annotation_overrides
+
+            return apply_annotation_overrides(packages, content)
         except Exception:
             logger.warning("Failed to parse %s using %s", path, parser_key, exc_info=True)
             return []
@@ -279,14 +361,34 @@ class ManifestDetector:
         self._workspace_versions, self._catalog_versions, self._workspace_found = (
             self._load_workspace_config()
         )
-        all_packages = []
-        for m in manifests:
-            packages = self.parse(m)
-            for pkg in packages:
+        if len(manifests) < 2:
+            all_packages: list[dict] = []
+            for m in manifests:
+                pkgs = self.parse(m)
+                for pkg in pkgs:
+                    rel = Path(m["path"]).relative_to(self.directory)
+                    pkg["_manifest"] = str(rel)
+                    if "_ecosystem" not in pkg:
+                        pkg["_ecosystem"] = m["ecosystem"]
+                all_packages.extend(pkgs)
+            return all_packages
+
+        # Parallel parsing for 2+ manifests
+        def _parse_single(m: dict) -> list[dict]:
+            pkgs = self.parse(m)
+            for pkg in pkgs:
                 rel = Path(m["path"]).relative_to(self.directory)
                 pkg["_manifest"] = str(rel)
-                pkg["_ecosystem"] = m["ecosystem"]
-            all_packages.extend(packages)
+                if "_ecosystem" not in pkg:
+                    pkg["_ecosystem"] = m["ecosystem"]
+            return pkgs
+
+        parsed = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            parsed = list(pool.map(_parse_single, manifests))
+        all_packages = []
+        for pkgs in parsed:
+            all_packages.extend(pkgs)
         return all_packages
 
     ECOSYSTEM_ALIASES = {
@@ -370,6 +472,7 @@ class ManifestDetector:
             "cargo_toml": self._parse_cargo_toml,
             "cargo_lock": self._parse_cargo_lock,
             "go_mod": self._parse_go_mod,
+            "go_work": self._parse_go_work,
             "conda_env": self._parse_conda_env,
             "gemfile": self._parse_gemfile,
             "composer_json": self._parse_composer_json,
@@ -386,15 +489,11 @@ class ManifestDetector:
             "simple": self._parse_simple,
             "poetry_lock": self._parse_poetry_lock,
             "uv_lock": self._parse_uv_lock,
-            "go_sum": self._parse_go_sum,
             "composer_lock": self._parse_composer_lock,
             "gemfile_lock": self._parse_gemfile_lock,
             "mix_lock": self._parse_mix_lock,
             "package_resolved": self._parse_package_resolved,
             "udr_lock": self._parse_udr_lock,
-            "parse_nix": self._parse_nix,
-            "parse_nix_lock": self._parse_nix_lock,
-            "parse_guix_scm": self._parse_guix_scm,
         }
         parser = parsers.get(key)
         if parser is None:
@@ -403,7 +502,7 @@ class ManifestDetector:
             raise KeyError(f"No parser found for {key!r}")
         return parser
 
-    def _parse_requirements(self, content: str) -> list[dict]:
+    def _parse_requirements(self, content: str, manifest_dir: str | None = None) -> list[dict]:
         """Parse requirements."""
         packages = []
         try:
@@ -413,15 +512,40 @@ class ManifestDetector:
         except ImportError:
             has_requirement = False
 
+        try:
+            from packaging.markers import Marker
+
+            has_markers = True
+        except ImportError:
+            has_markers = False
+
         for line in content.split("\n"):
             line = _strip_inline_comment(line.strip())
             if not line or line.startswith("#"):
                 continue
             if line.startswith("-"):
+                # Handle -r and -c directives: resolve referenced file relative to manifest
+                if manifest_dir and line.startswith(("-r ", "-c ")):
+                    ref_path = os.path.join(manifest_dir, line[3:].strip())
+                    try:
+                        with open(ref_path) as ref_f:
+                            ref_content = ref_f.read()
+                        packages.extend(self._parse_requirements(ref_content, manifest_dir))
+                    except OSError as exc:
+                        logger.warning(
+                            "Failed to read referenced requirements file %s: %s", ref_path, exc
+                        )
                 continue
             if has_requirement:
                 try:
                     req = Requirement(line)
+                    # Skip dependencies with unsatisfied environment markers
+                    if has_markers and req.marker:
+                        try:
+                            if not req.marker.evaluate():
+                                continue
+                        except Exception:
+                            pass
                     if req.extras:
                         packages.append(
                             {
@@ -451,7 +575,7 @@ class ManifestDetector:
         return packages
 
     def _parse_gradle(self, content: str) -> list[dict]:
-        """Parse Gradle build file."""
+        """Parse Gradle build file (Groovy DSL + Kotlin DSL)."""
         packages = []
         configs = (
             "implementation",
@@ -467,13 +591,44 @@ class ManifestDetector:
             "releaseImplementation",
         )
         config_pattern = "|".join(re.escape(c) for c in configs)
+        # Groovy: implementation 'group:artifact:version'
         string_pattern = rf"({config_pattern})\s+['\"]([^'\":]+):([^'\":]+):([^'\"]+)['\"]"
+        # Groovy map: implementation group: 'g', name: 'a', version: 'v'
+        groovy_map_pattern = rf"({config_pattern})\s+group:\s*['\"]([^'\"]+)['\"],\s*name:\s*['\"]([^'\"]+)['\"],\s*version:\s*['\"]([^'\"]+)['\"]"
+        # Kotlin DSL: implementation("group:artifact:version")
+        kotlin_string = rf"({config_pattern})\(\s*['\"]([^'\":]+):([^'\":]+):([^'\"]+)['\"]\s*\)"
+        # Kotlin DSL named args: implementation(group = "g", name = "a", version = "v")
+        kotlin_named = (
+            rf"({config_pattern})\(\s*(?:module\s*[=:]\s*)?['\"]([^'\":]+):([^'\":]+)['\"]"
+        )
+
         for line in content.split("\n"):
             line = line.strip()
+            # Kotlin string format
+            m = re.match(kotlin_string, line)
+            if m:
+                packages.append({"name": f"{m.group(2)}:{m.group(3)}", "version": m.group(4)})
+                continue
+            # Groovy map format
+            m = re.match(groovy_map_pattern, line)
+            if m:
+                packages.append({"name": f"{m.group(2)}:{m.group(3)}", "version": m.group(4)})
+                continue
+            # Kotlin named args
+            m = re.match(kotlin_named, line)
+            if m:
+                ver_match = re.search(r'version\s*[=:]\s*["\']([^"\']+)["\']', line)
+                if ver_match:
+                    packages.append(
+                        {"name": f"{m.group(2)}:{m.group(3)}", "version": ver_match.group(1)}
+                    )
+                continue
+            # Groovy string format
             m = re.match(string_pattern, line)
             if m:
                 packages.append({"name": f"{m.group(2)}:{m.group(3)}", "version": m.group(4)})
                 continue
+            # Groovy map on same line: implementation('group:artifact') { version { strictly(...) } }
             map_pattern = rf"({config_pattern})\s+['\"]([^'\":]+):([^'\":]+)['\"]\s*{{"
             mm = re.match(map_pattern, line)
             if mm:
@@ -495,13 +650,27 @@ class ManifestDetector:
         ]
 
     def _parse_hex(self, content: str) -> list[dict]:
-        """Parse Elixir mix.exs file."""
+        """Parse Elixir mix.exs file — handles git, path, and simple deps."""
         packages = []
         for line in content.split("\n"):
             line = line.strip()
+            # {:dep_name, "~> 1.0"}
             m = re.match(r'\{\s*:(\w+)\s*,\s*["\']([^"\']+)["\']', line)
             if m:
                 packages.append({"name": m.group(1), "version": m.group(2)})
+                continue
+            # {:dep_name, git: "url", tag: "1.0"} or {:dep_name, github: "u/r", tag: "1.0"}
+            m = re.match(r'\{\s*:(\w+)\s*,\s*(?:git|github):\s*["\'][^"\']+["\']', line)
+            if m:
+                tag_m = re.search(r'tag:\s*["\']([^"\']+)["\']', line)
+                version = tag_m.group(1) if tag_m else "*"
+                packages.append({"name": m.group(1), "version": version})
+                continue
+            # {:dep_name, path: "../local"} — no version, mark as "*"
+            m = re.match(r'\{\s*:(\w+)\s*,\s*path:\s*["\'][^"\']+["\']', line)
+            if m:
+                packages.append({"name": m.group(1), "version": "*"})
+                continue
         return packages
 
     def _parse_maven(self, content: str) -> list[dict]:
@@ -525,7 +694,13 @@ class ManifestDetector:
         return packages
 
     def _parse_cocoapods(self, content: str) -> list[dict]:
-        """Parse CocoaPods Podfile."""
+        """Parse CocoaPods Podfile or Podfile.lock."""
+        # Detect Podfile.lock format: starts with "PODS:" and has "  - "
+        if content.strip().startswith("PODS:") and any(
+            line.strip().startswith("- ") for line in content.split("\n")
+        ):
+            return self._parse_cocoapods_lock(content)
+        # Default to Podfile format
         packages = []
         for line in content.split("\n"):
             line = line.strip()
@@ -534,6 +709,39 @@ class ManifestDetector:
                 name = m.group(1)
                 version = m.group(2) if m.group(2) else "*"
                 packages.append({"name": name, "version": version})
+        return packages
+
+    def _parse_cocoapods_lock(self, content: str) -> list[dict]:
+        """Parse CocoaPods Podfile.lock format.
+
+        Example::
+            PODS:
+              - Alamofire (5.6.1)
+              - SwiftyJSON (5.0.1)
+        """
+        packages = []
+        in_pods = False
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line == "PODS:":
+                in_pods = True
+                continue
+            if not line.startswith("- ") and not line.startswith("  - "):
+                if in_pods:
+                    break
+                continue
+            dep_line = line.lstrip("- ")
+            # Extract name and version: "Name (version)" or just "Name"
+            m = re.match(r"([^(]+?)\s*\(([^)]+)\)", dep_line)
+            if m:
+                name = m.group(1).strip()
+                version = m.group(2).strip()
+            else:
+                name = dep_line.strip()
+                version = "*"
+            packages.append({"name": name, "version": version})
         return packages
 
     def _parse_nuget(self, content: str) -> list[dict]:
@@ -605,7 +813,7 @@ class ManifestDetector:
             if line.startswith("build-depends:"):
                 in_build_depends = True
                 accum = line[len("build-depends:") :].strip()
-            elif in_build_depends and line.startswith((",", "             ")):
+            elif in_build_depends and raw_line.startswith((" ", "\t")):
                 accum += " " + line
             elif in_build_depends:
                 in_build_depends = False
@@ -745,7 +953,7 @@ class ManifestDetector:
                             }
                         )
                 except Exception:
-                    pass
+                    logger.warning("Failed to parse build-system requires", exc_info=True)
 
         return packages
 
@@ -764,19 +972,21 @@ class ManifestDetector:
         return packages
 
     def _parse_package_lock(self, content: str) -> list[dict]:
-        """Parse package lock."""
+        """Parse package lock (v2 and v3)."""
         try:
             data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
-        for name, info in data.get("packages", {}).items():
-            if name == "":
+        for path, info in data.get("packages", {}).items():
+            if path == "":
                 continue
+            # v3: workspace paths have a "name" field; v2: use node_modules/ suffix
+            pkg_name = info.get("name") or path.split("node_modules/")[-1]
             packages.append(
                 {
-                    "name": name.split("node_modules/")[-1],
+                    "name": pkg_name,
                     "version": info.get("version", "*"),
                 }
             )
@@ -951,22 +1161,35 @@ class ManifestDetector:
         return tree if tree else None
 
     def _parse_yarn_lock(self, content: str) -> list[dict]:
-        """Parse yarn lock — handles @scoped packages correctly."""
+        """Parse yarn lock — handles @scoped packages and multi-entry keys."""
         packages = []
-        for line in content.split("\n"):
-            line = line.strip()
+        lines = content.split("\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
             if line.startswith('"') and line.endswith('":'):
                 name_version = line.strip('":').strip('"')
-                if "," in name_version:
-                    continue
-                parts = name_version.rsplit("@", 1)
-                if len(parts) == 2 and parts[0]:
-                    packages.append(
-                        {
-                            "name": parts[0],
-                            "version": parts[1],
-                        }
-                    )
+                # Extract resolved version from the next indented line
+                resolved_version = "*"
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    m = re.match(r'version\s+"([^"]+)"', next_line)
+                    if m:
+                        resolved_version = m.group(1)
+                # Handle single entry: "@scope/pkg@^1.0"
+                if "," not in name_version:
+                    parts = name_version.rsplit("@", 1)
+                    if len(parts) == 2 and parts[0]:
+                        packages.append({"name": parts[0], "version": resolved_version})
+                else:
+                    # Handle multi-entry: "@scope/pkg@^1.0", "@scope/other@^2.0"
+                    for entry in re.split(r",\s*", name_version):
+                        entry = entry.strip().strip('"')
+                        if entry:
+                            parts = entry.rsplit("@", 1)
+                            if len(parts) == 2 and parts[0]:
+                                packages.append({"name": parts[0], "version": resolved_version})
+            i += 1
         return packages
 
     def _parse_cargo_toml(self, content: str) -> list[dict]:
@@ -1010,9 +1233,12 @@ class ManifestDetector:
         return packages
 
     def _parse_go_mod(self, content: str) -> list[dict]:
-        """Parse go.mod — handles require(), single-line require, skips replace/exclude/go."""
-        packages = []
+        """Parse go.mod — handles require(), single-line require, and replace directives."""
+        from .core.constraint_normalizer import normalize_version
+
+        packages: list[dict] = []
         require_block = False
+        replace_map: dict[str, str] = {}
         for line in content.split("\n"):
             line = line.strip()
             if not line or line.startswith("//"):
@@ -1034,7 +1260,67 @@ class ManifestDetector:
                         and dep_version[1].isdigit()
                     ):
                         dep_version = dep_version[1:]
-                    packages.append({"name": dep_name, "version": dep_version})
+                    packages.append(
+                        {"name": dep_name, "version": normalize_version(dep_version, "gomodules")}
+                    )
+            elif line.startswith("replace "):
+                match = re.match(
+                    r"replace\s+([^\s]+)(?:\s+[^\s]+)?\s+=>\s+([^\s]+)\s+([^\s]+)", line
+                )
+                if match:
+                    old_path = match.group(1)
+                    new_path = match.group(2)
+                    new_version = match.group(3)
+                    if (
+                        new_version.startswith("v")
+                        and len(new_version) > 1
+                        and new_version[1].isdigit()
+                    ):
+                        new_version = new_version[1:]
+                    replace_map[old_path] = f"{new_path}@{new_version}"
+        if replace_map:
+            for pkg in packages:
+                pkg["_go_replace"] = replace_map
+        return packages
+
+    def _parse_go_work(self, content: str) -> list[dict]:
+        """Parse go.work — extract use directives pointing to workspace modules."""
+        packages: list[dict] = []
+        replace_map: dict[str, str] = {}
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("//"):
+                continue
+            if line.startswith("use "):
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    module_dir = parts[1].strip()
+                    packages.append(
+                        {
+                            "name": module_dir,
+                            "version": "workspace",
+                            "_workspace_dir": module_dir,
+                            "_ecosystem": "gomodules",
+                        }
+                    )
+            elif line.startswith("replace "):
+                match = re.match(
+                    r"replace\s+([^\s]+)(?:\s+[^\s]+)?\s+=>\s+([^\s]+)\s+([^\s]+)", line
+                )
+                if match:
+                    old_path = match.group(1)
+                    new_path = match.group(2)
+                    new_version = match.group(3)
+                    if (
+                        new_version.startswith("v")
+                        and len(new_version) > 1
+                        and new_version[1].isdigit()
+                    ):
+                        new_version = new_version[1:]
+                    replace_map[old_path] = f"{new_path}@{new_version}"
+        if replace_map:
+            for pkg in packages:
+                pkg["_go_replace"] = replace_map
         return packages
 
     def _parse_conda_env(self, content: str) -> list[dict]:
@@ -1052,20 +1338,31 @@ class ManifestDetector:
                 for op in ["==", ">=", "<=", ">", "<", "="]:
                     if op in dep:
                         n, v = dep.split(op, 1)
-                        packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                        packages.append(
+                            {
+                                "name": n.strip(),
+                                "version": f"{op}{v.strip()}",
+                                "_ecosystem": "conda",
+                            }
+                        )
                         break
                 else:
-                    packages.append({"name": dep, "version": "*"})
+                    packages.append({"name": dep, "version": "*", "_ecosystem": "conda"})
             elif isinstance(dep, dict):
-                for key in ("pip",):
-                    for pip_dep in dep.get(key, []):
-                        for op in ["==", ">=", "<=", ">", "<"]:
-                            if op in pip_dep:
-                                n, v = pip_dep.split(op, 1)
-                                packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
-                                break
-                        else:
-                            packages.append({"name": pip_dep, "version": "*"})
+                for pip_dep in dep.get("pip", []):
+                    for op in ["==", ">=", "<=", ">", "<"]:
+                        if op in pip_dep:
+                            n, v = pip_dep.split(op, 1)
+                            packages.append(
+                                {
+                                    "name": n.strip(),
+                                    "version": f"{op}{v.strip()}",
+                                    "_ecosystem": "pypi",
+                                }
+                            )
+                            break
+                    else:
+                        packages.append({"name": pip_dep, "version": "*", "_ecosystem": "pypi"})
         return packages
 
     def _parse_gemfile(self, content: str) -> list[dict]:
@@ -1119,7 +1416,7 @@ class ManifestDetector:
         for section in ["dependencies", "dev_dependencies"]:
             deps = data.get(section, {})
             for name, spec in deps.items():
-                if name == "flutter" or name == "sdk":
+                if name in ("flutter", "sdk", "flutter_test", "flutter_localizations"):
                     continue
                 info = {"name": name}
                 if isinstance(spec, str):
@@ -1182,25 +1479,6 @@ class ManifestDetector:
                 packages.append({"name": name, "version": version or "*"})
         return packages
 
-    def _parse_go_sum(self, content: str) -> list[dict]:
-        """Parse go.sum."""
-        packages = []
-        seen = set()
-        for line in content.split("\n"):
-            line = line.strip()
-            parts = line.split()
-            if len(parts) >= 2 and "/" in parts[0]:
-                name = parts[0]
-                ver = parts[1] if parts[1] else "*"
-                if ver.startswith("v") and len(ver) > 1 and ver[1].isdigit():
-                    ver = ver[1:]
-                if name.startswith("go.mod"):
-                    continue
-                if name not in seen:
-                    seen.add(name)
-                    packages.append({"name": name, "version": ver})
-        return packages
-
     def _parse_composer_lock(self, content: str) -> list[dict]:
         """Parse composer.lock (JSON format)."""
         try:
@@ -1251,11 +1529,11 @@ class ManifestDetector:
                 continue
             name = m.group(1)
             inner = line[m.end() :].strip().lstrip("{").strip()
-            parts = inner.split(",")
-            if len(parts) >= 3:
-                ver_m = re.search(r'["\']([^"\']+)["\']', parts[2])
-                if ver_m:
-                    packages.append({"name": name, "version": ver_m.group(1)})
+            # Extract the version from the Elixir tuple {hex, package, "version", ...}
+            # Find the third quoted string (index 2 in the tuple)
+            quoted = re.findall(r'["\']([^"\']+)["\']', inner)
+            if len(quoted) >= 1:
+                packages.append({"name": name, "version": quoted[0]})
         return packages
 
     def _parse_package_resolved(self, content: str) -> list[dict]:
@@ -1275,18 +1553,16 @@ class ManifestDetector:
         return packages
 
     def _parse_udr_lock(self, content: str) -> list[dict]:
-        """Parse udr.lock — UDR's own lock file format."""
+        """Parse udr.lock file."""
         try:
             data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
-        for entry in data.get("packages", []):
-            name = entry.get("name")
-            version = entry.get("version", "*")
-            if name:
-                packages.append({"name": name, "version": version})
+        for pkg_name, pkg_info in data.get("packages", {}).items():
+            version = pkg_info.get("resolved_version") or pkg_info.get("version", "*")
+            packages.append({"name": pkg_name, "version": version})
         return packages
 
     def _parse_nix(self, content: str) -> list[dict]:
@@ -1337,6 +1613,11 @@ class ManifestDetector:
     @staticmethod
     def _extract_nix_pkgs(text: str, deps: list[dict]) -> None:
         """Extract package references from Nix expression text."""
+        # Handle callPackage pkgs.<name> { ... } patterns
+        for m in re.finditer(r"callPackage\s+pkgs\.(\w+)", text):
+            pkg_name = m.group(1)
+            if pkg_name and pkg_name not in ("pkgs", "inputs", "self"):
+                deps.append({"name": pkg_name, "version": "*", "_ecosystem": "nix"})
         for token in re.findall(r"[a-zA-Z_][\w.]*(?:\.[a-zA-Z_][\w.]+)*", text):
             if not token or token in ("pkgs", "inputs", "self"):
                 continue
@@ -1366,59 +1647,54 @@ class ManifestDetector:
                 deps.append({"name": token, "version": "*", "_ecosystem": "nix"})
 
     def _parse_nix_lock(self, content: str) -> list[dict]:
-        """Parse flake.lock."""
+        """Parse flake.lock — recursively traverses all inputs including nested."""
         try:
             data = loads(content)
         except Exception:
             logger.warning("flake.lock parse error", exc_info=True)
             return []
         nodes = data.get("nodes", {})
-        root = nodes.get("root", {})
-        root_inputs = root.get("inputs", {})
         packages = []
         seen_nodes: set[str] = set()
-        for input_name, node_key in root_inputs.items():
-            if isinstance(node_key, dict):
-                node_key = input_name
-            if node_key in seen_nodes:
+        # BFS from root through all nested inputs
+        queue: list[str] = ["root"]
+        while queue:
+            node_id = queue.pop(0)
+            if node_id in seen_nodes:
                 continue
-            seen_nodes.add(node_key)
-            node = nodes.get(node_key, {})
+            seen_nodes.add(node_id)
+            node = nodes.get(node_id, {})
+            # Enqueue sub-inputs
+            for sub_key in node.get("inputs", {}).values():
+                if isinstance(sub_key, str) and sub_key not in seen_nodes:
+                    queue.append(sub_key)
+            # Extract package info
             locked = node.get("locked", {})
+            if not (locked.get("rev") or locked.get("version")):
+                continue
             original_ref = node.get("original", {})
-            display = original_ref.get("id") or original_ref.get("path") or input_name
+            display = original_ref.get("id") or original_ref.get("path") or node_id
             version = locked.get("rev", locked.get("version", "latest"))
             if isinstance(version, str) and len(version) > 12:
                 version = version[:12]
             packages.append({"name": display, "version": version, "_ecosystem": "nix"})
-        # Include non-root referenced nodes
-        for node_id, node in nodes.items():
-            if node_id in ("root",) or node_id in seen_nodes:
-                continue
-            locked = node.get("locked", {})
-            if locked.get("rev") or locked.get("version"):
-                original_ref = node.get("original", {})
-                display = original_ref.get("id") or original_ref.get("path") or node_id
-                if not any(p["name"] == display for p in packages):
-                    version = locked.get("rev", locked.get("version", "latest"))
-                    if isinstance(version, str) and len(version) > 12:
-                        version = version[:12]
-                    packages.append({"name": display, "version": version, "_ecosystem": "nix"})
         return packages
 
     def _parse_guix_scm(self, content: str) -> list[dict]:
         """Parse a Guix manifest for package references."""
         deps: list[dict] = []
         seen: set[str] = set()
-        for m in re.finditer(
-            r'"([a-zA-Z][a-zA-Z0-9@+\-_.]*(?:/[a-zA-Z][a-zA-Z0-9+\-_.]*)*)"', content
-        ):
+        for m in re.finditer(r'"([a-zA-Z][a-zA-Z0-9@+\-_.]+)"', content):
             name = m.group(1)
             if not name or name in seen:
                 continue
-            if name.startswith(("/", ".", "http")):
+            # Filter out file paths (contain /), URLs, version numbers
+            if "/" in name or name.startswith((".", "http")):
                 continue
             if re.match(r"^\d+[\d.]*\d$", name):
+                continue
+            # Package names should be at least 2 chars and not look like options
+            if len(name) < 2 or name.startswith("-"):
                 continue
             seen.add(name)
             deps.append({"name": name, "version": "*", "_ecosystem": "guix"})

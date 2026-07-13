@@ -1,5 +1,6 @@
 """Compare two lock files and show version differences."""
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -28,10 +29,10 @@ def _read_lock(path: str) -> dict:
     return data
 
 
-def cmd_diff(args):
+def cmd_diff(args: argparse.Namespace):
     """Cmd diff."""
-    directory = Path(getattr(args, "directory", ".")).resolve()
-    workspace = getattr(args, "workspace", None)
+    directory = Path(args.directory).resolve()
+    workspace = args.workspace
 
     if workspace and not args.lock_file_a and not args.lock_file_b:
         # Compare udr.lock vs udr-{workspace}.lock
@@ -81,7 +82,7 @@ def cmd_diff(args):
         elif ver_a == ver_b:
             unchanged.append(name)
 
-    if getattr(args, "json", False):
+    if args.json:
         data = {
             "file_a": path_a,
             "file_b": path_b,

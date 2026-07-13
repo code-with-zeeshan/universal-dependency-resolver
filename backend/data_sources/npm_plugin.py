@@ -80,3 +80,7 @@ class NpmPlugin(EcosystemPlugin):
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
         client = self._get_client()
         return await client.get_artifact_hash(package_name, version)
+
+    async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        client = self._get_client()
+        return await client.search_packages(query, limit=limit)

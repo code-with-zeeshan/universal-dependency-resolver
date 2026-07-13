@@ -570,6 +570,13 @@ kbd{font-family:var(--font);font-size:10.5px;background:var(--bg-elevated);paddi
 <div class="row" id="checkPolicyRow" style="display:none;margin-top:6px">
 <textarea id="checkPolicyInput" rows="4" style="width:100%" placeholder="Paste policy YAML content..."></textarea>
 </div>
+<details style="margin-top:10px;font-size:12px">
+<summary style="cursor:pointer;color:var(--accent-light)">Connection settings</summary>
+<div class="row" style="margin-top:6px;gap:6px;align-items:center">
+<label for="apiKeyInput" style="white-space:nowrap">API Key:</label>
+<input id="apiKeyInput" type="text" placeholder="Optional X-API-Key" style="flex:1" onchange="saveSetting('apiKey', this.value)">
+</div>
+</details>
 <div class="row" style="margin-top:8px">
 <button id="checkRunAllBtn">Run All Checks</button>
 </div>

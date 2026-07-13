@@ -9,7 +9,6 @@ from datetime import datetime
 from typing import Any
 
 import aiohttp
-import yaml  # type: ignore[import-untyped]
 
 from ..core._json import loads
 from ..core.utils import (
@@ -45,8 +44,9 @@ class CondaClient(BaseDataSourceClient):
         self.repodata_urls = {
             channel: f"{url}/{{platform}}/repodata.json" for channel, url in channels.items()
         }
-        self._repodata_cache = {}
-        self._dependency_cache = {}
+        self._repodata_cache: dict[str, tuple[dict, datetime]] = {}
+        self._dependency_cache: dict[str, tuple[dict, datetime]] = {}
+        self._cache_clean_counter = 0
 
     async def package_exists(self, package_name: str) -> bool:
         """Async package exists."""
@@ -224,6 +224,18 @@ class CondaClient(BaseDataSourceClient):
                     deps["run"][dep_name] = constraint
         return deps
 
+    def _clean_cache(self) -> None:
+        """Evict expired entries from _dependency_cache and _repodata_cache."""
+        now = datetime.now()
+        ttl = self._cache_ttl
+
+        self._dependency_cache = {
+            k: v for k, v in self._dependency_cache.items() if (now - v[1]).total_seconds() < ttl
+        }
+        self._repodata_cache = {
+            k: v for k, v in self._repodata_cache.items() if (now - v[1]).total_seconds() < ttl
+        }
+
     async def _extract_dependencies_from_repodata(
         self, package_name: str, version: str, channel: str
     ) -> dict:
@@ -243,6 +255,10 @@ class CondaClient(BaseDataSourceClient):
             dependencies,
             datetime.now(),
         )
+        self._cache_clean_counter += 1
+        if self._cache_clean_counter >= 100:
+            self._clean_cache()
+            self._cache_clean_counter = 0
         return dependencies
 
     async def _fetch_repodata(self, channel: str, platform: str) -> dict | None:
@@ -267,6 +283,10 @@ class CondaClient(BaseDataSourceClient):
                 if response.status == 200:
                     data = await response.json()
                     self._repodata_cache[cache_key] = (data, datetime.now())
+                    self._cache_clean_counter += 1
+                    if self._cache_clean_counter >= 100:
+                        self._clean_cache()
+                        self._cache_clean_counter = 0
                     return data
 
         except Exception as e:
@@ -340,6 +360,8 @@ class CondaClient(BaseDataSourceClient):
                                     member = tar.getmember("info/recipe/meta.yaml")
                                     f = tar.extractfile(member)
                                     if f:
+                                        import yaml  # type: ignore[import-untyped]
+
                                         metadata = yaml.safe_load(f.read().decode("utf-8"))
                                         return self._parse_recipe_metadata(metadata)
                                 except KeyError:

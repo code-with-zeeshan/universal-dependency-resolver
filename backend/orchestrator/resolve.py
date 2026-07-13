@@ -16,8 +16,6 @@ from backend.settings import (
     BFS_BATCH_SIZE,
     INCREMENTAL_RESOLUTION,
     SOLVER_MAX_VARIABLES,
-    USE_HYBRID_SOLVER,
-    USE_PUBGRUB_SOLVER,
 )
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
 
@@ -29,20 +27,28 @@ logger = logging.getLogger(__name__)
 def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
     """Create a solver instance.
 
-    Default order (can be overridden via env vars):
-      1. USE_HYBRID_SOLVER=true  → HybridSolver (PubGrub per-eco + Z3 cross-eco)
-      2. Default                 → PubGrubSolver (when pubgrub-py installed)
-      3. Fallback                → ConflictResolver (Z3)
+    Default: AutoSolver — profiles the dependency graph and selects the
+    fastest solver backend automatically.
 
-    Set USE_Z3_SOLVER=true to skip PubGrub and use Z3 directly.
+    Override via env vars (in priority order):
+      1. USE_Z3_SOLVER=true        → ConflictResolver (Z3)
+      2. USE_HYBRID_SOLVER=true    → HybridSolver (PubGrub + Z3)
+      3. USE_PUBGRUB_SOLVER=true   → PubGrubSolver
+      4. Default                   → AutoSolver
     """
-    from backend.settings import USE_Z3_SOLVER
+    import backend.settings as _s
 
-    if USE_HYBRID_SOLVER:
+    if _s.USE_Z3_SOLVER:
+        from backend.core.conflict_resolver import ConflictResolver
+
+        logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
+        return ConflictResolver(use_optimization=use_optimization)
+
+    if _s.USE_HYBRID_SOLVER:
         try:
             from backend.core.hybrid_solver import HybridSolver
 
-            logger.info("Using HybridSolver (PubGrub per-ecosystem + Z3 cross-eco)")
+            logger.info("Using HybridSolver (USE_HYBRID_SOLVER=true)")
             return HybridSolver(
                 use_optimization=use_optimization,
                 solver_timeout=solver_timeout,
@@ -50,26 +56,40 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
         except ImportError:
             logger.warning(
                 "USE_HYBRID_SOLVER is true but hybrid_solver module not available; "
-                "falling back to PubGrub/Z3"
+                "falling back to AutoSolver"
             )
 
-    if USE_Z3_SOLVER:
-        from backend.core.conflict_resolver import ConflictResolver
+    if _s.USE_PUBGRUB_SOLVER:
+        try:
+            from backend.core.pubgrub_solver import PubGrubSolver
 
-        logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
-        return ConflictResolver(
+            logger.info("Using PubGrubSolver (USE_PUBGRUB_SOLVER=true)")
+            return PubGrubSolver(
+                use_optimization=use_optimization,
+                solver_timeout=solver_timeout,
+            )
+        except ImportError:
+            logger.warning(
+                "USE_PUBGRUB_SOLVER is true but pubgrub_solver module not available; "
+                "falling back to AutoSolver"
+            )
+
+    # Default: AutoSolver — profiles and delegates automatically
+    try:
+        from backend.core.auto_solver import AutoSolver
+
+        logger.info("Using AutoSolver (profiles graph and selects best backend)")
+        return AutoSolver(
             use_optimization=use_optimization,
+            solver_timeout=solver_timeout,
         )
+    except ImportError:
+        logger.info("AutoSolver not available; falling back to PubGrub")
 
-    if USE_PUBGRUB_SOLVER:
-        logger.info("USE_PUBGRUB_SOLVER=true is set — PubGrub is the default regardless")
-        # Intentional fallthrough
-
-    # Default: PubGrubSolver (handles Rust-backed vs pure-Python internally)
     try:
         from backend.core.pubgrub_solver import PubGrubSolver
 
-        logger.info("Using PubGrub solver (default)")
+        logger.info("Using PubGrub solver (fallback)")
         return PubGrubSolver(
             use_optimization=use_optimization,
             solver_timeout=solver_timeout,
@@ -79,9 +99,7 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
 
     from backend.core.conflict_resolver import ConflictResolver
 
-    return ConflictResolver(
-        use_optimization=use_optimization,
-    )
+    return ConflictResolver(use_optimization=use_optimization)
 
 
 def _safe_version_key(v: str, ecosystem: str) -> _pkg_version.Version:
@@ -91,6 +109,8 @@ def _safe_version_key(v: str, ecosystem: str) -> _pkg_version.Version:
         try:
             return _pkg_version.parse(normalize_version(v, ecosystem))
         except Exception:
+            logger = logging.getLogger(__name__)
+            logger.warning("Failed to parse version string '%s'", v, exc_info=True)
             return _pkg_version.parse("0.0.0")
 
 
@@ -133,11 +153,21 @@ def _extract_system_requirements(agg_data: dict, ecosystem: str) -> dict:
         "nuget": "dotnet",
     }
     runtime_field = runtime_map.get(ecosystem, ecosystem)
+    os_list: list[str] = []
+    arch_list: list[str] = []
     for req in eco_reqs:
         if req.type == "runtime" and req.name == runtime_field and req.version_spec:
             min_ver = req.version_spec.lstrip(">= ")
             sys_reqs[runtime_field] = {"min_version": min_ver}
-    eco_data = agg_data.get("ecosystem", {}).get(ecosystem, {})
+        elif req.type == "os" and req.name:
+            os_list.append(req.name)
+        elif req.type == "arch" and req.name:
+            arch_list.append(req.name)
+    if os_list:
+        sys_reqs["os"] = os_list
+    if arch_list:
+        sys_reqs["arch"] = arch_list
+    eco_data = agg_data.get("ecosystems", {}).get(ecosystem, {})
     cuda_req = eco_data.get("system_requirements", {}).get("cuda")
     if cuda_req:
         sys_reqs["cuda"] = cuda_req
@@ -151,6 +181,7 @@ def _aggregator_to_resolver_input(
     extras: list[str] | None = None,
 ) -> dict:
     available_versions = []
+    version_requires_python: dict[str, str] = {}
     raw_versions = agg_data.get("versions", {}).get(ecosystem, [])
     for vinfo in raw_versions:
         ver = vinfo.get("version", "") if isinstance(vinfo, dict) else str(vinfo)
@@ -158,10 +189,11 @@ def _aggregator_to_resolver_input(
         if isinstance(ver, dict):
             ver = ver.get("name", "") if isinstance(ver, dict) else str(ver)
         if isinstance(ver, str) and not re.search(r"\+cu\d", ver):
-            yanked = vinfo.get("yanked", False) if isinstance(vinfo, dict) else False
-            deprecated = vinfo.get("deprecated", False) if isinstance(vinfo, dict) else False
-            if not yanked and not deprecated:
-                available_versions.append(ver)
+            available_versions.append(ver)
+            if isinstance(vinfo, dict):
+                rp = vinfo.get("requires_python") or vinfo.get("python_requires")
+                if rp:
+                    version_requires_python[ver] = rp
     deps = {}
     eco_deps = agg_data.get("dependencies", {})
     eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
@@ -182,15 +214,20 @@ def _aggregator_to_resolver_input(
         key=lambda v: _safe_version_key(v, ecosystem),
         reverse=True,
     )
-    return {
+    go_replace = agg_data.get("_go_replace", {}).get(ecosystem) or agg_data.get("go_replace")
+    result: dict[str, Any] = {
         "name": agg_data.get("name"),
         "ecosystem": ecosystem,
         "version_constraint": norm_constraint,
         "available_versions": sorted_versions,
+        "version_requires_python": version_requires_python,
         "dependencies": {ecosystem: deps},
         "system_requirements": sys_reqs,
         "cross_ecosystem_deps": agg_data.get("cross_ecosystem_deps", []),
     }
+    if go_replace:
+        result["_go_replace"] = go_replace
+    return result
 
 
 async def _fetch_dep_info(
@@ -225,20 +262,19 @@ def _build_dep_pkg(
     dep: Any,
     dep_ecosystem_val: str,
     dep_info: dict,
-    pkg_ecosystem: str,
-    pkg_name: str,
 ) -> dict | None:
-    dep_avail = _aggregator_to_resolver_input(dep_info, dep_ecosystem_val).get(
-        "available_versions", []
-    )
+    dep_resolver_input = _aggregator_to_resolver_input(dep_info, dep_ecosystem_val)
+    dep_avail = dep_resolver_input.get("available_versions", [])
     if not dep_avail:
         return None
     dep_pkg: dict = {
         "name": dep.name,
         "ecosystem": dep_ecosystem_val,
         "available_versions": dep_avail,
+        "version_requires_python": dep_resolver_input.get("version_requires_python", {}),
         "dependencies": {},
         "system_requirements": {},
+        "cross_ecosystem_deps": dep_resolver_input.get("cross_ecosystem_deps", []),
     }
     dep_deps_all = dep_info.get("dependencies", {})
     for d_eco, d_data in dep_deps_all.items():
@@ -254,20 +290,10 @@ def _build_dep_pkg(
                 dep_pkg["system_requirements"][req.name] = {
                     "min_version": req.version_spec.lstrip(">= "),
                 }
-    dep_constraint = (
-        normalize_constraint(dep.version_spec, dep_ecosystem_val)
-        if hasattr(dep, "version_spec")
-        else "*"
-    )
-    if dep_ecosystem_val != pkg_ecosystem:
-        dep_pkg.setdefault("cross_ecosystem_deps", []).append(
-            {
-                "source": f"{pkg_name}@{pkg_ecosystem}",
-                "name": dep.name,
-                "target_ecosystem": dep_ecosystem_val,
-                "constraint": dep_constraint,
-            }
-        )
+            elif req.type == "os" and req.name:
+                dep_pkg["system_requirements"].setdefault("os", []).append(req.name)
+            elif req.type == "arch" and req.name:
+                dep_pkg["system_requirements"].setdefault("arch", []).append(req.name)
     return dep_pkg
 
 
@@ -342,8 +368,23 @@ def _system_info_fingerprint(system_info: dict | None) -> dict:
     if arch:
         result.setdefault("platform", {})["architecture"] = arch
     gpu = system_info.get("gpu", {})
-    if gpu.get("cuda"):
-        result["gpu"] = {"cuda": gpu["cuda"]}
+    if not isinstance(gpu, dict):
+        gpu = {}
+    gpu_subset: dict[str, str] = {}
+    for gpu_type in ("cuda", "rocm", "intel_gpu", "metal"):
+        val = gpu.get(gpu_type)
+        if val is None:
+            continue
+        if isinstance(val, dict):
+            ver = val.get("version", "")
+        elif isinstance(val, str):
+            ver = val
+        else:
+            continue
+        if ver:
+            gpu_subset[gpu_type] = ver
+    if gpu_subset:
+        result["gpu"] = gpu_subset
     rt = system_info.get("runtime_versions", {})
     py = rt.get("python", {})
     if py and py.get("version"):
@@ -431,21 +472,37 @@ def _merge_solver_results(results: list[dict]) -> dict:
     """Merge multiple solver result dicts into one.
 
     Handles ``resolved_packages`` merging, status propagation
-    (any unsatisfiable → overall unsatisfiable), and best-effort
+    (order: unsatisfiable > partial > satisfiable), and best-effort
     collection of other metadata keys.
     """
     merged: dict = {"status": "satisfiable", "resolved_packages": {}}
     for res in results:
-        if res.get("status") != "satisfiable":
+        status = res.get("status", "satisfiable")
+        if status == "unsatisfiable":
             merged["status"] = "unsatisfiable"
             merged["resolution_error"] = res.get(
                 "resolution_error", "One or more ecosystem groups are unsatisfiable"
+            )
+        elif status == "partial" and merged["status"] != "unsatisfiable":
+            merged["status"] = "partial"
+            merged.setdefault(
+                "resolution_error", "One or more ecosystem groups are partially resolved"
             )
         for key, val in res.items():
             if key == "resolved_packages":
                 merged.setdefault("resolved_packages", {}).update(val)
             elif key == "status":
                 continue
+            elif key == "warnings":
+                merged.setdefault("warnings", []).extend(val if isinstance(val, list) else [val])
+            elif key == "dependency_tree":
+                merged.setdefault("dependency_tree", {}).update(
+                    val if isinstance(val, dict) else {}
+                )
+            elif key == "installation_order":
+                merged.setdefault("installation_order", []).extend(
+                    val if isinstance(val, list) else [val]
+                )
             elif key not in merged:
                 merged[key] = val
     return merged
@@ -462,6 +519,7 @@ async def _resolve_transitive(
     lock_tree_data: dict[str, dict[str, dict]] | None = None,
     bfs_timeout: int | None = None,
     incremental: bool = True,
+    cross_deps: list[dict] | None = None,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -615,6 +673,7 @@ async def _resolve_transitive(
                     "version": lk.get("version", "0.0.0"),
                     "versions": [{"version": lk.get("version", "0.0.0")}],
                     "dependencies": {eco: deps},
+                    "_version_metadata": {},
                 },
             )
         info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
@@ -628,10 +687,14 @@ async def _resolve_transitive(
         results: list[tuple] = []
         for i in range(0, len(items), batch_size):
             chunk = items[i : i + batch_size]
-            chunk_results = await asyncio.gather(*[_fetch_one(item) for item in chunk])
+            chunk_results = await asyncio.gather(
+                *[_fetch_one(item) for item in chunk], return_exceptions=True
+            )
             for r in chunk_results:
-                if r[2] is not None:
+                if isinstance(r, (list, tuple)) and len(r) > 2 and r[2] is not None:
                     results.append(r)
+                elif isinstance(r, BaseException):
+                    logger.warning("Batch fetch failed: %s", r)
         return results
 
     # Phase 1: batch-fetch root packages that aren't pre-resolved
@@ -673,12 +736,71 @@ async def _resolve_transitive(
             pkg, visited, all_packages, pre_resolved, current_level_deps, name, eco
         )
 
+    # Inject cross-ecosystem dependency edges from config (udr.json cross_deps)
+    if cross_deps:
+        for xdep in cross_deps:
+            source_raw = xdep.get("from", "")
+            if "@" not in source_raw:
+                continue
+            src_name, src_eco = source_raw.rsplit("@", 1)
+            dep_name = xdep.get("dep", "")
+            dep_eco = xdep.get("target_ecosystem", "")
+            if "@" in dep_name:
+                dep_name, dep_eco_from_dep = dep_name.rsplit("@", 1)
+                if dep_eco_from_dep:
+                    dep_eco = dep_eco_from_dep
+            constraint = xdep.get("constraint", "*")
+            src_key = (src_name, src_eco)
+            dep_key = (dep_name, dep_eco)
+            # Inject edge: if source is already fetched, add dep
+            src_pkg = all_packages.get(src_key)
+            if src_pkg:
+                src_pkg.setdefault("dependencies", {}).setdefault(dep_eco, {})
+                # Add dep in the format _collect_current_deps understands
+                src_pkg["dependencies"][dep_eco].setdefault("all", [])
+                src_pkg["dependencies"][dep_eco]["all"].append(
+                    type(
+                        "_Dep",
+                        (),
+                        {"name": dep_name, "version_spec": constraint, "ecosystem": dep_eco},
+                    )()
+                )
+                # Mark as cross-eco edge
+                _add_cross_eco_edge(
+                    all_packages,
+                    dep_key,
+                    type(
+                        "_Dep",
+                        (),
+                        {"name": dep_name, "version_spec": constraint, "ecosystem": dep_eco},
+                    )(),
+                    src_name,
+                    src_eco,
+                    dep_eco,
+                )
+            # Ensure target dep is in the BFS fetch queue if not already known
+            if (
+                dep_key not in visited
+                and dep_key not in all_packages
+                and dep_key not in pre_resolved
+            ):
+                current_level_deps.append((dep_name, dep_eco, None))
+
     if bfs_timeout is not None:
         bfs_deadline = asyncio.get_event_loop().time() + bfs_timeout
     else:
         bfs_deadline = None
 
+    depth = 0
     while current_level_deps:
+        depth += 1
+        if depth > max_depth:
+            logger.warning(
+                "BFS max depth %d reached — continuing with %d packages fetched",
+                max_depth,
+                len(all_packages),
+            )
+            break
         if bfs_deadline is not None and asyncio.get_event_loop().time() >= bfs_deadline:
             logger.warning(
                 "BFS timed out after %ds — continuing with %d packages fetched",
@@ -741,8 +863,6 @@ async def _resolve_transitive(
                 getattr(source_info, "_dep", source_info) if source_info else None,
                 eco,
                 info,
-                eco,  # _source_eco
-                name,  # _source_name
             )
             if dep_pkg and key not in all_packages:
                 all_packages[key] = dep_pkg
@@ -839,10 +959,9 @@ async def _resolve_transitive(
                     eco_result["resolved_packages"] = eco_result.pop("packages")
                 results.append(eco_result)
 
-                # Fail fast on unsatisfiable ecosystem
-                if eco_result.get("status") != "satisfiable":
-                    logger.warning("Ecosystem '%s' is unsatisfiable — stopping", eco)
-                    break
+                if eco_result.get("status") == "unsatisfiable":
+                    logger.warning("Ecosystem '%s' is unsatisfiable — skipping remaining", eco)
+                    continue
 
             result = _merge_solver_results(results)
     else:

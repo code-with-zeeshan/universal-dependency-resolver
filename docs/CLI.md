@@ -136,7 +136,7 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 **Flags:**
 
 | Flag | Default | Description |
-|---|---|---|
+|---|---|---|---|
 | `packages` | (required) | One or more package names. Use `pkg@eco` syntax for non-default ecosystems |
 | `-e, --ecosystem` | `pypi` | Default ecosystem (used for packages without `@ecosystem` suffix) |
 | `-f, --format` | `text` | Output format: `text` (rich table) or `json` |
@@ -149,6 +149,7 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 | `--pin-mode` | `none` | Global pinning strategy: `none`, `patch`, `minor`, `exact` |
 | `--block` | `None` | Block a package from resolution. Repeatable |
 | `--freeze` | `False` | Freeze all packages at their lock-file versions |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Package spec syntax:**
 
@@ -170,7 +171,7 @@ name@ecosystem                → name, specific ecosystem
 
 ## `lock`
 
-Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run PubGrub SAT resolution, and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
+Auto-detect dependency manifests in a project directory, fetch metadata for all packages, scan the system, run SAT resolution (AutoSolver default), and write a `udr.lock` lock file. Optionally update manifests in-place with pinned versions.
 
 **Usage:**
 
@@ -222,6 +223,7 @@ udr lock --auto-sync                         # auto-sync stale local indexes bef
 | `--sign` | `False` | Sign the lock file with Ed25519 key |
 | `--provenance` | `False` | Add SLSA provenance section to lock file |
 | `--check`, `-c` | `False` | CI mode: check if lock file is up to date; exit code 1 if drift detected |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -380,12 +382,13 @@ udr graph torch --json                        # JSON output
 **Flags:**
 
 | Flag | Default | Description |
-|---|---|---|
+|---|---|---|---|
 | `packages` | (required) | One or more package names with optional `@ecosystem` suffix |
 | `-e, --ecosystem` | `pypi` | Default ecosystem |
 | `--json` | `False` | Output as JSON |
 | `--cuda` | `None` | Target CUDA version — auto-detected if omitted |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, or `mps` — auto-detected if omitted |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -800,12 +803,13 @@ udr diff --workspace backend           # compare udr.lock vs udr-backend.lock
 **Flags:**
 
 | Argument/Flag | Default | Description |
-|---|---|---|
+|---|---|---|---|
 | `lock_file_a` | `None` | First lock file path (optional with `--workspace`) |
 | `lock_file_b` | `None` | Second lock file path (optional with `--workspace`) |
 | `--json` | `False` | Output as JSON |
 | `-d, --directory` | `.` | Project directory with lock files |
 | `--workspace` | `None` | Compare `udr.lock` vs `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
 **Exit codes:**
 
@@ -992,53 +996,96 @@ Running `udr lock` on a GPU machine records GPU info. Running the lock file on a
 
 ## CLI ↔ API Mapping
 
-Every CLI subcommand has a corresponding REST API endpoint when `udr serve` is running:
+Every non-interactive CLI operation has a corresponding REST API endpoint when `udr serve` is running. The table below documents which CLI commands map to which API endpoints, with notes on functional differences.
 
-All **19 CLI subcommands** have corresponding API endpoints when `udr serve` is running:
+### Exact matches (same logic, same data)
 
-| CLI Command | API Endpoint | Method | Notes |
+These endpoints share the same core implementation — the API call returns the same data the CLI would, just as JSON:
+
+| CLI Command | API Endpoint | Method |
+|---|---|---|
+| `udr resolve` | `/api/v1/packages/resolve` | POST |
+| `udr graph` | `/api/v1/graph` | POST |
+| `udr verify` | `/api/v1/verify` | POST |
+| `udr list-ecosystems` | `/api/v1/packages/ecosystems` | GET |
+| `udr update` | `/api/v1/update` | POST |
+| `udr why` | `/api/v1/why` | POST |
+| `udr outdated` | `/api/v1/outdated` | POST |
+| `udr diff` | `/api/v1/diff` | POST |
+| `udr search` | `/api/v1/packages/search` | GET |
+| `udr details` | `/api/v1/packages/{eco}/{name}/details` | GET |
+| `udr sbom` | `/api/v1/sbom` | POST |
+| `udr completion {shell}` | `/api/v1/completion/{shell}` | GET |
+| `udr scan --github <url>` | `/api/v1/scan/github` | POST |
+| `udr scan --directory <path>` | `/api/v1/scan/local` | POST |
+| `udr scan --upload <file>` | `/api/v1/scan/upload` | POST |
+| `udr check --cve` | `/api/v1/check/cve` | POST |
+| `udr check --license` | `/api/v1/check/license` | POST |
+| `udr check --deprecated` | `/api/v1/check/deprecated` | POST |
+| `udr check --policy` | `/api/v1/check/policy` | POST |
+| `udr lock --check` | `/api/v1/lock/check` | POST |
+| `udr lock --sign` | `/api/v1/lock/sign` | POST |
+| `udr lock --report` | `/api/v1/lock/report` | POST |
+| `udr lock --pin/--block/--freeze` | `/api/v1/lock/apply-pinning` | POST |
+| `udr update --fix-cve` | `/api/v1/lock/update-with-fix` | POST |
+| `udr auth gen-key` | `/api/v1/auth/gen-key` | POST |
+| `udr auth show-key` | `/api/v1/auth/signing-key` | GET |
+| `udr index pull <url>` | `/api/v1/index/pull` | POST |
+| `udr index build` | `/api/v1/index/build` | POST |
+| `udr index status` | `/api/v1/index/status` | GET |
+| `udr index sync --all` | `/api/v1/index/sync-all` | POST |
+
+### Similar functionality, different I/O
+
+These share the same resolution/analysis engine but differ in what they accept or produce:
+
+| CLI Command | API Endpoint | Method | Difference |
 |---|---|---|---|
-| `udr serve` | — | — | Starts the API server itself |
-| `udr check` | `/api/v1/system/info` | GET | System info + health check |
-| `udr check --cve` | `/api/v1/cve` | POST | CVE check against OSV database |
-| `udr check --license` | (CLI-only) | — | License compliance check |
-| `udr resolve` | `/api/v1/packages/resolve` | POST | Same request/response shape |
-| `udr lock` | `/api/v1/generate-lock` | POST | API requires pre-processed package list |
-| `udr lock --json` | `/api/v1/generate-lock` | POST | Same output shape |
-| `udr lock --export` | `/api/v1/packages/export` | POST | Export resolved deps |
-| `udr lock -r/--report` | — | — | CLI-only: writes local report file |
-| `udr lock -m/--manifest` | — | — | CLI-only: local manifest filtering |
-| `udr lock --dry-run` | — | — | CLI-only: preview without writing |
-| `udr lock -i/--interactive` | — | — | CLI-only: interactive TUI mode |
-| `udr lock -y/--yes` | — | — | CLI-only: auto-confirm |
-| `udr graph` | `/api/v1/graph` | POST | Same request/response shape |
-| `udr verify` | `/api/v1/verify` | POST | Same request/response shape |
-| `udr list-ecosystems` | `/api/v1/packages/ecosystems` | GET | Same response shape |
-| `udr update` | `/api/v1/update` | POST | Same request/response shape |
-| `udr install` | `/api/v1/install-commands` | POST | API generates commands, doesn't execute |
-| `udr install --restore` | `/api/v1/restore-commands` | POST | Same as install, but for all packages |
-| `udr scan --github` | `/api/v1/scan/github` | POST | Same |
-| `udr scan --directory` | `/api/v1/scan/local` | POST | Same |
-| `udr why` | `/api/v1/why` | POST | Same |
-| `udr outdated` | `/api/v1/outdated` | POST | Same |
-| `udr diff` | `/api/v1/diff` | POST | Same |
-| `udr search` | `/api/v1/packages/search` | GET | Same response shape |
-| `udr details` | `/api/v1/packages/{eco}/{name}/details` | GET | Same response shape |
-| `udr index pull` | `/api/v1/index/pull` | POST | Downloads SQLite index from URL |
-| `udr index build` | `/api/v1/index/build` | POST | Builds index from package data |
-| `udr index status` | `/api/v1/index/status` | GET | Shows local offline index status |
-| `udr completion` | `/api/v1/completion/{shell}` | GET | Returns shell completion script as text/plain |
-| `udr sbom` | `/api/v1/sbom` | POST | Generates SPDX/CycloneDX SBOM |
-| `udr lock --sign` | — | — | CLI-only: local Ed25519 signing with auto-generated key |
-| `udr verify --signature` | — | — | CLI-only: local signature verification |
-| `udr check --policy` | — | — | CLI-only: policy YAML file evaluation |
-| `udr update --fix-cve` | — | — | CLI-only: CVE auto-fix using lock file + OSV data |
+| `udr check` (no flags) | `/api/v1/system/info` | GET | CLI shows a compatibility table with system info + optional deps/project summary. API returns the raw system dict. |
+| `udr lock` (full workflow) | `/api/v1/generate-lock` | POST | CLI auto-detects manifests from filesystem, writes `udr.lock` + optionally updates manifests. API accepts pre-parsed packages (or raw manifest content as alternative) and returns lock data as JSON — no filesystem writes. |
+| `udr lock --export <fmt>` | `/api/v1/packages/export` | POST | CLI works from scanned data; API works from supplied `resolved_packages` dict. Both produce the same format output. |
+| `udr install` | `/api/v1/install-commands` | POST | CLI **runs** native package manager commands. API **returns** the command strings — caller executes them. |
+| `udr install --restore` | `/api/v1/restore-commands` | POST | Same as above but for all packages (direct + transitive). |
 
-**Key differences:**
-- The API returns JSON only; CLI supports `--json`, text tables, and interactive TUI modes.
-- CLI `lock` does **manifest detection + file I/O** locally; the API `generate-lock` endpoint accepts pre-parsed package data.
-- CLI `install` executes native package manager commands; the API only returns the commands to run.
-- CLI `check` includes project-local dependency info from `pyproject.toml`; the API returns system info only.
+### No API equivalent
+
+These features require local filesystem access, a terminal TTY, or start the API server itself:
+
+| CLI Command | Reason |
+|---|---|
+| `udr serve` | Starts the API server — no API to call it from |
+| `udr lock -m/--manifest` | Filters which manifest files to scan — local filesystem operation |
+| `udr lock --dry-run` | Preview without writing — local filesystem operation |
+| `udr lock -i/--interactive` | Interactive TUI resolver — requires terminal |
+| `udr lock -y/--yes` | Auto-confirm manifest overwrites — local filesystem operation |
+| `udr install` (execution) | Runs pip/npm/cargo — requires local package manager |
+| `udr verify --signature` | Verifies signature against local lock file + signature file |
+
+### API-only (no CLI equivalent)
+
+These endpoints expose functionality not available as a standalone CLI subcommand:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/v1/health` | GET | Lightweight health check (DB + Redis connectivity) |
+| `/api/v1/system/check-compatibility` | POST | Structured system-requirement evaluation engine |
+| `/api/v1/packages/{eco}/{name}/versions` | GET | List all versions with filtering (prerelease, yanked, compatibility) |
+| `/api/v1/packages/{eco}/{name}/dependencies` | GET | Get dependency tree (recursive, max depth configurable) |
+| `/api/v1/packages/{eco}/{name}/compatibility` | GET | Known compatibility matrix from community reports + metadata |
+| `/api/v1/packages/export-formats` | GET | List available export formats with descriptions |
+| `/api/v1/lock/update-manifests` | POST | Suggest version bumps from lock data (analysis, no writes) |
+| `/api/v1/auth/*` (all auth routes) | various | User registration, login, token management, API key management |
+
+### Key differences at a glance
+
+| Aspect | CLI | API |
+|---|---|---|
+| Output format | Rich tables (terminal) + `--json` option | JSON always |
+| Manifest detection | Auto-detect from filesystem | Accepts pre-parsed data or raw content |
+| File I/O | Reads/writes `udr.lock`, manifests, reports | No filesystem access (returns data) |
+| Package manager execution | Runs pip/npm/cargo/etc. | Returns command strings only |
+| Auth (saas mode) | Ed25519 key or no auth | JWT Bearer token or API key |
+| Interactive mode | Full TUI resolver | Stateless request/response |
 
 ---
 

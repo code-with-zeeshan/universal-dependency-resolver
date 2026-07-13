@@ -61,7 +61,16 @@ function getFilteredEnv(port) {
     'DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS',
     'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_RUNTIME_DIR',
     'XDG_CONFIG_DIRS', 'XDG_DATA_DIRS',
+    'SECRET_KEY', 'ENABLE_AUTH', 'DATABASE_URL', 'REDIS_URL',
+    'UDR_STANDALONE', 'UDR_PORT', 'UDR_HOST',
   ])
+  // Pass through any ecosystem auth tokens
+  for (const key of Object.keys(process.env)) {
+    if (key.endsWith('_AUTH_TOKEN') || key.endsWith('_AUTH_TYPE') ||
+        key.endsWith('_AUTH_USERNAME') || key.endsWith('_AUTH_PASSWORD')) {
+      safeKeys.add(key)
+    }
+  }
   const filtered = {}
   for (const key of safeKeys) {
     if (process.env[key] !== undefined) filtered[key] = process.env[key]
@@ -98,7 +107,6 @@ async function restartBackend() {
       console.log('[backend] Restart successful')
       if (mainWindow) {
         mainWindow.webContents.send('backend-ready')
-        mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = 'http://${BACKEND_HOST}:${newPort}';`)
         mainWindow.webContents.executeJavaScript("document.title = 'UDR'")
       }
       startHealthCheck()
@@ -304,7 +312,7 @@ async function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript(`window.__UDR_BACKEND_URL__ = '${backendUrl}';`)
+    // Backend URL is exposed via preload.js → contextBridge → udrDesktop.getBackendUrl()
   })
 
   mainWindow.webContents.executeJavaScript(

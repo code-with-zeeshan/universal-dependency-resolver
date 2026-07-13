@@ -29,13 +29,12 @@ VSCode extension for the Universal Dependency Resolver (`udr`).
 
 ## Requirements
 
-- `udr` CLI installed and on PATH (or configure `udr.cliPath`)
+- `udr` CLI installed and on PATH (install with `pip install ud-resolver`, or configure `udr.cliPath`)
 - Workspace with a `udr.lock` file or supported manifest files
 
 ## Extension Settings
 
 - `udr.cliPath`: Path to udr CLI (default: `udr`)
-- `udr.backendUrl`: Backend API URL (default: `http://localhost:8199`)
 - `udr.lockFileName`: Lock file name (default: `udr.lock`)
 - `udr.autoCheckOnSave`: Auto-check CVE on lock file save
 - `udr.cveSeverityThreshold`: Minimum severity for Problems panel

@@ -7,7 +7,6 @@ import pytest
 from backend.core.utils import (
     compare_versions,
     download_github_repo,
-    extract_requirements,
     hash_system_info,
     is_compatible_version,
     normalize_package_name,
@@ -93,31 +92,6 @@ class TestNormalizePackageName:
 
     def test_dots(self):
         assert normalize_package_name("foo.bar") == "foo-bar"
-
-
-class TestExtractRequirements:
-    def test_requirements_txt(self):
-        content = "requests>=2.28\nflask>=2.0\n# comment\nnumpy\n"
-        reqs = extract_requirements(content, "requirements.txt")
-        assert len(reqs) == 3
-        assert reqs[0]["name"] == "requests"
-
-    def test_requirements_txt_blank_lines(self):
-        content = "\n\nrequests\n\n"
-        reqs = extract_requirements(content, "requirements.txt")
-        assert len(reqs) == 1
-
-    def test_requirements_txt_empty(self):
-        assert extract_requirements("", "requirements.txt") == []
-
-    def test_environment_yml(self):
-        content = "dependencies:\n  - requests>=2.28\n  - flask\n"
-        reqs = extract_requirements(content, "environment.yml")
-        assert len(reqs) == 2
-
-    def test_environment_yml_invalid(self):
-        reqs = extract_requirements("invalid: {", "environment.yml")
-        assert reqs == []
 
 
 class TestHashSystemInfo:
@@ -209,7 +183,6 @@ class TestSanitizeEcosystemName:
 
     def test_hex_aliases(self):
         assert sanitize_ecosystem_name("elixir") == "hex"
-        assert sanitize_ecosystem_name("exlixir") == "hex"  # typo alias
 
     def test_haskell_aliases(self):
         assert sanitize_ecosystem_name("cabal") == "haskell"

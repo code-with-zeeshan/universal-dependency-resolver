@@ -1,5 +1,6 @@
 """Search for packages across ecosystems."""
 
+import argparse
 import asyncio
 import json
 import sys
@@ -11,7 +12,7 @@ from rich.table import Table
 from ..shared import console, err_console
 
 
-async def _cmd_search_async(args):
+async def _cmd_search_async(args: argparse.Namespace) -> int:
     """Search packages across ecosystems."""
     from backend.core import DataAggregator
 
@@ -36,7 +37,7 @@ async def _cmd_search_async(args):
 
     total = sum(len(items) for items in results.values() if isinstance(items, list))
 
-    if getattr(args, "json", False):
+    if args.json:
         json.dump(results, sys.stdout, indent=2, default=str)
         print()
         return 0 if total > 0 else 1
@@ -67,7 +68,7 @@ async def _cmd_search_async(args):
     return 0
 
 
-def cmd_search(args):
+def cmd_search(args: argparse.Namespace) -> None:
     """Search packages."""
     try:
         sys.exit(asyncio.run(_cmd_search_async(args)))

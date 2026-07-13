@@ -97,7 +97,7 @@ class LocalIndexManager:
                 rows = conn.execute("SELECT name FROM packages").fetchall()
                 existing_pkgs = {r["name"] for r in rows}
             except Exception:
-                pass
+                logger.debug("Failed to read existing packages from index DB", exc_info=True)
             finally:
                 conn.close()
 
@@ -181,7 +181,7 @@ class LocalIndexManager:
                 )
                 conn.commit()
             except Exception:
-                pass
+                logger.debug("Failed to update index metadata for npm sync", exc_info=True)
             finally:
                 conn.close()
 
@@ -249,6 +249,7 @@ class LocalIndexManager:
                         batch.append(data)
                         pkgs_found += 1
                 except Exception:
+                    logger.warning("Failed to parse crate index file", exc_info=True)
                     continue
                 if len(batch) >= 100:
                     create_or_update_index("crates", batch)

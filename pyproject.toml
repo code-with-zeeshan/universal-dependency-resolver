@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ud-resolver"
-version = "4.0.0"
+version = "1.4.0"
 description = "Cross-ecosystem dependency resolver — PyPI, npm, Cargo, Conda, Maven, Go, and more"
 readme = "README_PYPI.md"
 requires-python = ">=3.11,<4.0"
@@ -88,11 +88,13 @@ system = [
     "distro>=1.8,<2",
     "gputil>=1.4,<2",
     "nvidia-ml-py>=12.535,<13",
+    "python-magic>=0.4.27,<1",
 ]
 dev = [
     "pytest>=7.4,<10",
     "pytest-asyncio>=0.21,<2",
     "pytest-cov>=4.1,<6",
+    "pytest-timeout>=2.2,<4",
     "ruff>=0.11,<1",
     "mypy>=1.7,<2",
     "pre-commit>=3.6,<4",
@@ -118,7 +120,10 @@ monitoring = [
 all = [
     "psutil>=5.9.6,<6",
     "py-cpuinfo>=9.0,<10",
+    "distro>=1.8,<2",
+    "nvidia-ml-py>=12.535,<13",
     "gputil>=1.4,<2",
+    "pubgrub-py>=1.0,<2",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",
@@ -147,6 +152,10 @@ Changelog = "https://github.com/code-with-zeeshan/universal-dependency-resolver/
 
 [project.scripts]
 udr = "backend.cli:main"
+
+[project.entry-points."udr.plugins"]
+# Only third-party plugins need entry points.
+# Built-in plugins are registered via _register_builtin() in data_aggregator.py.
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

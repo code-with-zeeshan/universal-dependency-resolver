@@ -49,6 +49,8 @@ def detect_gpu_info(scanner) -> dict[str, Any]:
         "available": False,
         "devices": [],
         "cuda": _detect_cuda_info(scanner),
+        "rocm": _detect_rocm_info(scanner),
+        "intel_gpu": _detect_intel_gpu_info(scanner),
         "opencl": _detect_opencl_info(scanner),
         "vulkan": _detect_vulkan_info(scanner),
         "metal": _detect_metal_info(scanner) if platform.system() == "Darwin" else None,
@@ -143,7 +145,7 @@ def _parse_nvidia_smi(scanner) -> list[dict[str, Any]]:
             "--query-gpu=index,name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,driver_version",
             "--format=csv,noheader,nounits",
         ]
-        output = subprocess.check_output(query_cmd).decode()
+        output = subprocess.check_output(query_cmd, timeout=15).decode()
 
         for line in output.strip().split("\n"):
             if line:
@@ -191,6 +193,41 @@ def _detect_amd_gpus(scanner) -> list[dict[str, Any]]:
     return gpus
 
 
+def _detect_rocm_info(scanner) -> dict[str, Any] | None:
+    """Detect ROCm installation and version."""
+    rocm_info: dict[str, Any] = {"available": False, "version": None}
+
+    output = scanner._check_output(["rocm-smi", "--showversion"])
+    if output:
+        version_match = re.search(r"(\d+\.\d+\.\d+)", output)
+        if version_match:
+            rocm_info["version"] = version_match.group(1)
+            rocm_info["available"] = True
+            return rocm_info
+
+    version_file = Path("/opt/rocm/.version")
+    if version_file.exists():
+        content = scanner._safe_read_file(str(version_file))
+        if content:
+            version_match = re.search(r"(\d+\.\d+\.\d+)", content.strip())
+            if version_match:
+                rocm_info["version"] = version_match.group(1)
+                rocm_info["available"] = True
+                return rocm_info
+
+    lib_paths = ["/opt/rocm/lib", "/usr/lib/x86_64-linux-gnu"]
+    for lib_dir in lib_paths:
+        lib = Path(lib_dir) / "librocm-core.so*"
+        for match in Path(lib_dir).glob("librocm-core.so*"):
+            soname_match = re.search(r"librocm-core\.so\.(\d+\.\d+\.\d+)", str(match))
+            if soname_match:
+                rocm_info["version"] = soname_match.group(1)
+                rocm_info["available"] = True
+                return rocm_info
+
+    return rocm_info if rocm_info["available"] else None
+
+
 def _detect_intel_gpus(scanner) -> list[dict[str, Any]]:
     """Detect Intel GPUs."""
     gpus = []
@@ -207,6 +244,46 @@ def _detect_intel_gpus(scanner) -> list[dict[str, Any]]:
             )
 
     return gpus
+
+
+def _detect_intel_gpu_info(scanner) -> dict[str, Any] | None:
+    """Detect Intel GPU driver version."""
+    intel_info: dict[str, Any] = {"available": False, "version": None}
+
+    if platform.system() != "Linux":
+        return None
+
+    lsmod = scanner._check_output(["lsmod"])
+    if not lsmod or "i915" not in lsmod:
+        return None
+
+    intel_info["available"] = True
+
+    mod_ver = scanner._safe_read_file("/sys/module/i915/version")
+    if mod_ver:
+        version_match = re.search(r"(\d+\.\d+\.\d+)", mod_ver.strip())
+        if version_match:
+            intel_info["version"] = version_match.group(1)
+            return intel_info
+
+    lspci = scanner._check_output(["lspci", "-k"])
+    if lspci:
+        for line in lspci.split("\n"):
+            if "VGA" in line or "Display" in line:
+                kernel_match = re.search(r"Kernel driver in use: (\S+)", lspci)
+                if kernel_match:
+                    intel_info["driver"] = kernel_match.group(1)
+                continue
+
+    for drm_path in Path("/sys/class/drm").glob("card*"):
+        if drm_path.is_dir():
+            vendor = scanner._safe_read_file(str(drm_path / "device/vendor"))
+            if vendor and "0x8086" in vendor.strip():
+                dev_id = scanner._safe_read_file(str(drm_path / "device/device"))
+                if dev_id:
+                    intel_info["device_id"] = dev_id.strip()
+
+    return intel_info
 
 
 def _detect_cuda_info(scanner) -> dict[str, Any] | None:
@@ -341,7 +418,7 @@ def _detect_vulkan_info(scanner) -> dict[str, Any] | None:
 
 def _detect_metal_info(scanner) -> dict[str, Any] | None:
     """Detect Metal support (macOS)."""
-    metal_info = {"available": False}
+    metal_info: dict[str, Any] = {"available": False, "version": None}
 
     framework_path = "/System/Library/Frameworks/Metal.framework"
     if os.path.exists(framework_path):
@@ -349,7 +426,19 @@ def _detect_metal_info(scanner) -> dict[str, Any] | None:
         output = scanner._check_output(["system_profiler", "SPDisplaysDataType", "-json"])
         if output:
             try:
-                loads(output)
+                parsed = loads(output)
+                displays = parsed.get("SPDisplaysDataType", [])
+                if isinstance(displays, list):
+                    for display in displays:
+                        if isinstance(display, dict):
+                            metal_ver = display.get("spdisplays_metal_version")
+                            if metal_ver:
+                                version_match = re.search(
+                                    r"Metal\s*(\d+(?:\.\d+)?)", str(metal_ver)
+                                )
+                                if version_match:
+                                    metal_info["version"] = version_match.group(1)
+                                    break
             except JSONDecodeError as e:
                 logger.debug("system_profiler JSON parse failed: %s", e)
 

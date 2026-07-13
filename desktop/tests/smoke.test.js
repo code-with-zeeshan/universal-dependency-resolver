@@ -231,7 +231,7 @@ describe('Desktop smoke tests', () => {
         await launcher.waitForServer(`${baseUrl}/api/v1/health`, 25)
 
         const body = await new Promise((resolve, reject) => {
-          http.get(`${baseUrl}/api/v1/ecosystems`, res => {
+          http.get(`${baseUrl}/api/v1/packages/ecosystems`, res => {
             let data = ''
             res.on('data', chunk => { data += chunk })
             res.on('end', () => resolve(data))
@@ -291,7 +291,7 @@ describe('Desktop smoke tests', () => {
         await launcher.waitForServer(`${baseUrl}/api/v1/health`, 25)
 
         const body = await new Promise((resolve, reject) => {
-          http.get(`${baseUrl}/api/v1/packages/pypi/requests`, res => {
+          http.get(`${baseUrl}/api/v1/packages/pypi/requests/details`, res => {
             let data = ''
             res.on('data', chunk => { data += chunk })
             res.on('end', () => resolve(data))

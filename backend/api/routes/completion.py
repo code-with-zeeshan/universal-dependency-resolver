@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import PlainTextResponse
 
 from backend.api.auth import get_current_user
-from backend.cli.commands.completion import _ecosystem_list, _list_commands
+from backend.core.utils import CLI_COMMANDS
+from backend.settings import ACTIVE_ECOSYSTEMS
 
 router = APIRouter()
 
@@ -125,7 +126,7 @@ _{prog}_completion
 async def get_completion_script(
     shell: str,
     current_user=Depends(get_current_user),
-):
+) -> PlainTextResponse:
     """Generate a shell completion script for bash, zsh, or fish.
 
     Mirrors ``udr completion <shell>``.
@@ -137,8 +138,8 @@ async def get_completion_script(
             detail=f"Unsupported shell: {shell}. Choose from: {', '.join(_SHELL_SCRIPTS)}",
         )
 
-    cmds = _list_commands()
-    ecos = _ecosystem_list()
+    cmds = CLI_COMMANDS
+    ecos = ACTIVE_ECOSYSTEMS
     opts = " ".join(cmds)
     ecos_str = " ".join(ecos)
 

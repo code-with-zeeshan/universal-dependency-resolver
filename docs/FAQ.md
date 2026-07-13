@@ -17,7 +17,7 @@ UDR uses a multi-layered defense, not a single fix:
 - **Total Z3 variable cap**: `SOLVER_MAX_VARS=50000` — if exceeded, resolution fails gracefully rather than thrashing.
 - **Optimization threshold** (`conflict_resolver.py:788-800`): Above 100 packages, disables `z3.Optimize()` (minimization overhead) and uses plain `z3.Solver()`.
 - **Z3 timeout** (`conflict_resolver.py:802-805`): Set programmatically in ms (derived from `SOLVER_TIMEOUT`, default 120s). Z3 returns `unknown` → falls back to DFS backtracking (`_resolve_with_alternatives`) bounded by `max_nodes=50000`.
-- **PubGrub alternative** (`orchestrator/resolve.py:23-50`): Set `USE_PUBGRUB_SOLVER=true` to use CDCL-based PubGrub instead of Z3 — specialized dependency-resolution heuristics, no SMT overhead. Pure-Python implementation at `core/pubgrub_core.py` (661 lines) as fallback if Rust `pubgrub-py` isn't installed.
+- **AutoSolver** (`orchestrator/resolve.py:23-50`): Profiles the graph and delegates to PubGrub (default), Z3, or Hybrid solver. Set `USE_PUBGRUB_SOLVER=true` for PubGrub, `USE_Z3_SOLVER=true` for Z3, `USE_HYBRID_SOLVER=true` for per-ecosystem PubGrub + cross-ecosystem Z3. Pure-Python implementation at `core/pubgrub_core.py` (661 lines) as fallback if Rust `pubgrub-py` isn't installed.
 
 > *"Have you benchmarked UDR's resolution speeds against next-gen single-language package managers like Rust-based uv? If so, what strategies are you using to minimize Z3's memory footprint during massive multi-ecosystem resolutions?"*
 
@@ -29,7 +29,7 @@ Not directly benchmarked against `uv`, but internal measurements show SCC batch 
 
 > *"Right now, UDR resolves multiple distinct ecosystems (like PyPI and npm) simultaneously in a global Z3 optimization matrix. If a developer has an unresolvable version conflict in their frontend JavaScript setup, it will mathematically fail the entire global resolution, blocking their completely independent backend Python setup. Have you considered isolating or segmenting the evaluation spaces using sequential Z3 contexts (s.push() / s.pop()) unless an explicit cross-ecosystem bridge is declared?"*
 
-**This is a real limitation today.** UDR resolves all ecosystems in a **single Z3 optimization matrix** (`conflict_resolver.py:1113-1218`). Every package from every ecosystem contributes Z3 boolean variables to the same solver instance. Cross-ecosystem dependency edges (`Implies()` constraints) are semantically identical to same-ecosystem ones.
+UDR resolves per-ecosystem groups independently (via `_group_by_ecosystem()`), with a unified cross-ecosystem path for packages that span boundaries.
 
 The partial mitigation is **SCC decomposition**: if the dependency graph has no path connecting the PyPI and npm subgraphs, they fall into separate SCCs and resolve independently. In a monorepo where a Python script calls a Node microservice, those subgraphs are typically disconnected at the dependency level, so a conflict in one won't block the other. But if there's any shared transitive dep (e.g. both use `requests`/`express` or have a cross-ecosystem CUDA constraint collision), they merge into the same SCC and a conflict in one does block the other.
 
@@ -51,7 +51,7 @@ udr lock --device cuda --cuda 11.8       # CUDA 11.8 target
 ```
 These override `system_info["gpu"]` before it reaches the SAT solver. The API counterpart is the `GenerateLockRequest.system` field in the POST body.
 
-**No `--target`/`--platform` flag exists** for overriding OS, architecture (arm64 vs amd64), or Python version. The `SystemScanner` always auto-detects these at runtime. For proper cross-compilation targeting (e.g., lock file generated on macOS ARM for Linux CUDA deployment), teams currently must use `--cuda` + `--device` for GPU parts and accept that OS/arch auto-detection may not match the deploy target.
+**`--target`/`--platform` flags are available** (`TARGET_OS`, `TARGET_ARCH` env vars) for cross-compilation — override OS, architecture (arm64 vs amd64), or Python version. For proper cross-compilation targeting (e.g., lock file generated on macOS ARM for Linux CUDA deployment), use `--target linux --platform x86_64` together with `--cuda 12.1`.
 
 ---
 
@@ -110,7 +110,7 @@ Consistent across all commands: **0** = success/resolved, **1** = error/failure 
 
 > *"Can I use UDR as a Python library, not just a CLI?"*
 
-Yes. Import the factory: `from backend.orchestrator import create_solver`. Returns a `ConflictResolver` (Z3) or `PubGrubSolver` depending on `USE_PUBGRUB_SOLVER`. The `DataAggregator` and `SystemScanner` are also importable directly. See [COMPONENTS.md](COMPONENTS.md) for a code sample.
+Yes. Import the factory: `from backend.orchestrator import create_solver`. Returns an `AutoSolver` (default) which profiles the graph and delegates to Z3, PubGrub, or Hybrid solver. The `DataAggregator` and `SystemScanner` are also importable directly. See [COMPONENTS.md](COMPONENTS.md) for a code sample.
 
 > *"Does UDR support private registries and authentication?"*
 

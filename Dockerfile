@@ -29,8 +29,7 @@ ENV UDR_HOME=/home/udr \
     UDR_PORT=8000 \
     UDR_HOST=0.0.0.0 \
     ENV=production \
-    ENABLE_AUTH=true \
-    SECRET_KEY=change-me-in-production
+    ENABLE_AUTH=true
 
 EXPOSE 8000
 

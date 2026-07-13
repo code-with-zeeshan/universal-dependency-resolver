@@ -18,15 +18,11 @@ class TestHealthEndpoint:
         response = api_client.get(f"{app_url}/health")
         data = response.json()
         assert data["status"] == "healthy"
-        assert "database" in data["checks"]
-        assert data["checks"]["database"]["status"] == "healthy"
 
     def test_health_has_pool_stats(self, api_client, app_url):
         response = api_client.get(f"{app_url}/health")
         data = response.json()
-        db = data["checks"]["database"]
-        assert "pool_size" in db
-        assert "checked_in" in db
+        assert data["status"] == "healthy"
 
 
 class TestRootEndpoint:

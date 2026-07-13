@@ -199,6 +199,7 @@ class TestVerify:
                 return {"versions": {"pypi": [{"version": v} for v in versions.get(name, [])]}}
 
             agg.get_package_info = get_pkg_info
+            agg.close = AsyncMock()
             MockAgg.return_value = agg
             response = client.post("/api/v1/verify", json={"lock_data": SAMPLE_LOCK_DATA})
             assert response.status_code == 200
@@ -214,6 +215,7 @@ class TestVerify:
                 return {"versions": {"pypi": [{"version": "2.30.0"}]}}
 
             agg.get_package_info = get_pkg_info
+            agg.close = AsyncMock()
             MockAgg.return_value = agg
             response = client.post("/api/v1/verify", json={"lock_data": SAMPLE_LOCK_DATA})
             assert response.status_code == 200

@@ -14,7 +14,7 @@ udr serve --port 8000 --host 0.0.0.0
 ENABLE_AUTH=false UDR_PORT=8000 udr serve
 ```
 
-With auth disabled, all 33 business/infra endpoints are available immediately.
+With auth disabled, all 59 API routes are available immediately.
 
 ---
 
@@ -242,16 +242,18 @@ with httpx.Client() as client:
 | `POST /auth/login` | Get JWT |
 | `POST /auth/token` | OAuth2-compatible token endpoint |
 | `POST /auth/refresh` | Refresh JWT |
-| `GET /auth/me` | Current user info |
+| `GET /api/v1/auth/profile` | Current user info |
 | `PUT /auth/me` | Update profile |
-| `PUT /auth/password` | Change password |
+| `POST /api/v1/auth/change-password` | Change password |
 | `POST /auth/api-keys` | Create API key |
 | `GET /auth/api-keys` | List API keys |
 | `DELETE /auth/api-keys/{id}` | Revoke API key |
 | `POST /auth/logout` | Invalidate session |
-| `POST /auth/mfa/setup` | Enable 2FA |
-| `POST /auth/mfa/verify` | Verify 2FA code |
-| `POST /auth/recover` | Password recovery |
+| `POST /auth/check-email` | Check email availability |
+| `POST /auth/check-username` | Check username availability |
+| `POST /auth/gen-key` | Generate signing key |
+| `GET /auth/signing-key` | Get signing public key |
+| `POST /auth/verify` | Verify auth status |
 
 ---
 
@@ -259,9 +261,9 @@ with httpx.Client() as client:
 
 | Visibility | Count | Notes |
 |---|---|---|
-| Public (no auth) | 30 | 24 business + `/` + `/health` + 4 infra |
-| Auth-only | 14 | Only mounted when `ENABLE_AUTH=true` |
-| **Total** | **44** | |
+| Public (no auth) | 43 | Business + infra routes |
+| Auth-only | 16 | Only mounted when `ENABLE_AUTH=true` |
+| **Total** | **59** | |
 
 ---
 

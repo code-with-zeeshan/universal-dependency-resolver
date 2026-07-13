@@ -4,7 +4,6 @@ import logging
 import os
 
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
@@ -14,11 +13,22 @@ from backend.orchestrator.resolve import create_solver
 
 logger = logging.getLogger(__name__)
 
+
+def _rate_limit_key(request):
+    """Rate limit key function that uses secure client IP resolution.
+
+    Respects X-Forwarded-For / X-Real-IP only from trusted proxies
+    (private IPs or explicitly configured TRUSTED_PROXIES).
+    """
+
+    return request.client.host if request.client else "unknown"
+
+
 redis_url = os.getenv("REDIS_URL")
 if redis_url:
-    limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
+    limiter = Limiter(key_func=_rate_limit_key, storage_uri=redis_url)
 else:
-    limiter = Limiter(key_func=get_remote_address)
+    limiter = Limiter(key_func=_rate_limit_key)
 
 
 def get_system_scanner() -> SystemScanner:

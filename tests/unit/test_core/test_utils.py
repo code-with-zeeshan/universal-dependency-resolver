@@ -4,7 +4,6 @@ import pytest
 
 from backend.core.utils import (
     compare_versions,
-    extract_requirements,
     hash_system_info,
     is_compatible_version,
     normalize_package_name,
@@ -97,31 +96,6 @@ class TestNormalizePackageName:
 
     def test_already_normalized(self):
         assert normalize_package_name("requests") == "requests"
-
-
-class TestExtractRequirements:
-    def test_requirements_txt_simple(self):
-        content = "requests>=2.0.0\nflask\n# comment\n\nnumpy==1.24"
-        result = extract_requirements(content, "requirements.txt")
-        assert len(result) == 3
-        assert result[0]["name"] == "requests"
-        assert result[1]["name"] == "flask"
-        assert result[2]["name"] == "numpy"
-
-    def test_requirements_txt_empty(self):
-        assert extract_requirements("", "requirements.txt") == []
-
-    def test_environment_yml(self):
-        result = extract_requirements(
-            "dependencies:\n  - numpy\n  - pandas>=1.0\n", "environment.yml"
-        )
-        names = [r["name"] for r in result]
-        assert "numpy" in names
-        assert "pandas" in names
-
-    def test_unknown_file_type(self):
-        result = extract_requirements("anything\n", "unknown.txt")
-        assert result == []
 
 
 class TestHashSystemInfo:

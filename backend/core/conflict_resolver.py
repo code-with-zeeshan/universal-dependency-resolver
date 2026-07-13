@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import copy
 import hashlib
 import logging
-import os
 import platform
 import re
 import threading
@@ -22,7 +22,19 @@ from ._json import dumps
 if TYPE_CHECKING:
     import z3
 
-from backend.settings import CACHE_TTL, SOLVER_MAX_VARIABLES
+from backend.settings import (
+    CACHE_TTL,
+    SOLVER_DFS_MAX_NODES,
+    SOLVER_MAX_CLUSTERS,
+    SOLVER_MAX_CLUSTERS_MAX,
+    SOLVER_MAX_CLUSTERS_MIN,
+    SOLVER_MAX_VARIABLES,
+    SOLVER_OPTIMIZATION_THRESHOLD,
+    SOLVER_PRERELEASE_PENALTY,
+)
+from backend.settings import (
+    USE_Z3_OPTIMIZE as USE_OPTIMIZATION,
+)
 from backend.utils.errors import (
     ResolverError,
     ResolverErrorCode,
@@ -31,6 +43,7 @@ from backend.utils.errors import (
 )
 
 from .cache import cached
+from .constraint_normalizer import normalize_version
 from .utils import (
     compare_versions,
     is_compatible_version,
@@ -40,17 +53,28 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-SOLVER_MAX_VARS = int(os.environ.get("SOLVER_MAX_VARS", "50000"))
-SOLVER_MAX_CLUSTERS = int(os.environ.get("SOLVER_MAX_CLUSTERS", "5"))
-SOLVER_MAX_CLUSTERS_MIN = int(os.environ.get("SOLVER_MAX_CLUSTERS_MIN", "3"))
-SOLVER_MAX_CLUSTERS_MAX = int(os.environ.get("SOLVER_MAX_CLUSTERS_MAX", "20"))
-SOLVER_PRERELEASE_PENALTY = int(os.environ.get("SOLVER_PRERELEASE_PENALTY", "100000"))
-USE_OPTIMIZATION = os.environ.get("USE_Z3_OPTIMIZE", "true").lower() == "true"
-SOLVER_OPTIMIZATION_THRESHOLD = int(os.environ.get("SOLVER_OPTIMIZATION_THRESHOLD", "100"))
+
+def _get_gpu_version(system_info: dict, gpu_type: str) -> str:
+    """Extract GPU version string from system_info for a given GPU type.
+
+    Handles both plain-string (CLI override) and dict (auto-detection) formats.
+    """
+    gpu = system_info.get("gpu", {})
+    if not isinstance(gpu, dict):
+        return ""
+    val = gpu.get(gpu_type)
+    if val is None:
+        return ""
+    if isinstance(val, dict):
+        return val.get("version", "")
+    if isinstance(val, str):
+        return val
+    return ""
+
 
 # Data-driven conflict rules: each rule specifies incompatible version ranges
 # across packages or ecosystems.  Used by _add_conflict_constraints().
-CONFLICT_RULES: list[dict[str, Any]] = [
+CONFLICT_RULES: tuple[dict[str, Any], ...] = (
     {
         "id": "cuda 11.x vs cuda 12.x",
         "type": "cuda",
@@ -71,13 +95,77 @@ CONFLICT_RULES: list[dict[str, Any]] = [
         },
     },
     {
+        "id": "rocm 5.x vs rocm 6.x",
+        "type": "rocm",
+        "constraint_a": {
+            "field": "system_requirements.rocm.min_version",
+            "op": ">=",
+            "value": "5.0.0",
+        },
+        "constraint_b": {
+            "field": "system_requirements.rocm.min_version",
+            "op": ">=",
+            "value": "6.0.0",
+        },
+        "mutually_exclusive_with": {
+            "field": "system_requirements.rocm.min_version",
+            "op": ">=",
+            "value": "6.0.0",
+        },
+    },
+    {
         "id": "tensorflow vs numpy upper bound",
         "type": "dependency",
         "description": "tensorflow 2.15+ requires numpy <1.28",
         "packages": ["tensorflow"],
         "constraint": {"numpy": "<1.28"},
     },
-]
+)
+
+
+_APK_RE = re.compile(r"^(\d[\w.]*)-r\d+$")
+
+
+def _is_apk_version(v: str) -> bool:
+    return bool(_APK_RE.match(v))
+
+
+def _cluster_versions_static(versions: list[str], max_clusters: int = 100) -> list[str]:
+    """Group versions by major.minor, keep latest stable per cluster.
+
+    Standalone version of ConflictResolver._cluster_versions for use
+    by PubGrub solver and other non-Z3 consumers.
+    """
+    if len(versions) <= max_clusters:
+        return versions
+    parsed_pairs: list[tuple[str, Any]] = []
+    for ver in versions:
+        p = parse_version(ver)
+        if p:
+            parsed_pairs.append((ver, p))
+    if not parsed_pairs:
+        return versions[:max_clusters]
+    parsed_pairs.sort(key=lambda x: x[1], reverse=True)
+    clusters: dict[str, list[tuple[str, Any]]] = {}
+    for ver, p in parsed_pairs:
+        key = f"{p.major}.{p.minor}"
+        clusters.setdefault(key, []).append((ver, p))
+    sorted_keys = sorted(
+        clusters.keys(),
+        key=lambda k: [int(x) for x in k.split(".")],
+        reverse=True,
+    )
+    result = []
+    for key in sorted_keys[:max_clusters]:
+        entries = clusters[key]
+        stable = [(v, p) for v, p in entries if not p.is_prerelease]
+        if stable:
+            result.append(stable[0][0])
+        else:
+            result.append(entries[0][0])
+    if not result:
+        return versions[:max_clusters]
+    return result
 
 
 class ConflictResolver:
@@ -106,7 +194,17 @@ class ConflictResolver:
         self.offline_mode = False
         self._batch_active = False
         self._name_map: dict[str, str] = {}
+        self._node_by_name: dict[str, str] = {}
+        self._var_to_version: dict[str, str] = {}
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._resolve_lock = threading.Lock()
+
+    def close(self) -> None:
+        """Shut down the thread pool executor, releasing its worker threads."""
+        with self._resolve_lock:
+            if self._executor is not None:
+                self._executor.shutdown(wait=True)
+                self._executor = None
 
     @property
     def solver(self):
@@ -139,8 +237,19 @@ class ConflictResolver:
         }
         if system_info:
             gpu = system_info.get("gpu", {})
-            if gpu:
-                ctx["cuda"] = gpu.get("cuda")
+            if isinstance(gpu, dict):
+                for gpu_type in ("cuda", "rocm", "intel_gpu", "metal"):
+                    val = gpu.get(gpu_type)
+                    if val is None:
+                        continue
+                    if isinstance(val, dict):
+                        ver = val.get("version", "")
+                    elif isinstance(val, str):
+                        ver = val
+                    else:
+                        continue
+                    if ver:
+                        ctx[gpu_type] = ver
             rt = system_info.get("runtime_versions", {})
             py = rt.get("python", {})
             if py:
@@ -180,6 +289,7 @@ class ConflictResolver:
         self.int_to_version = {}
         self._version_weights = []
         self._minimization_added = False
+        self._var_to_version = {}
 
         # Guard: reject if total available versions exceed SOLVER_MAX_VARIABLES
         total_versions = sum(len(pkg.get("available_versions", []) or []) for pkg in packages)
@@ -247,7 +357,16 @@ class ConflictResolver:
             if eco_result is not None:
                 return eco_result
 
-            constraints = self._create_constraints(normalized_packages, system_info)
+            try:
+                constraints = self._create_constraints(normalized_packages, system_info)
+            except RuntimeError as e:
+                logger.error("Constraint creation failed: %s", e)
+                return {
+                    "status": "unsatisfiable",
+                    "error": str(e),
+                    "packages": {},
+                    "warnings": [str(e)],
+                }
             logger.debug(
                 "Constraints prepared",
                 extra={
@@ -356,6 +475,8 @@ class ConflictResolver:
 
             resolved_versions: dict[str, str] = {}
             all_results: dict[str, dict] = {}
+            scc_failures: int = 0
+            total_sccs: int = len(topo_order)
 
             logger.info(
                 "Batch resolving %d SCCs from dependency graph",
@@ -408,12 +529,16 @@ class ConflictResolver:
                             extra={"event": "scc_unsat", "scc_id": scc_id},
                         )
                         alt_result = self._resolve_with_alternatives(pkgs, system_info)
-                        for pname, pinfo in alt_result.get("packages", {}).items():
+                        alt_pkgs = alt_result.get("packages", {})
+                        for pname, pinfo in alt_pkgs.items():
                             ver = pinfo.get("version", "")
                             if ver:
                                 resolved_versions[pname] = ver
                             all_results[pname] = pinfo
+                        if not alt_pkgs:
+                            scc_failures += 1
                 except Exception as exc:
+                    scc_failures += 1
                     logger.warning(
                         "SCC %d resolution failed: %s",
                         scc_id,
@@ -426,14 +551,21 @@ class ConflictResolver:
             if not all_results:
                 return None
 
+            status = "partial" if scc_failures > 0 else "satisfiable"
+            warnings_list = (
+                [f"{scc_failures}/{total_sccs} SCCs failed — partial resolution"]
+                if scc_failures > 0
+                else []
+            )
+
             return {
-                "status": "satisfiable",
+                "status": status,
                 "resolved_packages": all_results,
-                "dependency_tree": {},
-                "warnings": [],
+                "dependency_tree": self._build_dependency_tree(all_results),
+                "warnings": warnings_list,
                 "installation_order": list(all_results.keys()),
                 "batch_resolved": True,
-                "scc_count": len(topo_order),
+                "scc_count": total_sccs,
             }
 
         except Exception as exc:
@@ -538,7 +670,7 @@ class ConflictResolver:
         return {
             "status": "satisfiable",
             "resolved_packages": all_results,
-            "dependency_tree": {},
+            "dependency_tree": self._build_dependency_tree(all_results),
             "warnings": [],
             "installation_order": list(all_results.keys()),
             "eco_isolation": True,
@@ -651,10 +783,10 @@ class ConflictResolver:
             package_data.append(sorted_pkg)
 
         # Create system info hash
-        system_hash = hashlib.md5(dumps(system_info, sort_keys=True).encode()).hexdigest()
+        system_hash = hashlib.sha256(dumps(system_info, sort_keys=True).encode()).hexdigest()
 
         # Create packages hash
-        packages_hash = hashlib.md5(dumps(package_data, sort_keys=True).encode()).hexdigest()
+        packages_hash = hashlib.sha256(dumps(package_data, sort_keys=True).encode()).hexdigest()
 
         return f"resolution:{packages_hash}:{system_hash}"
 
@@ -672,20 +804,22 @@ class ConflictResolver:
         Redis-based caching for improved performance on repeated requests.
         """
         # Run the synchronous resolution in a thread pool to avoid blocking
-        import concurrent.futures
         import functools
 
+        if self._executor is None:
+            with self._resolve_lock:
+                if self._executor is None:
+                    self._executor = concurrent.futures.ThreadPoolExecutor()
         loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            func = functools.partial(
-                self._resolve_dependencies_sync,
-                packages,
-                system_info,
-                prefer_compatibility,
-                solver_timeout,
-            )
-            result = await loop.run_in_executor(executor, func)
-            return result
+        func = functools.partial(
+            self._resolve_dependencies_sync,
+            packages,
+            system_info,
+            prefer_compatibility,
+            solver_timeout,
+        )
+        result = await loop.run_in_executor(self._executor, func)
+        return result
 
     def _resolve_dependencies_sync(
         self,
@@ -742,6 +876,7 @@ class ConflictResolver:
 
         normalized_packages: list[dict[str, Any]] = []
         normalization_failures: list[dict[str, Any]] = []
+        dropped_names: set[str] = set()
 
         for index, package in enumerate(packages):
             if not isinstance(package, dict):
@@ -772,6 +907,7 @@ class ConflictResolver:
                         **context,
                     },
                 )
+                dropped_names.add(normalize_package_name(package.get("name", "")))
                 continue
 
             normalized_name = normalize_package_name(package["name"])
@@ -779,7 +915,13 @@ class ConflictResolver:
             normalized_package["name"] = normalized_name
             # Preserve original name so output uses the non-normalized form
             if normalized_name != package["name"]:
-                normalized_package["_original_name"] = package["name"]
+                if normalized_name in self._name_map:
+                    logger.warning(
+                        "Package name collision: %s -> %s (was %s) — display name may be incorrect",
+                        package["name"],
+                        normalized_name,
+                        self._name_map[normalized_name],
+                    )
                 self._name_map[normalized_name] = package["name"]
 
             dependencies = normalized_package.get("dependencies", {})
@@ -817,6 +959,38 @@ class ConflictResolver:
                 code=ResolverErrorCode.VALIDATION_ERROR,
                 details={"failures": normalization_failures, **context},
             )
+
+        # Check for orphaned dependencies: remaining packages that depend on
+        # a dropped package (one with zero available versions). Remove them
+        # iteratively so cascading orphans are caught — a package whose
+        # transitive dependency was dropped must also be removed, otherwise
+        # the solver silently drops the dangling edge.
+        if dropped_names:
+            all_dropped: set[str] = set(dropped_names)
+            while True:
+                new_orphans: list[str] = []
+                for pkg in normalized_packages:
+                    if pkg["name"] in all_dropped:
+                        continue
+                    for eco_deps in pkg.get("dependencies", {}).values():
+                        for dep_name in eco_deps:
+                            if dep_name in all_dropped:
+                                new_orphans.append(pkg["name"])
+                                break
+                        if pkg["name"] in new_orphans:
+                            break
+                if not new_orphans:
+                    break
+                for name in new_orphans:
+                    all_dropped.add(name)
+                    logger.warning(
+                        "Package %s depends on dropped package (no versions available) — "
+                        "marked unsatisfiable",
+                        name,
+                    )
+                normalized_packages = [
+                    p for p in normalized_packages if p["name"] not in all_dropped
+                ]
 
         return normalized_packages
 
@@ -890,6 +1064,9 @@ class ConflictResolver:
 
             gpu_info.setdefault("available", bool(gpu_info.get("cuda")))
             gpu_info.setdefault("cuda", None)
+            gpu_info.setdefault("rocm", None)
+            gpu_info.setdefault("intel_gpu", None)
+            gpu_info.setdefault("metal", None)
 
             context["resolved_system_info"] = {
                 "os": resolved_system_info.get("os"),
@@ -1143,28 +1320,54 @@ class ConflictResolver:
     def _build_dependency_graph(self, packages: list[dict]):
         """Build a graph of package dependencies, including cross-ecosystem deps."""
         self.dependency_graph.clear()
+        self._node_by_name.clear()
+
+        # Collect Go replace rules across all root packages
+        go_replace: dict[str, str] = {}
+        for package in packages:
+            pkg_replace = package.get("_go_replace", None)
+            if pkg_replace and isinstance(pkg_replace, dict):
+                go_replace.update(pkg_replace)
 
         for package in packages:
             # Package name is already normalized in resolve_dependencies
             pkg_id = f"{package['name']}@{package.get('ecosystem', 'unknown')}"
+            # Detect cross-ecosystem name collisions — two packages from different
+            # ecosystems with names that normalize to the same string.
+            existing = self._node_by_name.get(package["name"])
+            if existing and existing != pkg_id:
+                logger.warning(
+                    "Name collision detected: %s (existing=%s, new=%s) — "
+                    "two packages across ecosystems share the same normalized name",
+                    package["name"],
+                    existing,
+                    pkg_id,
+                )
+            self._node_by_name[package["name"]] = pkg_id
             self.dependency_graph.add_node(pkg_id, **package)
 
-            # Add dependencies as edges
+            # Add dependencies as edges, applying Go replace remapping
             for dep_ecosystem, deps in package.get("dependencies", {}).items():
                 for dep_name, dep_constraint in deps.items():
-                    dep_id = f"{dep_name}@{dep_ecosystem}"
+                    effective_name = dep_name
+                    if dep_ecosystem == "gomodules" and dep_name in go_replace:
+                        effective_name = go_replace[dep_name]
+                    dep_id = f"{effective_name}@{dep_ecosystem}"
                     self.dependency_graph.add_edge(pkg_id, dep_id, constraint=dep_constraint)
 
             # Add cross-ecosystem dependency edges
             for xdep in package.get("cross_ecosystem_deps", []):
                 target_eco = xdep.get("target_ecosystem", package.get("ecosystem", "unknown"))
-                dep_name = xdep.get("dependency", "")
+                dep_name = xdep.get("name") or xdep.get("dependency", "")
                 if dep_name:
+                    if target_eco == "gomodules" and dep_name in go_replace:
+                        dep_name = go_replace[dep_name]
                     dep_id = f"{dep_name}@{target_eco}"
+                    constraint = xdep.get("constraint") or xdep.get("version_spec", "*")
                     self.dependency_graph.add_edge(
                         pkg_id,
                         dep_id,
-                        constraint=xdep.get("version_spec", "*"),
+                        constraint=constraint,
                         cross_ecosystem=True,
                     )
 
@@ -1199,43 +1402,10 @@ class ConflictResolver:
     def _cluster_versions(self, versions: list[str]) -> list[str]:
         """Group versions by major.minor, keep latest stable per cluster.
 
-        Keeps at most SOLVER_MAX_CLUSTERS clusters (dynamic: scales with
-        sqrt of version count), each with the latest stable version.
-        If a cluster has no stable version, the latest pre-release is kept
-        as fallback.  If the list is short (<=10) and most versions are
-        same major, return as-is.
+        Delegates to standalone :func:`_cluster_versions_static`.
         """
         max_clusters = self._get_max_clusters(len(versions))
-        if len(versions) <= max_clusters:
-            return versions
-        parsed_pairs: list[tuple[str, Any]] = []
-        for ver in versions:
-            p = parse_version(ver)
-            if p:
-                parsed_pairs.append((ver, p))
-        if not parsed_pairs:
-            return versions[:max_clusters]
-        parsed_pairs.sort(key=lambda x: x[1], reverse=True)
-        clusters: dict[str, list[tuple[str, Any]]] = {}
-        for ver, p in parsed_pairs:
-            key = f"{p.major}.{p.minor}"
-            clusters.setdefault(key, []).append((ver, p))
-        sorted_keys = sorted(
-            clusters.keys(),
-            key=lambda k: [int(x) for x in k.split(".")],
-            reverse=True,
-        )
-        result = []
-        for key in sorted_keys[:max_clusters]:
-            entries = clusters[key]
-            stable = [(v, p) for v, p in entries if not self._is_prerelease(v)]
-            if stable:
-                result.append(stable[0][0])
-            else:
-                result.append(entries[0][0])
-        if not result:
-            return versions[:SOLVER_MAX_CLUSTERS]
-        return result
+        return _cluster_versions_static(versions, max_clusters=max_clusters)
 
     def _create_version_mapping(self, package_name: str, versions: list[str]):
         """Create integer mapping for versions to use in Z3."""
@@ -1268,6 +1438,14 @@ class ConflictResolver:
         self._version_weights = []
         self._minimization_added = False
         self._candidate_lists: dict[str, list[str]] = {}
+        self._sys_python_version = (
+            system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+        )
+        sys_gpu = system_info.get("gpu", {})
+        self._sys_cuda_version = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+        self._sys_rocm_version = _get_gpu_version(system_info, "rocm")
+        self._sys_intel_gpu_version = _get_gpu_version(system_info, "intel_gpu")
+        self._sys_metal_version = _get_gpu_version(system_info, "metal")
 
         # Variable for each package version
         total_vars = 0
@@ -1298,16 +1476,39 @@ class ConflictResolver:
                             spec_str = "*"
                 constraint = spec_str
 
+            sys_py = system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+            ver_python_reqs = package.get("version_requires_python", {})
+            sys_reqs = package.get("system_requirements", {})
+            python_req = sys_reqs.get("python", {})
+            min_python = python_req.get("min_version", "")
+            cuda_req = sys_reqs.get("cuda", {})
+            min_cuda = cuda_req.get("min_version", "")
+
             def _build_vars(ver_list, pkg_name=pkg_name, constraint=constraint, package=package):
                 vars_list = []
                 self._create_version_mapping(pkg_name, ver_list)
+                pkg_eco = package.get("ecosystem", "pypi")
                 for v in ver_list:
-                    if constraint != "*" and not is_compatible_version(v, constraint):
+                    norm_v = normalize_version(v, pkg_eco)
+                    if constraint != "*" and not is_compatible_version(norm_v, constraint):
+                        continue
+                    # Skip version if Python requirement is incompatible
+                    py_req = ver_python_reqs.get(v)
+                    if py_req and sys_py:
+                        try:
+                            from packaging.specifiers import SpecifierSet
+
+                            if sys_py not in SpecifierSet(py_req):
+                                continue
+                        except Exception:
+                            pass
+                    elif sys_py and min_python and compare_versions(sys_py, min_python) < 0:
                         continue
                     var_name = f"{pkg_name}_{v}"
                     var = z3.Bool(var_name)
                     vars_list.append(var)
                     self.version_vars[var_name] = var
+                    self._var_to_version[str(var)] = v
                     sorted_idx = self.version_to_int.get(var_name, 0)
                     total_vers = len(ver_list)
                     weight = total_vers - sorted_idx
@@ -1320,6 +1521,15 @@ class ConflictResolver:
                         )
                 return vars_list
 
+            # Build full candidate list (all constraint-compatible versions, unclustered)
+            # for _upgrade_to_latest post-processing — avoids clustering blindness
+            full_candidates: list[str] = []
+            for v in versions:
+                if constraint != "*" and not is_compatible_version(v, constraint):
+                    continue
+                full_candidates.append(v)
+            self._candidate_lists[pkg_name] = full_candidates if full_candidates else versions
+
             version_vars = _build_vars(clustered)
             versions_used = clustered
 
@@ -1329,27 +1539,40 @@ class ConflictResolver:
                 version_vars = _build_vars(versions)
                 versions_used = versions
 
-            # No compatible versions at all — skip this package
+            # No compatible versions at all — create a sentinel variable that is always False.
+            # This ensures packages depending on this one become unsatisfiable
+            # instead of silently dropping the dependency from the lock file.
             if not version_vars:
-                continue
+                sentinel_var = z3.Bool(f"{pkg_name}_no_compatible_version")
+                self.solver.add(z3.Not(sentinel_var))
+                version_vars = [sentinel_var]
+                versions_used = []
+                logger.warning(f"No compatible version for {pkg_name} — marking unsatisfiable")
             package["available_versions"] = versions_used
-            self._candidate_lists[pkg_name] = versions_used
 
+            if pkg_name in constraints["package_versions"]:
+                logger.warning(
+                    "Solver variable collision: %s appears twice with different ecosystems — "
+                    "share a single set of version variables",
+                    pkg_name,
+                )
             constraints["package_versions"][pkg_name] = version_vars
             total_vars += len(version_vars)
 
             # Max-vars guard to prevent memory blowup on huge graphs
-            if total_vars > SOLVER_MAX_VARS:
+            if total_vars > SOLVER_MAX_VARIABLES:
                 logger.warning(
-                    f"Solver variable limit ({SOLVER_MAX_VARS}) reached at {total_vars} vars, "
-                    f"limiting further package versions. "
-                    f"Increase with --max-vars N or SOLVER_MAX_VARS=N env var",
+                    f"Solver variable limit ({SOLVER_MAX_VARIABLES}) exceeded at {total_vars} vars — "
+                    f"resolution aborted. Increase with SOLVER_MAX_VARIABLES=N env var",
                     extra={
                         "event": "solver_max_vars_reached",
                         "total_vars": total_vars,
                     },
                 )
-                break
+                raise RuntimeError(
+                    f"Solver variable limit ({SOLVER_MAX_VARIABLES}) exceeded — "
+                    f"cannot guarantee correct resolution. Increase SOLVER_MAX_VARIABLES."
+                )
 
             # Exactly one version must be selected
             self.solver.add(z3.Or(version_vars))
@@ -1374,35 +1597,39 @@ class ConflictResolver:
         import z3
 
         for req_type, req_value in requirements.items():
-            if req_type == "cuda" and "gpu" in system_info:
-                if system_info["gpu"]["cuda"]:
-                    system_cuda = parse_version(system_info["gpu"]["cuda"])
-                    required_cuda = parse_version(req_value.get("min_version", "0.0"))
-
-                    if (
-                        system_cuda
-                        and required_cuda
-                        and (
-                            compare_versions(
-                                system_info["gpu"]["cuda"],
-                                req_value.get("min_version", "0.0"),
-                            )
-                            < 0
-                        )
-                    ):
-                        # This version cannot be selected
-                        self.solver.add(z3.Not(version_var))
-
-            elif req_type == "python" and "runtime_versions" in system_info:
-                system_python_str = system_info["runtime_versions"]["python"]["version"]
-                if "min_version" in req_value and (
-                    compare_versions(system_python_str, req_value["min_version"]) < 0
-                ):
+            if req_type in ("cuda", "gpu"):
+                min_ver = req_value.get("min_version", "") if isinstance(req_value, dict) else ""
+                if not min_ver:
+                    continue
+                sys_gpu = system_info.get("gpu", {})
+                sys_cuda = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+                if not sys_cuda or compare_versions(sys_cuda, min_ver) < 0:
+                    self.solver.add(z3.Not(version_var))
+            elif req_type in ("rocm", "intel_gpu", "metal"):
+                min_ver = req_value.get("min_version", "") if isinstance(req_value, dict) else ""
+                if not min_ver:
+                    continue
+                sys_ver = _get_gpu_version(system_info, req_type)
+                if not sys_ver or compare_versions(sys_ver, min_ver) < 0:
+                    self.solver.add(z3.Not(version_var))
+            elif req_type == "os":
+                allowed = req_value if isinstance(req_value, list) else [req_value]
+                sys_os = system_info.get("os", "unknown")
+                if sys_os not in allowed and "any" not in allowed:
+                    self.solver.add(z3.Not(version_var))
+            elif req_type == "arch":
+                allowed = req_value if isinstance(req_value, list) else [req_value]
+                sys_arch = system_info.get("architecture", "unknown")
+                if sys_arch not in allowed and "any" not in allowed:
                     self.solver.add(z3.Not(version_var))
 
     def _add_dependency_constraints(self, constraints: dict):
         """Add constraints for package dependencies."""
         import z3
+
+        # Pre-compute compatible dep version cache across all edges.
+        # Maps (dep_name, parsed_constraint) -> list of valid dep_var_refs.
+        compat_cache: dict[tuple[str, str], list] = {}
 
         for node in self.dependency_graph.nodes():
             node_data = self.dependency_graph.nodes[node]
@@ -1440,40 +1667,40 @@ class ConflictResolver:
                             continue
 
                 # Get successor package info
-                dep_name = successor_data.get("name", successor.split("@")[0])
+                dep_name = successor_data.get("name", successor.split("@", 1)[-1])
+
+                # Build compat cache entry lazily (once per unique dep_name+constraint)
+                cache_key = (dep_name, parsed_constraint)
+                if cache_key not in compat_cache:
+                    valid = []
+                    if dep_name in constraints["package_versions"]:
+                        for dep_var in constraints["package_versions"][dep_name]:
+                            dep_version = self._var_to_version.get(
+                                str(dep_var), str(dep_var).split("_")[-1]
+                            )
+                            norm_dep_version = normalize_version(dep_version, dep_eco)
+                            dep_var_ref = self.version_vars.get(str(dep_var))
+                            if dep_var_ref is not None and is_compatible_version(
+                                norm_dep_version, parsed_constraint
+                            ):
+                                valid.append(dep_var_ref)
+                    compat_cache[cache_key] = valid
 
                 # For each version of the dependent package
                 if pkg_name in constraints["package_versions"]:
+                    valid_dep_vars = compat_cache[cache_key]
+
                     for pkg_var in constraints["package_versions"][pkg_name]:
-                        str(pkg_var).split("_")[-1]
                         pkg_var_ref = self.version_vars.get(str(pkg_var))
 
-                        if pkg_var_ref is not None and dep_name in constraints["package_versions"]:
-                            # Create constraint: if this package version is selected,
-                            # then dependency must satisfy version constraint
-                            valid_dep_vars = []
-
-                            for dep_var in constraints["package_versions"][dep_name]:
-                                dep_version = str(dep_var).split("_")[-1]
-                                dep_var_ref = self.version_vars.get(str(dep_var))
-
-                                # Use is_compatible_version for checking
-                                if dep_var_ref is not None and is_compatible_version(
-                                    dep_version, parsed_constraint
-                                ):
-                                    valid_dep_vars.append(dep_var_ref)
-
+                        if pkg_var_ref is not None:
                             if valid_dep_vars:
-                                # If package is selected, one of the valid dependency versions must be selected
                                 self.solver.add(z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars)))
                             elif (
                                 dep_name in constraints["package_versions"]
                                 and constraints["package_versions"][dep_name]
                             ):
-                                # No valid dependency version satisfies the constraint
-                                # → this package version cannot be selected
                                 self.solver.add(z3.Not(pkg_var_ref))
-                            # else: dep has zero available versions → skip constraint silently
 
     def _get_pkg_field(self, package: dict, field_path: str) -> Any:
         """Get a nested field value from a package dict by dot-separated path."""
@@ -1488,8 +1715,9 @@ class ConflictResolver:
     def _add_conflict_constraints(self, packages: list[dict], constraints: dict):
         """Add known conflict constraints from data-driven CONFLICT_RULES.
 
-        For CUDA-type rules: finds packages whose cuda.min_version falls into each
-        of two ranges and adds cross-product conflict constraints between them.
+        For version-range-type rules (cuda, rocm, etc.): finds packages whose
+        system_requirements.<type>.min_version falls into each of two ranges and
+        adds cross-product conflict constraints between them.
         For dependency-type rules: adds version constraints on specific deps.
         """
         import z3
@@ -1523,7 +1751,9 @@ class ConflictResolver:
                 if op == "!=":
                     return cmp != 0
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to compare version constraint %s %s %s", val, op, target, exc_info=True
+                )
             return False
 
         def _in_range(pkg: dict, lo_constraint: dict, hi_constraint: dict) -> bool:
@@ -1538,7 +1768,7 @@ class ConflictResolver:
 
         for rule in CONFLICT_RULES:
             rule_type = rule.get("type")
-            if rule_type == "cuda":
+            if rule_type in ("cuda", "rocm"):
                 constraint_a = rule.get("constraint_a", {})
                 constraint_b = rule.get("constraint_b", {})
                 exclusive = rule.get("mutually_exclusive_with", {})
@@ -1565,6 +1795,9 @@ class ConflictResolver:
                     ):
                         group_b.append(pkg["name"])
 
+                # Guard CUDA cross-product: skip if too many combinations
+                if len(group_a) * len(group_b) > 500:
+                    continue
                 for pkg_a in group_a:
                     for pkg_b in group_b:
                         if pkg_a == pkg_b:
@@ -1639,7 +1872,7 @@ class ConflictResolver:
                 for var in version_vars:
                     var_ref = self.version_vars.get(str(var))
                     if var_ref is not None and z3.is_true(model.eval(var_ref)):
-                        version_str = str(var).split("_", 1)[-1]
+                        version_str = self._var_to_version.get(str(var), str(var).split("_", 1)[-1])
                         # Use original name if available
                         display_name = self._name_map.get(pkg_name, pkg_name)
                         solution["packages"][display_name] = {
@@ -1648,10 +1881,18 @@ class ConflictResolver:
                         }
                         break
 
+            # Fold deprecation/yanked warnings into solution
+            dep_warnings = getattr(self, "_deprecation_warnings", [])
+            if dep_warnings:
+                solution.setdefault("warnings", []).extend(dep_warnings)
+
             # Post-process: when optimization is not actually active, upgrade
             # each package to the newest candidate that satisfies all constraints.
             if not getattr(self, "_optimization_active", self._use_optimization):
-                self._upgrade_to_latest(solution, constraints)
+                try:
+                    self._upgrade_to_latest(solution, constraints)
+                except (KeyError, AttributeError):
+                    logger.debug("Upgrade-to-latest skipped (missing solver state)")
 
             return solution
         if result == z3.unknown:
@@ -1670,8 +1911,11 @@ class ConflictResolver:
         versions. This method tries each package's newer candidates and keeps the
         upgrade if all dependency constraints remain satisfied.
         """
+        candidates = getattr(self, "_candidate_lists", None)
+        if candidates is None or len(candidates) > 300:
+            return
         pkgs = solution.get("packages", {})
-        if not pkgs or not self._candidate_lists:
+        if not pkgs:
             return
 
         from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -1709,6 +1953,24 @@ class ConflictResolver:
                 if parsed and parsed != "*":
                     dep_edges.append((src_name, dep_name, parsed, dep_eco))
 
+        # Per-version Python requirements, own-version constraints, and CUDA system requirements
+        ver_python_reqs: dict[str, dict[str, str]] = {}
+        own_constraints: dict[str, str] = {}
+        pkg_sys_reqs: dict[str, dict] = {}
+        for node in self.dependency_graph.nodes():
+            nd = self.dependency_graph.nodes[node]
+            name = nd.get("name")
+            if name:
+                vpr = nd.get("version_requires_python", {})
+                if isinstance(vpr, dict):
+                    ver_python_reqs[name] = vpr
+                vc = nd.get("version_constraint", "")
+                if vc and vc != "*":
+                    own_constraints[name] = vc
+                sr = nd.get("system_requirements", {})
+                if isinstance(sr, dict):
+                    pkg_sys_reqs[name] = sr
+
         def _check_version(v: str, constraint: str, eco: str) -> bool:
             try:
                 spec = SpecifierSet(constraint)
@@ -1741,6 +2003,56 @@ class ConflictResolver:
             for c in candidates:
                 if c == current_ver:
                     break  # candidates are sorted newest-first; past current = older
+                # Check own-version constraint (e.g. numpy>=1.20,<1.25)
+                own_con = own_constraints.get(pkg_name)
+                if own_con and not _check_version(c, own_con, pkg_eco.get(pkg_name, "pypi")):
+                    continue
+                # Check per-version Python requirement
+                py_req = ver_python_reqs.get(pkg_name, {}).get(c)
+                if py_req and self._sys_python_version:
+                    try:
+                        if self._sys_python_version not in SpecifierSet(py_req):
+                            continue
+                    except Exception:
+                        pass
+                # Check GPU system requirements for this package
+                sr = pkg_sys_reqs.get(pkg_name, {})
+                # Check CUDA
+                cuda_req = sr.get("cuda") or sr.get("gpu")
+                if cuda_req and isinstance(cuda_req, dict):
+                    min_cuda = cuda_req.get("min_version", "")
+                    if min_cuda and (
+                        not self._sys_cuda_version
+                        or compare_versions(self._sys_cuda_version, min_cuda) < 0
+                    ):
+                        continue
+                # Check ROCm
+                rocm_req = sr.get("rocm")
+                if rocm_req and isinstance(rocm_req, dict):
+                    min_rocm = rocm_req.get("min_version", "")
+                    if min_rocm and (
+                        not self._sys_rocm_version
+                        or compare_versions(self._sys_rocm_version, min_rocm) < 0
+                    ):
+                        continue
+                # Check Intel GPU
+                intel_req = sr.get("intel_gpu")
+                if intel_req and isinstance(intel_req, dict):
+                    min_intel = intel_req.get("min_version", "")
+                    if min_intel and (
+                        not self._sys_intel_gpu_version
+                        or compare_versions(self._sys_intel_gpu_version, min_intel) < 0
+                    ):
+                        continue
+                # Check Metal
+                metal_req = sr.get("metal")
+                if metal_req and isinstance(metal_req, dict):
+                    min_metal = metal_req.get("min_version", "")
+                    if min_metal and (
+                        not self._sys_metal_version
+                        or compare_versions(self._sys_metal_version, min_metal) < 0
+                    ):
+                        continue
                 # Try this version
                 old = current[pkg_name]
                 current[pkg_name] = c
@@ -1795,7 +2107,11 @@ class ConflictResolver:
             else:
                 dep_warnings = getattr(self, "_deprecation_warnings", [])
                 dep_msgs = [w for w in dep_warnings if pkg["name"] in w]
-                if not dep_msgs:
+                if dep_msgs:
+                    result["warnings"].append(
+                        f"{pkg['name']}: all versions are yanked or deprecated"
+                    )
+                else:
                     result["warnings"].append(f"No compatible version found for {pkg['name']}")
 
         # Sort packages: those with most dependency constraints first, then fewest versions
@@ -1815,7 +2131,8 @@ class ConflictResolver:
         best_assignment: dict[str, str] = {}
         best_count = 0
         nodes_visited = 0
-        max_nodes = 50000
+        max_nodes = SOLVER_DFS_MAX_NODES
+        found_complete = False
 
         def _check_dep_con(con_str: str, eco: str, version_str: str) -> bool:
             """Check if version_str satisfies constraint con_str for ecosystem eco."""
@@ -1842,6 +2159,7 @@ class ConflictResolver:
 
         def _check_assignments(assignment: dict[str, str]) -> bool:
             """Verify all assigned packages satisfy each other's constraints."""
+            sys_py = system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
             for pkg_name, ver in assignment.items():
                 pkg = pkg_map.get(pkg_name)
                 if not pkg:
@@ -1858,6 +2176,45 @@ class ConflictResolver:
                                 return False
                         except (InvalidSpecifier, Exception):
                             pass
+                # Check per-version Python requirement
+                py_req = pkg.get("version_requires_python", {}).get(ver)
+                if py_req and sys_py:
+                    try:
+                        if sys_py not in SpecifierSet(py_req):
+                            return False
+                    except Exception:
+                        pass
+                # Check GPU system requirements
+                sys_reqs = pkg.get("system_requirements", {})
+                cuda_req = sys_reqs.get("cuda") or sys_reqs.get("gpu")
+                if cuda_req and isinstance(cuda_req, dict):
+                    min_cuda = cuda_req.get("min_version", "")
+                    if min_cuda:
+                        sys_gpu = system_info.get("gpu", {})
+                        sys_cuda = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+                        if not sys_cuda or compare_versions(sys_cuda, min_cuda) < 0:
+                            return False
+                rocm_req = sys_reqs.get("rocm")
+                if rocm_req and isinstance(rocm_req, dict):
+                    min_rocm = rocm_req.get("min_version", "")
+                    if min_rocm:
+                        sys_rocm = _get_gpu_version(system_info, "rocm")
+                        if not sys_rocm or compare_versions(sys_rocm, min_rocm) < 0:
+                            return False
+                intel_req = sys_reqs.get("intel_gpu")
+                if intel_req and isinstance(intel_req, dict):
+                    min_intel = intel_req.get("min_version", "")
+                    if min_intel:
+                        sys_intel = _get_gpu_version(system_info, "intel_gpu")
+                        if not sys_intel or compare_versions(sys_intel, min_intel) < 0:
+                            return False
+                metal_req = sys_reqs.get("metal")
+                if metal_req and isinstance(metal_req, dict):
+                    min_metal = metal_req.get("min_version", "")
+                    if min_metal:
+                        sys_metal = _get_gpu_version(system_info, "metal")
+                        if not sys_metal or compare_versions(sys_metal, min_metal) < 0:
+                            return False
                 # Check each dependency's constraint against assigned version
                 raw_deps = pkg.get("dependencies") or {}
                 for eco_deps in raw_deps.values():
@@ -1866,48 +2223,59 @@ class ConflictResolver:
                     for dep_name, dep_con in eco_deps.items():
                         dep_ver = assignment.get(dep_name)
                         if dep_ver is None:
-                            continue
+                            # Dependency has no assignment — means no compatible
+                            # versions were found for it. Any parent assignment
+                            # that depends on it is invalid.
+                            return False
                         if not _check_dep_con(dep_con or "*", eco, dep_ver):
                             return False
             return True
 
-        def _dfs(idx: int) -> bool:
-            nonlocal nodes_visited, best_assignment, best_count
+        # Iterative DFS using explicit stack — avoids Python recursion limit
+        # Stack entries: (idx: int, version_index: int)
+        stack: list[tuple[int, int]] = []
+        if sorted_names:
+            stack.append((0, 0))
 
+        while stack:
             if nodes_visited >= max_nodes:
-                return False
+                break
 
-            if idx >= len(sorted_names):
-                if _check_assignments(assignment):
-                    best_assignment = dict(assignment)
-                    return True
-                return False
-
+            idx, vi = stack[-1]
             name = sorted_names[idx]
             versions = candidate_versions[name]
 
-            for ver in versions:
-                nodes_visited += 1
+            if vi >= len(versions):
+                # No more versions to try at this level — backtrack
+                stack.pop()
+                assignment.pop(name, None)
+                continue
 
-                # Forward checking: does this version satisfy constraints from already-assigned packages?
-                if not _check_constraints(name, ver, assignment):
-                    continue
+            # Advance version index for next visit
+            stack[-1] = (idx, vi + 1)
 
-                assignment[name] = ver
+            ver = versions[vi]
+            nodes_visited += 1
 
-                # Track best partial solution
-                if len(assignment) > best_count:
-                    best_count = len(assignment)
+            # Forward checking: does this version satisfy constraints from already-assigned packages?
+            if not _check_constraints(name, ver, assignment):
+                continue
+
+            assignment[name] = ver
+
+            # Track best partial solution
+            if len(assignment) > best_count:
+                best_count = len(assignment)
+                best_assignment = dict(assignment)
+
+            if idx + 1 >= len(sorted_names):
+                if _check_assignments(assignment):
                     best_assignment = dict(assignment)
-
-                if _dfs(idx + 1):
-                    return True
-
+                    found_complete = True
+                    break
                 del assignment[name]
-
-            return False
-
-        _dfs(0)
+            else:
+                stack.append((idx + 1, 0))
 
         # Build result from best assignment found
         if best_assignment:
@@ -1917,14 +2285,14 @@ class ConflictResolver:
                     "version": ver,
                     "ecosystem": pkg.get("ecosystem", "unknown"),
                 }
-            if len(best_assignment) < len(sorted_names):
+            if found_complete:
+                result["status"] = "satisfiable"
+            else:
                 result["warnings"].append(
                     f"Partial resolution: {len(best_assignment)}/{len(sorted_names)} packages resolved "
                     f"(nodes visited: {nodes_visited})"
                 )
                 result["status"] = "partial"
-            else:
-                result["status"] = "satisfiable"
 
         if not result["packages"]:
             result["status"] = "unsatisfiable"
@@ -1947,6 +2315,9 @@ class ConflictResolver:
 
         # Apply version_constraint from manifest (e.g. >=3.11,<3.13)
         version_constraint = package.get("version_constraint", "*")
+
+        # Per-version Python requirements (precise per version, not package-level)
+        ver_python_reqs = package.get("version_requires_python", {})
 
         # Check package-level system requirements
         sys_reqs = package.get("system_requirements", {})
@@ -1973,12 +2344,21 @@ class ConflictResolver:
             ):
                 continue
 
-                # Apply package-level system requirements
-                sys_python = (
-                    system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
-                )
-                if sys_python and compare_versions(sys_python, min_python) < 0:
-                    continue
+            # Apply per-version Python requirement (more precise than package-level)
+            sys_python = (
+                system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
+            )
+            py_req = ver_python_reqs.get(version_str)
+            if py_req and sys_python:
+                try:
+                    from packaging.specifiers import SpecifierSet
+
+                    if sys_python not in SpecifierSet(py_req):
+                        continue
+                except Exception:
+                    pass
+            elif sys_python and min_python and compare_versions(sys_python, min_python) < 0:
+                continue
             if min_cuda:
                 sys_cuda = system_info.get("gpu", {}).get("cuda", "")
                 if sys_cuda and compare_versions(sys_cuda, min_cuda) < 0:
@@ -2028,6 +2408,33 @@ class ConflictResolver:
 
             min_cuda = requirements["cuda"].get("min_version", "0.0")
             if compare_versions(system_info["gpu"]["cuda"], min_cuda) < 0:
+                return False
+
+        # Check ROCm compatibility
+        if "rocm" in requirements and "gpu" in system_info:
+            sys_rocm = _get_gpu_version(system_info, "rocm")
+            if not sys_rocm:
+                return False
+            min_rocm = requirements["rocm"].get("min_version", "0.0")
+            if compare_versions(sys_rocm, min_rocm) < 0:
+                return False
+
+        # Check Intel GPU compatibility
+        if "intel_gpu" in requirements and "gpu" in system_info:
+            sys_intel = _get_gpu_version(system_info, "intel_gpu")
+            if not sys_intel:
+                return False
+            min_intel = requirements["intel_gpu"].get("min_version", "0.0")
+            if compare_versions(sys_intel, min_intel) < 0:
+                return False
+
+        # Check Metal compatibility
+        if "metal" in requirements and "gpu" in system_info:
+            sys_metal = _get_gpu_version(system_info, "metal")
+            if not sys_metal:
+                return False
+            min_metal = requirements["metal"].get("min_version", "0.0")
+            if compare_versions(sys_metal, min_metal) < 0:
                 return False
 
         # Check Python compatibility
@@ -2090,9 +2497,9 @@ class ConflictResolver:
 
     def _get_ecosystem(self, package_name: str) -> str:
         """Get ecosystem for a package from the graph."""
-        for node in self.dependency_graph.nodes():
-            if node.startswith(f"{package_name}@"):
-                return node.rsplit("@", 1)[-1]
+        node = self._node_by_name.get(package_name)
+        if node:
+            return node.rsplit("@", 1)[-1]
         return "unknown"
 
     def _get_package_dependencies(self, package_name: str, version_str: str) -> dict:
@@ -2100,12 +2507,7 @@ class ConflictResolver:
         dependencies: dict[str, Any] = {}
 
         # Find the node in the graph
-        pkg_node = None
-        for node in self.dependency_graph.nodes():
-            node_data = self.dependency_graph.nodes[node]
-            if node_data.get("name") == package_name:
-                pkg_node = node
-                break
+        pkg_node = self._node_by_name.get(package_name)
 
         if not pkg_node:
             return dependencies
@@ -2127,7 +2529,7 @@ class ConflictResolver:
             edge_data = self.dependency_graph.get_edge_data(pkg_node, successor)
             successor_data = self.dependency_graph.nodes.get(successor, {})
 
-            dep_name = successor_data.get("name", successor.split("@")[0])
+            dep_name = successor_data.get("name", successor.split("@", 1)[-1])
             dep_ecosystem = successor_data.get("ecosystem", "unknown")
             constraint = edge_data.get("constraint", "*")
 

@@ -59,7 +59,6 @@ class NPMClient(BaseDataSourceClient):
         registry_url: str | None = None,
         cache_ttl: int | None = None,
         max_retries: int | None = None,
-        rate_limit_delay: float | None = None,
         timeout: int | None = None,
     ):
         """Initialize."""

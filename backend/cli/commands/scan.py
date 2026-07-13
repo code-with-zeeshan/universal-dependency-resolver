@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import argparse
 import asyncio
 import sys
 
@@ -9,7 +10,7 @@ from ..shared import console
 from .lock import cmd_lock
 
 
-def cmd_scan(args):
+def cmd_scan(args: argparse.Namespace) -> None:
     """Cmd scan."""
     if args.github:
         _cmd_scan_github(args)
@@ -20,13 +21,13 @@ def cmd_scan(args):
         sys.exit(1)
 
 
-async def _async_download(url: str, branch: str):
+async def _async_download(url: str, branch: str) -> str:
     from backend.orchestrator import _download_github_repo
 
     return await _download_github_repo(url, branch)
 
 
-def _cmd_scan_github(args):
+def _cmd_scan_github(args: argparse.Namespace) -> None:
     """Cmd scan github."""
     try:
         console.print(f"[bold]Scanning GitHub repo:[/bold] [cyan]{args.github}[/cyan]")

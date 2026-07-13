@@ -12,6 +12,15 @@ export class CliRunner {
         return vscode.workspace.getConfiguration('udr').get('cliPath', 'udr');
     }
 
+    isAvailable(): boolean {
+        try {
+            execSync(`${this.cliPath} --version`, { timeout: 5000, encoding: 'utf-8' });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     run(args: string[]): void {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '.';
         const cmd = `${this.cliPath} ${args.join(' ')}`;

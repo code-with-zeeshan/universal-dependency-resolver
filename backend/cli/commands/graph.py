@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import argparse
 import asyncio
 import json
 import sys
@@ -54,7 +55,7 @@ def _build_recursive_tree(
     return node
 
 
-def cmd_graph(args):
+def cmd_graph(args: argparse.Namespace):
     """Cmd graph."""
     from backend.core import DataAggregator
     from backend.orchestrator.resolve import create_solver
@@ -65,12 +66,12 @@ def cmd_graph(args):
         resolver = create_solver()
         system_info = resolver._get_default_system_info()
 
-        if getattr(args, "cuda", None) is not None:
+        if args.cuda is not None:
             if "gpu" not in system_info:
                 system_info["gpu"] = {}
             system_info["gpu"]["available"] = True
             system_info["gpu"]["cuda"] = args.cuda
-        if getattr(args, "device", None) is not None:
+        if args.device is not None:
             if "gpu" not in system_info:
                 system_info["gpu"] = {}
             if args.device == "cpu":
@@ -80,6 +81,11 @@ def cmd_graph(args):
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["cuda"] = ""
                 system_info["gpu"]["mps"] = True
+                system_info["gpu"]["metal"] = "3.0"
+            elif args.device == "rocm":
+                system_info["gpu"]["available"] = True
+                system_info["gpu"]["cuda"] = ""
+                system_info["gpu"]["rocm"] = "6.0.0"
             elif args.device == "cuda":
                 system_info["gpu"]["available"] = True
                 if not system_info["gpu"].get("cuda"):
@@ -107,7 +113,7 @@ def cmd_graph(args):
             await aggregator.close()
             return
 
-        if getattr(args, "json", False):
+        if args.json:
             json.dump(resolved, sys.stdout, indent=2, default=str)
             print()
             await aggregator.close()

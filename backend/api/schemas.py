@@ -14,7 +14,7 @@ class PackageRequest(BaseModel):
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, v):
+    def validate_name(cls, v: str) -> str:
         """Validate name."""
         if not re.match(r"^[a-zA-Z0-9\-_\.]+$", v):
             raise ValueError("Invalid package name")

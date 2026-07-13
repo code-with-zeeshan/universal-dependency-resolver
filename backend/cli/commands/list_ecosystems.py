@@ -1,5 +1,6 @@
 """Module docstring."""
 
+import argparse
 import json
 import sys
 
@@ -13,10 +14,10 @@ from ..shared import console
 _VALID_ECOSYSTEMS = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
 
 
-def cmd_list_ecosystems(args):
+def cmd_list_ecosystems(args: argparse.Namespace) -> None:
     """Cmd list ecosystems."""
     ecosystems = _VALID_ECOSYSTEMS
-    if getattr(args, "json", False):
+    if args.json:
         data = [
             {
                 "name": eco,

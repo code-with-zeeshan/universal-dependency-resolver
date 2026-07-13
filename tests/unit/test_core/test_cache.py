@@ -86,6 +86,7 @@ class TestDictCache:
     @pytest.mark.asyncio
     async def test_persist_to_disk(self, cache):
         await cache.set("disk_key", "disk_val")
+        await cache.flush()
         assert os.path.exists(cache._persist_path)
         with open(cache._persist_path) as f:
             data = json.load(f)
@@ -102,6 +103,7 @@ class TestDictCache:
     @pytest.mark.asyncio
     async def test_dirty_flag_resets_after_save(self, cache):
         await cache.set("x", 1)
+        await cache.flush()
         assert cache._dirty is False
 
 
@@ -235,13 +237,13 @@ class TestCacheManager:
         key = manager._generate_key("p", {"a": 1})
         parts = key.split(":")
         assert parts[0] == "p"
-        assert len(parts[1]) == 32
+        assert len(parts[1]) == 64
 
     def test_generate_key_with_kwargs(self, manager):
         key = manager._generate_key("p", foo="bar")
         parts = key.split(":")
         assert parts[0] == "p"
-        assert len(parts[1]) == 32
+        assert len(parts[1]) == 64
 
     @pytest.mark.asyncio
     async def test_disconnect_closes_cache(self, manager):
