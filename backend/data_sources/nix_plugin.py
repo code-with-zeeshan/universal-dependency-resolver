@@ -85,6 +85,7 @@ class NixPlugin(EcosystemPlugin):
     @staticmethod
     def _extract_nix_pkgs(text: str, deps: list[dict]) -> None:
         """Extract package references from Nix expression text."""
+        seen_pkgs: set[tuple[str, str]] = set()
         # Match pkgs.packageName, python3Packages.packageName, or bare identifiers
         for token in re.findall(r"[a-zA-Z_][\w.]*(?:\.[a-zA-Z_][\w.]+)*", text):
             if not token or token in ("pkgs", "inputs", "self"):
@@ -105,17 +106,26 @@ class NixPlugin(EcosystemPlugin):
                     if token.startswith(prefix):
                         pkg_name = token[len(prefix) :]
                         if pkg_name and pkg_name not in ("pkgs", "inputs", "self"):
-                            deps.append({"name": pkg_name, "version": "*", "_ecosystem": "pypi"})
+                            key = (pkg_name, "pypi")
+                            if key not in seen_pkgs:
+                                seen_pkgs.add(key)
+                                deps.append({"name": pkg_name, "version": "*", "_ecosystem": "pypi"})
                         break
             elif token.startswith("pkgs."):
                 pkg_name = token[len("pkgs.") :]
                 # Handle nested attribute accesses: pkgs.python3.pkgs.requests → take first segment
                 pkg_name = pkg_name.split(".", 1)[0] if "." in pkg_name else pkg_name
                 if pkg_name and pkg_name not in ("pkgs", "inputs", "self"):
-                    deps.append({"name": pkg_name, "version": "*", "_ecosystem": "nix"})
+                    key = (pkg_name, "nix")
+                    if key not in seen_pkgs:
+                        seen_pkgs.add(key)
+                        deps.append({"name": pkg_name, "version": "*", "_ecosystem": "nix"})
             # Bare name (e.g., "hello" in buildInputs = [ hello ])
             elif token not in ("pkgs", "inputs", "self", "lib"):
-                deps.append({"name": token, "version": "*", "_ecosystem": "nix"})
+                key = (token, "nix")
+                if key not in seen_pkgs:
+                    seen_pkgs.add(key)
+                    deps.append({"name": token, "version": "*", "_ecosystem": "nix"})
 
     @staticmethod
     def parse_nix_lock(content: str) -> dict[str, dict[str, Any]]:

@@ -14,6 +14,7 @@ from packaging import version as _pkg_version
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
 from backend.settings import (
     BFS_BATCH_SIZE,
+    INCREMENTAL_RESOLUTION,
     SOLVER_MAX_VARIABLES,
     USE_HYBRID_SOLVER,
     USE_PUBGRUB_SOLVER,
@@ -323,6 +324,33 @@ def _collect_locked_transitive_deps(
     return collected
 
 
+def _system_info_fingerprint(system_info: dict | None) -> dict:
+    """Extract only deterministic fields from system_info for hash computation.
+
+    Returns a filtered dict containing only ``os``, ``arch``, ``cuda_version``,
+    and ``python_version``.  Non-deterministic fields like ``memory``,
+    ``disks``, and ``hostname`` are excluded so that the resolution hash
+    is stable across runs.
+    """
+    if not system_info:
+        return {}
+    result: dict = {}
+    plat = system_info.get("platform", {})
+    if plat.get("system"):
+        result.setdefault("platform", {})["system"] = plat["system"]
+    arch = plat.get("architecture") or system_info.get("cpu", {}).get("arch")
+    if arch:
+        result.setdefault("platform", {})["architecture"] = arch
+    gpu = system_info.get("gpu", {})
+    if gpu.get("cuda"):
+        result["gpu"] = {"cuda": gpu["cuda"]}
+    rt = system_info.get("runtime_versions", {})
+    py = rt.get("python", {})
+    if py and py.get("version"):
+        result["runtime_versions"] = {"python": {"version": py["version"]}}
+    return result
+
+
 def _check_dep_hash(
     dep_name: str,
     dep_eco: str,
@@ -347,12 +375,17 @@ def _check_dep_hash(
             deps_by_eco.setdefault(d_eco, {})[d_name] = d_constraint
     from backend.core.conflict_resolver import ConflictResolver
 
+    fingerprint = _system_info_fingerprint(system_info)
+    norm_constraint = normalize_constraint(
+        entry.get("original_constraint", "*"),
+        entry.get("ecosystem", dep_eco),
+    )
     current_hash = ConflictResolver.compute_resolution_hash(
         dep_name,
         entry.get("ecosystem", dep_eco),
-        entry.get("original_constraint", "*"),
+        norm_constraint,
         deps_by_eco,
-        system_info,
+        fingerprint,
     )
     if stored_hash == current_hash:
         return entry.get("resolved_version") or entry.get("version", "")
@@ -428,6 +461,7 @@ async def _resolve_transitive(
     solver_timeout: int | None = None,
     lock_tree_data: dict[str, dict[str, dict]] | None = None,
     bfs_timeout: int | None = None,
+    incremental: bool = True,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -449,6 +483,10 @@ async def _resolve_transitive(
     """
     from backend.core.conflict_resolver import ConflictResolver
 
+    # Disable incremental resolution when the flag is False or the env var is False
+    if not incremental or not INCREMENTAL_RESOLUTION:
+        lock_data = None
+
     # Build a lookup: (name, ecosystem) -> {version, dependencies} from lock_tree_data
     lock_tree_lookup: dict[tuple[str, str], dict] = {}
     if lock_tree_data:
@@ -462,16 +500,21 @@ async def _resolve_transitive(
 
     if lock_data:
         locked_pkgs = lock_data.get("packages", {})
+        fingerprint = _system_info_fingerprint(system_info)
         for pkg in packages:
             key = (pkg["name"], pkg["ecosystem"])
             locked_entry = locked_pkgs.get(pkg["name"], {})
             stored_hash = locked_entry.get("resolution_hash", "")
+            norm_constraint = normalize_constraint(
+                pkg.get("version_constraint", "*"),
+                pkg["ecosystem"],
+            )
             current_hash = ConflictResolver.compute_resolution_hash(
                 pkg["name"],
                 pkg["ecosystem"],
-                pkg.get("version_constraint", "*"),
+                norm_constraint,
                 pkg.get("dependencies", {}),
-                system_info,
+                fingerprint,
             )
             if stored_hash and stored_hash == current_hash:
                 locked_ver = locked_entry.get("resolved_version") or locked_entry.get("version", "")
@@ -481,9 +524,23 @@ async def _resolve_transitive(
                     transitive_deps = _collect_locked_transitive_deps(
                         locked_pkgs, pkg["name"], pkg["ecosystem"]
                     )
-                    for dep_key, dep_ver in transitive_deps.items():
-                        if dep_key not in pre_resolved:
-                            pre_resolved[dep_key] = dep_ver
+                    # Verify every transitive dep has a resolution_hash before pre-resolving
+                    transitive_valid = True
+                    for dk in transitive_deps:
+                        d_entry = locked_pkgs.get(dk[0], {})
+                        if not d_entry.get("resolution_hash"):
+                            transitive_valid = False
+                            break
+                    if transitive_valid:
+                        for dep_key, dep_ver in transitive_deps.items():
+                            if dep_key not in pre_resolved:
+                                pre_resolved[dep_key] = dep_ver
+                    else:
+                        # Fall back: unchanged root, but transitive deps not fully validated
+                        for dep_key in transitive_deps:
+                            pre_resolved.pop(dep_key, None)
+                        changed_packages.append(pkg)
+                        continue
                     continue
             changed_packages.append(pkg)
     else:
@@ -646,9 +703,21 @@ async def _resolve_transitive(
                         td = _collect_locked_transitive_deps(
                             lock_data.get("packages", {}), item[0], item[1]
                         )
-                        for dk, dv in td.items():
-                            if dk not in pre_resolved:
-                                pre_resolved[dk] = dv
+                        # Verify every transitive dep has a resolution_hash
+                        transitive_valid = True
+                        for dk in td:
+                            d_entry = lock_data.get("packages", {}).get(dk[0], {})
+                            if not d_entry.get("resolution_hash"):
+                                transitive_valid = False
+                                break
+                        if transitive_valid:
+                            for dk, dv in td.items():
+                                if dk not in pre_resolved:
+                                    pre_resolved[dk] = dv
+                        else:
+                            # Missing hash — fall back to BFS for this chain
+                            pre_resolved.pop(key, None)
+                            unique_deps.append(item)
                 else:
                     unique_deps.append(item)
         if not unique_deps:

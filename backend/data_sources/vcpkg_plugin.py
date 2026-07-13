@@ -36,6 +36,9 @@ class VcpkgPlugin(EcosystemPlugin):
         except json.JSONDecodeError:
             return []
 
+        if not isinstance(data, dict):
+            return []
+
         deps: list[dict] = []
         raw_deps = data.get("dependencies", [])
         if not isinstance(raw_deps, list):

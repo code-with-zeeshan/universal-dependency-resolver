@@ -305,6 +305,7 @@ def cmd_lock(args):
     from backend.orchestrator.resolve import create_solver
 
     from ..shared import _check_and_sync_indexes, _read_lock_file
+    from backend.orchestrator.resolve import _system_info_fingerprint
 
     async def _lock():
         """Lock."""
@@ -581,6 +582,7 @@ def cmd_lock(args):
                     or int(os.environ.get("SOLVER_TIMEOUT", 120)),
                     lock_tree_data=lock_tree if lock_tree else None,
                     pinning_policy=_build_pinning_policy(args),
+                    incremental=not getattr(args, "force", False),
                 )
 
             sat_pkgs = resolved.get("resolved_packages", {})
@@ -686,6 +688,7 @@ def cmd_lock(args):
 
         # Compute resolution_hash for EVERY package (roots + transitive deps)
         # for full incremental re-resolution. Non-roots derive deps from depends_on.
+        fingerprint = _system_info_fingerprint(system_info)
         for pkg_name, pkg_info in lock_data["packages"].items():
             rinput = next(
                 (r for r in resolver_inputs if r["name"] == pkg_name),
@@ -697,7 +700,7 @@ def cmd_lock(args):
                     rinput["ecosystem"],
                     rinput.get("version_constraint", "*"),
                     rinput.get("dependencies", {}),
-                    system_info,
+                    fingerprint,
                 )
             else:
                 deps_by_eco: dict[str, dict[str, str]] = {}
@@ -711,7 +714,7 @@ def cmd_lock(args):
                     pkg_info.get("ecosystem", "?"),
                     pkg_info.get("original_constraint", "*"),
                     deps_by_eco,
-                    system_info,
+                    fingerprint,
                 )
 
         if prefix:

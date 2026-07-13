@@ -174,8 +174,6 @@ def cmd_update(args):
             lock_data["packages"][pname]["cuda_version"] = pinfo.get("cuda_version")
 
         # Recompute resolution hash for the updated package
-        from backend.core.conflict_resolver import ConflictResolver
-
         for rinput in resolver_inputs:
             if rinput["name"] == package_name:
                 lock_data["packages"][package_name]["resolution_hash"] = (

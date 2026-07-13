@@ -1,0 +1,281 @@
+.TH UDR 1 "July 2026" "udr v4.0.0" "User Commands"
+.SH NAME
+udr \- Universal Dependency Resolver
+.SH SYNOPSIS
+.B udr
+[\fI\-\-version\fR] [\fI\-\-help\fR] [\fI\-\-offline\fR]
+\fI<command>\fR [\fI<args>\fR]
+.SH DESCRIPTION
+\fBUniversal Dependency Resolver (UDR)\fR is a cross-ecosystem dependency
+resolution tool that resolves, locks, and manages dependencies across 27
+package ecosystems. It uses a PubGrub SAT solver (Rust-backed by default)
+with Z3 fallback, SCC batch partitioning, CUDA-aware conflict resolution,
+and DFS backtracking to produce consistent, reproducible lock files.
+
+UDR supports in-place manifest updates, CVE scanning, license compliance
+checking, SBOM generation (SPDX/CycloneDX), supply chain attestation with
+Ed25519 signing, policy enforcement, cross-compilation targeting, offline-
+first indexed caches, and per-ecosystem solver isolation.
+.SH COMMANDS
+.TP
+.B lock
+Resolve dependencies and write a lock file
+.RS
+Supports \fB\-\-manifest\fR, \fB\-\-export\fR, \fB\-\-cuda\fR,
+\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
+\fB\-\-sign\fR, \fB\-\-provenance\fR, \fB\-\-check\fR,
+\fB\-\-workspace\fR, \fB\-\-json\fR, \fB\-\-dry-run\fR,
+\fB\-\-timeout\fR, \fB\-\-force\fR, \fB\-\-auto-sync\fR.
+.RE
+.TP
+.B install
+Install dependencies from a lock file
+.RS
+Supports \fB\-\-ecosystem\fR, \fB\-\-dry-run\fR, \fB\-\-production\fR,
+\fB\-\-cuda\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
+\fB\-\-workspace\fR.
+.RE
+.TP
+.B resolve
+Resolve dependencies without writing a lock file
+.RS
+Supports \fB\-\-ecosystem\fR, \fB\-\-format\fR, \fB\-\-cuda\fR,
+\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
+\fB\-\-timeout\fR, \fB\-\-interactive\fR.
+.RE
+.TP
+.B scan
+Scan a project directory for manifests and detect ecosystems
+.RS
+Supports \fB\-\-ecosystem\fR, \fB\-\-format\fR, \fB\-\-cuda\fR,
+\fB\-\-device\fR.
+.RE
+.TP
+.B update
+Update manifest files from a lock file
+.RS
+Supports \fB\-\-interactive\fR, \fB\-\-dry-run\fR, \fB\-\-cuda\fR,
+\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
+\fB\-\-fix-cve\fR, \fB\-\-workspace\fR, \fB\-\-lock-file\fR.
+.RE
+.TP
+.B graph
+Print a dependency tree / graph
+.RS
+Outputs ASCII or DOT-format dependency graph.
+.RE
+.TP
+.B serve
+Start the UDR API server
+.RS
+Supports \fB\-\-host\fR, \fB\-\-port\fR, \fB\-\-reload\fR,
+\fB\-\-mode\fR (local|saas), \fB\-\-workers\fR,
+\fB\-\-ssl-keyfile\fR, \fB\-\-ssl-certfile\fR,
+\fB\-\-log-level\fR.
+.RE
+.TP
+.B why
+Show why a package is required (dependency chain + constraint trace)
+.RS
+Takes a package name; \fB\-\-all\fR shows all chains.
+.RE
+.TP
+.B details
+Display detailed package information
+.RE
+.TP
+.B diff
+Compare two lock files or workspace lock files
+.RS
+\fBudr diff [old] [new]\fR or \fB\-\-workspace\fR convenience mode.
+.RE
+.TP
+.B outdated
+List outdated packages from a lock file
+.RS
+Supports \fB\-\-json\fR for machine-readable output.
+.RE
+.TP
+.B search
+Search for packages across registries
+.RE
+.TP
+.B check
+Check system compatibility, CVEs, licenses, deprecated packages, or policy
+.RS
+Flags: \fB\-\-cve\fR, \fB\-\-license\fR, \fB\-\-deprecated\fR,
+\fB\-\-policy\fR, \fB\-\-deps\fR, \fB\-\-cuda\fR,
+\fB\-\-device\fR, \fB\-\-verbose\fR, \fB\-\-json\fR,
+\fB\-\-workspace\fR, \fB\-\-lock-file\fR.
+.RE
+.TP
+.B verify
+Verify lock file integrity and (optionally) Ed25519 signatures
+.RS
+Supports \fB\-\-json\fR, \fB\-\-signature\fR, \fB\-\-workspace\fR.
+.RE
+.TP
+.B list-ecosystems
+List all supported ecosystems with their registries
+.RE
+.TP
+.B completion
+Generate shell completion scripts for bash, zsh, or fish
+.RS
+Usage: \fBudr completion bash\fR | \fBzsh\fR | \fBfish\fR
+.RE
+.TP
+.B auth
+Manage API keys and signing keys (gen-key, show-key)
+.RE
+.TP
+.B index
+Manage offline package indexes (build, sync, info)
+.RE
+.TP
+.B sbom
+Generate an SBOM in SPDX 2.3 or CycloneDX 1.5 format
+.RS
+Supports \fB\-\-format\fR (spdx|cyclonedx), \fB\-\-output\fR,
+\fB\-\-workspace\fR, \fB\-\-lock-file\fR.
+.RE
+.SH OPTIONS
+.TP
+.B \-\-version
+Show version and exit.
+.TP
+.B \-\-help
+Show help message and exit.
+.TP
+.B \-\-offline
+Use cached data only; no network requests.
+.SH FILES
+.TP
+.I udr.lock
+Universal lock file (JSON) containing resolved dependency graph, integrity
+hashes, and provenance metadata.
+.TP
+.I udr\-policy.yaml
+YAML policy file for \fBudr check \-\-policy\fR with rules for allowed
+licenses, blocked packages, vulnerability thresholds, etc.
+.TP
+.I ~/.config/udr/
+User configuration directory containing:
+.RS
+.TP
+.I keys/
+Ed25519 signing keypair for lock file attestation.
+.TP
+.I config.toml
+Optional user preferences (defaults to env vars).
+.RE
+.TP
+.I ~/.cache/udr/
+Cache directory for API responses and offline indexes.
+.SH ENVIRONMENT
+.TP
+.B USE_Z3_SOLVER
+Set to "true" to force Z3 solver instead of default PubGrub.
+.TP
+.B USE_PUBGRUB_SOLVER
+Set to "true" (default false) to enable PubGrub solver.
+.TP
+.B SOLVER_TIMEOUT
+Overall resolution timeout in seconds (default 60).
+.TP
+.B SOLVER_MAX_VARIABLES
+Maximum SAT variables before solver gives up (default 50000).
+.TP
+.B SOLVER_REJECT_DEPRECATED
+Reject deprecated/yanked packages during resolution (default false,
+warn only).
+.TP
+.B SOLVER_OPTIMIZATION_THRESHOLD
+Version count above which Z3 optimization is disabled (default 100).
+.TP
+.B BFS_BATCH_SIZE
+Parallel batch size for BFS dependency fetching (default 20).
+.TP
+.B PIN_INTEGRITY
+Set to "true" to verify package integrity hashes (default false).
+.TP
+.B NPM_CONCURRENCY
+Max concurrent npm API requests (default 10).
+.TP
+.B TARGET_OS
+Override target OS for cross-compilation (linux|windows|darwin).
+.TP
+.B TARGET_ARCH
+Override target architecture (x86_64|aarch64|arm64|i386|amd64).
+.TP
+.B TARGET_CUDA
+Override target CUDA version for cross-compilation.
+.TP
+.B DETECT_ECOSYSTEMS_TIMEOUT
+Timeout in seconds for ecosystem detection probes (default 15).
+.TP
+.B RETRY_MAX_DELAY
+Maximum retry backoff delay in seconds (default 10).
+.TP
+.B INDEX_AUTO_SYNC
+Set to "true" to auto-sync stale indexes before resolution (default false).
+.TP
+.BI {ECOSYSTEM}_AUTH_TOKEN
+Authentication token for a specific ecosystem registry.
+.BI {ECOSYSTEM}_AUTH_TYPE
+Auth type: bearer (default), basic, or header.
+.BI {ECOSYSTEM}_AUTH_USERNAME
+Username for basic auth.
+.BI {ECOSYSTEM}_AUTH_PASSWORD
+Password for basic auth.
+.PD
+.SH EXAMPLES
+.TP
+Resolve and lock dependencies
+.B udr lock
+.TP
+Resolve with CUDA 12.1 and JSON output
+.B udr lock --cuda 12.1 --json
+.TP
+Cross-compile for ARM Linux
+.B udr lock --target linux --platform aarch64
+.TP
+Check for CVEs
+.B udr check --cve
+.TP
+Check license compliance
+.B udr check --license
+.TP
+Check policy
+.B udr check --policy udr-policy.yaml
+.TP
+Generate SBOM
+.B udr sbom --format spdx --output bom.json
+.TP
+Update manifests from lock file
+.B udr update
+.TP
+Fix vulnerable packages automatically
+.B udr update --fix-cve
+.TP
+Sign lock file
+.B udr lock --sign
+.TP
+Verify signed lock file
+.B udr verify --signature
+.TP
+CI drift check (exit 1 if lock file is stale)
+.B udr lock --check
+.TP
+Show why flask is required
+.B udr why flask
+.TP
+Compare workspace lock files
+.B udr diff --workspace backend
+.TP
+Generate bash completions
+.B udr completion bash > /etc/bash_completion.d/udr
+.SH SEE ALSO
+.BR udr.lock (5),
+.BR udr-policy.yaml (5),
+.BR https://opencode.ai

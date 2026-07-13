@@ -265,7 +265,6 @@ class LocalIndexManager:
         from backend.core.offline_index import create_or_update_index
 
         logger.info("Syncing crates.io via API …")
-        url = "https://crates.io/api/v1/crates?page=1&per_page=100&sort=new"
         import aiohttp
 
         total = 0

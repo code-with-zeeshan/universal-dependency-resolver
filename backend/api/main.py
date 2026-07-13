@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI):
 
     # Dispose of database connections
     try:
+        from backend.orchestrator.db_service import get_db_engine
         get_db_engine().dispose()
         logger.info("Database connections disposed")
     except Exception as e:

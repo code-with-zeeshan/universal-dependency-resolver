@@ -126,6 +126,7 @@ async def _run_resolution(
     timeout: int | None = None,
     lock_tree_data: dict[str, dict[str, dict]] | None = None,
     pinning_policy: Any = None,
+    incremental: bool = True,
 ) -> dict:
     """Run resolution."""
     from backend.core.pinning import PinningPolicy, apply_pinning_policy, freeze_from_lock
@@ -154,6 +155,7 @@ async def _run_resolution(
                 solver_timeout=solver_timeout,
                 lock_tree_data=lock_tree_data,
                 bfs_timeout=bfs_budget,
+                incremental=incremental,
             ),
             timeout=timeout,
         )

@@ -16,6 +16,7 @@ from .resolve import (
     _parse_package_spec,
     _resolve_transitive,
     _select_best_cuda_variant,
+    _system_info_fingerprint,
     create_solver,
 )
 from .scanner import _download_github_repo
@@ -31,5 +32,6 @@ __all__ = [
     "_parse_package_spec",
     "_resolve_transitive",
     "_select_best_cuda_variant",
+    "_system_info_fingerprint",
     "create_solver",
 ]

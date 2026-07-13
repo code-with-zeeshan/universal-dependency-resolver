@@ -262,6 +262,7 @@ SOLVER_MAX_VARIABLES = int(os.getenv("SOLVER_MAX_VARIABLES", "50000"))
 TARGET_OS = os.getenv("TARGET_OS", "")
 TARGET_ARCH = os.getenv("TARGET_ARCH", "")
 TARGET_CUDA = os.getenv("TARGET_CUDA", "")
+INCREMENTAL_RESOLUTION = os.getenv("INCREMENTAL_RESOLUTION", "true").lower() == "true"
 
 ENV = os.getenv("ENV", "development")
 

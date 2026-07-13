@@ -1,16 +1,17 @@
 # UDR Roadmap
 
-## Current State (v1.4.0)
+## Current State (v4.0.0)
 
 | Area | Status |
 |------|--------|
-| Supported ecosystems | 20 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, docs, custom_db) |
+| Supported ecosystems | 27 (pypi, npm, pub, crates, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, conda, gradle, swift, hex, haskell, vcpkg, conan, docker, helm, terraform, nix, guix, docs, custom_db) |
 | Resolution engine | PubGrub SAT solver (Rust-backed, default) + Z3 fallback (`USE_Z3_SOLVER=true`) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
 | In-place manifest update | **18/18 resolvable ecosystems** — all ecosystems with local manifests can be written back after `udr lock` |
 | CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index`, `sbom` |
 | Lock file | `udr.lock` (supports `--workspace` for multi-workspace projects) |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| Tests | 2351 unit + 94 integration = **2445 total** (zero regressions) |
+| Dependency graph visualization | Interactive D3.js force-directed graph in WASM frontend (`#graph` page) |
+| Tests | 2514 unit + 94 integration = **2608 total** (zero regressions) |
 | All 21 bottlenecks | ✅ Fixed — P0×4 (wrong results), P1×4 (reliability), P2×5 (scalability), P3×8 (code quality) |
 | Architecture violations | 0 — enforced via CI + pre-commit |
 | Ruff violations | 0 in `backend/` |
@@ -112,22 +113,24 @@
 | 8.5 | Supply chain attestation | P2 | ✅ Done — `udr lock --sign`, `udr verify --signature`, SLSA provenance |
 | 8.6 | Policy engine | P2 | ✅ Done — `udr check --policy`, YAML-based rules |
 
-## Phase 9 — Ecosystem Deepening
+## Phase 9 — Ecosystem Deepening ✅ All Complete
 
-| # | Item | Priority | Notes |
-|---|------|----------|-------|
-| 9.1 | Nix / Guix support | P3 | Functional package manager manifests |
-| 9.2 | Vcpkg support | P3 | C/C++ package manager |
-| 9.3 | Conan support | P3 | C/C++ (another) |
-| 9.4 | Helm / chart support | P3 | Kubernetes manifests |
-| 9.5 | Terraform provider locks | P3 | `.terraform.lock.hcl` |
-| 9.6 | Dockerfile FROM parsing | P3 | Base image dependency tracking |
+| # | Item | Priority | Status | Notes |
+|---|------|----------|--------|-------|
+| 9.1 | Nix / Guix support | P3 | ✅ Done | Functional package manager manifests — `default.nix`/`flake.nix`/`flake.lock` + `guix.scm`/`manifest.scm` |
+| 9.2 | Vcpkg support | P3 | ✅ Done | C/C++ package manager |
+| 9.3 | Conan support | P3 | ✅ Done | C/C++ (another) |
+| 9.4 | Helm / chart support | P3 | ✅ Done | Kubernetes manifests |
+| 9.5 | Terraform provider locks | P3 | ✅ Done | `.terraform.lock.hcl` |
+| 9.6 | Dockerfile FROM parsing | P3 | ✅ Done | Base image dependency tracking |
+
+All Phase 9 items complete — **27 ecosystems total**.
 
 ## Phase 10 — Developer Experience
 
 | # | Item | Priority | Notes |
 |---|------|----------|-------|
-| 10.1 | Dependency graph visualization | P2 | Web UI with interactive force-directed graph |
+| 10.1 | Dependency graph visualization | P2 | ✅ Done | Interactive D3.js force-directed graph in WASM frontend (`#graph` page) |
 | 10.2 | `udr why` command | P1 | ✅ Done (`udr why <package>`) — dependency chain + constraint trace |
 | 10.3 | `udr diff` command | P2 | ✅ Done (`udr diff [old] [new]` or `udr diff --workspace`) |
 | 10.4 | `udr outdated` command | P2 | ✅ Done (`udr outdated --json`) |
@@ -143,4 +146,4 @@
 | v1.5 | Cross-compilation flags + offline-first auto-indexing + per-ecosystem solver isolation | ✅ Released | Q4 2026 |
 | v2.0 | CVE auto-fix + SBOM generation + GitHub Actions CI drift check | ✅ Released | Q1 2027 |
 | v3.0 | Policy engine + supply chain attestation + signed lock files | ✅ Released | Q2 2027 |
-| v4.0 | WASM frontend + Desktop app (Tauri) + VSCode extension | Pending | Q3 2027 |
+| v4.0 | WASM frontend + Desktop app (Tauri) + VSCode extension | ✅ Released | Q3 2027 |

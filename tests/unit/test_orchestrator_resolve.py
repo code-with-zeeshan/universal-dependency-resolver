@@ -441,3 +441,411 @@ class TestCollectCurrentDepsFormatHandling:
             "constraint should be a string in flat format"
         )
         assert "all" not in deps["pypi"], "flat format should not have 'all' key"
+
+
+class TestSystemInfoFingerprint:
+    def test_extracts_deterministic_fields(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        system_info = {
+            "platform": {"system": "linux", "architecture": "x86_64"},
+            "cpu": {"brand": "Intel", "cores": 8, "arch": "x86_64"},
+            "gpu": {"cuda": "12.1"},
+            "runtime_versions": {"python": {"version": "3.11.0"}},
+            "memory": {"total": 16384, "available": 8192},
+            "disks": [{"mount": "/", "total": 500}],
+            "hostname": "my-machine",
+            "unrelated": "should-be-ignored",
+        }
+        fp = _system_info_fingerprint(system_info)
+        assert fp.get("platform", {}).get("system") == "linux"
+        assert fp.get("platform", {}).get("architecture") == "x86_64"
+        assert fp.get("gpu", {}).get("cuda") == "12.1"
+        assert fp.get("runtime_versions", {}).get("python", {}).get("version") == "3.11.0"
+        assert "memory" not in fp
+        assert "disks" not in fp
+        assert "hostname" not in fp
+        assert "unrelated" not in fp
+
+    def test_none_input_returns_empty(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        assert _system_info_fingerprint(None) == {}
+        assert _system_info_fingerprint({}) == {}
+
+    def test_partial_info(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        fp = _system_info_fingerprint({"gpu": {"cuda": "11.8"}})
+        assert fp.get("gpu", {}).get("cuda") == "11.8"
+        assert "platform" not in fp
+        assert "runtime_versions" not in fp
+
+    def test_arch_falls_back_to_cpu_arch(self):
+        from backend.orchestrator.resolve import _system_info_fingerprint
+
+        fp = _system_info_fingerprint({"cpu": {"arch": "aarch64"}})
+        assert fp.get("platform", {}).get("architecture") == "aarch64"
+
+
+class TestIncrementalResolution:
+    @pytest.mark.asyncio
+    async def test_incremental_happy_path(self):
+        from unittest.mock import AsyncMock
+
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import (
+            _resolve_transitive,
+            _system_info_fingerprint,
+        )
+
+        aggregator = MagicMock()
+        resolver = MagicMock()
+        system_info = {
+            "platform": {"system": "linux", "architecture": "x86_64"},
+            "runtime_versions": {"python": {"version": "3.11.0"}},
+            "memory": {"total": 16384},
+        }
+        fingerprint = _system_info_fingerprint(system_info)
+
+        pkg = {
+            "name": "flask",
+            "ecosystem": "pypi",
+            "version_constraint": ">=2.0",
+            "dependencies": {},
+        }
+        expected_hash = ConflictResolver.compute_resolution_hash(
+            "flask", "pypi", ">=2.0", {}, fingerprint
+        )
+        lock_data = {
+            "packages": {
+                "flask": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.3.3",
+                    "version": "2.3.3",
+                    "original_constraint": ">=2.0",
+                    "resolution_hash": expected_hash,
+                    "depends_on": {},
+                }
+            }
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, [pkg], system_info, lock_data=lock_data,
+        )
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
+        resolver.resolve_dependencies.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_incremental_partial_change(self):
+        from unittest.mock import AsyncMock
+
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import (
+            _resolve_transitive,
+            _system_info_fingerprint,
+        )
+
+        aggregator = MagicMock()
+        aggregator.get_package_info = AsyncMock(return_value={
+            "name": "requests",
+            "versions": {"pypi": [{"version": "2.31.0"}]},
+            "dependencies": {},
+            "system_requirements": {},
+        })
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {
+                "requests": {"version": "2.31.0", "ecosystem": "pypi"},
+            },
+        }
+        system_info = {
+            "platform": {"system": "linux"},
+            "gpu": {"cuda": "12.1"},
+        }
+        fingerprint = _system_info_fingerprint(system_info)
+
+        # flask unchanged
+        flask_hash = ConflictResolver.compute_resolution_hash(
+            "flask", "pypi", ">=2.0", {}, fingerprint
+        )
+        # requests changed — compute hash with OLD constraint so stored hash doesn't match
+        old_requests_hash = ConflictResolver.compute_resolution_hash(
+            "requests", "pypi", ">=2.28.0", {}, fingerprint
+        )
+        packages = [
+            {
+                "name": "flask",
+                "ecosystem": "pypi",
+                "version_constraint": ">=2.0",
+                "dependencies": {},
+            },
+            {
+                "name": "requests",
+                "ecosystem": "pypi",
+                "version_constraint": ">=2.31.0",
+                "dependencies": {},
+            },
+        ]
+        lock_data = {
+            "packages": {
+                "flask": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.3.3",
+                    "version": "2.3.3",
+                    "original_constraint": ">=2.0",
+                    "resolution_hash": flask_hash,
+                    "depends_on": {},
+                },
+                "requests": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.28.0",
+                    "version": "2.28.0",
+                    "original_constraint": ">=2.28.0",
+                    "resolution_hash": old_requests_hash,
+                    "depends_on": {},
+                },
+            }
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, packages, system_info, lock_data=lock_data,
+        )
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
+        assert result["resolved_packages"]["requests"]["version"] == "2.31.0"
+        resolver.resolve_dependencies.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_incremental_no_lock_data(self):
+        from unittest.mock import AsyncMock
+
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        aggregator = MagicMock()
+        aggregator.get_package_info = AsyncMock(return_value=None)
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {"gpu": {"cuda": "12.1"}}
+        pkg = {
+            "name": "flask",
+            "ecosystem": "pypi",
+            "version_constraint": ">=2.0",
+            "dependencies": {},
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, [pkg], system_info, lock_data=None,
+        )
+        assert result["status"] == "satisfiable"
+        aggregator.get_package_info.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_incremental_force_flag(self):
+        from unittest.mock import AsyncMock
+
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import (
+            _resolve_transitive,
+            _system_info_fingerprint,
+        )
+
+        aggregator = MagicMock()
+        aggregator.get_package_info = AsyncMock(return_value=None)
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {"platform": {"system": "linux"}}
+        fingerprint = _system_info_fingerprint(system_info)
+
+        pkg = {
+            "name": "flask",
+            "ecosystem": "pypi",
+            "version_constraint": ">=2.0",
+            "dependencies": {},
+        }
+        expected_hash = ConflictResolver.compute_resolution_hash(
+            "flask", "pypi", ">=2.0", {}, fingerprint
+        )
+        lock_data = {
+            "packages": {
+                "flask": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.3.3",
+                    "version": "2.3.3",
+                    "original_constraint": ">=2.0",
+                    "resolution_hash": expected_hash,
+                    "depends_on": {},
+                }
+            }
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, [pkg], system_info,
+            lock_data=lock_data, incremental=False,
+        )
+        assert result["status"] == "satisfiable"
+        aggregator.get_package_info.assert_called()
+        # Even though hash matches, incremental=False forces full BFS
+
+    @pytest.mark.asyncio
+    async def test_incremental_missing_hash_transitive(self):
+        from unittest.mock import AsyncMock
+
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import (
+            _resolve_transitive,
+            _system_info_fingerprint,
+        )
+
+        aggregator = MagicMock()
+        aggregator.get_package_info = AsyncMock(return_value={
+            "name": "flask",
+            "versions": {"pypi": [{"version": "2.3.3"}]},
+            "dependencies": {
+                "pypi": {
+                    "all": [
+                        type("_Dep", (), {
+                            "name": "click",
+                            "version_spec": ">=8.0",
+                            "ecosystem": None,
+                            "dev_only": False,
+                        })()
+                    ]
+                }
+            },
+            "system_requirements": {},
+        })
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {},
+        }
+        system_info = {"gpu": {"cuda": "12.1"}}
+        fingerprint = _system_info_fingerprint(system_info)
+
+        pkg = {
+            "name": "flask",
+            "ecosystem": "pypi",
+            "version_constraint": ">=2.0",
+            "dependencies": {"pypi": {"click": ">=8.0"}},
+        }
+        expected_hash = ConflictResolver.compute_resolution_hash(
+            "flask", "pypi", ">=2.0", {"pypi": {"click": ">=8.0"}}, fingerprint
+        )
+        lock_data = {
+            "packages": {
+                "flask": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.3.3",
+                    "version": "2.3.3",
+                    "original_constraint": ">=2.0",
+                    "resolution_hash": expected_hash,
+                    "depends_on": {"click": ">=8.0"},
+                },
+                "click": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "8.1.7",
+                    "version": "8.1.7",
+                    "original_constraint": ">=8.0",
+                    # Intentionally NO resolution_hash
+                    "depends_on": {},
+                },
+            }
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, [pkg], system_info, lock_data=lock_data,
+        )
+        assert result["status"] == "satisfiable"
+        # Since click is missing a hash, flask falls back to BFS
+        aggregator.get_package_info.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_incremental_mixed(self):
+        from unittest.mock import AsyncMock
+
+        from backend.core.conflict_resolver import ConflictResolver
+        from backend.orchestrator.resolve import (
+            _resolve_transitive,
+            _system_info_fingerprint,
+        )
+
+        aggregator = MagicMock()
+        aggregator.get_package_info = AsyncMock(return_value={
+            "name": "numpy",
+            "versions": {"pypi": [{"version": "1.26.0"}]},
+            "dependencies": {},
+            "system_requirements": {},
+        })
+
+        resolver = MagicMock()
+        resolver.resolve_dependencies.return_value = {
+            "status": "satisfiable",
+            "resolved_packages": {
+                "numpy": {"version": "1.26.0", "ecosystem": "pypi"},
+            },
+        }
+        system_info = {"platform": {"system": "linux"}}
+        fingerprint = _system_info_fingerprint(system_info)
+
+        flask_hash = ConflictResolver.compute_resolution_hash(
+            "flask", "pypi", ">=2.0", {}, fingerprint
+        )
+        packages = [
+            {
+                "name": "flask",
+                "ecosystem": "pypi",
+                "version_constraint": ">=2.0",
+                "dependencies": {},
+            },
+            {
+                "name": "numpy",
+                "ecosystem": "pypi",
+                "version_constraint": ">=1.24",
+                "dependencies": {},
+            },
+        ]
+        lock_data = {
+            "packages": {
+                "flask": {
+                    "ecosystem": "pypi",
+                    "resolved_version": "2.3.3",
+                    "version": "2.3.3",
+                    "original_constraint": ">=2.0",
+                    "resolution_hash": flask_hash,
+                    "depends_on": {},
+                },
+                # numpy is NOT in lock_data — it's new
+            }
+        }
+
+        result = await _resolve_transitive(
+            aggregator, resolver, packages, system_info, lock_data=lock_data,
+        )
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["flask"]["version"] == "2.3.3"
+        assert result["resolved_packages"]["numpy"]["version"] == "1.26.0"
+
+    @pytest.mark.asyncio
+    async def test_incremental_empty_packages(self):
+        from backend.orchestrator.resolve import _resolve_transitive
+
+        aggregator = MagicMock()
+        resolver = MagicMock()
+        system_info = {}
+        lock_data = {"packages": {}, "version": "2.1"}
+
+        result = await _resolve_transitive(
+            aggregator, resolver, [], system_info, lock_data=lock_data,
+        )
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"] == {}
+        resolver.resolve_dependencies.assert_not_called()

@@ -70,7 +70,7 @@ class ConanPlugin(EcosystemPlugin):
             spec = m.group(1)
             parts = spec.split("/", 1)
             name = parts[0].strip()
-            version = parts[1].strip() if len(parts) > 1 else "*"
+            version = parts[1].strip() if len(parts) > 1 and parts[1].strip() else "*"
             key = f"{name}@{version}"
             if key not in seen:
                 seen.add(key)
