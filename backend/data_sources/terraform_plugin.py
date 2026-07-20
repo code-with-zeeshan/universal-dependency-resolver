@@ -97,11 +97,20 @@ class TerraformPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "terraform",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Terraform provider (no remote metadata available)",
-        }
+        try:
+            url = f"{self.base_url}/providers/{package_name}/versions"
+            data = await self._get(url)
+            if not data:
+                return None
+            raw_versions = data.get("versions", [])
+            versions = [{"version": v["version"]} for v in raw_versions if isinstance(v, dict)]
+            return {
+                "name": package_name,
+                "ecosystem": "terraform",
+                "version": versions[0]["version"] if versions else "*",
+                "versions": versions if include_versions else [],
+                "dependencies": {},
+            }
+        except Exception as e:
+            logger.warning("Terraform fetch failed for %s: %s", package_name, e)
+            return None

@@ -586,7 +586,7 @@ class TestPyPIClient:
         requires_dist = ["invalid name >=1.0; extra == 'dev'"]
         result = await client._extract_dependencies_enhanced(requires_dist, None)
         assert "invalid" in result["required"]
-        assert result["required"]["invalid"] == "name >=1.0"
+        assert result["required"]["invalid"]["version_spec"] == "name >=1.0"
 
     @pytest.mark.asyncio
     async def test_extract_dependencies_enhanced_no_requires(self, client):

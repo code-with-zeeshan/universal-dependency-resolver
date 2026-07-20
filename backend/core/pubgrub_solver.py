@@ -10,6 +10,7 @@ It supports the same ``resolve_dependencies(system_info)`` interface as
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import platform
 import re
@@ -38,6 +39,15 @@ _PUBGRUB_PY_ERROR: type = Exception  # overwritten on successful import
 _PUBGRUB_CORE_SOLVER: type | None = None  # lazy-imported
 _PUBGRUB_CORE_ERROR: type = Exception  # overwritten on failed import
 
+_ASYNC_EXECUTOR: concurrent.futures.ThreadPoolExecutor | None = None
+
+
+def _get_async_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _ASYNC_EXECUTOR
+    if _ASYNC_EXECUTOR is None:
+        _ASYNC_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    return _ASYNC_EXECUTOR
+
 
 def _run_async_safe(coro: Any) -> Any:
     """Run a coroutine safely whether or not an event loop is running.
@@ -51,10 +61,8 @@ def _run_async_safe(coro: Any) -> Any:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
-    import concurrent.futures
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
+    pool = _get_async_executor()
+    return pool.submit(asyncio.run, coro).result()
 
 
 def _check_pubgrub_py() -> bool:
@@ -274,7 +282,62 @@ class PubGrubSolver:
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
             }
 
-        return {"status": "satisfiable", "resolved_packages": resolved_packages}
+        # Build dependency tree from original package data
+        dep_tree: dict[str, dict] = {}
+        for pkg in packages:
+            name = pkg["name"]
+            if name in resolved_packages:
+                dep_edges: dict[str, dict[str, str]] = {}
+                all_deps = pkg.get("dependencies", {})
+                for dep_eco, dep_info in all_deps.items():
+                    if (
+                        isinstance(dep_info, dict)
+                        and dep_info
+                        and all(isinstance(v, str) for v in dep_info.values())
+                    ):
+                        dep_edges.setdefault(dep_eco, {}).update(
+                            {
+                                d_name: d_spec
+                                for d_name, d_spec in dep_info.items()
+                                if d_name in resolved_packages
+                            }
+                        )
+                    elif isinstance(dep_info, dict) and "all" in dep_info:
+                        for dep in dep_info["all"]:
+                            d_name = getattr(
+                                dep, "name", dep.get("name", "") if isinstance(dep, dict) else ""
+                            )
+                            d_spec = getattr(dep, "version_spec", "*")
+                            if d_name and d_name in resolved_packages:
+                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
+                    elif isinstance(dep_info, list):
+                        for dep in dep_info:
+                            if isinstance(dep, str):
+                                d_name = dep
+                                d_spec = "*"
+                            else:
+                                d_name = (
+                                    dep.get("name", "")
+                                    if isinstance(dep, dict)
+                                    else getattr(dep, "name", "")
+                                )
+                                d_spec = (
+                                    dep.get("version_spec", "*")
+                                    if isinstance(dep, dict)
+                                    else getattr(dep, "version_spec", "*")
+                                )
+                            if d_name and d_name in resolved_packages:
+                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
+                dep_tree[name] = {
+                    "version": resolved_packages[name]["version"],
+                    "dependencies": dep_edges,
+                }
+
+        return {
+            "status": "satisfiable",
+            "resolved_packages": resolved_packages,
+            "dependency_tree": dep_tree,
+        }
 
     def _resolve_via_pure_python(self, packages: list[dict]) -> dict:
         """Resolve using the pure-Python ``PubGrubCoreSolver``."""
@@ -382,7 +445,62 @@ class PubGrubSolver:
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
             }
 
-        return {"status": "satisfiable", "resolved_packages": resolved_packages}
+        # Build dependency tree from original package data
+        dep_tree: dict[str, dict] = {}
+        for pkg in packages:
+            name = pkg["name"]
+            if name in resolved_packages:
+                dep_edges: dict[str, dict[str, str]] = {}
+                all_deps = pkg.get("dependencies", {})
+                for dep_eco, dep_info in all_deps.items():
+                    if (
+                        isinstance(dep_info, dict)
+                        and dep_info
+                        and all(isinstance(v, str) for v in dep_info.values())
+                    ):
+                        dep_edges.setdefault(dep_eco, {}).update(
+                            {
+                                d_name: d_spec
+                                for d_name, d_spec in dep_info.items()
+                                if d_name in resolved_packages
+                            }
+                        )
+                    elif isinstance(dep_info, dict) and "all" in dep_info:
+                        for dep in dep_info["all"]:
+                            d_name = getattr(
+                                dep, "name", dep.get("name", "") if isinstance(dep, dict) else ""
+                            )
+                            d_spec = getattr(dep, "version_spec", "*")
+                            if d_name and d_name in resolved_packages:
+                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
+                    elif isinstance(dep_info, list):
+                        for dep in dep_info:
+                            if isinstance(dep, str):
+                                d_name = dep
+                                d_spec = "*"
+                            else:
+                                d_name = (
+                                    dep.get("name", "")
+                                    if isinstance(dep, dict)
+                                    else getattr(dep, "name", "")
+                                )
+                                d_spec = (
+                                    dep.get("version_spec", "*")
+                                    if isinstance(dep, dict)
+                                    else getattr(dep, "version_spec", "*")
+                                )
+                            if d_name and d_name in resolved_packages:
+                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
+                dep_tree[name] = {
+                    "version": resolved_packages[name]["version"],
+                    "dependencies": dep_edges,
+                }
+
+        return {
+            "status": "satisfiable",
+            "resolved_packages": resolved_packages,
+            "dependency_tree": dep_tree,
+        }
 
 
 def _to_semver(v: str) -> str:
@@ -409,7 +527,8 @@ def _sanitize_version(version: str) -> str:
     This function strips non-numeric suffixes, normalizes leading zeros,
     and pads to three numeric parts.
     """
-    parts = version.strip().split(".")
+    version = version.strip().lstrip("vV")
+    parts = version.split(".")
     clean_parts: list[str] = []
     for p in parts:
         if p and p[0].isdigit():
@@ -428,10 +547,7 @@ def _sanitize_version(version: str) -> str:
 def _has_prerelease_suffix(v: str) -> bool:
     """Check if a version string has a pre-release suffix stripped by _sanitize_version."""
     parts = v.split(".")
-    for p in parts:
-        if p and not p[0].isdigit():
-            return True
-    return False
+    return any(p and not p[0].isdigit() for p in parts)
 
 
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:

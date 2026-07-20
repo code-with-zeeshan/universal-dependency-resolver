@@ -15,6 +15,7 @@ from ..shared import (
     _aggregator_to_resolver_input,
     _build_pinning_policy,
     _build_resolved_table,
+    _build_target_system_info,
     _check_and_sync_indexes,
     _extract_severity,
     _parse_package_spec,
@@ -89,6 +90,10 @@ def cmd_resolve(args: argparse.Namespace) -> None:
                 system_info["gpu"]["available"] = True
                 if args.cuda is None and not system_info["gpu"].get("cuda"):
                     system_info["gpu"]["cuda"] = "12.1"
+
+        target_info = _build_target_system_info(args, system_info)
+        if target_info:
+            system_info["target"] = target_info
 
         resolver_inputs = []
         package_details = {}

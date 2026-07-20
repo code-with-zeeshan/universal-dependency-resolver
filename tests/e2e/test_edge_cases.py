@@ -210,11 +210,49 @@ class TestCrossEcosystem:
             assert len(pkgs) >= 5, f"Expected >=5 pkgs with cross_deps config, got {len(pkgs)}"
             assert "requests" in pkgs, "missing requests"
             assert "lodash" in pkgs, "missing lodash"
-            # Verify cross_ecosystem_deps tracking on the source package
-            requests_info = pkgs.get("requests", {})
-            cross_edges = requests_info.get("cross_ecosystem_deps", [])
-            # The cross-eco edge may be tracked in the requests entry or not;
-            # the important thing is both ecosystems resolved without crashing
+            # Verify depends_on entries preserving cross-eco edges
+            lodash_info = pkgs.get("lodash", {})
+            assert lodash_info.get("ecosystem") == "npm", (
+                f"lodash should be npm, got {lodash_info.get('ecosystem')}"
+            )
+            requests_entry = pkgs.get("requests", {})
+            depends_on = requests_entry.get("depends_on", {})
+            assert "lodash" in depends_on, (
+                f"requests should depend on lodash, got {list(depends_on.keys())}"
+            )
+
+    def test_17_cross_ecosystem_npm_pypi_reverse_direction(self):
+        """Cross-eco deps declared in udr.json: lodash@npm -> click@pypi."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            d = Path(tmpdir)
+            (d / "requirements.txt").write_text("click>=8.0\n")
+            (d / "package.json").write_text('{"dependencies":{"lodash":"^4.17"}}')
+            udr_json = {
+                "cross_deps": [
+                    {
+                        "from": "lodash@npm",
+                        "dep": "click@pypi",
+                        "constraint": ">=8.0",
+                        "target_ecosystem": "pypi",
+                    },
+                ],
+            }
+            (d / "udr.json").write_text(json.dumps(udr_json))
+            data = _lock(d, timeout=600)
+            pkgs = data.get("packages", {})
+            assert len(pkgs) >= 3, f"Expected >=3 pkgs, got {len(pkgs)}"
+            assert "lodash" in pkgs, "missing lodash"
+            assert "click" in pkgs, "missing click"
+            # Verify both ecosystems appear
+            ecosystems = {p.get("ecosystem") for p in pkgs.values()}
+            assert "npm" in ecosystems, "missing npm ecosystem"
+            assert "pypi" in ecosystems, "missing pypi ecosystem"
+            # Verify lodash has click in depends_on
+            lodash_entry = pkgs.get("lodash", {})
+            depends_on = lodash_entry.get("depends_on", {})
+            assert "click" in depends_on, (
+                f"lodash should depend on click, got {list(depends_on.keys())}"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════

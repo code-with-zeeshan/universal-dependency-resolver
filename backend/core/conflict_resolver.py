@@ -615,12 +615,41 @@ class ConflictResolver:
             )
             return None
 
+        # Collect downstream constraints: packages in future ecosystems
+        # that constrain packages in earlier (upstream) ecosystems.
+        # E.g., mypkg@pypi depends on dep-npm@npm with >=2.0.0 —
+        # this constraint must be applied when resolving npm first.
+        downstream_constraints: dict[str, list[tuple[str, str]]] = {}
+        for pkg in normalized_packages:
+            pkg_eco = pkg.get("ecosystem", "unknown")
+            for dep_eco, deps in pkg.get("dependencies", {}).items():
+                if dep_eco != pkg_eco and dep_eco in eco_groups:
+                    for dep_name, constraint in deps.items():
+                        downstream_constraints.setdefault(dep_name, [])
+                        downstream_constraints[dep_name].append((pkg_eco, constraint))
+
         resolved_versions: dict[str, str] = {}
         all_results: dict[str, dict] = {}
+        all_trees: dict[str, dict] = {}
 
-        for eco in topo_eco_order:
+        for idx, eco in enumerate(topo_eco_order):
             pkgs = copy.deepcopy(eco_groups[eco])
             eco_pkg_names = {p["name"] for p in pkgs}
+
+            # Propagate downstream constraints from future ecosystems
+            for pkg in pkgs:
+                pkg_name = pkg.get("name", "")
+                if pkg_name in downstream_constraints:
+                    for source_eco, constraint in downstream_constraints[pkg_name]:
+                        source_idx = (
+                            topo_eco_order.index(source_eco) if source_eco in topo_eco_order else -1
+                        )
+                        if source_idx > idx:
+                            existing = pkg.get("version_constraint", "*")
+                            if existing and existing != "*":
+                                pkg["version_constraint"] = f"{existing},{constraint}"
+                            else:
+                                pkg["version_constraint"] = constraint
 
             for pkg in pkgs:
                 for dep_eco, deps in list(pkg.get("dependencies", {}).items()):
@@ -647,6 +676,10 @@ class ConflictResolver:
                         if ver:
                             resolved_versions[pname] = ver
                         all_results[pname] = pinfo
+                    # Collect per-ecosystem dependency tree (each eco resolved with its own graph)
+                    eco_tree = formatted.get("dependency_tree", {})
+                    for pname, pdep in eco_tree.items():
+                        all_trees[pname] = pdep
                 else:
                     logger.info(
                         "Ecosystem %s unsatisfiable — falling back to combined resolution",
@@ -670,7 +703,7 @@ class ConflictResolver:
         return {
             "status": "satisfiable",
             "resolved_packages": all_results,
-            "dependency_tree": self._build_dependency_tree(all_results),
+            "dependency_tree": all_trees,
             "warnings": [],
             "installation_order": list(all_results.keys()),
             "eco_isolation": True,
@@ -1481,10 +1514,16 @@ class ConflictResolver:
             sys_reqs = package.get("system_requirements", {})
             python_req = sys_reqs.get("python", {})
             min_python = python_req.get("min_version", "")
-            cuda_req = sys_reqs.get("cuda", {})
-            min_cuda = cuda_req.get("min_version", "")
 
-            def _build_vars(ver_list, pkg_name=pkg_name, constraint=constraint, package=package):
+            def _build_vars(
+                ver_list,
+                pkg_name=pkg_name,
+                constraint=constraint,
+                package=package,
+                sys_py=sys_py,
+                min_python=min_python,
+                ver_python_reqs=ver_python_reqs,
+            ):
                 vars_list = []
                 self._create_version_mapping(pkg_name, ver_list)
                 pkg_eco = package.get("ecosystem", "pypi")
@@ -1667,7 +1706,7 @@ class ConflictResolver:
                             continue
 
                 # Get successor package info
-                dep_name = successor_data.get("name", successor.split("@", 1)[-1])
+                dep_name = successor_data.get("name", successor.rsplit("@", 1)[0])
 
                 # Build compat cache entry lazily (once per unique dep_name+constraint)
                 cache_key = (dep_name, parsed_constraint)

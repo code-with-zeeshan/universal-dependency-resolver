@@ -7,13 +7,13 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/2846%20unit%2B96%20integration%2B75%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/3001%20unit%2B96%20integration%2B76%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
 ---
 
-## ✨ One tool. 20 ecosystems. Infinite possibilities.
+## ✨ One tool. 22 ecosystems. Infinite possibilities.
 
 ```bash
 udr resolve torch@pypi express@npm serde@crates
@@ -80,9 +80,9 @@ udr serve --port 8000
 | 🧠 **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, SCC batch partitioning, CUDA-aware conflict resolution, and DFS backtracking fallback |
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
-| 📤 **12 export formats** | requirements.txt, package.json, environment.yml, pyproject.toml, Dockerfile, docker-compose.yml, install.sh, install.bat, CMakeLists.txt, Cargo.toml, build.gradle, pom.xml |
+| 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | 🎛️ **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| 🌐 **63 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🌐 **58 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
 | 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -220,11 +220,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Metric | Value |
 |---|---|
-| ✅ Supported ecosystems | **20** active (+ docs/custom_db for internal use) |
-| 🧪 Unit tests passing | **2846** (+ 96 integration + 75 e2e) |
+| ✅ Supported ecosystems | **22** (20 active resolution + 2 internal) |
+| 🧪 Unit tests passing | **3001** (+ 96 integration + 76 e2e) |
 | 🎛️ CLI commands | **19** |
-| 🌐 API endpoints | **63** |
-| 📤 Export formats | **12** |
+| 🌐 API endpoints | **58** |
+| 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
 | 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
 | ⭐ Stars | [![Stars](https://img.shields.io/github/stars/code-with-zeeshan/universal-dependency-resolver?style=social)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
@@ -264,7 +264,7 @@ cd desktop && node --test tests/
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
 | 🎮 [CLI Reference](docs/CLI.md) | All 19 commands, flags, examples, exit codes |
-| 🌐 [API Reference](docs/API.md) | 63 REST endpoints, request/response schemas |
+| 🌐 [API Reference](docs/API.md) | 58 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
 | 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |

@@ -464,6 +464,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target CPU architecture for cross-compilation (overrides host arch)",
     )
     update_p.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Resolution timeout in seconds (default: 120, from SOLVER_TIMEOUT env var)",
+    )
+    update_p.add_argument(
         "--fix-cve",
         action="store_true",
         help="Update vulnerable packages to versions that fix known CVEs",

@@ -78,6 +78,5 @@ class TestGuixPlugin:
     async def test_get_package_info(self, plugin_cls):
         inst = plugin_cls()
         result = await inst.get_package_info("hello")
-        assert result is not None
-        assert result["ecosystem"] == "guix"
-        assert result["version"] == "latest"
+        # Guix has no remote API — returns None with a warning
+        assert result is None

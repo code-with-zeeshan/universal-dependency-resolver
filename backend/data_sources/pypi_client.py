@@ -359,18 +359,23 @@ class PyPIClient(BaseDataSourceClient):
                     "marker": None,
                 }
 
-        # Clean up the structure for backward compatibility
+        # Clean up the structure — preserve marker info
         cleaned_deps = {}
         for category, packages in deps.items():
-            if packages:  # Only include non-empty categories
-                if category == "extras":
-                    cleaned_deps[category] = packages
-                else:
-                    # Simplify structure for non-extras
-                    cleaned_deps[category] = {
-                        pkg: info["version_spec"] if isinstance(info, dict) else info
-                        for pkg, info in packages.items()
-                    }
+            if not packages:
+                continue
+            if category == "extras":
+                cleaned_deps[category] = packages
+            else:
+                cleaned_deps[category] = {}
+                for pkg, info in packages.items():
+                    if isinstance(info, dict):
+                        entry: dict[str, str | None] = {"version_spec": info["version_spec"]}
+                        if info.get("marker"):
+                            entry["marker"] = info["marker"]
+                        cleaned_deps[category][pkg] = entry
+                    else:
+                        cleaned_deps[category][pkg] = str(info)
 
         return cleaned_deps
 

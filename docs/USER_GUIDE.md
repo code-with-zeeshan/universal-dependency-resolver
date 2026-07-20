@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **20 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **22 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -181,7 +181,7 @@ graph TB
         DA["<code>data_aggregator.py</code><br/>Async aggregation"]
         EG["<code>export_generator.py</code><br/>15 export formats"]
         SS["<code>system_scanner.py</code><br/>OS · GPU · CUDA · runtimes"]
-        MD["<code>manifest_detector.py</code><br/>47+ manifest/lock patterns"]
+        MD["<code>manifest_detector.py</code><br/>46+ manifest/lock patterns"]
         CACHE["<code>cache.py</code><br/>DictCache + Redis"]
     end
 
@@ -704,7 +704,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 | Resource | What it covers |
 |---|---|
 | [CLI Reference](CLI.md) | Every command with flags and examples |
-| [API Reference](API.md) | 59 REST endpoints with request/response schemas |
+| [API Reference](API.md) | 58 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |
 | [Development](DEVELOPMENT.md) | Setup, testing, project structure |

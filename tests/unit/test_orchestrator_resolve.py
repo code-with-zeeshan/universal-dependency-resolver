@@ -10,6 +10,7 @@ from backend.orchestrator.resolve import (
     _collect_locked_transitive_deps,
     _determine_dep_ecosystem,
     _extract_system_requirements,
+    _group_by_ecosystem,
     _lock_data_to_result,
     _normalize_cuda,
     _safe_version_key,
@@ -934,6 +935,108 @@ class TestIncrementalResolution:
         assert result["status"] == "satisfiable"
         assert result["resolved_packages"] == {}
         resolver.resolve_dependencies.assert_not_called()
+
+
+class TestGroupByEcosystem:
+    """Tests for _group_by_ecosystem."""
+
+    def test_single_eco_no_cross(self):
+        pkgs = [
+            {
+                "name": "a",
+                "ecosystem": "pypi",
+                "dependencies": {"pypi": {}},
+                "cross_ecosystem_deps": [],
+            },
+            {
+                "name": "b",
+                "ecosystem": "pypi",
+                "dependencies": {"pypi": {}},
+                "cross_ecosystem_deps": [],
+            },
+        ]
+        groups = _group_by_ecosystem(pkgs)
+        assert groups == {"pypi": pkgs}
+
+    def test_two_ecosystems_no_cross(self):
+        pypi_pkgs = [
+            {
+                "name": "a",
+                "ecosystem": "pypi",
+                "dependencies": {"pypi": {}},
+                "cross_ecosystem_deps": [],
+            },
+        ]
+        npm_pkgs = [
+            {
+                "name": "lodash",
+                "ecosystem": "npm",
+                "dependencies": {"npm": {}},
+                "cross_ecosystem_deps": [],
+            },
+        ]
+        groups = _group_by_ecosystem(pypi_pkgs + npm_pkgs)
+        assert "pypi" in groups
+        assert "npm" in groups
+        assert "__cross__" not in groups
+
+    def test_cross_eco_deps_goes_to_cross_group(self):
+        """Only ecosystems with cross-eco packages go to __cross__."""
+        pkg_a = {
+            "name": "a",
+            "ecosystem": "pypi",
+            "dependencies": {"pypi": {}},
+            "cross_ecosystem_deps": [{"source": "b@npm"}],
+        }
+        pkg_b = {
+            "name": "b",
+            "ecosystem": "npm",
+            "dependencies": {"npm": {}},
+            "cross_ecosystem_deps": [],
+        }
+        groups = _group_by_ecosystem([pkg_a, pkg_b])
+        assert "__cross__" in groups
+        assert "pypi" not in groups
+        assert "npm" in groups
+        assert len(groups["__cross__"]) == 1  # only pypi goes to cross
+        assert len(groups["npm"]) == 1
+
+    def test_cross_eco_deps_pulls_entire_ecosystem(self):
+        """All packages from an ecosystem with any cross-eco dep go to __cross__."""
+        pkg_a = {
+            "name": "a",
+            "ecosystem": "pypi",
+            "dependencies": {"pypi": {}},
+            "cross_ecosystem_deps": [{"source": "c@npm"}],
+        }
+        pkg_b = {
+            "name": "b",
+            "ecosystem": "pypi",
+            "dependencies": {"pypi": {}},
+            "cross_ecosystem_deps": [],
+        }
+        pkg_c = {
+            "name": "c",
+            "ecosystem": "npm",
+            "dependencies": {"npm": {}},
+            "cross_ecosystem_deps": [],
+        }
+        groups = _group_by_ecosystem([pkg_a, pkg_b, pkg_c])
+        assert "__cross__" in groups
+        assert len(groups["__cross__"]) == 2  # only pypi packages go to cross
+        assert "npm" in groups  # npm has no cross-eco deps, stays separate
+
+    def test_cross_dep_via_dependency_key(self):
+        """When a dependency key differs from the package's ecosystem, it goes to __cross__."""
+        pkg = {
+            "name": "a",
+            "ecosystem": "pypi",
+            "dependencies": {"npm": {"lodash": ">=4.0"}},
+            "cross_ecosystem_deps": [],
+        }
+        groups = _group_by_ecosystem([pkg])
+        assert "__cross__" in groups
+        assert len(groups["__cross__"]) == 1
 
 
 class TestCrossDepsInjection:

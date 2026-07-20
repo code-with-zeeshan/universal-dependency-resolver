@@ -56,7 +56,7 @@ python -m pytest tests/integration/
 python -m pytest --cov=backend tests/
 ```
 
-Total: **2775 unit tests** + **96 integration** + **75 e2e** (CLI black-box, problem-statement, JSON compliance). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed. Coverage threshold: `fail_under = 60`.
+Total: **3001 unit tests** + **96 integration** + **76 e2e** (CLI black-box, problem-statement, JSON compliance). Integration tests default to SQLite and optionally use Redis if available. No PostgreSQL needed. Coverage threshold: `fail_under = 60`.
 
 ## Code quality
 
@@ -97,7 +97,7 @@ desktop/
 └── package.json
 tests/
 ├── conftest.py        # Shared fixtures
-├── unit/              # 2775 tests
+├── unit/              # 3001 tests
 ├── integration/       # 96 tests
 └── e2e/               # 75 tests
 ```

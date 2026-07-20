@@ -20,7 +20,13 @@ from pathlib import Path
 
 from rich.prompt import Confirm
 
-from ..shared import _generate_install_command, _read_lock_file, _resolve_lock_path, console
+from ..shared import (
+    _build_target_system_info,
+    _generate_install_command,
+    _read_lock_file,
+    _resolve_lock_path,
+    console,
+)
 
 
 def cmd_install(args: argparse.Namespace) -> int:
@@ -34,6 +40,17 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     lock_data = _read_lock_file(lock_path)
     packages = lock_data.get("packages", {})
+
+    # Consume --target/--platform to validate lock file compatibility
+    target_info = _build_target_system_info(args, {})
+    if target_info:
+        lock_target = lock_data.get("target", {})
+        for k, v in target_info.items():
+            if lock_target.get(k) and lock_target[k] != v:
+                console.print(
+                    f"[yellow]Warning:[/yellow] Lock file targets {k}={lock_target[k]}, "
+                    f"but --{k}={v} specified. Install results may not match target.[/yellow]"
+                )
     if not packages:
         console.print("[red]No packages in lock file[/red]")
         return 1

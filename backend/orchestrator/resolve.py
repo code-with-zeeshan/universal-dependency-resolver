@@ -12,6 +12,7 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
+from backend.core.markers import evaluate_marker_string
 from backend.settings import (
     BFS_BATCH_SIZE,
     INCREMENTAL_RESOLUTION,
@@ -22,6 +23,27 @@ from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
 
 logger = logging.getLogger(__name__)
+
+
+def _maybe_wrap_forking(solver: Any) -> Any:
+    """Wrap *solver* with ``ForkingResolver`` when ``USE_FORKING_SOLVER=true``."""
+    import backend.settings as _s
+
+    if not _s.USE_FORKING_SOLVER:
+        return solver
+
+    try:
+        from backend.core.forking_resolver import ForkingResolver
+
+        logger.info("Wrapping solver with ForkingResolver (USE_FORKING_SOLVER=true)")
+        return ForkingResolver(
+            base_solver=solver,
+            max_forks=_s.FORKING_MAX_FORKS,
+            fork_timeout_ratio=_s.FORKING_TIMEOUT_RATIO,
+        )
+    except ImportError:
+        logger.warning("ForkingResolver module not available; using unwrapped solver")
+        return solver
 
 
 def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
@@ -35,24 +57,31 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
       2. USE_HYBRID_SOLVER=true    → HybridSolver (PubGrub + Z3)
       3. USE_PUBGRUB_SOLVER=true   → PubGrubSolver
       4. Default                   → AutoSolver
+
+    When ``USE_FORKING_SOLVER=true``, the selected solver is wrapped in
+    a :class:`ForkingResolver` that forks parallel alternatives on failure.
     """
     import backend.settings as _s
+
+    solver: Any = None
 
     if _s.USE_Z3_SOLVER:
         from backend.core.conflict_resolver import ConflictResolver
 
         logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
-        return ConflictResolver(use_optimization=use_optimization)
+        solver = ConflictResolver(use_optimization=use_optimization)
+        return _maybe_wrap_forking(solver)
 
     if _s.USE_HYBRID_SOLVER:
         try:
             from backend.core.hybrid_solver import HybridSolver
 
             logger.info("Using HybridSolver (USE_HYBRID_SOLVER=true)")
-            return HybridSolver(
+            solver = HybridSolver(
                 use_optimization=use_optimization,
                 solver_timeout=solver_timeout,
             )
+            return _maybe_wrap_forking(solver)
         except ImportError:
             logger.warning(
                 "USE_HYBRID_SOLVER is true but hybrid_solver module not available; "
@@ -64,10 +93,11 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
             from backend.core.pubgrub_solver import PubGrubSolver
 
             logger.info("Using PubGrubSolver (USE_PUBGRUB_SOLVER=true)")
-            return PubGrubSolver(
+            solver = PubGrubSolver(
                 use_optimization=use_optimization,
                 solver_timeout=solver_timeout,
             )
+            return _maybe_wrap_forking(solver)
         except ImportError:
             logger.warning(
                 "USE_PUBGRUB_SOLVER is true but pubgrub_solver module not available; "
@@ -79,10 +109,11 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
         from backend.core.auto_solver import AutoSolver
 
         logger.info("Using AutoSolver (profiles graph and selects best backend)")
-        return AutoSolver(
+        solver = AutoSolver(
             use_optimization=use_optimization,
             solver_timeout=solver_timeout,
         )
+        return _maybe_wrap_forking(solver)
     except ImportError:
         logger.info("AutoSolver not available; falling back to PubGrub")
 
@@ -90,16 +121,18 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
         from backend.core.pubgrub_solver import PubGrubSolver
 
         logger.info("Using PubGrub solver (fallback)")
-        return PubGrubSolver(
+        solver = PubGrubSolver(
             use_optimization=use_optimization,
             solver_timeout=solver_timeout,
         )
+        return _maybe_wrap_forking(solver)
     except ImportError:
         logger.info("PubGrubSolver not available; falling back to Z3")
 
     from backend.core.conflict_resolver import ConflictResolver
 
-    return ConflictResolver(use_optimization=use_optimization)
+    solver = ConflictResolver(use_optimization=use_optimization)
+    return _maybe_wrap_forking(solver)
 
 
 def _safe_version_key(v: str, ecosystem: str) -> _pkg_version.Version:
@@ -179,6 +212,7 @@ def _aggregator_to_resolver_input(
     ecosystem: str,
     constraint: str | None = None,
     extras: list[str] | None = None,
+    system_info: dict | None = None,
 ) -> dict:
     available_versions = []
     version_requires_python: dict[str, str] = {}
@@ -199,6 +233,9 @@ def _aggregator_to_resolver_input(
     eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
     for dep in eco_deps.get("all", []):
         if getattr(dep, "dev_only", False):
+            continue
+        marker = getattr(dep, "marker", None)
+        if marker and not evaluate_marker_string(marker, system_info):
             continue
         deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
     if extras:
@@ -262,8 +299,11 @@ def _build_dep_pkg(
     dep: Any,
     dep_ecosystem_val: str,
     dep_info: dict,
+    system_info: dict | None = None,
 ) -> dict | None:
-    dep_resolver_input = _aggregator_to_resolver_input(dep_info, dep_ecosystem_val)
+    dep_resolver_input = _aggregator_to_resolver_input(
+        dep_info, dep_ecosystem_val, system_info=system_info
+    )
     dep_avail = dep_resolver_input.get("available_versions", [])
     if not dep_avail:
         return None
@@ -278,10 +318,16 @@ def _build_dep_pkg(
     }
     dep_deps_all = dep_info.get("dependencies", {})
     for d_eco, d_data in dep_deps_all.items():
+        filtered = []
+        for d in d_data.get("all", []):
+            if getattr(d, "dev_only", False):
+                continue
+            marker = getattr(d, "marker", None)
+            if marker and not evaluate_marker_string(marker, system_info):
+                continue
+            filtered.append(d)
         dep_pkg["dependencies"][d_eco] = {
-            d.name: normalize_constraint(d.version_spec, d_eco)
-            for d in d_data.get("all", [])
-            if not getattr(d, "dev_only", False)
+            d.name: normalize_constraint(d.version_spec, d_eco) for d in filtered
         }
     dep_reqs_all = dep_info.get("system_requirements", {})
     for req_list in dep_reqs_all.values():
@@ -756,7 +802,9 @@ async def _resolve_transitive(
             src_pkg = all_packages.get(src_key)
             if src_pkg:
                 src_pkg.setdefault("dependencies", {}).setdefault(dep_eco, {})
-                # Add dep in the format _collect_current_deps understands
+                # Add dep in flat format for the SAT solver: {eco: {name: constraint}}
+                src_pkg["dependencies"][dep_eco][dep_name] = constraint
+                # Also add in _collect_current_deps "all" format for BFS traversal
                 src_pkg["dependencies"][dep_eco].setdefault("all", [])
                 src_pkg["dependencies"][dep_eco]["all"].append(
                     type(
@@ -863,6 +911,7 @@ async def _resolve_transitive(
                 getattr(source_info, "_dep", source_info) if source_info else None,
                 eco,
                 info,
+                system_info=system_info,
             )
             if dep_pkg and key not in all_packages:
                 all_packages[key] = dep_pkg

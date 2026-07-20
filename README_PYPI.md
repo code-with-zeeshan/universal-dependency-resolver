@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/ud-resolver)](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/LICENSE)
 [![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 
-Resolve dependencies across **20 ecosystems** — detect conflicts, check system compatibility, and export to any format.
+Resolve dependencies across **22 ecosystems** — detect conflicts, check system compatibility, and export to any format.
 
 ```bash
 # From any ecosystem, resolve together
@@ -44,13 +44,13 @@ pip install ud-resolver
 
 | Capability | Detail |
 |---|---|
-| **20 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Docs DB, Custom DB |
+| **22 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Nix, GNU Guix, Docs DB, Custom DB |
 | **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection, and DFS backtracking fallback |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| **59 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **58 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |

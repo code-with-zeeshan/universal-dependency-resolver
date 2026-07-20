@@ -62,7 +62,11 @@ class HelmPlugin(EcosystemPlugin):
                 continue
 
             # Back to a key at or above the dependencies: indent → end of block
-            if indent <= dep_indent and re.match(r"^\s*\w", line) and not line.lstrip().startswith("- "):
+            if (
+                indent <= dep_indent
+                and re.match(r"^\s*\w", line)
+                and not line.lstrip().startswith("- ")
+            ):
                 break
 
             # Detect list items: "- name: ..."
@@ -123,14 +127,30 @@ class HelmPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "helm",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Helm chart (no remote metadata available)",
-        }
+        try:
+            url = f"{self.base_url}/api/v1/packages/helm/{package_name}"
+            data = await self._get(url)
+            if not data:
+                return None
+            version = data.get("version", "*")
+            raw_versions = data.get("available_versions", [])
+            versions = []
+            for v in raw_versions:
+                ver = v.get("version") if isinstance(v, dict) else v
+                if ver:
+                    versions.append({"version": ver})
+            if not versions:
+                versions = [{"version": version}]
+            return {
+                "name": package_name,
+                "ecosystem": "helm",
+                "version": version,
+                "versions": versions if include_versions else [],
+                "dependencies": {},
+            }
+        except Exception as e:
+            logger.warning("Helm fetch failed for %s: %s", package_name, e)
+            return None
 
 
 def _finalize_dep(current: dict, deps: list[dict]) -> None:

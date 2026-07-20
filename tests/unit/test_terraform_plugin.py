@@ -96,10 +96,13 @@ class TestTerraformPlugin:
         assert len(TerraformPlugin.lock_files) == 0
 
     @pytest.mark.asyncio
-    async def test_get_package_info_stub(self):
+    async def test_get_package_info(self):
         plugin = TerraformPlugin(cache_ttl=0)
         result = await plugin.get_package_info("hashicorp/aws")
-        assert result is not None
+        if result is None:
+            pytest.skip("Terraform Registry API not available in this environment")
         assert result["name"] == "hashicorp/aws"
         assert result["ecosystem"] == "terraform"
-        assert result["version"] == "latest"
+        assert isinstance(result["version"], str)
+        assert isinstance(result["versions"], list)
+        assert len(result["versions"]) > 0

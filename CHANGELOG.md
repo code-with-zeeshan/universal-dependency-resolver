@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Q39 — Data source fixes**: Resolved edge cases in data source client registries, improved error handling for registry timeouts, enhanced rate-limit compliance across all 18 ecosystem clients.
 - **Q40 — Utilities cleanup**: Dead code removal in `core/utils.py`, consolidated version normalization helpers, unified constraint parsing patterns across solver backends.
-- **Q41 — Documentation audit**: Test counts refreshed across all docs (2846 unit + 96 integration + 75 e2e), milestone table updated, endpoint count corrected to 63, registry count corrected to 20 ecosystems.
+- **Q41 — Documentation audit**: Test counts refreshed across all docs (3001 unit + 96 integration + 76 e2e), milestone table updated, endpoint count corrected to 58, registry count corrected to 22 ecosystems.
 
 ## [1.4.0] - 2026-07-14
 
@@ -105,7 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 2775 unit + 96 integration + 75 e2e; CLI 19 commands; API 59 endpoints; 20 active + 2 internal + 5 plugin-only ecosystems; AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
+- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 3001 unit + 96 integration + 76 e2e; CLI 19 commands; API 58 endpoints; 22 active + 2 internal + 3 plugin-only ecosystems; AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
 - **Solver architecture documented**: AutoSolver (default), Z3, PubGrub, Hybrid — all 4 code paths explained with `create_solver()` factory.
 - **ROADMAP.md corrected**: Version v4.0.0→v1.3.3, ecosystems 27→20 active+plugins, milestone table made realistic.
 - **API_INTEGRATION.md**: Removed fictional MFA/recover endpoints; corrected auth paths; endpoint count 33→59.

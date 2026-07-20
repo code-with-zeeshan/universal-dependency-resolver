@@ -69,11 +69,28 @@ class VcpkgPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "vcpkg",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Vcpkg package (no remote metadata available)",
-        }
+        try:
+            url = f"{self.base_url}/{package_name}/vcpkg.json"
+            data = await self._get(url)
+            if not data:
+                return None
+            version = data.get("version", "latest")
+            raw_deps = data.get("dependencies", [])
+            deps_list: list[str] = []
+            for d in raw_deps:
+                if isinstance(d, str):
+                    deps_list.append(d)
+                elif isinstance(d, dict):
+                    name = d.get("name", "")
+                    if name:
+                        deps_list.append(name)
+            return {
+                "name": package_name,
+                "ecosystem": "vcpkg",
+                "version": version,
+                "versions": [{"version": version}],
+                "dependencies": {"dependencies": deps_list},
+            }
+        except Exception as e:
+            logger.warning("Vcpkg fetch failed for %s: %s", package_name, e)
+            return None

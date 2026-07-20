@@ -513,7 +513,7 @@ class ManifestDetector:
             has_requirement = False
 
         try:
-            from packaging.markers import Marker
+            import packaging.markers as _markers_mod  # noqa: F401
 
             has_markers = True
         except ImportError:
@@ -1562,7 +1562,8 @@ class ManifestDetector:
         packages = []
         for pkg_name, pkg_info in data.get("packages", {}).items():
             version = pkg_info.get("resolved_version") or pkg_info.get("version", "*")
-            packages.append({"name": pkg_name, "version": version})
+            eco = pkg_info.get("ecosystem", "pypi")
+            packages.append({"name": pkg_name, "version": version, "_ecosystem": eco})
         return packages
 
     def _parse_nix(self, content: str) -> list[dict]:

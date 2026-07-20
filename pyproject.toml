@@ -275,7 +275,7 @@ ignore = [
 [tool.coverage.run]
 branch = true
 source = ["backend"]
-omit = ["backend/database/*", "backend/data_sources/*"]
+omit = ["backend/database/*"]
 
 [tool.coverage.report]
 fail_under = 60

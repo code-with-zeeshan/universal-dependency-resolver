@@ -77,7 +77,7 @@ def cmd_check(args: argparse.Namespace) -> None:
                 info["gpu"]["rocm"] = "6.0.0"
 
         if args.json:
-            return _output_json(info, args)
+            _output_json(info, args)
 
         table = Table(title="System Compatibility", box=box.ROUNDED)
         table.add_column("Component", style="cyan")
@@ -474,7 +474,7 @@ async def _check_policy(args: argparse.Namespace) -> bool:
     violations = check_policy(lock_data, policy)
 
     if args.json:
-        return _output_json({"policy": str(policy_path), "violations": violations}, args)
+        _output_json({"policy": str(policy_path), "violations": violations}, args)
 
     if not violations:
         console.print("[green]✅ All policy checks passed.[/green]")

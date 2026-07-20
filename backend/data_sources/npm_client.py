@@ -193,13 +193,9 @@ class NPMClient(BaseDataSourceClient):
             versions_info = self._process_versions(data.get("versions", {}), data.get("time", {}))
 
         categorized_deps = self._categorize_dependencies(latest_data)
-        # Separate peerDependencies from runtime dependencies:
-        # peerDependencies come from the latest version's metadata but may not
-        # apply to older versions; use them as advisory metadata, not as
-        # solver constraints.  Per-version peerDependencies are available
-        # in versions_info[].peerDependencies.
-        runtime_deps = {k: v for k, v in categorized_deps.items() if k != "peerDependencies"}
-        peer_deps = categorized_deps.get("peerDependencies", {})
+        # Include peerDependencies in the dependency flow so they participate
+        # in resolution. The aggregator marks them with peer=True so the
+        # orchestrator can decide policy (hard constraints vs advisory).
         info = {
             "name": data.get("name"),
             "version": latest_version,
@@ -223,8 +219,8 @@ class NPMClient(BaseDataSourceClient):
             "downloads": downloads,
             "typescript": types_info,
             "vulnerabilities": vulnerabilities,
-            "dependencies": runtime_deps,
-            "peer_dependencies": peer_deps,
+            "dependencies": categorized_deps,
+            "peer_dependencies": categorized_deps.get("peerDependencies", {}),
             "latest_version_info": {
                 "dependencies": categorized_deps,
                 "engines": latest_data.get("engines", {}),

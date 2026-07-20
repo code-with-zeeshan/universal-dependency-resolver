@@ -96,10 +96,12 @@ class TestHelmPlugin:
         assert HelmPlugin.lock_files[0].parser == "parse_chart_lock"
 
     @pytest.mark.asyncio
-    async def test_get_package_info_stub(self):
+    async def test_get_package_info(self):
         plugin = HelmPlugin(cache_ttl=0)
         result = await plugin.get_package_info("redis")
-        assert result is not None
+        if result is None:
+            pytest.skip("ArtifactHub API not available in this environment")
         assert result["name"] == "redis"
         assert result["ecosystem"] == "helm"
-        assert result["version"] == "latest"
+        assert isinstance(result["version"], str)
+        assert isinstance(result["versions"], list)

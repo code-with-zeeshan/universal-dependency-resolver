@@ -23,7 +23,7 @@ graph TB
         DA["<code>data_aggregator.py</code><br/>Async metadata aggregation"]:::core
         EG["<code>export_generator.py</code><br/>15 export formats (Jinja2)"]:::core
         SS["<code>system_scanner.py</code><br/>OS · CPU · GPU · CUDA · runtimes · accelerators"]:::core
-        MD["<code>manifest_detector.py</code><br/>47+ manifest/lock patterns"]:::core
+        MD["<code>manifest_detector.py</code><br/>46+ manifest/lock patterns"]:::core
         CACHE["<code>cache.py</code><br/>DictCache + Redis"]:::core
     end
 
@@ -136,7 +136,91 @@ Routes:
 - **`cache.py`** — `DictCache` (in-memory dict + TTL, no dependencies) with optional Redis fallback.
 - **`manifest_detector.py`** — Scans project directories for 20+ manifest formats (requirements.txt, package.json, Cargo.toml, etc.)
 
+### Solver Pipeline Flow
+
+The solver selection and execution pipeline has three phases — profiling, selection, and resolution with fallback:
+
+```mermaid
+graph TB
+    START(["create_solver()"]) --> PROFILE["_profile_packages()<br/>count · ecosystems · CUDA · cross-eco"]
+
+    PROFILE --> SELECT{"_select_solver()<br/>decision tree"}
+
+    SELECT -->|"USE_Z3_SOLVER=true"| Z3_OVERRIDE["Z3: ConflictResolver"]
+    SELECT -->|"USE_HYBRID_SOLVER=true"| HY_OVERRIDE["Hybrid: HybridSolver"]
+    SELECT -->|"USE_PUBGRUB_SOLVER=true"| PG_OVERRIDE["PubGrub: PubGrubSolver"]
+
+    SELECT -->|"small (≤ threshold)"| PG_SMALL["PubGrub: PubGrubSolver"]
+    SELECT -->|"large + no CUDA + no cross-eco"| PG_LARGE["PubGrub: PubGrubSolver"]
+    SELECT -->|"multi-eco + (CUDA or cross-eco)"| HYBRID["Hybrid: HybridSolver<br/>PubGrub per-eco + Z3 cross-eco"]
+    SELECT -->|"has CUDA"| Z3_CUDA["Z3: ConflictResolver"]
+    SELECT -->|"default"| PG_DEFAULT["PubGrub: PubGrubSolver"]
+
+    Z3_OVERRIDE --> Z3_RESOLVE["ConflictResolver.resolve_dependencies()"]
+    HY_OVERRIDE --> HY_RESOLVE["HybridSolver.resolve_dependencies()"]
+    PG_OVERRIDE --> PG_RESOLVE["PubGrubSolver.resolve_dependencies()"]
+    PG_SMALL --> PG_RESOLVE
+    PG_LARGE --> PG_RESOLVE
+    HYBRID --> HY_RESOLVE
+    Z3_CUDA --> Z3_RESOLVE
+    PG_DEFAULT --> PG_RESOLVE
+
+    subgraph PubGrubPath ["PubGrubSolver"]
+        PG_RESOLVE -->|"pubgrub-py installed"| PG_RUST["Rust-backed pubgrub-py"]
+        PG_RESOLVE -->|"no pubgrub-py"| PG_PURE["Pure Python PubGrubCoreSolver"]
+        PG_RUST --> PG_OK["return {status, resolved_packages, dependency_tree}"]
+        PG_PURE --> PG_OK
+    end
+
+    subgraph Z3Path ["ConflictResolver (Z3)"]
+        Z3_RESOLVE --> NORMALIZE["_normalize_packages()"]
+        NORMALIZE --> GRAPH["_build_dependency_graph()"]
+        GRAPH --> SCC{"SCC batch?<br/>>1 component, >20 pkgs"}
+        SCC -->|"yes"| BATCH_SCC["_batch_resolve_sccs()<br/>per-SCC Z3 solver"]
+        SCC -->|"no"| ECO_ISO{"_isolate_by_ecosystem()"}
+        ECO_ISO -->|"≤1 eco or cross-eco cycle"| CONSTRAINTS["_create_constraints()<br/>version clustering · Z3 vars"]
+        ECO_ISO -->|"multi-eco no cross"| ECO_SOLVE["per-eco Z3 solver<br/>downstream constraints propagated"]
+        CONSTRAINTS --> SOLVE["_solve_constraints()<br/>Z3.Solver() or Z3.Optimize()"]
+        SOLVE -->|"sat"| FORMAT["_format_solution()<br/>resolved_packages + dependency_tree"]
+        SOLVE -->|"unsat/timeout"| ALTS["_resolve_with_alternatives()<br/>DFS backtracking"]
+        ALTS --> ALTS_OK["best-effort solution"]
+        ECO_SOLVE --> ECO_MERGE["merge per-eco dependency_trees"]
+    end
+
+    subgraph HybridPath ["HybridSolver"]
+        HY_RESOLVE --> HY_GROUP["_group_by_ecosystem()"]
+        HY_GROUP --> HY_PG["PubGrub: intra-eco deps per ecosystem"]
+        HY_GROUP --> HY_Z3["Z3: cross-eco edges unified solver"]
+        HY_PG --> HY_MERGE["merge results"]
+        HY_Z3 --> HY_MERGE
+    end
+
+    PG_OK -->|"status=satisfiable"| DONE["return result"]
+    Z3_FORMAT["_format_solution()"] --> DONE
+    ECO_MERGE --> DONE
+    ALTS_OK --> DONE
+    HY_MERGE --> DONE
+
+    PG_OK -->|"status≠satisfiable"| FALLBACK{"fallback chain"}
+    Z3_FORMAT -->|"status≠satisfiable"| FALLBACK
+    ECO_MERGE -->|"status≠satisfiable"| FALLBACK
+    HY_MERGE -->|"status≠satisfiable"| FALLBACK
+
+    FALLBACK -->|"PubGrub failed → Z3"| FALLBACK_Z3["ConflictResolver"]
+    FALLBACK -->|"Z3 failed → PubGrub"| FALLBACK_PG["PubGrubSolver"]
+    FALLBACK -->|"all failed → Hybrid"| FALLBACK_HY["HybridSolver"]
+
+    style START fill:#2d7,color:#000
+    style DONE fill:#2d7,color:#000
+    style PROFILE fill:#48b,color:#fff
+    style SELECT fill:#fb3,color:#000
+```
+
+**Key files**: `auto_solver.py` (selection + fallback), `pubgrub_solver.py`, `conflict_resolver.py`, `hybrid_solver.py`, `orchestrator/resolve.py`.
+
 ### Data sources (`backend/data_sources/`)
+
+
 
 All 26 registered ecosystem plugins (registered via `@register_ecosystem`), each an `EcosystemPlugin` subclass inheriting from `BaseClient`:
 
@@ -236,7 +320,7 @@ graph LR
 
 ```
 tests/
-├── unit/         → 2775 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
+├── unit/         → 3001 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
 ├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
 ├── e2e/          → 75 tests (CLI black-box, problem-statement, JSON compliance)
 │   conftest.py   → SQLite fallback, optional Redis

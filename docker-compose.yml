@@ -9,7 +9,7 @@ services:
     environment:
       - ENV=production
       - ENABLE_AUTH=${UDR_ENABLE_AUTH:-true}
-      - SECRET_KEY=${UDR_SECRET_KEY:-}
+      - SECRET_KEY=${UDR_SECRET_KEY:-your-secret-key-here-change-in-production}
       - DATABASE_URL=${UDR_DATABASE_URL:-sqlite:///data/udr.db}
       - REDIS_URL=${UDR_REDIS_URL:-redis://redis:6379/0}
       - ENABLE_CACHE=${UDR_ENABLE_CACHE:-true}

@@ -31,6 +31,30 @@ class TestNormalizeVersion:
     def test_ecosystem_passthrough(self):
         assert normalize_version("1.2.3", "npm") == "1.2.3"
 
+    # --- Debian epoch ---
+
+    def test_debian_epoch_stripped(self):
+        assert normalize_version("2:1.2.3-4", "apt") == "2:1.2.3"
+
+    def test_debian_epoch_no_revision(self):
+        assert normalize_version("1:2.0.0", "apt") == "1:2.0.0"
+
+    def test_debian_no_epoch(self):
+        assert normalize_version("1.2.3-4", "apt") == "1.2.3"
+
+    def test_debian_epoch_ignored_for_pypi(self):
+        result = normalize_version("2:1.2.3-4", "pypi")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    # --- Conda glob ---
+
+    def test_conda_glob_handled(self):
+        assert normalize_version("1.2.*", "conda") == "1.2.0"
+
+    def test_conda_star_suffix(self):
+        assert normalize_version("3.9*", "conda") == "3.9.0"
+
 
 class TestParseSemver:
     def test_standard(self):

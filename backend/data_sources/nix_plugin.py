@@ -109,7 +109,9 @@ class NixPlugin(EcosystemPlugin):
                             key = (pkg_name, "pypi")
                             if key not in seen_pkgs:
                                 seen_pkgs.add(key)
-                                deps.append({"name": pkg_name, "version": "*", "_ecosystem": "pypi"})
+                                deps.append(
+                                    {"name": pkg_name, "version": "*", "_ecosystem": "pypi"}
+                                )
                         break
             elif token.startswith("pkgs."):
                 pkg_name = token[len("pkgs.") :]
@@ -198,11 +200,9 @@ class NixPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "nix",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Nix package (no remote metadata available)",
-        }
+        logger.warning(
+            "Nix has no remote package API — cannot resolve metadata for %s. "
+            "Use flake.lock pins for deterministic resolution.",
+            package_name,
+        )
+        return None

@@ -1,10 +1,14 @@
-"""Pytest configuration and shared fixtures for Universal Dependency Resolver tests."""
+"""Pytest configuration and shared fixtures for Universal Dependency Resolver tests.
+
+WARNING: Keep module-level imports MINIMAL to avoid RecursionError in
+pytest-asyncio's _patched_collect (known issue with asyncio_mode=auto).
+All FastAPI/app imports must be LAZY (inside fixtures) — never at module level.
+"""
 
 import os
 
 import pytest
 
-# FastAPI testing
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -15,10 +19,6 @@ os.environ.setdefault("ENABLE_CSRF", "false")
 os.environ.setdefault("ENABLE_AUTH", "false")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only")
-
-# Import your application
-from backend.api.main import app
-from backend.database.models import Base, get_db
 
 # Test Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -31,23 +31,27 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def override_get_db():
-    """Override database dependency for testing."""
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
+@pytest.fixture(scope="session")
+def _app():
+    """Lazy import of FastAPI app — avoids RecursionError in pytest-asyncio collection."""
+    from backend.api.main import app
+    from backend.database.models import Base, get_db
 
+    def _override_get_db():
+        try:
+            db = TestingSessionLocal()
+            yield db
+        finally:
+            db.close()
 
-# Override dependencies
-app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db] = _override_get_db
+    return app
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     """Set up test database via Alembic migrations."""
-    from backend.database.models import run_migrations
+    from backend.database.models import Base, run_migrations
 
     run_migrations()
     yield
@@ -69,20 +73,20 @@ def db_session():
 
 
 @pytest.fixture
-def client():
+def client(_app):
     """Create a test client for FastAPI (skip lifespan to avoid DB requirement)."""
-    return TestClient(app)
+    return TestClient(_app)
 
 
 # Cleanup helpers
 @pytest.fixture(autouse=True)
-def disable_rate_limiter():
-    was_enabled = getattr(app.state, "limiter", None)
+def disable_rate_limiter(_app):
+    was_enabled = getattr(_app.state, "limiter", None)
     if was_enabled:
-        app.state.limiter.enabled = False
+        _app.state.limiter.enabled = False
     yield
     if was_enabled:
-        app.state.limiter.enabled = True
+        _app.state.limiter.enabled = True
 
 
 # Markers for different test types

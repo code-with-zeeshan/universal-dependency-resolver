@@ -1671,3 +1671,76 @@ class TestGpuConstraints:
         assert resolver._sys_rocm_version == "6.0.0"
         assert resolver._sys_intel_gpu_version == "1.0.0"
         assert resolver._sys_metal_version == "3.0"
+
+    def test_cross_ecosystem_two_packages_pypi_and_npm(self, resolver):
+        """Synthetic test: SAT solver resolves cross-eco deps between PyPI and npm."""
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {"npm": {"lodash-fake": ">=4.0.0"}},
+                "system_requirements": {},
+            },
+            {
+                "name": "lodash-fake",
+                "ecosystem": "npm",
+                "available_versions": ["4.0.0", "4.17.21"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+        ]
+        result = resolver.resolve_dependencies(packages, {})
+        assert result["status"] in ("satisfiable", "success"), f"Solver failed: {result}"
+        resolved = result.get("resolved_packages", {})
+        assert "mypkg" in resolved, "mypkg should be resolved"
+        assert "lodash-fake" in resolved, "lodash-fake should be resolved"
+        assert resolved["lodash-fake"]["ecosystem"] == "npm"
+        # lodash should satisfy >=4.0.0
+        lodash_ver = resolved["lodash-fake"]["version"]
+        assert lodash_ver >= "4.0.0", f"lodash version {lodash_ver} should be >=4.0.0"
+
+    def test_cross_ecosystem_constraint_enforced(self, resolver):
+        """Verify constraint from one ecosystem is enforced in another."""
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"npm": {"dep-npm": ">=2.0.0"}},
+                "system_requirements": {},
+            },
+            {
+                "name": "dep-npm",
+                "ecosystem": "npm",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+        ]
+        result = resolver.resolve_dependencies(packages, {})
+        assert result["status"] in ("satisfiable", "success")
+        resolved = result.get("resolved_packages", {})
+        dep_ver = resolved.get("dep-npm", {}).get("version", "")
+        assert dep_ver >= "2.0.0", f"dep-npm version {dep_ver} should be >=2.0.0"
+
+    def test_cross_ecosystem_unsatisfiable(self, resolver):
+        """Unsatisfiable constraint across ecosystems should fail."""
+        packages = [
+            {
+                "name": "mypkg",
+                "ecosystem": "pypi",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"npm": {"dep-npm": ">=5.0.0,<6.0.0"}},
+                "system_requirements": {},
+            },
+            {
+                "name": "dep-npm",
+                "ecosystem": "npm",
+                "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
+                "dependencies": {},
+                "system_requirements": {},
+            },
+        ]
+        result = resolver.resolve_dependencies(packages, {})
+        assert result["status"] in ("unsatisfiable", "error"), f"Should be unsatisfiable: {result}"

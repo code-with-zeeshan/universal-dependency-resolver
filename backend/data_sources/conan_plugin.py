@@ -105,11 +105,24 @@ class ConanPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "conan",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Conan package (no remote metadata available)",
-        }
+        try:
+            url = f"{self.base_url}/v1/conans/{package_name}"
+            data = await self._get(url)
+            if not data:
+                return None
+            revisions = data.get("revisions", [])
+            versions = []
+            for r in revisions:
+                v = r.get("version") if isinstance(r, dict) else str(r)
+                if v:
+                    versions.append({"version": v})
+            return {
+                "name": package_name,
+                "ecosystem": "conan",
+                "version": versions[0]["version"] if versions else "*",
+                "versions": versions if include_versions else [],
+                "dependencies": {},
+            }
+        except Exception as e:
+            logger.warning("Conan fetch failed for %s: %s", package_name, e)
+            return None

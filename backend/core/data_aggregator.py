@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 
 _background_tasks: set[asyncio.Task] = set()
 
@@ -94,6 +94,8 @@ class Dependency:
     ecosystem: Ecosystem
     optional: bool = False
     dev_only: bool = False
+    peer: bool = False
+    marker: str | None = None
     resolved_version: str | None = None
 
 
@@ -198,7 +200,7 @@ class DataAggregator:
             self._sources[ecosystem] = client
         return client
 
-    async def __aenter__(self) -> DataAggregator:
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         return self
 
@@ -269,7 +271,7 @@ class DataAggregator:
         if eco_str not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
-        # Check cache
+        # Check cache (content-addressed first when enabled, then traditional)
         cache_key = self._get_cache_key(
             "get_package_info",
             package_name,
@@ -278,6 +280,17 @@ class DataAggregator:
             include_dependencies,
             include_versions,
         )
+        try:
+            from backend.settings import USE_CONTENT_CACHE as _USE_CONTENT_CACHE
+
+            if _USE_CONTENT_CACHE:
+                from backend.core.content_cache import content_cache
+
+                cached_result = await content_cache.get(cache_key)
+                if cached_result is not None:
+                    return cached_result
+        except Exception:
+            pass
         cached_result = await cache_manager.get(cache_key)
         if cached_result:
             return cached_result
@@ -385,8 +398,17 @@ class DataAggregator:
             "vulnerability_count": len(vulnerabilities),
         }
 
-        # Cache the result
+        # Cache the result (both traditional and content-addressed when enabled)
         await cache_manager.set(cache_key, aggregated_info, ttl=self.cache_ttl)
+        try:
+            from backend.settings import USE_CONTENT_CACHE as _USE_CONTENT_CACHE
+
+            if _USE_CONTENT_CACHE:
+                from backend.core.content_cache import content_cache
+
+                await content_cache.set(cache_key, aggregated_info, ttl=self.cache_ttl)
+        except Exception:
+            pass
 
         return aggregated_info
 
@@ -413,7 +435,7 @@ class DataAggregator:
             for eco in Ecosystem:
                 if eco == Ecosystem.DOCS:
                     continue
-                tasks.append(self._check_ecosystem_exists(eco, package_name))
+                tasks.append(asyncio.create_task(self._check_ecosystem_exists(eco, package_name)))
 
             timeout = DETECT_ECOSYSTEMS_TIMEOUT
             done, pending = await asyncio.wait(tasks, timeout=timeout)
@@ -685,9 +707,8 @@ class DataAggregator:
             )
             # Preserve Go replace/indirect metadata for solver
             raw_deps = data["dependencies"]
-            if isinstance(raw_deps, dict):
-                if "replace" in raw_deps:
-                    aggregated.setdefault("_go_replace", {})[ecosystem.value] = raw_deps["replace"]
+            if isinstance(raw_deps, dict) and "replace" in raw_deps:
+                aggregated.setdefault("_go_replace", {})[ecosystem.value] = raw_deps["replace"]
 
         # Preserve peer_dependencies for post-resolution compatibility checks
         if "peer_dependencies" in data:
@@ -706,6 +727,37 @@ class DataAggregator:
             aggregated["compatibility_matrix"][ecosystem.value] = data["compatibility"]
         elif "compatibility_matrix" in data:
             aggregated["compatibility_matrix"][ecosystem.value] = data["compatibility_matrix"]
+
+    @staticmethod
+    def _parse_dep_entry(
+        name: str,
+        entry: Any,
+        ecosystem: Ecosystem,
+        dev_only: bool = False,
+        optional: bool = False,
+        peer: bool = False,
+    ) -> Dependency:
+        """Parse a dependency entry that may be a plain string or a dict with ``version_spec`` and ``marker``."""
+        if isinstance(entry, dict):
+            vs = entry.get("version_spec") or entry.get("version", "*")
+            marker = entry.get("marker") or None
+            return Dependency(
+                name=name,
+                version_spec=str(vs),
+                ecosystem=ecosystem,
+                dev_only=dev_only,
+                optional=optional or entry.get("optional", False),
+                peer=peer or entry.get("peer", False),
+                marker=marker,
+            )
+        return Dependency(
+            name=name,
+            version_spec=str(entry) if entry else "*",
+            ecosystem=ecosystem,
+            dev_only=dev_only,
+            optional=optional,
+            peer=peer,
+        )
 
     def _normalize_dependencies(
         self, deps: dict | list, ecosystem: Ecosystem
@@ -726,20 +778,26 @@ class DataAggregator:
                 "optionalDependencies": True,
                 "peer_dependencies": False,
                 "peerDependencies": False,
+                # PyPI categories (from _extract_dependencies_enhanced)
+                "optional": True,
+                "dev": True,
+                "test": True,
+                "docs": True,
             }
 
             for category, is_dev in categories.items():
                 if category in deps:
                     cat_deps = deps[category]
                     if isinstance(cat_deps, dict):
-                        for name, version_spec in cat_deps.items():
+                        for name, entry in cat_deps.items():
                             normalized["all"].append(
-                                Dependency(
+                                self._parse_dep_entry(
                                     name=name,
-                                    version_spec=str(version_spec),
+                                    entry=entry,
                                     ecosystem=ecosystem,
                                     dev_only=is_dev,
                                     optional="optional" in category,
+                                    peer="peer" in category,
                                 )
                             )
                     elif isinstance(cat_deps, list):
@@ -752,6 +810,7 @@ class DataAggregator:
                                         ecosystem=ecosystem,
                                         dev_only=is_dev,
                                         optional=dep.get("optional", False),
+                                        marker=dep.get("marker") or None,
                                     )
                                 )
 
@@ -777,6 +836,7 @@ class DataAggregator:
                             version_spec=dep.get("version", "*"),
                             ecosystem=ecosystem,
                             optional=dep.get("optional", False),
+                            marker=dep.get("marker") or None,
                         )
                     )
 

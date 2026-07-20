@@ -15,7 +15,10 @@ def _build_reverse_deps(packages: dict) -> dict[str, list[tuple[str, str, str]]]
     """Build reverse dependency map: target -> [(source_pkg, source_ver, constraint)]."""
     rev: dict[str, list[tuple[str, str, str]]] = {}
     for pkg_name, pinfo in packages.items():
-        for dep_name, dep_constraint in pinfo.get("depends_on", {}).items():
+        for dep_name, dep_val in pinfo.get("depends_on", {}).items():
+            dep_constraint = (
+                dep_val.get("constraint", "*") if isinstance(dep_val, dict) else dep_val
+            )
             rev.setdefault(dep_name, []).append(
                 (pkg_name, pinfo.get("resolved_version", "?"), dep_constraint)
             )

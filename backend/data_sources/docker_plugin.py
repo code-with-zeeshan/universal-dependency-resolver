@@ -74,11 +74,25 @@ class DockerPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "docker",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Docker image (no remote metadata available)",
-        }
+        try:
+            from ..data_sources.docker_client import DockerRegistryClient
+
+            client = DockerRegistryClient()
+            try:
+                tags = await client.get_tags(package_name)
+                if not tags:
+                    logger.warning("Docker: no tags found for %s", package_name)
+                    return None
+                versions = [{"version": t} for t in tags]
+                return {
+                    "name": package_name,
+                    "ecosystem": "docker",
+                    "version": tags[0],
+                    "versions": versions if include_versions else [],
+                    "dependencies": {},
+                }
+            finally:
+                await client.close()
+        except Exception as e:
+            logger.warning("Docker fetch failed for %s: %s", package_name, e)
+            return None

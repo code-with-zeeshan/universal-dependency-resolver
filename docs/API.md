@@ -63,7 +63,7 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 
 ## Endpoint Summary
 
-The API exposes **63 endpoints** organized into the following categories:
+The API exposes **58 endpoints** organized into the following categories:
 
 | # | Method | Path | Auth | Rate Limit |
 |---|---|---|---|---|
@@ -83,63 +83,61 @@ The API exposes **63 endpoints** organized into the following categories:
 | 13 | DELETE | `/api/v1/auth/api-keys/{key_id}` | Yes | 30/min |
 | 14 | GET | `/api/v1/auth/verify` | Yes | 60/min |
 | 15 | POST | `/api/v1/auth/check-username` | No | 30/min |
-| 16 | POST | `/api/v1/auth/check-email` | No | 30/min |
-| 17 | GET | `/api/v1/auth/signing-key` | Yes | 30/min |
-| 18 | POST | `/api/v1/auth/gen-key` | Yes | 10/day |
+| 16 | GET | `/api/v1/auth/signing-key` | Yes | 30/min |
+| 17 | POST | `/api/v1/auth/gen-key` | Yes | 10/day |
 | **System** | | | | |
-| 19 | GET | `/api/v1/system/info` | Yes | 30/min |
-| 20 | POST | `/api/v1/system/check-compatibility` | Yes | 10/min |
+| 18 | GET | `/api/v1/system/info` | Yes | 30/min |
+| 19 | POST | `/api/v1/system/check-compatibility` | Yes | 10/min |
 | **Packages** | | | | |
-| 21 | POST | `/api/v1/packages/resolve` | Yes | 10/min |
-| 22 | POST | `/api/v1/packages/export` | Yes | 20/min |
-| 23 | GET | `/api/v1/packages/export-formats` | Yes | 60/min |
-| 24 | GET | `/api/v1/packages/search` | Yes | 60/min |
-| 25 | GET | `/api/v1/packages/{eco}/{name}/details` | Yes | 120/min |
-| 26 | GET | `/api/v1/packages/{eco}/{name}/versions` | Yes | 120/min |
-| 27 | GET | `/api/v1/packages/{eco}/{name}/dependencies` | Yes | 120/min |
-| 28 | GET | `/api/v1/packages/{eco}/{name}/compatibility` | Yes | 120/min |
-| 29 | GET | `/api/v1/packages/ecosystems` | Yes | 60/min |
+| 20 | POST | `/api/v1/packages/resolve` | Yes | 10/min |
+| 21 | POST | `/api/v1/packages/export` | Yes | 20/min |
+| 22 | GET | `/api/v1/packages/export-formats` | Yes | 60/min |
+| 23 | GET | `/api/v1/packages/search` | Yes | 60/min |
+| 24 | GET | `/api/v1/packages/{eco}/{name}/details` | Yes | 120/min |
+| 25 | GET | `/api/v1/packages/{eco}/{name}/versions` | Yes | 120/min |
+| 26 | GET | `/api/v1/packages/{eco}/{name}/dependencies` | Yes | 120/min |
+| 27 | GET | `/api/v1/packages/{eco}/{name}/compatibility` | Yes | 120/min |
+| 28 | GET | `/api/v1/packages/ecosystems` | Yes | 60/min |
 | **Scan** | | | | |
-| 30 | POST | `/api/v1/scan/github` | Yes | none |
-| 31 | POST | `/api/v1/scan/upload` | Yes | none |
-| 32 | POST | `/api/v1/scan/local` | Yes | none |
+| 29 | POST | `/api/v1/scan/github` | Yes | none |
+| 30 | POST | `/api/v1/scan/upload` | Yes | none |
+| 31 | POST | `/api/v1/scan/local` | Yes | none |
 | **Lock** | | | | |
-| 33 | POST | `/api/v1/verify` | Yes | none |
-| 34 | POST | `/api/v1/graph` | Yes | none |
-| 35 | POST | `/api/v1/update` | Yes | none |
-| 36 | POST | `/api/v1/generate-lock` | Yes | none |
-| 37 | POST | `/api/v1/install-commands` | Yes | none |
-| 38 | POST | `/api/v1/restore-commands` | Yes | none |
-| 39 | POST | `/api/v1/why` | Yes | none |
-| 40 | POST | `/api/v1/outdated` | Yes | none |
-| 41 | POST | `/api/v1/diff` | Yes | none |
-| 42 | POST | `/api/v1/lock/check` | Yes | none |
-| 43 | POST | `/api/v1/lock/sign` | Yes | none |
-| 44 | POST | `/api/v1/lock/update-with-fix` | Yes | none |
-| 45 | POST | `/api/v1/lock/update-manifests` | Yes | none |
-| 46 | POST | `/api/v1/lock/report` | Yes | none |
-| 47 | POST | `/api/v1/lock/apply-pinning` | Yes | none |
+| 32 | POST | `/api/v1/verify` | Yes | none |
+| 33 | POST | `/api/v1/graph` | Yes | none |
+| 34 | POST | `/api/v1/update` | Yes | none |
+| 35 | POST | `/api/v1/generate-lock` | Yes | none |
+| 36 | POST | `/api/v1/install-commands` | Yes | none |
+| 37 | POST | `/api/v1/restore-commands` | Yes | none |
+| 38 | POST | `/api/v1/why` | Yes | none |
+| 39 | POST | `/api/v1/outdated` | Yes | none |
+| 40 | POST | `/api/v1/diff` | Yes | none |
+| 41 | POST | `/api/v1/lock/check` | Yes | none |
+| 42 | POST | `/api/v1/lock/sign` | Yes | none |
+| 43 | POST | `/api/v1/lock/update-with-fix` | Yes | none |
+| 44 | POST | `/api/v1/lock/update-manifests` | Yes | none |
+| 45 | POST | `/api/v1/lock/report` | Yes | none |
+| 46 | POST | `/api/v1/lock/apply-pinning` | Yes | none |
 | **Index Management** | | | | |
-| 48 | GET | `/api/v1/index/status` | Yes | 30/min |
-| 49 | POST | `/api/v1/index/pull` | Yes | 10/min |
-| 50 | POST | `/api/v1/index/build` | Yes | 10/min |
-| 51 | POST | `/api/v1/index/sync-all` | Yes | 10/min |
+| 47 | GET | `/api/v1/index/status` | Yes | 30/min |
+| 48 | POST | `/api/v1/index/pull` | Yes | 10/min |
+| 49 | POST | `/api/v1/index/build` | Yes | 10/min |
+| 50 | POST | `/api/v1/index/sync-all` | Yes | 10/min |
 | **Check** | | | | |
-| 52 | POST | `/api/v1/check/cve` | Yes | 10/min |
-| 53 | POST | `/api/v1/check/license` | Yes | 10/min |
-| 54 | POST | `/api/v1/check/deprecated` | Yes | 10/min |
-| 55 | POST | `/api/v1/check/policy` | Yes | 10/min |
+| 51 | POST | `/api/v1/check/cve` | Yes | 10/min |
+| 52 | POST | `/api/v1/check/license` | Yes | 10/min |
+| 53 | POST | `/api/v1/check/deprecated` | Yes | 10/min |
+| 54 | POST | `/api/v1/check/policy` | Yes | 10/min |
 | **SBOM** | | | | |
-| 56 | POST | `/api/v1/sbom` | Yes | 10/min |
+| 55 | POST | `/api/v1/sbom` | Yes | 10/min |
 | **Completion** | | | | |
-| 57 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
+| 56 | GET | `/api/v1/completion/{shell}` | Yes | 60/min |
 | **Infrastructure** | | | | |
-| 58 | GET | `/healthz` | No | none |
-| 59 | GET | `/readyz` | No | none |
-| 60 | GET | `/metrics` | No | none |
-| 61 | GET | `/api/v1/docs` | No | none |
-| 62 | GET | `/api/v1/redoc` | No | none |
-| 63 | GET | `/api/v1/openapi.json` | No | none |
+| 57 | GET | `/healthz` | No | none |
+| 58 | GET | `/readyz` | No | none |
+| 59 | GET | `/api/v1/docs` | No | none |
+| 60 | GET | `/api/v1/redoc` | No | none |
+| 61 | GET | `/api/v1/openapi.json` | No | none |
 
 ---
 
@@ -1156,7 +1154,7 @@ Get known compatibility information for a package.
 
 ### `GET /api/v1/packages/ecosystems`
 
-Get list of all 20 supported package ecosystems with capabilities.
+Get list of all 22 supported package ecosystems with capabilities.
 
 **Rate limit:** 60/minute  
 **Auth:** Yes (anonymous in local mode)

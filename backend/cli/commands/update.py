@@ -19,6 +19,7 @@ from rich.table import Table
 from backend.settings import SOLVER_TIMEOUT
 
 from ..shared import (
+    _build_target_system_info,
     _fetch_package_data_async,
     _read_lock_file,
     _resolve_lock_path,
@@ -119,6 +120,10 @@ def cmd_update(args: argparse.Namespace):
                     system_info["gpu"] = {"available": True, "type": "cuda"}
                 system_info["gpu"]["available"] = True
                 system_info["gpu"]["type"] = "cuda"
+
+        target_info = _build_target_system_info(args, system_info)
+        if target_info:
+            system_info["target"] = target_info
 
         existing_constraint = pkg_info.get("original_constraint")
         constraint = existing_constraint or f">={pkg_info.get('resolved_version', '0.0.0')}"
@@ -258,6 +263,40 @@ async def _fix_cve(args: argparse.Namespace):
     ) as p:
         p.add_task("system", total=None)
         system_info = await scanner.scan_all()
+
+    if args.cuda is not None:
+        if "gpu" not in system_info:
+            system_info["gpu"] = {}
+        system_info["gpu"]["available"] = True
+        system_info["gpu"]["cuda"] = args.cuda
+    if args.device is not None:
+        if args.device == "cpu":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = False
+            system_info["gpu"]["cuda"] = ""
+        elif args.device == "mps":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "mps"
+            system_info["gpu"]["cuda"] = ""
+            system_info["gpu"]["metal"] = "3.0"
+        elif args.device == "rocm":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "rocm"
+            system_info["gpu"]["cuda"] = ""
+            system_info["gpu"]["rocm"] = "6.0.0"
+        elif args.device == "cuda":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {"available": True, "type": "cuda"}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "cuda"
+    target_info = _build_target_system_info(args, system_info)
+    if target_info:
+        system_info["target"] = target_info
 
     target_package = args.package
 

@@ -86,7 +86,7 @@ See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap, including the fou
 
 > *"How is UDR different from pip, poetry, npm, or cargo? Why would I use it instead of my existing package manager?"*
 
-Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 20 ecosystems, reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
+Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 22 ecosystems, reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
 
 > *"Can I adopt UDR incrementally in an existing project, or do I need to rewrite everything?"*
 

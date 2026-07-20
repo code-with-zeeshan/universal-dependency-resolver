@@ -65,11 +65,9 @@ class GuixPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        return {
-            "name": package_name,
-            "ecosystem": "guix",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "GNU Guix package (no remote metadata available)",
-        }
+        logger.warning(
+            "Guix has no remote package API — cannot resolve metadata for %s. "
+            "Use guix lock files for deterministic resolution.",
+            package_name,
+        )
+        return None

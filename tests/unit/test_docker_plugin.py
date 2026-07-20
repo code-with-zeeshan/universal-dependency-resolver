@@ -75,13 +75,11 @@ class TestDockerPlugin:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_get_package_info_stub(self, plugin):
+    async def test_get_package_info(self, plugin):
         info = await plugin.get_package_info("python")
-        assert info == {
-            "name": "python",
-            "ecosystem": "docker",
-            "version": "latest",
-            "versions": [{"version": "latest"}],
-            "dependencies": {},
-            "description": "Docker image (no remote metadata available)",
-        }
+        if info is None:
+            pytest.skip("Docker Registry API not available in this environment")
+        assert info["name"] == "python"
+        assert info["ecosystem"] == "docker"
+        assert isinstance(info["version"], str)
+        assert isinstance(info["versions"], list)

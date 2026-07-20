@@ -208,8 +208,12 @@ _register("RETRY_BACKOFF_FACTOR", "RETRY_BACKOFF_FACTOR", "2.0", float)
 _register("RETRY_MAX_DELAY", "RETRY_MAX_DELAY", "10.0", float)
 _register("SLOW_REQUEST_THRESHOLD", "SLOW_REQUEST_THRESHOLD", "5.0", float)
 
+
 # --- Boolean settings ---
-_bool = lambda v: v.lower() == "true"
+def _bool(v: str) -> bool:
+    return v.lower() == "true"
+
+
 _register("GOPROXY_AUTH_TOKEN", "GOPROXY_AUTH_TOKEN", "", str)
 _register("GOPROXY_AUTH_BASIC", "GOPROXY_AUTH_BASIC", "", str)
 _register("ENABLE_API_KEY_AUTH", "ENABLE_API_KEY_AUTH", "false", _bool)
@@ -228,6 +232,10 @@ _register("ENABLE_CACHE", "ENABLE_CACHE", "true", _bool)
 _register("USE_PUBGRUB_SOLVER", "USE_PUBGRUB_SOLVER", "false", _bool)
 _register("USE_HYBRID_SOLVER", "USE_HYBRID_SOLVER", "false", _bool)
 _register("USE_Z3_SOLVER", "USE_Z3_SOLVER", "false", _bool)
+_register("USE_FORKING_SOLVER", "USE_FORKING_SOLVER", "false", _bool)
+_register("FORKING_MAX_FORKS", "FORKING_MAX_FORKS", "4", int)
+_register("FORKING_TIMEOUT_RATIO", "FORKING_TIMEOUT_RATIO", "0.5", float)
+_register("USE_CONTENT_CACHE", "USE_CONTENT_CACHE", "false", _bool)
 _register("SOLVER_REJECT_DEPRECATED", "SOLVER_REJECT_DEPRECATED", "false", _bool)
 _register("USE_Z3_OPTIMIZE", "USE_Z3_OPTIMIZE", "false", _bool)
 _register("UDR_OFFLINE", "UDR_OFFLINE", "", lambda v: v.lower() in ("1", "true", "yes"))

@@ -4,14 +4,14 @@
 
 | Area | Status |
 |------|--------|
-| Supported ecosystems | 20 active (22 total registered; 27 with plugin-only ecosystems) |
+| Supported ecosystems | 20 active resolution (27 total: 20 real clients + 2 internal + 5 plugin stubs) |
 | Resolution engine | PubGrub SAT solver (Rust-backed, default) + Z3 fallback (`USE_Z3_SOLVER=true`) with SCC batch partitioning, CUDA-aware conflict resolution, DFS backtracking fallback, dynamic version clustering, configurable optimization threshold |
 | In-place manifest update | **18/18 resolvable ecosystems** — all ecosystems with local manifests can be written back after `udr lock` |
 | CLI commands | `lock`, `install`, `resolve`, `scan`, `update`, `graph`, `serve`, `why`, `details`, `diff`, `outdated`, `search`, `check`, `verify`, `list-ecosystems`, `completion`, `auth`, `index`, `sbom` |
 | Lock file | `udr.lock` (supports `--workspace` for multi-workspace projects) |
 | Export formats | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | Dependency graph visualization | Interactive D3.js force-directed graph in WASM frontend (`#graph` page) |
-| Tests | 2846 unit + 96 integration + 75 e2e = **3017 total** (zero regressions) |
+| Tests | 3001 unit + 96 integration + 76 e2e = **3173 total** (zero regressions) |
 | All 21 bottlenecks | ✅ Fixed — P0×4 (wrong results), P1×4 (reliability), P2×5 (scalability), P3×8 (code quality) |
 | Architecture violations | 0 — enforced via CI + pre-commit |
 | Ruff violations | 0 in `backend/` |
@@ -124,7 +124,7 @@
 | 9.5 | Terraform provider locks | P3 | ✅ Done | `.terraform.lock.hcl` |
 | 9.6 | Dockerfile FROM parsing | P3 | ✅ Done | Base image dependency tracking |
 
-All Phase 9 items complete — **22 ecosystems total (20 active resolution + docs/custom_db), with plugin support for terraform, docker, conan, vcpkg, helm**.
+All Phase 9 items complete — **22 ecosystems in the table (20 active resolution + docs/custom_db), with 5 plugin-only stubs (terraform, docker, conan, vcpkg, helm)**.
 
 ## Phase 10 — Developer Experience
 
@@ -141,7 +141,7 @@ All Phase 9 items complete — **22 ecosystems total (20 active resolution + doc
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.3 | Core resolution, 20 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
+| v1.3 | Core resolution, 22 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
 | v1.4 | WASM frontend, Tauri-based desktop, complete manifest updaters, PubGrub solver, CVE/license/deprecation checking, policy engine, SBOM, supply chain attestation | ✅ Current | 2026-07-14 |
 | v1.5 | Incremental resolution, VSCode extension, Tauri-based desktop | 🔜 Planned | Q4 2026 |
 | v2.0 | WASM frontend, Tauri-based desktop, complete manifest updaters | 🔮 Future | Q1 2027 |

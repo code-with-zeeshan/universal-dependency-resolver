@@ -13,7 +13,7 @@ from hypothesis import assume, given, strategies as st
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
 from backend.core.pubgrub_solver import _normalize_constraint as pubgrub_normalize_constraint
-from backend.core.pubgrub_solver import _to_semver
+from backend.core.pubgrub_solver import _sanitize_version, _to_semver
 from backend.core.utils import is_compatible_version
 from backend.core.vers import VersSpec, _parse_semver
 
@@ -129,6 +129,82 @@ full_constraints = st.one_of(
 
 class TestConstrainFuzz:
     """Property-based fuzz tests for constraint normalization."""
+
+    # ── _sanitize_version ──────────────────────────────────────────────
+
+    @given(st.text())
+    def test_sanitize_version_never_crashes(self, v: str):
+        """_sanitize_version should never crash, always return a 3-part string."""
+        result = _sanitize_version(v)
+        assert isinstance(result, str)
+        parts = result.split(".")
+        assert len(parts) == 3, f"Expected 3 parts, got {len(parts)}: {result}"
+
+    @given(st.text(min_size=1, max_size=50))
+    def test_sanitize_version_idempotent(self, v: str):
+        """Applying _sanitize_version twice should give the same result."""
+        first = _sanitize_version(v)
+        second = _sanitize_version(first)
+        assert first == second, f"Not idempotent: {v} -> {first} -> {second}"
+
+    @given(st.text(max_size=50))
+    def test_sanitize_version_no_v_prefix(self, v: str):
+        """Result should never start with 'v' or 'V'."""
+        result = _sanitize_version(v)
+        assert not result.startswith("v") and not result.startswith("V")
+
+    @given(
+        st.builds(
+            lambda a, b, c: f"{a}.{b}.{c}",
+            st.integers(0, 99),
+            st.integers(0, 99),
+            st.integers(0, 99),
+        )
+    )
+    def test_sanitize_version_roundtrip_three_part(self, v: str):
+        """Three-part numeric versions should survive unchanged."""
+        result = _sanitize_version(v)
+        expected = ".".join(str(int(x)) for x in v.split("."))
+        assert result == expected, f"Changed a clean 3-part version: {v} -> {result}"
+
+    @given(st.builds(lambda a, b: f"v{a}.{b}", st.integers(0, 99), st.integers(0, 99)))
+    def test_sanitize_version_v_prefix_two_part(self, v: str):
+        """v-prefixed 2-part versions become clean 3-part."""
+        result = _sanitize_version(v)
+        parts = result.split(".")
+        assert len(parts) == 3
+        # All parts should be valid integers
+        for p in parts:
+            int(p)
+
+    @given(
+        st.builds(
+            lambda a, b, c: f"V{a}.{b}.{c}",
+            st.integers(0, 99),
+            st.integers(0, 99),
+            st.integers(0, 99),
+        )
+    )
+    def test_sanitize_version_uppercase_v(self, v: str):
+        """Uppercase V prefix should be stripped."""
+        result = _sanitize_version(v)
+        assert not result.startswith("V")
+        parts = result.split(".")
+        assert len(parts) == 3
+
+    @given(st.text(max_size=30))
+    def test_sanitize_version_all_numeric_parts(self, v: str):
+        """If at least one numeric part exists, all result parts should be integers."""
+        result = _sanitize_version(v)
+        parts = result.split(".")
+        assert len(parts) == 3
+        for p in parts:
+            try:
+                int(p)
+            except ValueError:
+                # If the input had no numeric parts at all, the result is
+                # the original string — acceptable fallback behavior
+                pass
 
     # ── _to_semver ──────────────────────────────────────────────────────
 

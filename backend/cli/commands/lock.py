@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import contextlib
 import fcntl
 import json
 import logging
@@ -20,8 +21,9 @@ from rich.table import Table
 
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
+from backend.core.utils import make_purl
 from backend.orchestrator.resolve import _system_info_fingerprint
-from backend.settings import SOLVER_TIMEOUT
+from backend.settings import SOLVER_TIMEOUT, get_ecosystem_config
 
 from .._manifest_updaters import _get_manifest_updater
 from ..shared import (
@@ -629,6 +631,8 @@ def _build_lock_data(
             "license": pkg_detail.get("unified_data", {}).get("license"),
             "deprecated": dep_info.get("deprecated", False),
             "yanked": dep_info.get("yanked", False),
+            "purl": make_purl(pkg_name, ver, eco),
+            "registry_url": get_ecosystem_config(eco).get("url", ""),
             "integrity": integrity_val,
             "vulnerabilities": [
                 {
@@ -654,7 +658,10 @@ def _build_lock_data(
             if isinstance(dep_map, dict):
                 for dep_name, dep_constraint in dep_map.items():
                     if dep_name in lock_data["packages"]:
-                        dep_names[dep_name] = dep_constraint
+                        dep_names[dep_name] = {
+                            "constraint": dep_constraint,
+                            "ecosystem": dep_eco,
+                        }
         lock_data["packages"][pkg_name]["depends_on"] = dep_names
 
     fingerprint = _system_info_fingerprint(system_info)
@@ -673,11 +680,16 @@ def _build_lock_data(
             )
         else:
             deps_by_eco: dict[str, dict[str, str]] = {}
-            for d_name, d_constraint in pkg_info.get("depends_on", {}).items():
+            for d_name, d_val in pkg_info.get("depends_on", {}).items():
                 d_entry = lock_data["packages"].get(d_name, {})
-                d_eco = d_entry.get("ecosystem")
+                if isinstance(d_val, dict):
+                    d_eco = d_val.get("ecosystem") or d_entry.get("ecosystem")
+                    d_con = d_val.get("constraint", "*")
+                else:
+                    d_eco = d_entry.get("ecosystem")
+                    d_con = d_val
                 if d_eco:
-                    deps_by_eco.setdefault(d_eco, {})[d_name] = d_constraint
+                    deps_by_eco.setdefault(d_eco, {})[d_name] = d_con
             pkg_info["resolution_hash"] = ConflictResolver.compute_resolution_hash(
                 pkg_name,
                 pkg_info.get("ecosystem", "?"),
@@ -730,17 +742,13 @@ def _handle_output(
             )
     except OSError:
         if lock_fd is not None:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(lock_fd)
-            except OSError:
-                pass
     tmp = lock_path.with_suffix(".lock.tmp")
     # Clean up any stale tmp file from previous crashed write
     if tmp.exists():
-        try:
+        with contextlib.suppress(OSError):
             tmp.unlink()
-        except OSError:
-            pass
     try:
         tmp.write_text(json.dumps(lock_data, indent=2, default=str))
         fd = tmp.open("rb")
@@ -750,22 +758,16 @@ def _handle_output(
             fd.close()
         os.replace(tmp, lock_path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             tmp.unlink()
-        except OSError:
-            pass
         raise
     finally:
         if lock_fd is not None:
-            try:
+            with contextlib.suppress(OSError):
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 os.close(lock_fd)
-            except OSError:
-                pass
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(lockfile_path)
-            except OSError:
-                pass
 
     if args.json:
         return 0
