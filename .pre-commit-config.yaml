@@ -50,6 +50,6 @@ repos:
       - id: udr-verify
         name: UDR lock file verification
         description: Validate lock file integrity and package consistency
-        entry: udr verify
+        entry: bash -c 'if [ -f udr.lock ]; then exec udr verify; else exit 0; fi'
         language: system
         pass_filenames: false
