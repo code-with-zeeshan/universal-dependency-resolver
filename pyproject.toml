@@ -84,7 +84,7 @@ pubgrub = [
     "pubgrub-py>=1.0,<2",
 ]
 z3 = [
-    "z3-solver>=4.12,<4.16.1",
+    "z3-solver>=4.12,<5.0.1",
 ]
 system = [
     "psutil>=5.9.6,<6",
@@ -129,7 +129,7 @@ all = [
     "nvidia-ml-py>=12.535,<13",
     "gputil>=1.4,<2",
     "pubgrub-py>=1.0,<2",
-    "z3-solver>=4.12,<4.16.1",
+    "z3-solver>=4.12,<5.0.1",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",
