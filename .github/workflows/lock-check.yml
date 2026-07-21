@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install UDR
-        run: pip install ud-resolver
+        run: pip install -e .
       - name: Check lock file freshness
         run: udr lock --check
