@@ -9,8 +9,11 @@ status  Show which ecosystems have local indexes available.
 
 from __future__ import annotations
 
-import argparse
 import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import argparse
 import json
 import logging
 import sys

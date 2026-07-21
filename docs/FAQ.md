@@ -1,6 +1,6 @@
 ## FAQ — Frequently Asked Questions about Universal Dependency Resolver
 
-**Last updated:** 2026-07-08 (practical Q&A added)
+**Last updated:** 2026-07-21 (all features implemented, doc refreshed)
 
 ---
 
@@ -78,7 +78,7 @@ The `udr index pull` command can fetch pre-built SQLite indexes from remote URLs
 
 > *"UDR is incredibly comprehensive, launching with a CLI, an Electron desktop app, and a FastAPI server all at once. Maintaining 20 distinct registry schemas alongside four separate application components is a massive undertaking. What is your primary focus for the core architecture moving forward, and what area of the codebase is currently the highest priority for open-source contributors?"*
 
-See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap, including the four high-priority gaps for contributors (missing manifest updaters, cross-compilation targeting, offline-first mode, per-ecosystem solver isolation) with entry-point files and phase planning through v3.0.
+See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap. All prior high-priority gaps (manifest updaters, cross-compilation, offline-first mode, per-ecosystem solver isolation) are now implemented.
 
 ---
 
@@ -86,7 +86,7 @@ See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap, including the fou
 
 > *"How is UDR different from pip, poetry, npm, or cargo? Why would I use it instead of my existing package manager?"*
 
-Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 22 ecosystems, reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
+Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 27 ecosystems, reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
 
 > *"Can I adopt UDR incrementally in an existing project, or do I need to rewrite everything?"*
 
@@ -136,4 +136,4 @@ The result is that a MacBook developer (no CUDA) generates a CPU-only lock file 
 
 ---
 
-UDR's architecture is honest about its limitations — the single global Z3 matrix for Q2, the missing `--target`/`--platform` for Q3, and the manual offline index for Q4 are all known gaps with documented code locations. The project doesn't overclaim; the road forward for each is traceable to specific files.
+UDR's architecture addresses all of Q2-Q4 concerns: per-ecosystem solver isolation (Q2, `_group_by_ecosystem`), cross-compilation with `--target`/`--platform` (Q3), and automatic offline index population (Q4, `_auto_index_package`). Known limitations are documented in [ROADMAP.md](ROADMAP.md).

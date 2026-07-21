@@ -217,7 +217,6 @@ def _detect_rocm_info(scanner) -> dict[str, Any] | None:
 
     lib_paths = ["/opt/rocm/lib", "/usr/lib/x86_64-linux-gnu"]
     for lib_dir in lib_paths:
-        lib = Path(lib_dir) / "librocm-core.so*"
         for match in Path(lib_dir).glob("librocm-core.so*"):
             soname_match = re.search(r"librocm-core\.so\.(\d+\.\d+\.\d+)", str(match))
             if soname_match:

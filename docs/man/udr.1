@@ -1,4 +1,4 @@
-.TH UDR 1 "July 2026" "udr v4.0.0" "User Commands"
+.TH UDR 1 "July 2026" "udr v1.4.0" "User Commands"
 .SH NAME
 udr \- Universal Dependency Resolver
 .SH SYNOPSIS
@@ -8,9 +8,10 @@ udr \- Universal Dependency Resolver
 .SH DESCRIPTION
 \fBUniversal Dependency Resolver (UDR)\fR is a cross-ecosystem dependency
 resolution tool that resolves, locks, and manages dependencies across 27
-package ecosystems. It uses a PubGrub SAT solver (Rust-backed by default)
-with Z3 fallback, SCC batch partitioning, CUDA-aware conflict resolution,
-and DFS backtracking to produce consistent, reproducible lock files.
+package ecosystems. It uses an AutoSolver (profiles workload, delegates to
+PubGrub/Z3/Hybrid) with SCC batch partitioning, CUDA-aware conflict
+resolution, and DFS backtracking to produce consistent, reproducible lock
+files.
 
 UDR supports in-place manifest updates, CVE scanning, license compliance
 checking, SBOM generation (SPDX/CycloneDX), supply chain attestation with

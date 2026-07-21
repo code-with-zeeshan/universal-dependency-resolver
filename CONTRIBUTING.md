@@ -29,8 +29,8 @@ udr serve --reload
 python -m backend.cli.main serve --reload
 
 # Run tests
-make test          # 1400+ unit tests
-make test-all      # 1681+ tests (all)
+make test          # 3242+ unit tests
+make test-all      # 3498+ tests (all)
 cd desktop && node --test tests/  # desktop smoke tests
 
 # Type check and lint

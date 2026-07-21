@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **22 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **27 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -508,7 +508,7 @@ Single-page app with a collapsible icon sidebar:
 
 ## 11. Features in Detail
 
-### 22 supported ecosystems
+### 27 supported ecosystems
 
 | Ecosystem | Language | Registry | Client |
 |---|---|---|---|

@@ -5,21 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0]
 
 ### Added
 
-- **Q39 — Data source fixes**: Resolved edge cases in data source client registries, improved error handling for registry timeouts, enhanced rate-limit compliance across all 18 ecosystem clients.
-- **Q40 — Utilities cleanup**: Dead code removal in `core/utils.py`, consolidated version normalization helpers, unified constraint parsing patterns across solver backends.
-- **Q41 — Documentation audit**: Test counts refreshed across all docs (3001 unit + 96 integration + 76 e2e), milestone table updated, endpoint count corrected to 58, registry count corrected to 22 ecosystems.
-
-## [1.4.0] - 2026-07-14
-
-### Added
-
+- **Data source fixes (Q39)**: Resolved edge cases in data source client registries, improved error handling for registry timeouts, enhanced rate-limit compliance across all 18 ecosystem clients.
+- **Utilities cleanup (Q40)**: Dead code removal in `core/utils.py`, consolidated version normalization helpers, unified constraint parsing patterns across solver backends.
+- **Documentation audit (Q41)**: Test counts refreshed across all docs (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco), milestone table updated, endpoint count corrected to 58, ecosystem count corrected to 27.
 - **AutoSolver (default solver)**: `create_solver()` factory profiles the dependency graph and delegates to Z3, PubGrub, or Hybrid solver based on workload characteristics. Replaces hardcoded `ConflictResolver()` at 11 call sites. Backward-compatible — `ConflictResolver` still importable directly.
 - **PubGrub solver support**: `USE_PUBGRUB_SOLVER=true` env var toggles CDCL-based PubGrub (Rust-backed via `pubgrub-py` 1.1.0, or pure-Python fallback). Pure-Python PubGrub core (`backend/core/pubgrub_core.py`) with 101 unit tests, 3 documented xfails.
 - **Hybrid solver**: `USE_HYBRID_SOLVER=true` — per-ecosystem PubGrub groups + cross-ecosystem Z3 for optimal isolation.
+- **ForkingResolver meta-solver**: `USE_FORKING_SOLVER=true` wraps any solver; on UNSAT/timeout, forks 4 parallel strategies (skip-latest, major-pin, constraint-relax) with `ThreadPoolExecutor`. First fork to solve wins.
+- **ContentAddressedCache**: SHA256-content-hash blob store with git-like sharding, integrity verification on every read, deduplication, lazy GC. Enabled via `USE_CONTENT_CACHE=true`.
+- **Platform marker support (PEP 508)**: `evaluate_marker_string()` filters platform-specific deps (`sys_platform`, `python_version`, `os_name`) using `system_info` dict. Platform-specific packages (e.g. `pywin32` on linux) correctly excluded from solver input.
 - **CVE scanning (`udr check --cve`)**: Queries OSV per package from lock file, severity-colored table (CRITICAL red, HIGH yellow, MODERATE blue, LOW dim). OSV ecosystem mappings expanded from 8→18.
 - **License compliance (`udr check --license`)**: SPDX alias table, `check_license_compatibility()` with configurable policy (permissive/warn/deny). Handles poly-license packages.
 - **Deprecation checking (`udr check --deprecated`)**: `SOLVER_REJECT_DEPRECATED` env var (default warn-only). Flags yanked/deprecated packages in lock file.
@@ -36,21 +34,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Private registry authentication**: `backend/core/registry_auth.py` resolves headers with priority: constructor arg > env var > .netrc. Bearer, basic, header auth types. 18 per-ecosystem env vars. Wired through `base_client.py` — 14/17 clients get auth for free.
 - **ETag caching in `base_client.py`**: `cached_get()` stores ETag-wrapped entries with expiry. 304 → refresh TTL, 200 → store new. NPM wired with compact metadata format (`Accept: application/vnd.npm.install-v1+json`).
 - **5 new plugin ecosystems**: Vcpkg, Conan, Docker, Helm, Terraform registered via `@register_ecosystem`.
+- **7 stub plugins converted to real HTTP clients**: Docker Registry, Helm Chart Museum, Terraform Registry, ConanCenter, ArtifactHub (Helm), Nix/Guix local parsers. All previously returned `None` from `get_package_info`.
 - **Nix/Guix ecosystem support**: `nix_plugin.py` + `guix_plugin.py` with manifest/lock parsers (`default.nix`, `shell.nix`, `flake.nix`, `flake.lock`, `guix.scm`, `manifest.scm`).
 - **Offline index sync**: `INDEX_AUTO_SYNC` setting, `--auto-sync` flag on `lock`/`resolve`. Syncs stale indexes (>24h). Covers all 18 ecosystems.
 - **Solver capacity guard**: `SOLVER_MAX_VARIABLES` (default 50000) limits both PubGrub and Z3. Early return with `unsatisfiable` when exceeded.
 - **Bundle index management API**: New endpoints for building, pulling, and syncing offline indexes (`/api/v1/index/status`, `/index/build`, `/index/pull`, `/index/sync-all`).
 - **Shell completion**: Bash/zsh/fish templates updated with all new commands (`sbom`) and flags (`--sign`, `--provenance`, `--check`, `--signature`, `--policy`, `--fix-cve`, `--target`, `--platform`).
 - **npm throughput improvements**: Concurrent semaphore in `cached_get` override; skip extended metadata during transitive BFS; compact npm metadata format for 10× smaller payloads at `/versions/{package}?compact=1`.
+- **Incremental resolution**: `_collect_locked_transitive_deps()` walks lock file `depends_on` graph to pre-resolve transitive deps of unchanged roots, skipping full re-resolution when roots haven't changed.
 - **Pre-commit hook**: `.pre-commit-config.yaml` with `udr-lock-check` hook runs `udr lock --check` before commits.
 - **Fuzz tests**: Hypothesis-based property tests for version parsing, constraint normalization, and conflict detection.
 - **Architecture import checker**: `scripts/check_arch_imports.py` enforces layer rules (no `api/`→`cli/`, no `cli/`→`api/`, etc.).
 - **Coverage threshold**: Raised from 46% → 60% in CI and Makefile.
+- **Client contract tests**: Standardized test suite across all 18 data source clients verifying response shape, error handling, and cache behavior.
+- **Frontend tests**: Inline HTML/JS desktop tests for resolution, install, restore, and settings panels.
+- **VS Code extension tests**: Activation, command registration, and tree data provider tests.
+- **Lock enrichment for pinned packages**: `cross_ecosystem_deps` field propagated into pinned package resolver input, enabling correct cross-eco dependency resolution for pre-locked entries.
+- **Lock tree parser**: Extensible `LOCK_TREE_PARSERS` dict maps lock file globs to per-ecosystem parsers for pre-populating resolver input.
+- **CLI startup optimization**: 16× faster imports via deferred `import z3`, lazy client creation, and deferred data source imports.
+- **7 edge-case guards**: Empty manifests, zero-version packages, network timeouts at every BFS level, partial BFS results on timeout, malformed lock entries, circular deps in lock file, missing `depends_on` graph.
 
 ### Fixed
 
 - **All 21 bottlenecks from docs/BOTTLENECKS.md**: P0 (4 quality bugs), P1 (4 reliability gaps), P2 (5 scalability bottlenecks), P3 (8 code quality warts) — all verified fixed.
+- **Q6 — Import-order plugin masking**: All 26 `_register_builtin()` calls moved from `data_aggregator.py` to `plugin.py` module level, removing import-order dependency.
+- **Q12 — Cross-eco test coverage**: 94 new tests covering all 21 previously-untested ecosystems (conda, maven, gomodules, apt, apk, cocoapods, homebrew, nuget, packagist, rubygems, pub, gradle, swift, hex, haskell, nix, guix, vcpkg, conan, helm, terraform) — zero network deps.
+- **Q43 — Comprehensive + system scanner tests**: `test_comprehensive.py` uses `create_solver()` instead of `ConflictResolver()`; system scanner tests expanded from 23→40 (file I/O, cache, subprocess, dotnet lock parsers).
+- **Q3 — Hardened repo regression tests**: 39 tests covering Semaphore, Go `_strip_v`, Go v-prefix normalization, bare SpecifierSet wrapping, `updated=False` initialization, plus 6 repo-level manifest-parse+solver smoke tests.
 - **8 manifest parser fixes**: Go.mod regex rewrite (no ghost packages); yarn.lock `rsplit("@",1)` for scoped packages; pnpm lock `rsplit("@",1)` for scope preservation; Cabal multi-line `build-depends:` continuation; Gradle extended from 4 to 11 configurations + map notation; Pyproject PEP 621 + optional-dependencies + build-system.requires; inline comment stripping for requirements.txt; duplicate `"swift": "cocoapods"` mapping removed.
+- **Go version normalization**: `_strip_v()` strips leading `v` from Go pseudo-versions; `normalize_version` applied before `is_compatible_version` in solver. Go `v`-prefixed versions no longer silently dropped.
+- **Compute resolution hash GPU types**: All 4 GPU types (cuda, rocm, intel_gpu, metal) extracted instead of only cuda — ROCm/Metal/Intel configs produce different hashes.
 - **npm semaphore bypass**: `NPMClient.cached_get()` wraps with `_NPM_SEMAPHORE` (was bypassing on direct `session.request()` calls).
 - **Solver timeout propagation**: `_resolve_transitive` now passes `solver_timeout` (80% of budget in ms) to Z3 — previously left at `timeout=0` causing SAT hang on transitive deps.
 - **DataAggregator _async dispatch**: Checks `type(client).__dict__` for `get_package_info_async` — fixes npm/maven/crates/pub clients that override `get_package_info` but not `_async`.
@@ -64,9 +77,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FastAPI lifespan migration**: `@app.on_event("startup"/"shutdown")`→`@asynccontextmanager lifespan`.
 - **Pydantic v2 compliance**: `@field_validator` replaces `@validator`, `model_dump()` replaces `dict()`. Zero deprecation warnings.
 - **PubGrub solver 5 e2e bugs**: `LOCK_TREE_PARSERS` tuple→list; `_sanitize_version()` strips `.devN/.postN/.alphaN`; 2-part version padding (`>=1.20`→`>=1.20.0`); non-digit segment guard in `_to_semver`; `resolved` UnboundLocalError guard.
+- **Plugin ecosystem fixes (3)**: Docker client query param order; Helm lock parser for multi-document YAML; Terraform registry pagination.
+- **ruff fixes (3)**: Unused imports, redundant f-string expressions, SIM rules.
 - **DictCache debounce**: 2000ms flush coalescing prevents disk write amplification on rapid cache updates.
 - **O(n²) graph scans eliminated**: `_node_by_name` dict in `_build_dependency_graph` makes `_get_ecosystem`/`_get_package_dependencies` O(1) per call.
 - **45× rglob → single walk**: `manifest_detector.py` filesystem walking reduced from O(N×M) to O(N).
+- **Ecosystem alias fixes**: `sanitize_ecosystem_name` now correctly maps `go`→`gomodules`; CocoaPods Podfile.lock parser added; `test_go_purl` test fixed (ecosystem `"go"`→`"gomodules"`).
 
 ### Changed
 
@@ -77,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **test_02**: `express` (44 deps) → `lodash` (0 deps) to avoid npm CI timeout. Min assertion 25→20.
 - **`py.typed` marker**: Added for PEP 561 compliance.
 - **Coverage threshold**: 46% → 60% (both CI and Makefile).
+- **`.gitignore`**: Added `vscode-extension/out/` and `vscode-extension/.vscode-test/` for compiled TypeScript and test runner downloads.
 
 ### CI
 
@@ -105,14 +122,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 3001 unit + 96 integration + 76 e2e; CLI 19 commands; API 58 endpoints; 22 active + 2 internal + 3 plugin-only ecosystems; AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
-- **Solver architecture documented**: AutoSolver (default), Z3, PubGrub, Hybrid — all 4 code paths explained with `create_solver()` factory.
+- **ROADMAP.md rewritten from scratch**: Historical evolution documented with file:line references; all 36 phase gaps verified against actual source; milestone table corrected (v1.x, not v4.x).
+- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco; CLI 19 commands; API 58 endpoints; 27 ecosystems (22 active + 5 plugin-only); AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
+- **Solver architecture documented**: AutoSolver (default), Z3, PubGrub, Hybrid, ForkingResolver — all 5 code paths explained with `create_solver()` factory.
 - **ROADMAP.md corrected**: Version v4.0.0→v1.3.3, ecosystems 27→20 active+plugins, milestone table made realistic.
 - **API_INTEGRATION.md**: Removed fictional MFA/recover endpoints; corrected auth paths; endpoint count 33→59.
 - **FAQ.md**: Updated for AutoSolver, per-ecosystem isolation, `--target`/`--platform` existence.
 - **`--workspace`, `--cve`, `--license`, `--lock-file`, `--sign`, `--policy`, `--fix-cve`, `--target`, `--platform` flags** documented across CLI.md and API.md.
 - **TROUBLESHOOTING.md**: Added Nix/Guix manifest patterns to supported list.
 - **Mermaid diagrams**: `ConflictResolver`→`AutoSolver (Z3/PubGrub/Hybrid)` in README.md, USER_GUIDE.md, ARCHITECTURE.md.
+- **Man page**: `docs/man/udr.1` updated — version `v4.0.0`→`v1.4.0`, solver description corrected from "PubGrub (default)" to "AutoSolver".
 
 ## [1.3.3] - 2026-07-05
 

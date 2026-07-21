@@ -320,9 +320,9 @@ graph LR
 
 ```
 tests/
-├── unit/         → 3001 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
+├── unit/         → 3242 tests (CLI, API, core, data sources, settings, Hypothesis fuzz)
 ├── integration/  → 96 tests (API + DB + data flow, uses SQLite)
-├── e2e/          → 75 tests (CLI black-box, problem-statement, JSON compliance)
+├── e2e/          → 77 tests (CLI black-box, problem-statement, JSON compliance)
 │   conftest.py   → SQLite fallback, optional Redis
 └── conftest.py   → shared fixtures
 ```

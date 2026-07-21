@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.api.dependencies import get_data_aggregator, limiter
-from backend.core.data_aggregator import DataAggregator
+
+if TYPE_CHECKING:
+    from backend.core.data_aggregator import DataAggregator
 from backend.core.license_checker import check_license_compatibility
 from backend.core.policy_engine import check_policy, load_policy
 
@@ -164,9 +166,8 @@ async def check_policy_endpoint(
     if body.policy_yaml:
         import tempfile
 
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
-        tmp.write(body.policy_yaml)
-        tmp.close()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+            tmp.write(body.policy_yaml)
         try:
             policy = load_policy(tmp.name)
         finally:

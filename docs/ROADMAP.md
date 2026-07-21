@@ -12,7 +12,7 @@
 | Tests | **3498** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | Coverage threshold | **60%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
-| Ruff violations | **0** in `backend/` |
+| Ruff violations | **7** in `backend/` (4 safety, 3 style) |
 | Missing docstrings | 221 (D100–D417) — incremental fix ongoing |
 
 ---
@@ -266,7 +266,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.3 | Core resolution, 22 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
+| v1.3 | Core resolution, 27 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
 | v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, 36 gap closures, 191 Q1-Q43 fixes, Phase 5-10 complete | ✅ Past | 2026-07-14 |
 | v1.5 | Remaining nice-to-haves: ruff docstrings, API parity, type stubs, error types | 🔜 In planning | Q4 2026 |
 | v2.0 | Plugin system, ecosystem aliases, cross-compilation CI, Prometheus/OpenTelemetry | 🔮 Future | Q1 2027 |

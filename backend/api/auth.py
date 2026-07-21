@@ -207,7 +207,7 @@ async def get_current_user_from_api_key(raw_key: str) -> User | None:
         return None
 
     with db_session() as db:
-        active_keys = db.query(APIKey).filter(APIKey.is_active == True).all()
+        active_keys = db.query(APIKey).filter(APIKey.is_active).all()
 
         now = datetime.now(UTC).replace(tzinfo=None)
         key_record = None

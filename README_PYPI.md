@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/ud-resolver)](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/LICENSE)
 [![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 
-Resolve dependencies across **22 ecosystems** — detect conflicts, check system compatibility, and export to any format.
+Resolve dependencies across **27 ecosystems** — detect conflicts, check system compatibility, and export to any format.
 
 ```bash
 # From any ecosystem, resolve together
@@ -44,7 +44,7 @@ pip install ud-resolver
 
 | Capability | Detail |
 |---|---|
-| **22 ecosystems** | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Nix, GNU Guix, Docs DB, Custom DB |
+| **27 ecosystems** (25 user-facing + 2 internal) | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Nix, GNU Guix, Docker, Helm, Terraform, Vcpkg, Conan — plus Docs DB (documentation scraping) and Custom DB (local compatibility cache) |
 | **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection, and DFS backtracking fallback |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
@@ -129,7 +129,7 @@ Your request ──► Fetch metadata from registry APIs
                Resolve conflicts with AutoSolver (Z3 / PubGrub / Hybrid)
                       │
                       ▼
-              Export to 12 formats or write lock file
+              Export to 15 formats or write lock file
 ```
 
 ---

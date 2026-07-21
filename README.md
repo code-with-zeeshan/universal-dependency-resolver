@@ -7,13 +7,13 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/3001%20unit%2B96%20integration%2B76%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/3242%20unit%2B96%20integration%2B77%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
-[![Ruff](https://img.shields.io/badge/Ruff-passing-success?logo=ruff&color=green&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Ruff](https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 
 ---
 
-## ✨ One tool. 22 ecosystems. Infinite possibilities.
+## ✨ One tool. 27 ecosystems. Infinite possibilities.
 
 ```bash
 udr resolve torch@pypi express@npm serde@crates
@@ -63,7 +63,7 @@ udr serve --port 8000
 
 ## 💎 Features at a Glance
 
-### 🌍 22 Supported Ecosystems
+### 🌍 27 Supported Ecosystems
 
 | ☁️ Cloud Native | 🐍 Dynamic | ☕ JVM & .NET | 📦 Package Managers | 🛠️ System |
 |---|---|---|---|---|
@@ -71,7 +71,8 @@ udr serve --port 8000
 | **Conda** – Multi-language | **Crates.io** – Rust | **Gradle** – Java/Kotlin | **NuGet** – .NET | **APK** – Alpine |
 | **Go Modules** – Go | **RubyGems** – Ruby | **Pub** – Dart/Flutter | **Packagist** – PHP | **Homebrew** – macOS/Linux |
 | **Hex** – Elixir | **Swift** – Swift | **Haskell** – Cabal | **Nix** – NixOS | **Guix** – GNU Guix |
-| | **Docs DB** – Internal | | | |
+
+Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichment and local resolution caching.
 
 ### ⚡ Core Capabilities
 
@@ -220,8 +221,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Metric | Value |
 |---|---|
-| ✅ Supported ecosystems | **22** (20 active resolution + 2 internal) |
-| 🧪 Unit tests passing | **3001** (+ 96 integration + 76 e2e) |
+| ✅ Supported ecosystems | **27** (22 active resolution + 5 plugin-only; 25 user-facing + 2 internal) |
+| 🧪 Unit tests passing | **3242** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | 🎛️ CLI commands | **19** |
 | 🌐 API endpoints | **58** |
 | 📤 Export formats | **15** |

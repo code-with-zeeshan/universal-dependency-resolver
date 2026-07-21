@@ -16,8 +16,8 @@ Phase 2 — Z3 with constrained candidate space:
   * Intra-eco packages: pinned to PubGrub's chosen version (1 Bool each).
   * Cross-eco packages: keep ALL clustered versions (full flexibility).
   * Z3 gets PubGrub's preferred version as the optimization target.
-  Encoding: (cross_eco_pkgs ✕ versions) + (intra_eco_pkgs ✕ 1)
-  — typically 3-10× smaller than full Z3.
+  Encoding: (cross_eco_pkgs x versions) + (intra_eco_pkgs x 1)
+  — typically 3-10x smaller than full Z3.
 
 Phase 3 — Full Z3 fallback:
   Only reached when cross-eco conflicts can't be resolved with constrained
@@ -204,7 +204,7 @@ class HybridSolver:
         so Z3 can explore alternatives to resolve cross-ecosystem conflicts.
         Intra-eco packages are pinned to PubGrub's chosen version.
 
-        This keeps the Z3 encoding at ~N × cross_eco_count — even for 500
+        This keeps the Z3 encoding at ~N x cross_eco_count — even for 500
         package graphs with 50 cross-eco packages, that's 250 Bool vars.
         """
         from backend.core.conflict_resolver import ConflictResolver

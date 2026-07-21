@@ -1154,7 +1154,7 @@ Get known compatibility information for a package.
 
 ### `GET /api/v1/packages/ecosystems`
 
-Get list of all 22 supported package ecosystems with capabilities.
+Get list of all 27 supported package ecosystems with capabilities.
 
 **Rate limit:** 60/minute  
 **Auth:** Yes (anonymous in local mode)
@@ -1174,7 +1174,7 @@ Get list of all 22 supported package ecosystems with capabilities.
       "supports_dependencies": true
     }
   },
-  "total": 20
+  "total": 27
 }
 ```
 
@@ -1200,6 +1200,13 @@ Get list of all 22 supported package ecosystems with capabilities.
 | `swift` | Swift | swift |
 | `hex` | Elixir | mix |
 | `haskell` | Haskell | cabal/stack |
+| `nix` | NixOS | nix |
+| `guix` | GNU Guix | guix |
+| `docker` | Container | docker |
+| `helm` | Kubernetes | helm |
+| `terraform` | Infrastructure | terraform |
+| `vcpkg` | C++ | vcpkg |
+| `conan` | C/C++ | conan |
 | `docs` | Documentation | docs |
 | `custom_db` | Custom | custom |
 

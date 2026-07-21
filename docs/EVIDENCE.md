@@ -75,7 +75,7 @@ gaps).
 
 | Claim | Evidence | Status |
 |-------|----------|--------|
-| 22 ecosystems in table | `core/data_aggregator.py` `Ecosystem` enum — 27 members; 22 in README table (20 resolution + 2 internal) | ✅ Verified |
+| 27 ecosystems in table | `core/data_aggregator.py` `Ecosystem` enum — 27 members; 27 in README table (22 resolution + 5 plugin-only) | ✅ Verified |
 | 26 registered plugins | `core/plugin.py:381-406` — 26 `_register_builtin()` calls | ✅ Verified |
 | 18 clients with real HTTP | `data_sources/` — pypi_client, npm_client, crates_client, maven_client, gomodules_client, conda_client, hex_client, haskell_client, pub_client, gradle_client, swift_client, apt_client, apk_client, cocoapods_client, homebrew_client, nuget_client, packagist_client, rubygems_client | ✅ Verified |
 | 5 plugin clients (Docker, Vcpkg, Terraform, Conan, Helm) | `data_sources/docker_plugin.py:71-84` (Docker Registry HTTP API), `vcpkg_plugin.py:66-79` (vcpkg registry HTTP), `terraform_plugin.py:94-107` (Terraform Registry API), `conan_plugin.py:102-115` (ConanCenter API), `helm_plugin.py:76-89` (ArtifactHub API) — all make real API calls. Nix+Guix return `None` (no remote registry) | ✅ Verified |
