@@ -58,6 +58,32 @@ sudo dnf install pkgconf-pkg-config
 - Try `pip install --upgrade pip` first
 - If Z3 fails to install, try `pip install z3-solver` first, then `pip install ud-resolver`
 
+### `pubgrub-py` fails to install / Rust linker error
+
+```
+error: linker `rust-lld` not found
+  or
+error: failed to run custom build command for `pubgrub-py v1.1.0`
+```
+
+**Cause**: `pubgrub-py` ships pre-compiled wheels for Linux x86\_64, macOS (x86\_64 + arm64), and Windows amd64. If your platform/arch/Python version isn't covered (e.g. Linux aarch64, musl-based Alpine, Python 3.13t), pip falls back to `cargo build --from-source` which requires a full Rust toolchain.
+
+On **Nix/NixOS**, the default linker wrapper (`rust-lld`) can't find `-lgcc`. Workaround:
+
+```bash
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc pip install 'ud-resolver[pubgrub]'
+```
+
+**On any platform**, if you don't have Rust installed and no wheel is available, the solver falls back automatically to pure-Python `PubGrubCoreSolver` (no install required). The pure-Python solver handles most dependency graphs under 100 packages within a second. You don't need `pubgrub-py` for UDR to work.
+
+To check if `pubgrub-py` is installed:
+
+```bash
+python -c "import pubgrub_py; print('Rust-backed solver available')"
+```
+
+If that fails, the pure-Python fallback is used automatically.
+
 ## Runtime Errors
 
 ### `ModuleNotFoundError: No module named 'backend'`

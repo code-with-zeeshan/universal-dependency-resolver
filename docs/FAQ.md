@@ -86,7 +86,7 @@ See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap. All prior high-pr
 
 > *"How is UDR different from pip, poetry, npm, or cargo? Why would I use it instead of my existing package manager?"*
 
-Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 27 ecosystems, reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
+Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 25 ecosystems (18 resolvable + 7 query-only), reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
 
 > *"Can I adopt UDR incrementally in an existing project, or do I need to rewrite everything?"*
 
@@ -134,6 +134,18 @@ UDR's system-aware CUDA resolution uses a **tiered detection + post-resolution e
 
 The result is that a MacBook developer (no CUDA) generates a CPU-only lock file by default, but can `udr lock --cuda 12.1` to generate a GPU-deployable lock file for the same package set, with the solver correctly selecting `torch==2.1.0+cu121` variants.
 
+## 7. System Detection & GPU Handling
+
+> *"Does UDR detect GPU/OS/CPU without installing the [system] extra? And how does PubGrub handle GPU constraints if it doesn't support CUDA boolean encoding?"*
+
+**System detection without extras**: Yes. The base `ud-resolver` detects GPU, OS, CPU, and memory via subprocess commands (`nvidia-smi`, `nvcc`, `rocm-smi`, `lspci`, `/proc/cpuinfo`, `platform`) — no extra dependencies needed. The `[system]` extra only adds richer data via Python libraries (`pynvml` → GPU temperature/utilization, `psutil` → per-process memory, `cpuinfo` → detailed CPU model string).
+
+**GPU filtering with PubGrub**: GPU-incompatible versions are filtered **before** the solver sees them. `_aggregator_to_resolver_input()` in `orchestrator/resolve.py` compares each package version's `system_requirements.cuda` against `system_info["gpu"]["cuda"]`. Versions requiring CUDA 12.1 when the system has CUDA 11.8 are excluded from the version list. By the time PubGrub resolves dependencies, only compatible candidates remain — PubGrub never needs to encode CUDA constraints.
+
+The only case that requires Z3 is CUDA 11 vs 12 XOR conflict rules (e.g. `torch==2.1.2+cu121` and `tensorflow==2.12.0` requiring different CUDA toolkits that can't coexist). Without Z3, those rules are skipped (AutoSolver logs a warning). This is rare — most users have one CUDA version.
+
 ---
+
+**UDR's architecture addresses all of Q2-Q4 concerns**: per-ecosystem solver isolation (Q2, `_group_by_ecosystem`), cross-compilation with `--target`/`--platform` (Q3), and automatic offline index population (Q4, `_auto_index_package`). Known limitations are documented in [ROADMAP.md](ROADMAP.md).
 
 UDR's architecture addresses all of Q2-Q4 concerns: per-ecosystem solver isolation (Q2, `_group_by_ecosystem`), cross-compilation with `--target`/`--platform` (Q3), and automatic offline index population (Q4, `_auto_index_package`). Known limitations are documented in [ROADMAP.md](ROADMAP.md).

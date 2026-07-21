@@ -179,7 +179,13 @@ class ConflictResolver:
                 to prefer newer versions. If None, falls back to USE_Z3_OPTIMIZE env var.
 
         """
-        import z3
+        try:
+            import z3
+        except ImportError as _exc:
+            raise ImportError(
+                "z3-solver is required for ConflictResolver. "
+                "Install it with: pip install 'ud-resolver[z3]'"
+            ) from _exc
 
         self.dependency_graph = nx.DiGraph()
         if use_optimization is None:

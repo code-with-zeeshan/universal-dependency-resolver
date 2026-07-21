@@ -467,9 +467,45 @@ class PubGrubCoreSolver:
                     if rel == "satisfied":
                         compatible = False
                         break
-            if compatible:
-                return ver
+            if not compatible:
+                continue
+            # Forward-check: skip if this version depends on a package/version
+            # that has no possible resolution (e.g., dep ==99.0 where 99.0
+            # does not exist in _packages).
+            if not self._deps_are_feasible(package, ver):
+                continue
+            return ver
         return None
+
+    def _deps_are_feasible(self, package: str, version: str) -> bool:
+        """Return True if *version* of *package* has at least one candidate
+        for each of its dependency constraints.
+
+        Only checks packages that are KNOWN in _packages — a dependency on a
+        completely unknown package is treated as satisfiable (will be handled
+        by the solver's conflict resolution later).
+        """
+        deps = self._packages.get(package, {}).get(version, {})
+        if not deps:
+            return True
+        for dep_name, dep_con in deps.items():
+            if dep_con == "*" or not dep_con:
+                continue
+            dep_versions = self._packages.get(dep_name, {})
+            if not dep_versions:
+                continue  # unknown package → defer to solver conflict resolution
+            # Check if at least one version of dep_name satisfies dep_con
+            has_candidate = False
+            for dv in dep_versions:
+                try:
+                    if SpecifierSet(dep_con).contains(dv):
+                        has_candidate = True
+                        break
+                except Exception:
+                    continue
+            if not has_candidate:
+                return False
+        return True
 
     def _build_conflict_for_missing_version(
         self, package: str, solution: PartialSolution

@@ -67,11 +67,16 @@ def create_solver(*, use_optimization: bool = True, solver_timeout: int | None =
     solver: Any = None
 
     if _s.USE_Z3_SOLVER:
-        from backend.core.conflict_resolver import ConflictResolver
+        try:
+            from backend.core.conflict_resolver import ConflictResolver
 
-        logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
-        solver = ConflictResolver(use_optimization=use_optimization)
-        return _maybe_wrap_forking(solver)
+            logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
+            solver = ConflictResolver(use_optimization=use_optimization)
+            return _maybe_wrap_forking(solver)
+        except ImportError:
+            logger.warning(
+                "USE_Z3_SOLVER is true but z3-solver is not installed; falling back to AutoSolver"
+            )
 
     if _s.USE_HYBRID_SOLVER:
         try:

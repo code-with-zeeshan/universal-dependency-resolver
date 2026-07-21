@@ -9,12 +9,15 @@ graph TB
 
     subgraph APILayer["🌐 API Layer (FastAPI)"]
         API_MAIN["<code>main.py</code><br/>App factory + middleware"]:::api
-        ROUTES["<code>routes/</code><br/>packages · system · auth<br/>scan · lock"]:::api
+        ROUTES["<code>routes/</code><br/>packages · system · auth · scan<br/>lock · check · sbom · completion · index"]:::api
         SCHEMAS["<code>schemas.py</code><br/>Pydantic request/response"]:::api
     end
 
     subgraph OrchestratorLayer["🔄 Orchestrator"]
         ORCH["<code>orchestrator/resolve.py</code><br/>BFS + SAT pipeline"]:::api
+        O_INSTALL["<code>install.py</code><br/>Install commands"]:::api
+        O_SCANNER["<code>scanner.py</code><br/>Scan orchestration"]:::api
+        O_DB["<code>db_service.py</code><br/>DB access layer"]:::api
     end
 
     subgraph CoreLayer["🧠 Core Logic"]
@@ -33,7 +36,7 @@ graph TB
         NPM["npm"]:::data
         CRATES["Crates.io"]:::data
         MAVEN["Maven"]:::data
-        MORE["+ 15 more (plugin system)"]:::data
+        MORE["+ 22 more (plugin system)"]:::data
     end
 
     subgraph DBLayer["🗄️ Database"]
@@ -42,13 +45,11 @@ graph TB
         PG["PostgreSQL"]:::db
     end
 
-    CLI -->|"subprocess"| DESKTOP
     DESKTOP -->|"HTTP localhost"| API_MAIN
-    CLI -->|"inline call"| API_MAIN
-    CLI -->|"direct import"| CoreLayer
+    CLI -->|"via orchestrator"| OrchestratorLayer
+    CLI -->|"direct"| CoreLayer
     API_MAIN --> ROUTES
     ROUTES --> SCHEMAS
-    CLI -->|"direct import"| OrchestratorLayer
     ROUTES --> OrchestratorLayer
     OrchestratorLayer --> CoreLayer
     CoreLayer --> DataLayer
@@ -73,33 +74,34 @@ graph TB
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 22 files across 19 commands:
+Modular CLI package with 23 files across 19 commands:
 
 ```
 backend/cli/
-├── __init__.py        # Re-exports all symbols for backward compat
-├── main.py            # _build_parser(), main(), dispatch dict
-├── shared.py          # 20+ shared helpers (parse, resolve, output, …)
+├── __init__.py          # Re-exports all symbols for backward compat
+├── main.py              # _build_parser(), main(), dispatch dict
+├── shared.py            # 20+ shared helpers (parse, resolve, output, …)
+├── _manifest_updaters.py  # 21 manifest updaters across 18 ecosystems
 └── commands/
-    ├── serve.py       # cmd_serve — start API server
-    ├── check.py       # cmd_check — system compatibility
-    ├── resolve.py     # cmd_resolve — resolve package deps
-    ├── info.py        # cmd_info — system overview
-    ├── lock.py        # cmd_lock — manifest → lock file
-    ├── graph.py       # cmd_graph — dependency tree
-    ├── verify.py      # cmd_verify — validate lock file
-    ├── scan.py        # cmd_scan — GitHub/local scan
-    ├── update.py      # cmd_update — re-resolve single package
-    ├── install.py     # cmd_install, cmd_restore — restore from lock
+    ├── serve.py         # cmd_serve — start API server
+    ├── check.py         # cmd_check — system compatibility + CVE + deprecated
+    ├── resolve.py       # cmd_resolve — resolve package deps
+    ├── lock.py          # cmd_lock — manifest → lock file
+    ├── graph.py         # cmd_graph — dependency tree
+    ├── verify.py        # cmd_verify — validate lock file
+    ├── scan.py          # cmd_scan — GitHub/local scan
+    ├── update.py        # cmd_update — re-resolve + --fix-cve
+    ├── install.py       # cmd_install, cmd_restore — restore from lock
     ├── list_ecosystems.py  # cmd_list_ecosystems
-    ├── auth.py        # cmd_auth — API key management
-    ├── completion.py  # cmd_completion — shell completion
-    ├── why.py         # cmd_why — explain version selection
-    ├── outdated.py    # cmd_outdated — show outdated packages
-    ├── diff.py        # cmd_diff — compare lock files
-    ├── search.py      # cmd_search — search packages
-    ├── sbom.py        # cmd_sbom — SBOM generation (SPDX/CycloneDX)
-    └── details.py     # cmd_details — package details
+    ├── auth.py          # cmd_auth — API key + signing key management
+    ├── completion.py    # cmd_completion — shell completion (bash/zsh/fish)
+    ├── why.py           # cmd_why — explain version selection
+    ├── outdated.py      # cmd_outdated — show outdated packages
+    ├── diff.py          # cmd_diff — compare lock files
+    ├── search.py        # cmd_search — search packages
+    ├── sbom.py          # cmd_sbom — SBOM generation (SPDX/CycloneDX)
+    ├── details.py       # cmd_details — package details
+    └── index.py         # cmd_index — manage offline SQLite indexes
 ```
 
 The old monolithic `backend/cli.py` (2105 lines) was replaced by this package. A 3-line backward-compat shim remains at `backend/cli.py` for existing imports.
@@ -130,7 +132,10 @@ Routes:
 - **`hybrid_solver.py`** — Hybrid solver (PubGrub per-ecosystem + Z3 cross-ecosystem). Enabled via `USE_HYBRID_SOLVER=true`.
 - **`plugin.py`** — Ecosystem plugin system: `EcosystemPlugin` ABC, `@register_ecosystem` decorator, `import_builtin_plugins()` for eager discovery. All 26 registered ecosystem plugins use the plugin interface.
 - **`data_aggregator.py`** — Aggregates package data from all ecosystem clients. Uses `asyncio.gather` for concurrent fetching with BFS batch parallelism and configurable `BFS_BATCH_SIZE`.
-- **`orchestrator/resolve.py`** — BFS + SAT pipeline: `_group_by_ecosystem()` splits packages into per-ecosystem groups for **per-ecosystem solver isolation** (a conflict in npm can't block PyPI). Cross-ecosystem deps use a unified path. `create_solver()` factory selects AutoSolver (default), PubGrub (`USE_PUBGRUB_SOLVER=true`), Hybrid (`USE_HYBRID_SOLVER=true`), or Z3 (`USE_Z3_SOLVER=true`).
+- **`orchestrator/resolve.py`** — BFS + SAT pipeline: `_group_by_ecosystem()` splits packages into per-ecosystem groups for **per-ecosystem solver isolation** (a conflict in npm can't block PyPI). Cross-ecosystem deps use a unified path. `create_solver()` factory selects AutoSolver (default) or direct solver when `USE_Z3_SOLVER`/`USE_HYBRID_SOLVER`/`USE_PUBGRUB_SOLVER` env vars are set.
+- **`orchestrator/install.py`** — Install command helpers: `_generate_install_command()` maps resolved packages to ecosystem-native installers.
+- **`orchestrator/scanner.py`** — Scan orchestration: GitHub repo scanning, archive extraction, local directory traversal.
+- **`orchestrator/db_service.py`** — Database access layer: wraps SQLAlchemy sessions, provides CRUD for Package, PackageVersion, User, APIKey models.
 - **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
 - **`cache.py`** — `DictCache` (in-memory dict + TTL, no dependencies) with optional Redis fallback.
@@ -142,13 +147,14 @@ The solver selection and execution pipeline has three phases — profiling, sele
 
 ```mermaid
 graph TB
-    START(["create_solver()"]) --> PROFILE["_profile_packages()<br/>count · ecosystems · CUDA · cross-eco"]
+    START(["create_solver()"]) -->|"env var set?"| ENV_DECIDE{"USE_Z3_SOLVER?<br/>USE_HYBRID_SOLVER?<br/>USE_PUBGRUB_SOLVER?"}
+    ENV_DECIDE -->|"yes"| ENV_SOLVER["Direct solver (wrapped in ForkingResolver if enabled)"]
+    ENV_DECIDE -->|"no (default)"| AUTO["AutoSolver instance"]
 
-    PROFILE --> SELECT{"_select_solver()<br/>decision tree"}
+    AUTO --> AS_RESOLVE["AutoSolver.resolve_dependencies()"]
+    AS_RESOLVE --> PROFILE["_profile_packages()<br/>count · ecosystems · CUDA · cross-eco"]
 
-    SELECT -->|"USE_Z3_SOLVER=true"| Z3_OVERRIDE["Z3: ConflictResolver"]
-    SELECT -->|"USE_HYBRID_SOLVER=true"| HY_OVERRIDE["Hybrid: HybridSolver"]
-    SELECT -->|"USE_PUBGRUB_SOLVER=true"| PG_OVERRIDE["PubGrub: PubGrubSolver"]
+    PROFILE --> SELECT{"_select_solver()<br/>decision tree<br/>(also respects env vars)"}
 
     SELECT -->|"small (≤ threshold)"| PG_SMALL["PubGrub: PubGrubSolver"]
     SELECT -->|"large + no CUDA + no cross-eco"| PG_LARGE["PubGrub: PubGrubSolver"]
@@ -156,9 +162,9 @@ graph TB
     SELECT -->|"has CUDA"| Z3_CUDA["Z3: ConflictResolver"]
     SELECT -->|"default"| PG_DEFAULT["PubGrub: PubGrubSolver"]
 
-    Z3_OVERRIDE --> Z3_RESOLVE["ConflictResolver.resolve_dependencies()"]
-    HY_OVERRIDE --> HY_RESOLVE["HybridSolver.resolve_dependencies()"]
-    PG_OVERRIDE --> PG_RESOLVE["PubGrubSolver.resolve_dependencies()"]
+    ENV_SOLVER --> Z3_RESOLVE["ConflictResolver.resolve_dependencies()"]
+    ENV_SOLVER --> HY_RESOLVE["HybridSolver.resolve_dependencies()"]
+    ENV_SOLVER --> PG_RESOLVE["PubGrubSolver.resolve_dependencies()"]
     PG_SMALL --> PG_RESOLVE
     PG_LARGE --> PG_RESOLVE
     HYBRID --> HY_RESOLVE
@@ -168,7 +174,7 @@ graph TB
     subgraph PubGrubPath ["PubGrubSolver"]
         PG_RESOLVE -->|"pubgrub-py installed"| PG_RUST["Rust-backed pubgrub-py"]
         PG_RESOLVE -->|"no pubgrub-py"| PG_PURE["Pure Python PubGrubCoreSolver"]
-        PG_RUST --> PG_OK["return {status, resolved_packages, dependency_tree}"]
+        PG_RUST --> PG_OK["satisfiable -> return {status, resolved, deps}"]
         PG_PURE --> PG_OK
     end
 
@@ -180,7 +186,7 @@ graph TB
         SCC -->|"no"| ECO_ISO{"_isolate_by_ecosystem()"}
         ECO_ISO -->|"≤1 eco or cross-eco cycle"| CONSTRAINTS["_create_constraints()<br/>version clustering · Z3 vars"]
         ECO_ISO -->|"multi-eco no cross"| ECO_SOLVE["per-eco Z3 solver<br/>downstream constraints propagated"]
-        CONSTRAINTS --> SOLVE["_solve_constraints()<br/>Z3.Solver() or Z3.Optimize()"]
+        CONSTRAINTS --> SOLVE["_solve_constraints()<br/>Z3.Solver() (default)<br/>or Z3.Optimize() if USE_Z3_OPTIMIZE"]
         SOLVE -->|"sat"| FORMAT["_format_solution()<br/>resolved_packages + dependency_tree"]
         SOLVE -->|"unsat/timeout"| ALTS["_resolve_with_alternatives()<br/>DFS backtracking"]
         ALTS --> ALTS_OK["best-effort solution"]
@@ -195,20 +201,20 @@ graph TB
         HY_Z3 --> HY_MERGE
     end
 
-    PG_OK -->|"status=satisfiable"| DONE["return result"]
-    Z3_FORMAT["_format_solution()"] --> DONE
+    PG_OK -->|"sat"| DONE["return result"]
+    FORMAT --> DONE
     ECO_MERGE --> DONE
     ALTS_OK --> DONE
     HY_MERGE --> DONE
 
-    PG_OK -->|"status≠satisfiable"| FALLBACK{"fallback chain"}
-    Z3_FORMAT -->|"status≠satisfiable"| FALLBACK
-    ECO_MERGE -->|"status≠satisfiable"| FALLBACK
-    HY_MERGE -->|"status≠satisfiable"| FALLBACK
+    PG_OK -->|"unsat/timeout"| FALLBACK{"AutoSolver.fallback_chain()"}
+    FORMAT -->|"unsat/timeout"| FALLBACK
+    ECO_MERGE -->|"unsat/timeout"| FALLBACK
+    HY_MERGE -->|"unsat/timeout"| FALLBACK
 
-    FALLBACK -->|"PubGrub failed → Z3"| FALLBACK_Z3["ConflictResolver"]
-    FALLBACK -->|"Z3 failed → PubGrub"| FALLBACK_PG["PubGrubSolver"]
-    FALLBACK -->|"all failed → Hybrid"| FALLBACK_HY["HybridSolver"]
+    FALLBACK -->|"prefers PubGrub"| FB_PG["try PubGrub"]
+    FALLBACK -->|"prefers Z3"| FB_Z3["try Z3"]
+    FALLBACK -->|"prefers Hybrid"| FB_HY["try Hybrid"]
 
     style START fill:#2d7,color:#000
     style DONE fill:#2d7,color:#000
@@ -216,7 +222,7 @@ graph TB
     style SELECT fill:#fb3,color:#000
 ```
 
-**Key files**: `auto_solver.py` (selection + fallback), `pubgrub_solver.py`, `conflict_resolver.py`, `hybrid_solver.py`, `orchestrator/resolve.py`.
+**Key files**: `auto_solver.py` (AutoSolver — profiling + selection + fallback), `pubgrub_solver.py`, `conflict_resolver.py` (Z3 SAT), `hybrid_solver.py` (PubGrub per-eco + Z3 cross-eco), `orchestrator/resolve.py` (factory `create_solver()` + BFS pipeline).
 
 ### Data sources (`backend/data_sources/`)
 
@@ -298,7 +304,9 @@ graph LR
 |---|---|---|
 | `api/ → cli/` | 0 | **Fixed** — switched to `orchestrator/` |
 | `cli/ → api/` | 0 | **Fixed** — `download_github_repo` moved to `core/utils.py` |
+| `cli/ → database/` | 2 | ⚠️ `cli/commands/auth.py` uses `db_session`/`APIKey` from `database/models` |
 | `api/ → database/` | 7 | Should fix — needs data-access service layer |
+| `api/ → data_sources/` | 1 | ⚠️ `api/main.py` imports `close_all_sessions` from `base_client` |
 | `data_sources/ → core/` | 50+ | **Accepted** — core utilities are natural dependency |
 | `database/ → core/` | 6 | **Accepted** — DB uses version parsing from core |
 | `cli/commands/serve.py → api/` | 1 | **Accepted** — serve wraps FastAPI app; deployment concern |

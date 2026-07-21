@@ -434,9 +434,6 @@ class TestPubGrubCoreSolver:
 
     # ── version selection via incompatibilities ───────────────────────────
 
-    @pytest.mark.xfail(
-        reason="Known limitation: _pick_version ignores root deps, so pkg 2.0 is picked before incompatibility with missing dep ==99.0 can be detected"
-    )
     def test_resolve_older_version_when_newer_violates_dep(self):
         solver = PubGrubCoreSolver()
         solver.add_package("pkg", "1.0", {"dep": ">=1.0"})

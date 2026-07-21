@@ -1154,7 +1154,7 @@ Get known compatibility information for a package.
 
 ### `GET /api/v1/packages/ecosystems`
 
-Get list of all 27 supported package ecosystems with capabilities.
+Get list of all 25 supported package ecosystems (18 resolvable, 7 query-only) with capabilities.
 
 **Rate limit:** 60/minute  
 **Auth:** Yes (anonymous in local mode)
@@ -1174,11 +1174,11 @@ Get list of all 27 supported package ecosystems with capabilities.
       "supports_dependencies": true
     }
   },
-  "total": 27
+  "total": 25
 }
 ```
 
-**Supported ecosystems:**
+**Supported ecosystems (18 resolvable + 7 query-only):**
 
 | Key | Language | Package manager |
 |---|---|---|

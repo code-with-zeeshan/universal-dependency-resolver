@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **27 package ecosystems** using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
+**Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **25 package ecosystems** (18 resolvable + 7 query-only) using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
 
 ### The problem it solves
 
@@ -130,29 +130,32 @@ udr serve --port 8000
 sequenceDiagram
     participant User as 👤 User
     participant CLI as 🖥️ CLI
+    participant Orch as 🔄 Orchestrator
     participant Agg as 📊 DataAggregator
     participant Scanner as 🔍 SystemScanner
-    participant Solver as 🧠 Solver (PubGrub/Z3)
+    participant Solver as 🧠 AutoSolver (PubGrub/Z3)
     participant Export as 📤 ExportGenerator
 
     User->>CLI: udr resolve flask>=2.0 react@npm
-    Note over CLI,Agg: Step 1 — Fetch metadata from registry APIs
-    CLI->>Agg: get_package_info("flask", "pypi")
+    Note over CLI,Orch: Step 1 — Orchestrator fetches metadata
+    CLI->>Orch: resolve(packages, system_info)
+    Orch->>Agg: get_package_info("flask", "pypi")
     Agg->>Agg: Query PyPI API
-    Agg-->>CLI: versions + dependencies
-    CLI->>Agg: get_package_info("react", "npm")
+    Agg-->>Orch: versions + dependencies
+    Orch->>Agg: get_package_info("react", "npm")
     Agg->>Agg: Query npm registry
-    Agg-->>CLI: versions + dependencies
-    Note over CLI,Scanner: Step 2 — Scan target system
-    CLI->>Scanner: scan_all()
-    Scanner-->>CLI: OS, CPU, GPU, CUDA, runtimes
-    Note over CLI,Solver: Step 3 — SAT resolution
-    CLI->>Solver: resolve(packages, system_info)
-    Solver->>Solver: Solve cross-ecosystem<br/>constraints (PubGrub / Z3)
-    Solver-->>CLI: compatible versions
-    Note over CLI,Export: Step 4 — Export / Lock
-    CLI->>Export: export(packages, "requirements.txt")
-    Export-->>CLI: formatted output
+    Agg-->>Orch: versions + dependencies
+    Note over Orch,Scanner: Step 2 — Scan target system
+    Orch->>Scanner: scan_all()
+    Scanner-->>Orch: OS, CPU, GPU, CUDA, runtimes
+    Note over Orch,Solver: Step 3 — SAT resolution
+    Orch->>Solver: resolve(packages, system_info)
+    Solver->>Solver: Profile + select backend<br/>resolve constraints
+    Solver-->>Orch: compatible versions
+    Note over Orch,Export: Step 4 — Export / Lock
+    Orch->>Export: export(packages, "requirements.txt")
+    Export-->>Orch: formatted output
+    Orch-->>CLI: result
     CLI-->>User: ✅ Resolution complete
 ```
 
@@ -172,12 +175,19 @@ graph TB
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code>"]
     end
 
+    subgraph OrchestratorLayer["🔄 Orchestrator (shared orchestration)"]
+        ORCH["<code>orchestrator/resolve.py</code><br/>BFS + SAT pipeline<br/><code>install.py scanner.py db_service.py</code>"]
+    end
+
     subgraph APILayer["🌐 API Layer (FastAPI)"]
         API["<code>main.py</code><br/>App + middleware + routes<br/>packages · system · auth · scan · lock"]
     end
 
     subgraph CoreLayer["🧠 Core Logic"]
-        CR["<code>conflict_resolver.py</code><br/>AutoSolver (Z3/PubGrub/Hybrid)"]
+        AS["<code>auto_solver.py</code><br/>AutoSolver (profiles → Z3/PubGrub/Hybrid)"]
+        CR["<code>conflict_resolver.py</code><br/>Z3 SAT solver"]
+        PG["<code>pubgrub_solver.py</code><br/>PubGrub solver"]
+        HY["<code>hybrid_solver.py</code><br/>PubGrub per-eco + Z3 cross-eco"]
         DA["<code>data_aggregator.py</code><br/>Async aggregation"]
         EG["<code>export_generator.py</code><br/>15 export formats"]
         SS["<code>system_scanner.py</code><br/>OS · GPU · CUDA · runtimes"]
@@ -186,15 +196,15 @@ graph TB
     end
 
     subgraph DBLayer["🗄️ Database & Data Sources"]
-        DS["📦 20 Data Source Clients<br/>PyPI · npm · Crates · Maven · Go<br/>RubyGems · NuGet · Conda · APT · APK<br/>Homebrew · CocoaPods · Pub · Gradle<br/>Swift · Hex · Haskell · Packagist<br/>Docs · Custom DB"]
+        DS["📦 26 registered ecosystem plugins<br/>18 resolvable + 7 query-only + 2 internal"]
         DB["🗄️ SQLite (default) / PostgreSQL"]
     end
 
-    CLI -->|"inline"| API
-    CLI -->|"direct"| CoreLayer
-    CLI -->|"subprocess"| DESKTOP
+    CLI --> OrchestratorLayer
+    CLI --> CoreLayer
     DESKTOP -->|"HTTP"| API
-    API --> CoreLayer
+    API --> OrchestratorLayer
+    OrchestratorLayer --> CoreLayer
     CoreLayer --> DS
     CoreLayer --> DB
 ```
@@ -508,32 +518,35 @@ Single-page app with a collapsible icon sidebar:
 
 ## 11. Features in Detail
 
-### 27 supported ecosystems
+### 25 supported ecosystems (18 resolvable + 7 query-only + 2 internal)
 
-| Ecosystem | Language | Registry | Client |
-|---|---|---|---|
-| PyPI | Python | pypi.org | `pypi_client.py` |
-| npm | JavaScript/TypeScript | registry.npmjs.org | `npm_client.py` |
-| Conda | Python/Multi | anaconda.org | `conda_client.py` |
-| Maven | Java | repo1.maven.org | `maven_client.py` |
-| Crates.io | Rust | crates.io | `crates_client.py` |
-| Go Modules | Go | proxy.golang.org | `gomodules_client.py` |
-| NuGet | C#/.NET | api.nuget.org | `nuget_client.py` |
-| RubyGems | Ruby | rubygems.org | `rubygems_client.py` |
-| Packagist | PHP | packagist.org | `packagist_client.py` |
-| Homebrew | System | formulae.brew.sh | `homebrew_client.py` |
-| CocoaPods | Swift/ObjC | trunk.cocoapods.org | `cocoapods_client.py` |
-| APT | Debian/Ubuntu | deb.debian.org | `apt_client.py` |
-| APK | Alpine | dl-cdn.alpinelinux.org | `apk_client.py` |
-| Pub | Dart/Flutter | pub.dev | `pub_client.py` |
-| Gradle | Java/Kotlin | plugins.gradle.org | `gradle_client.py` |
-| Swift | Swift | swiftpackageindex.com | `swift_client.py` |
-| Hex | Elixir | hex.pm | `hex_client.py` |
-| Haskell | Haskell | hackage.haskell.org | `haskell_client.py` |
-| Nix | NixOS | nixpkgs / GitHub | `nix_plugin.py` |
-| GNU Guix | Guix | guix upstream | `guix_plugin.py` |
-| Docs DB | Documentation | Internal | `docs_client.py` |
-| Custom DB | Custom | Internal | `custom_client.py` |
+| Ecosystem | Language | Registry | Client | Capability |
+|---|---|---|---|---|
+| PyPI | Python | pypi.org | `pypi_client.py` | resolvable |
+| npm | JavaScript/TypeScript | registry.npmjs.org | `npm_client.py` | resolvable |
+| Conda | Python/Multi | anaconda.org | `conda_client.py` | resolvable |
+| Maven | Java | repo1.maven.org | `maven_client.py` | resolvable |
+| Crates.io | Rust | crates.io | `crates_client.py` | resolvable |
+| Go Modules | Go | proxy.golang.org | `gomodules_client.py` | resolvable |
+| NuGet | C#/.NET | api.nuget.org | `nuget_client.py` | resolvable |
+| RubyGems | Ruby | rubygems.org | `rubygems_client.py` | resolvable |
+| Packagist | PHP | packagist.org | `packagist_client.py` | resolvable |
+| Homebrew | System | formulae.brew.sh | `homebrew_client.py` | resolvable |
+| CocoaPods | Swift/ObjC | trunk.cocoapods.org | `cocoapods_client.py` | resolvable |
+| APT | Debian/Ubuntu | deb.debian.org | `apt_client.py` | resolvable |
+| APK | Alpine | dl-cdn.alpinelinux.org | `apk_client.py` | resolvable |
+| Pub | Dart/Flutter | pub.dev | `pub_client.py` | resolvable |
+| Gradle | Java/Kotlin | plugins.gradle.org | `gradle_client.py` | resolvable |
+| Swift | Swift | swiftpackageindex.com | `swift_client.py` | resolvable |
+| Hex | Elixir | hex.pm | `hex_client.py` | resolvable |
+| Haskell | Haskell | hackage.haskell.org | `haskell_client.py` | resolvable |
+| Nix | NixOS | nixpkgs / GitHub | `nix_plugin.py` | query-only |
+| GNU Guix | Guix | guix upstream | `guix_plugin.py` | query-only |
+| Vcpkg | C/C++ | vcpkg.io | `vcpkg_plugin.py` | query-only |
+| Conan | C/C++ | conan.io | `conan_plugin.py` | query-only |
+| Docker | Containers | Docker Hub | `docker_plugin.py` | query-only |
+| Helm | Kubernetes | artifacthub.io | `helm_plugin.py` | query-only |
+| Terraform | Infrastructure | registry.terraform.io | `terraform_plugin.py` | query-only |
 
 ### SAT-solver resolution
 

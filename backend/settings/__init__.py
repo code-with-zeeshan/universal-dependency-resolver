@@ -58,6 +58,11 @@ ECOSYSTEMS = [
     "haskell",
     "nix",
     "guix",
+    "vcpkg",
+    "conan",
+    "docker",
+    "helm",
+    "terraform",
     "docs",
     "custom_db",
 ]
@@ -83,8 +88,47 @@ ECOSYSTEM_NAMES = {
     "haskell": "Haskell (Cabal)",
     "nix": "Nix",
     "guix": "GNU Guix",
+    "vcpkg": "Vcpkg (C/C++)",
+    "conan": "Conan (C/C++)",
+    "docker": "Docker (containers)",
+    "helm": "Helm (Kubernetes)",
+    "terraform": "Terraform (IaC)",
     "docs": "Documentation",
     "custom_db": "Custom Database",
+}
+
+# Ecosystem capability categories:
+#   "resolvable" — full SAT-resolution (dependency graph traversed, CUDA-aware)
+#   "query" — version info only, no SAT dependency traversal
+#   "internal" — not user-facing (metadata stores)
+ECOSYSTEM_CATEGORIES: dict[str, str] = {
+    "pypi": "resolvable",
+    "conda": "resolvable",
+    "npm": "resolvable",
+    "crates": "resolvable",
+    "maven": "resolvable",
+    "gomodules": "resolvable",
+    "apt": "resolvable",
+    "apk": "resolvable",
+    "cocoapods": "resolvable",
+    "homebrew": "resolvable",
+    "nuget": "resolvable",
+    "packagist": "resolvable",
+    "rubygems": "resolvable",
+    "pub": "resolvable",
+    "gradle": "resolvable",
+    "swift": "resolvable",
+    "hex": "resolvable",
+    "haskell": "resolvable",
+    "nix": "query",
+    "guix": "query",
+    "vcpkg": "query",
+    "conan": "query",
+    "docker": "query",
+    "helm": "query",
+    "terraform": "query",
+    "docs": "internal",
+    "custom_db": "internal",
 }
 EXPORT_FORMAT_METADATA = {
     "requirements.txt": {"ecosystem": "pypi", "description": "Python pip requirements"},

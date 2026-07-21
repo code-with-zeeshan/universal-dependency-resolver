@@ -5,17 +5,17 @@
 [![License](https://img.shields.io/pypi/l/ud-resolver)](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/LICENSE)
 [![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 
-Resolve dependencies across **27 ecosystems** — detect conflicts, check system compatibility, and export to any format.
+Resolve dependencies across **25 ecosystems** in a single pass. One tool for Python, npm, Rust, Java, Go, C++, and more — detects cross-ecosystem conflicts before they reach production.
 
 ```bash
-# From any ecosystem, resolve together
+# Resolve across ecosystems together
 udr resolve flask>=2.0 torch@pypi react@^18
 
 # Lock your project's dependencies
 udr lock
 
-# Check system compatibility
-udr check
+# Check system compatibility + CVE + deprecated packages
+udr check --cve --deprecated
 
 # Start the API server
 udr serve --port 8000
@@ -27,13 +27,20 @@ udr serve --port 8000
 
 ```bash
 pip install ud-resolver
+
+# For full capacity — Rust-backed PubGrub + Z3 + richer system data:
+pip install "ud-resolver[z3,pubgrub,system]"
 ```
+
+The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU variant selection — no extras needed. The extras add speed (Rust PubGrub on large graphs), conflict detection (Z3 for CUDA XOR rules), and richer telemetry (GPU temperature, per-process memory). All solvers fall back gracefully when an extra is missing.
 
 ### Optional extras
 
 | Extra | What it adds |
 |---|---|
-| `[system]` | GPU & system scanning (psutil, pynvml, cpuinfo) |
+| `[system]` | Richer system data via Python libs (pynvml → GPU temp/util, psutil → per-process memory, cpuinfo → detailed model). Base `ud-resolver` already detects GPU/OS/CPU via `nvidia-smi`/`lspci`/`platform` — no extra needed for constraint resolution. |
+| `[z3]` | Z3 SAT solver (46MB) for CUDA XOR conflict rules + cross-eco constraints. GPU version filtering works without Z3 (pre-filtered before solver). |
+| `[pubgrub]` | Rust-backed PubGrub solver (faster CDCL on 100+ package graphs). Falls back to pure-Python automatically if wheel unavailable / build fails. |
 | `[postgres]` | PostgreSQL support |
 | `[monitoring]` | OpenTelemetry, Sentry, Prometheus instrumentation |
 | `[all]` | Everything above |
@@ -44,7 +51,7 @@ pip install ud-resolver
 
 | Capability | Detail |
 |---|---|
-| **27 ecosystems** (25 user-facing + 2 internal) | PyPI, Conda, npm, Crates.io (Rust), Maven (Java), Go Modules, APT (Debian), APK (Alpine), CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub (Dart/Flutter), Gradle, Swift, Hex (Elixir), Haskell (Cabal), Nix, GNU Guix, Docker, Helm, Terraform, Vcpkg, Conan — plus Docs DB (documentation scraping) and Custom DB (local compatibility cache) |
+| **25 ecosystems** (18 resolvable + 7 query-only + 2 internal) | **Resolvable:** PyPI, Conda, npm, Crates.io, Maven, Go Modules, APT, APK, CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub, Gradle, Swift, Hex, Haskell — **Query-only** (version info, manifest parsing, no SAT traversal): Nix, GNU Guix, Docker, Helm, Terraform, Vcpkg, Conan — **Internal:** Docs DB, Custom DB |
 | **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection, and DFS backtracking fallback |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
@@ -54,6 +61,16 @@ pip install ud-resolver
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |
+
+---
+
+## Why UDR?
+
+- **Cross-ecosystem resolution**: A Python package that transitively depends on an npm package gets solved in one pass, not two.
+- **SAT-solver engine**: Real Z3/PubGrub CDCL solver, not greedy backtracking. Finds valid solutions dependency graph heuristics miss.
+- **System-aware**: GPU type + CUDA version are resolution constraints — `torch 2.1.2+cu121` selected automatically when NVIDIA GPU detected.
+- **Supply chain built-in**: CVE scanning, license compliance, deprecation checks, lock-file signing (Ed25519), SBOM export (SPDX/CycloneDX), policy engine.
+- **3 solver backends**: AutoSolver profiles your graph and selects Z3, PubGrub, or Hybrid — with fallback chain if the first choice fails.
 
 ---
 

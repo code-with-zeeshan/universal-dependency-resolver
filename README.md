@@ -57,22 +57,32 @@ udr check
 udr serve --port 8000
 ```
 
-> 🎯 **Pro tip:** Add `[system]` for GPU detection: `pip install "ud-resolver[system]"`
+> 🎯 **For full capacity**, install extras:
+> - `[z3]` — Z3 SAT solver for CUDA XOR conflict rules + heavy cross-eco graphs. Without it, GPU version filtering still works (pre-filtered), but CUDA 11-vs-12 conflict detection is skipped.
+> - `[pubgrub]` — Rust-backed PubGrub (faster on 100+ package graphs). Without it, pure-Python fallback handles most graphs fine.
+> - `[system]` — Richer system data via Python libs (GPU temp/util, per-process memory, detailed CPU model). Without it, GPU/OS/CPU detection still works via `nvidia-smi`/`lspci`/`platform`.
+>
+> Recommended: `pip install "ud-resolver[z3,pubgrub,system]"`
 
 ---
 
 ## 💎 Features at a Glance
 
-### 🌍 27 Supported Ecosystems
+### 🌍 25 Supported Ecosystems (18 resolvable + 7 query-only)
 
-| ☁️ Cloud Native | 🐍 Dynamic | ☕ JVM & .NET | 📦 Package Managers | 🛠️ System |
-|---|---|---|---|---|
-| **PyPI** – Python | **npm** – JavaScript | **Maven** – Java | **CocoaPods** – Swift/ObjC | **APT** – Debian/Ubuntu |
-| **Conda** – Multi-language | **Crates.io** – Rust | **Gradle** – Java/Kotlin | **NuGet** – .NET | **APK** – Alpine |
-| **Go Modules** – Go | **RubyGems** – Ruby | **Pub** – Dart/Flutter | **Packagist** – PHP | **Homebrew** – macOS/Linux |
-| **Hex** – Elixir | **Swift** – Swift | **Haskell** – Cabal | **Nix** – NixOS | **Guix** – GNU Guix |
+| Resolvable | Resolvable (cont.) | Query-only (version info, no SAT) |
+|---|---|---|
+| **PyPI** – Python | **CocoaPods** – Swift/ObjC | **Nix** – NixOS |
+| **Conda** – Multi-language | **NuGet** – .NET | **Guix** – GNU Guix |
+| **npm** – JavaScript | **Packagist** – PHP | **Docker** – Containers |
+| **Crates.io** – Rust | **Homebrew** – macOS/Linux | **Helm** – Kubernetes |
+| **Maven** – Java | **Hex** – Elixir | **Terraform** – IaC |
+| **Go Modules** – Go | **Swift** – Swift | **Vcpkg** – C/C++ |
+| **APT** – Debian/Ubuntu | **Haskell** – Cabal | **Conan** – C/C++ |
+| **APK** – Alpine | **Pub** – Dart/Flutter | |
+| **RubyGems** – Ruby | **Gradle** – Java/Kotlin | |
 
-Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichment and local resolution caching.
+Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichment and local resolution caching. Query-only ecosystems provide version info, manifest parsing, lock-file parsing, and export, but don't participate in SAT-solver dependency traversal (their transitive deps are not auto-resolved).
 
 ### ⚡ Core Capabilities
 

@@ -4,7 +4,7 @@
 
 | Metric | Value |
 |--------|-------|
-| Resolution ecosystems | **27** (22 active + 5 plugin-only) |
+| Resolution ecosystems | **25** (18 resolvable + 7 query-only + 2 internal) |
 | Solver | PubGrub (Rust-backed, default) → Z3 fallback (`USE_Z3_SOLVER=true`) |
 | ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
 | CLI commands | 19 |
@@ -266,7 +266,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.3 | Core resolution, 27 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
+| v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
 | v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, 36 gap closures, 191 Q1-Q43 fixes, Phase 5-10 complete | ✅ Past | 2026-07-14 |
 | v1.5 | Remaining nice-to-haves: ruff docstrings, API parity, type stubs, error types | 🔜 In planning | Q4 2026 |
 | v2.0 | Plugin system, ecosystem aliases, cross-compilation CI, Prometheus/OpenTelemetry | 🔮 Future | Q1 2027 |

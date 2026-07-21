@@ -100,9 +100,15 @@ class AutoSolver:
         """Select solver based on profile and env-var overrides."""
         # Respect explicit overrides
         if USE_Z3_SOLVER:
-            return self._z3_solver(), "z3-override"
+            solver = self._z3_solver()
+            if solver is not None:
+                return solver, "z3-override"
+            logger.warning("USE_Z3_SOLVER=true but z3-solver not installed; falling back")
         if USE_HYBRID_SOLVER:
-            return self._hybrid_solver(), "hybrid-override"
+            solver = self._hybrid_solver()
+            if solver is not None:
+                return solver, "hybrid-override"
+            logger.warning("USE_HYBRID_SOLVER=true but z3-solver not installed; falling back")
         if USE_PUBGRUB_SOLVER:
             return self._pubgrub_solver(), "pubgrub-override"
 
@@ -114,13 +120,24 @@ class AutoSolver:
             return self._pubgrub_solver(), "pubgrub-large"
 
         if profile["multi_eco"] and (profile["has_cuda"] or profile["has_cross_eco_deps"]):
-            return self._hybrid_solver(), "hybrid-multi-eco"
+            solver = self._hybrid_solver()
+            if solver is not None:
+                return solver, "hybrid-multi-eco"
+            logger.warning("z3-solver not installed for hybrid-multi-eco; falling to PubGrub")
 
         if profile["has_cuda"]:
-            return self._z3_solver(), "z3-cuda"
+            solver = self._z3_solver()
+            if solver is not None:
+                return solver, "z3-cuda"
+            logger.warning(
+                "z3-solver not installed for CUDA constraints; CUDA rules will be skipped"
+            )
 
         if profile["multi_eco"] and profile["has_cross_eco_deps"]:
-            return self._hybrid_solver(), "hybrid-cross-eco"
+            solver = self._hybrid_solver()
+            if solver is not None:
+                return solver, "hybrid-cross-eco"
+            logger.warning("z3-solver not installed for hybrid-cross-eco; falling to PubGrub")
 
         return self._pubgrub_solver(), "pubgrub-default"
 
@@ -130,11 +147,17 @@ class AutoSolver:
 
         prefer_pubgrub = not profile["has_cuda"] and not profile["multi_eco"]
         if prefer_pubgrub:
-            chain.append(("z3-fallback", self._z3_solver()))
-            chain.append(("hybrid-fallback", self._hybrid_solver()))
+            z3_s = self._z3_solver()
+            if z3_s is not None:
+                chain.append(("z3-fallback", z3_s))
+            hybrid_s = self._hybrid_solver()
+            if hybrid_s is not None:
+                chain.append(("hybrid-fallback", hybrid_s))
         else:
             chain.append(("pubgrub-fallback", self._pubgrub_solver()))
-            chain.append(("z3-fallback", self._z3_solver()))
+            z3_s = self._z3_solver()
+            if z3_s is not None:
+                chain.append(("z3-fallback", z3_s))
 
         return chain
 
@@ -145,12 +168,26 @@ class AutoSolver:
             use_optimization=self._use_optimization, solver_timeout=self._solver_timeout
         )
 
-    def _z3_solver(self) -> Any:
+    def _z3_available(self) -> bool:
+        try:
+            import z3  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
+
+    def _z3_solver(self) -> Any | None:
+        if not self._z3_available():
+            logger.warning("z3-solver not installed; skipping Z3 solver path")
+            return None
         from backend.core.conflict_resolver import ConflictResolver
 
         return ConflictResolver(use_optimization=self._use_optimization)
 
-    def _hybrid_solver(self) -> Any:
+    def _hybrid_solver(self) -> Any | None:
+        if not self._z3_available():
+            logger.warning("z3-solver not installed; skipping Hybrid solver path")
+            return None
         from backend.core.hybrid_solver import HybridSolver
 
         return HybridSolver(
