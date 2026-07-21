@@ -5,9 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0]
+## [Unreleased]
 
-### Added
+### Fixed
+
+- **Mermaid diagram accuracy**: All 7 mermaid diagrams across ARCHITECTURE.md, USER_GUIDE.md, and PERFORMANCE.md corrected to reflect actual code — API routes (5→9 modules), Orchestrator layer (1→4 modules), solver pipeline (AutoSolver separated from create_solver()), import violation table (2 missing rows added), ConflictResolver/AutoSolver label split, Z3.Optimize() documented as optional behind USE_Z3_OPTIMIZE flag.
+- **Documentation ecosystem counts**: "27" → "25 (18 resolvable + 7 query-only + 2 internal)" across ROADMAP.md, USER_GUIDE.md, FAQ.md.
+- **USER_GUIDE.md ecosystem table**: Added 5 missing query-only ecosystems (Vcpkg, Conan, Docker, Helm, Terraform) with capability column; removed internal rows (Docs DB, Custom DB).
+- **USER_GUIDE.md sequence diagram**: Added Orchestrator layer between CLI and Agg/Solver (was bypassing it).
+- **README**: Replaced one-line `[system]` pro-tip with full-capacity install recommendation (`pip install "ud-resolver[z3,pubgrub,system]"`).
+- **README_PYPI**: Added install recommendation block; clarified extras descriptions (base install works standalone; GPU/OS detection via subprocess without [system]).
+- **TROUBLESHOOTING.md**: Added pubgrub-py install failure section with Nix linker workaround (`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc`).
+- **FAQ.md**: Added section explaining system detection works without [system] extra (subprocess fallback) and GPU filtering happens pre-solver (PubGrub never sees incompatible versions).
+- **PERFORMANCE.md**: Z3.Optimize() labeled as optional behind USE_Z3_OPTIMIZE; noted z3-solver is now pip install ud-resolver[z3].
+
+### Changed
+
+- **Z3-solver moved to optional extra**: Removed from core `dependencies` in pyproject.toml; new `[z3]` extra. conflict_resolver.py, auto_solver.py, resolve.py all guard with try/except ImportError. Backward-compatible — AutoSolver falls back to PubGrub when Z3 missing.
+- **ECOSYSTEM_CATEGORIES**: New dict in settings/__init__.py classifying all 27 ecosystems as "resolvable", "query", or "internal". `udr list-ecosystems` CLI uses it for color-coded capability column + accurate count header ("25: 18 resolvable, 7 query-only").
+- **PubGrub xfail eliminated**: `_deps_are_feasible()` forward-checking in pubgrub_core.py fixes the `_pick_version` bug (choosing newest version without checking root deps). `test_resolve_older_version_when_newer_violates_dep` now passes — xfail marker removed.
+- **pyproject.toml author email removed**: `{name = "Mohammad Zeeshan"}` without email — email in pyproject.toml is metadata-only, unrelated to PyPI publishing (which uses API tokens).
 
 - **Data source fixes (Q39)**: Resolved edge cases in data source client registries, improved error handling for registry timeouts, enhanced rate-limit compliance across all 18 ecosystem clients.
 - **Utilities cleanup (Q40)**: Dead code removal in `core/utils.py`, consolidated version normalization helpers, unified constraint parsing patterns across solver backends.
