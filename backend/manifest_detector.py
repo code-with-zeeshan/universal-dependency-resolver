@@ -35,6 +35,9 @@ def _strip_inline_comment(line: str) -> str:
 # Precompiled regex for detecting glob wildcards in pattern strings
 glob_chars_re = re.compile(r"[*?\[\]]")
 
+# Pattern for content guard: matches a package spec line (name + optional version operator)
+_PACKAGE_SPEC_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*(?:\s*[><=!~]+\s*\S+)?$")
+
 # Directories to exclude from manifest detection
 EXCLUDED_DIRS = {
     "node_modules",
@@ -105,7 +108,6 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("Gemfile.lock", "rubygems", "gemfile_lock"),
     ("mix.lock", "hex", "mix_lock"),
     ("Package.resolved", "swift", "package_resolved"),
-    ("udr.lock", "pypi", "udr_lock"),
 ]
 
 # Extend with plugin-defined manifest patterns and lock files
@@ -195,6 +197,59 @@ class ManifestDetector:
 
         return workspace_version_map, catalog_map, True
 
+    def _load_yarn_workspaces(self) -> tuple[dict[str, str], dict[str, str], bool]:
+        """Load Yarn workspace packages from root package.json workspaces field.
+
+        Returns (workspace_version_map, catalog_map, found) where catalog_map
+        is always empty (Yarn has no catalog concept) for interface consistency
+        with _load_workspace_config().
+        """
+        root_pkg = self.directory / "package.json"
+        if not root_pkg.exists():
+            return {}, {}, False
+
+        try:
+            data = loads(root_pkg.read_text(encoding="utf-8"))
+        except Exception:
+            return {}, {}, False
+
+        workspaces = data.get("workspaces")
+        if not workspaces:
+            return {}, {}, False
+
+        patterns: list[str] = []
+        if isinstance(workspaces, list):
+            patterns = workspaces
+        elif isinstance(workspaces, dict):
+            pkgs = workspaces.get("packages", [])
+            patterns = pkgs if isinstance(pkgs, list) else [pkgs]
+        elif isinstance(workspaces, str):
+            patterns = [workspaces]
+        if not patterns:
+            return {}, {}, False
+
+        workspace_version_map: dict[str, str] = {}
+        for pattern in patterns:
+            matched = sorted(self.directory.glob(pattern))
+            for pkg_dir in matched:
+                if not pkg_dir.is_dir():
+                    continue
+                pkg_json_path = pkg_dir / "package.json"
+                if not pkg_json_path.exists():
+                    continue
+                try:
+                    pkg_data = loads(pkg_json_path.read_text(encoding="utf-8"))
+                    pkg_name = pkg_data.get("name", "")
+                    pkg_version = pkg_data.get("version", "")
+                    if pkg_name and pkg_version:
+                        workspace_version_map[pkg_name] = pkg_version
+                except Exception:
+                    logger.debug(
+                        "Error reading yarn workspace package %s", pkg_json_path, exc_info=True
+                    )
+
+        return workspace_version_map, {}, True
+
     def detect(self, include_dev: bool = False) -> list[dict]:
         """Scan directory recursively for known manifests. Returns list of manifest info dicts.
 
@@ -245,6 +300,24 @@ class ManifestDetector:
 
             if matched is not None:
                 raw_eco, parser_key = matched
+                # Content guard: for requirements glob patterns (*-requirements.txt etc.),
+                # reject files where <20% of non-empty lines look like package specs.
+                if parser_key == "requirements":
+                    try:
+                        sample = fp.read_text(errors="replace").lstrip("\ufeff")[:8192]
+                        non_empty = 0
+                        spec_like = 0
+                        for sample_line in sample.splitlines():
+                            sample_line = sample_line.strip()
+                            if not sample_line or sample_line.startswith(("#", "-")):
+                                continue
+                            non_empty += 1
+                            if _PACKAGE_SPEC_RE.match(sample_line):
+                                spec_like += 1
+                        if non_empty > 0 and spec_like / non_empty < 0.2:
+                            continue
+                    except OSError:
+                        pass
                 ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
                 seen_paths.add(str_path)
                 found.append(
@@ -361,6 +434,11 @@ class ManifestDetector:
         self._workspace_versions, self._catalog_versions, self._workspace_found = (
             self._load_workspace_config()
         )
+        if not self._workspace_found:
+            yarn_versions, _, yarn_found = self._load_yarn_workspaces()
+            if yarn_found:
+                self._workspace_versions = yarn_versions
+                self._workspace_found = True
         if len(manifests) < 2:
             all_packages: list[dict] = []
             for m in manifests:
@@ -398,7 +476,8 @@ class ManifestDetector:
 
     def normalize(self, packages: list[dict]) -> list[dict]:
         """Normalize parsed packages to {name, ecosystem, constraint} format.
-        Resolves workspace:* and catalog: constraints using workspace config."""
+        Resolves workspace:* and catalog: constraints using workspace config.
+        """
         normalized = []
         for pkg in packages:
             raw_name = pkg.get("name", "").strip()
@@ -454,6 +533,8 @@ class ManifestDetector:
                 entry["extras"] = pkg["extras"]
             if "_workspace_resolved" in pkg:
                 entry["_workspace_resolved"] = pkg["_workspace_resolved"]
+            if pkg.get("optional"):
+                entry["optional"] = True
             normalized.append(entry)
         return normalized
 
@@ -504,7 +585,10 @@ class ManifestDetector:
 
     def _parse_requirements(self, content: str, manifest_dir: str | None = None) -> list[dict]:
         """Parse requirements."""
+        content = content.lstrip("\ufeff")
         packages = []
+        failed = 0
+        parsed_count = 0
         try:
             from packaging.requirements import Requirement
 
@@ -524,7 +608,6 @@ class ManifestDetector:
             if not line or line.startswith("#"):
                 continue
             if line.startswith("-"):
-                # Handle -r and -c directives: resolve referenced file relative to manifest
                 if manifest_dir and line.startswith(("-r ", "-c ")):
                     ref_path = os.path.join(manifest_dir, line[3:].strip())
                     try:
@@ -539,7 +622,6 @@ class ManifestDetector:
             if has_requirement:
                 try:
                     req = Requirement(line)
-                    # Skip dependencies with unsatisfied environment markers
                     if has_markers and req.marker:
                         try:
                             if not req.marker.evaluate():
@@ -561,17 +643,29 @@ class ManifestDetector:
                                 "version": str(req.specifier) if req.specifier else "*",
                             }
                         )
+                    parsed_count += 1
                 except Exception:
                     logger.warning("Failed to parse requirement line: %s", line, exc_info=True)
                     packages.append({"name": line, "version": "*"})
+                    failed += 1
+                    parsed_count += 1
             else:
                 for op in ["==", ">=", "<=", ">", "<", "~=", "!="]:
                     if op in line:
                         n, v = line.split(op, 1)
                         packages.append({"name": n.strip(), "version": f"{op}{v.strip()}"})
+                        parsed_count += 1
                         break
                 else:
                     packages.append({"name": line, "version": "*"})
+                    failed += 1
+                    parsed_count += 1
+        if parsed_count > 0 and failed / parsed_count > 0.5:
+            logger.warning(
+                "_parse_requirements: %.0f%% of lines failed to parse — rejecting",
+                failed / parsed_count * 100,
+            )
+            return []
         return packages
 
     def _parse_gradle(self, content: str) -> list[dict]:
@@ -932,11 +1026,12 @@ class ManifestDetector:
                             {
                                 "name": req.name,
                                 "version": str(req.specifier) if req.specifier else "*",
+                                "optional": True,
                             }
                         )
                     except Exception:
                         logger.warning("Failed to parse optional dep: %s", dep, exc_info=True)
-                        packages.append({"name": dep, "version": "*"})
+                        packages.append({"name": dep, "version": "*", "optional": True})
 
         if "build-system" in data and "requires" in data["build-system"]:
             for dep in data["build-system"]["requires"]:
@@ -958,17 +1053,75 @@ class ManifestDetector:
         return packages
 
     def _parse_package_json(self, content: str) -> list[dict]:
-        """Parse package json."""
+        """Parse package json.
+
+        If the content has a "workspaces" field (Yarn workspace root),
+        also scan workspace member directories and include their dependencies.
+        """
         try:
             data = loads(content)
         except Exception:
             logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
-        for section in ["dependencies", "devDependencies", "peerDependencies"]:
+        for section in [
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies",
+        ]:
             deps = data.get(section, {})
             for name, version in deps.items():
-                packages.append({"name": name, "version": version})
+                packages.append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "optional": section == "optionalDependencies",
+                        "peer": section == "peerDependencies",
+                    }
+                )
+
+        # Yarn workspace support: scan workspace member directories
+        workspaces = data.get("workspaces")
+        if workspaces:
+            patterns: list[str] = []
+            if isinstance(workspaces, list):
+                patterns = workspaces
+            elif isinstance(workspaces, dict):
+                pkgs = workspaces.get("packages", [])
+                patterns = pkgs if isinstance(pkgs, list) else [pkgs]
+            elif isinstance(workspaces, str):
+                patterns = [workspaces]
+            for pattern in patterns:
+                for pkg_dir in sorted(self.directory.glob(pattern)):
+                    if not pkg_dir.is_dir():
+                        continue
+                    pkg_json_path = pkg_dir / "package.json"
+                    if not pkg_json_path.exists():
+                        continue
+                    try:
+                        pkg_data = loads(pkg_json_path.read_text(encoding="utf-8"))
+                        for section in [
+                            "dependencies",
+                            "devDependencies",
+                            "peerDependencies",
+                            "optionalDependencies",
+                        ]:
+                            deps = pkg_data.get(section, {})
+                            for name, version in deps.items():
+                                packages.append(
+                                    {
+                                        "name": name,
+                                        "version": version,
+                                        "optional": section == "optionalDependencies",
+                                        "peer": section == "peerDependencies",
+                                    }
+                                )
+                    except Exception:
+                        logger.debug(
+                            "Error reading workspace member %s", pkg_json_path, exc_info=True
+                        )
+
         return packages
 
     def _parse_package_lock(self, content: str) -> list[dict]:
@@ -1193,7 +1346,12 @@ class ManifestDetector:
         return packages
 
     def _parse_cargo_toml(self, content: str) -> list[dict]:
-        """Parse cargo toml."""
+        """Parse cargo toml.
+
+        If the content has a [workspace] section, also scan workspace
+        member directories for their Cargo.toml and resolve workspace
+        dependencies.
+        """
         try:
             import tomllib
 
@@ -1202,15 +1360,69 @@ class ManifestDetector:
             logger.warning("Manifest parser error", exc_info=True)
             return []
         packages = []
+
+        # Extract workspace dependencies (used by members with .workspace = true)
+        workspace_deps: dict[str, str] = {}
+        ws_section = data.get("workspace")
+        if isinstance(ws_section, dict):
+            ws_deps_raw = ws_section.get("dependencies", {})
+            if isinstance(ws_deps_raw, dict):
+                for name, spec in ws_deps_raw.items():
+                    if isinstance(spec, str):
+                        workspace_deps[name] = spec
+                    elif isinstance(spec, dict):
+                        workspace_deps[name] = spec.get("version", "*")
+
         for section in ["dependencies", "dev-dependencies", "build-dependencies"]:
             deps = data.get(section, {})
             for name, spec in deps.items():
-                info = {"name": name}
+                info: dict[str, Any] = {"name": name}
                 if isinstance(spec, str):
                     info["version"] = spec
                 elif isinstance(spec, dict):
-                    info["version"] = spec.get("version", "*")
+                    if spec.get("workspace") is True:
+                        info["version"] = workspace_deps.get(name, "*")
+                    else:
+                        info["version"] = spec.get("version", "*")
                 packages.append(info)
+
+        # Cargo workspace support: scan member directories
+        if isinstance(ws_section, dict):
+            members_raw = ws_section.get("members", [])
+            if isinstance(members_raw, str):
+                members_raw = [members_raw]
+            if isinstance(members_raw, list):
+                for pattern in members_raw:
+                    for member_dir in sorted(self.directory.glob(pattern)):
+                        if not member_dir.is_dir():
+                            continue
+                        member_toml = member_dir / "Cargo.toml"
+                        if not member_toml.exists():
+                            continue
+                        try:
+                            member_content = member_toml.read_text(encoding="utf-8")
+                            member_data = tomllib.loads(member_content)
+                            for section in [
+                                "dependencies",
+                                "dev-dependencies",
+                                "build-dependencies",
+                            ]:
+                                deps = member_data.get(section, {})
+                                for name, spec in deps.items():
+                                    info = {"name": name}
+                                    if isinstance(spec, str):
+                                        info["version"] = spec
+                                    elif isinstance(spec, dict):
+                                        if spec.get("workspace") is True:
+                                            info["version"] = workspace_deps.get(name, "*")
+                                        else:
+                                            info["version"] = spec.get("version", "*")
+                                    packages.append(info)
+                        except Exception:
+                            logger.debug(
+                                "Error parsing workspace member %s", member_toml, exc_info=True
+                            )
+
         return packages
 
     def _parse_cargo_lock(self, content: str) -> list[dict]:

@@ -29,7 +29,7 @@ class HaskellClient(BaseDataSourceClient):
     async def get_package_info(
         self, package_name: str, include_dependencies: bool = True, include_versions: bool = True
     ) -> dict[str, Any] | None:
-        """get package info."""
+        """Get package info."""
         pkg = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/package/{pkg}.json")
@@ -59,6 +59,6 @@ class HaskellClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         info = await self.get_package_info(package_name, include_versions=True)
         return info.get("versions", []) if info else []

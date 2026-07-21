@@ -36,6 +36,7 @@ class NpmIndexManager:
     ----------
     update_interval:
         Minimum seconds between full syncs (default 3600).
+
     """
 
     def __init__(self, update_interval: int = 3600) -> None:
@@ -218,11 +219,10 @@ class NpmIndexManager:
         url = f"{_NPM_PACKAGE_URL}/{package}"
         async with sem:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status != 200:
-                            return None
-                        data = await resp.json()
+                async with aiohttp.ClientSession() as session, session.get(url) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
             except Exception as exc:
                 logger.debug("Failed to fetch npm package %s: %s", package, exc)
                 return None

@@ -38,7 +38,7 @@ class GradleClient(BaseDataSourceClient):
         self, package_name: str, include_dependencies: bool = True, include_versions: bool = True
     ) -> dict[str, Any] | None:
         # Split group:artifact and keep dots intact (significant in Maven coordinates)
-        """get package info."""
+        """Get package info."""
         group, artifact = (
             package_name.split(":", 1) if ":" in package_name else (package_name, package_name)
         )
@@ -120,7 +120,7 @@ class GradleClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         info = await self.get_package_info(package_name, include_versions=True)
         raw = info.get("versions", []) if info else []
         return [{"version": v} if isinstance(v, str) else v for v in raw]

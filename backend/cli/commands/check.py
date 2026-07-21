@@ -39,6 +39,8 @@ def cmd_check(args: argparse.Namespace) -> None:
             return await _check_license(args)
         if args.deprecated:
             return await _check_deprecated(args)
+        if args.peer:
+            return await _check_peer(args)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -436,6 +438,73 @@ async def _check_deprecated(args: argparse.Namespace) -> bool:
 
     console.print("\n[yellow]⚠ Some packages are deprecated — consider upgrading.[/yellow]")
     return True
+
+
+async def _check_peer(args: argparse.Namespace) -> bool:
+    """Check lock file packages for peer dependency issues."""
+    from packaging.specifiers import SpecifierSet
+
+    directory = Path(args.directory).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=args.workspace,
+        lock_file=args.lock_file,
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        sys.exit(1)
+
+    lock_data = _read_lock_file(lock_path)
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]Lock file has no packages to check.[/yellow]")
+        return True
+
+    issues = []
+    for pkg_name, pinfo in packages.items():
+        peer_deps = pinfo.get("peer_dependencies", {})
+        if not peer_deps:
+            continue
+        for peer_name, peer_constraint in peer_deps.items():
+            peer_pkg = packages.get(peer_name)
+            if not peer_pkg:
+                issues.append((pkg_name, peer_name, peer_constraint, "missing"))
+                continue
+            resolved_ver = peer_pkg.get("resolved_version", "")
+            try:
+                spec = SpecifierSet(peer_constraint)
+                if resolved_ver not in spec:
+                    issues.append((pkg_name, peer_name, peer_constraint, resolved_ver))
+            except Exception:
+                issues.append(
+                    (pkg_name, peer_name, peer_constraint, f"{resolved_ver} (unparseable)")
+                )
+
+    if not issues:
+        console.print("[green]✅ All peer dependency checks passed.[/green]")
+        return True
+
+    table = Table(
+        title=f"[yellow]{len(issues)} peer dependency issue(s)[/yellow]",
+        box=box.ROUNDED,
+    )
+    table.add_column("Package", style="cyan")
+    table.add_column("Peer Dep", style="yellow")
+    table.add_column("Required")
+    table.add_column("Resolved")
+    table.add_column("Status")
+
+    for pkg, peer_name, required, resolved in issues:
+        status = "[red]MISSING[/red]" if resolved == "missing" else "[red]MISMATCH[/red]"
+        table.add_row(pkg, peer_name, required, str(resolved), status)
+
+    console.print(table)
+    console.print(
+        "\n[yellow]Peer dependencies should be installed separately "
+        "or satisfied by other packages in the graph.[/yellow]"
+    )
+    sys.exit(1)
 
 
 async def _check_policy(args: argparse.Namespace) -> bool:

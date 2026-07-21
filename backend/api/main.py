@@ -1,7 +1,6 @@
 """Module docstring."""
 
 # backend/api/main.py
-import os
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -71,6 +70,7 @@ from backend.settings import (
     ENABLE_AUTH,
     ENV,
     FEATURES,
+    REDIS_URL,
     SENTRY_DSN,
     UDR_STANDALONE,
 )
@@ -278,12 +278,6 @@ async def validate_environment() -> None:
     """Validate environment configuration on startup."""
     standalone = UDR_STANDALONE
 
-    optional_env_vars = [
-        "REDIS_URL",
-        "ALLOWED_ORIGINS",
-        "API_KEY",  # For future auth implementation
-    ]
-
     if not standalone:
         from backend.settings import DATABASE_URL
 
@@ -301,11 +295,15 @@ async def validate_environment() -> None:
         logger.warning(f"Settings validation failed: {e}")
 
     # Log optional variables status
-    for var in optional_env_vars:
-        if os.getenv(var):
-            logger.info(f"Optional variable {var} is configured")
+    for var_name, var_val in [
+        ("REDIS_URL", REDIS_URL),
+        ("ALLOWED_ORIGINS", ALLOWED_ORIGINS),
+        ("API_KEY", API_KEY),
+    ]:
+        if var_val:
+            logger.info(f"Optional variable {var_name} is configured")
         else:
-            logger.warning(f"Optional variable {var} is not set")
+            logger.warning(f"Optional variable {var_name} is not set")
 
     # Guard: production must have auth enabled
     if ENV == "production" and not ENABLE_AUTH:
@@ -327,7 +325,7 @@ async def validate_environment() -> None:
         raise RuntimeError(f"Database connection failed: {e}")
 
     # Test Redis connection if configured (skipped in standalone/desktop mode)
-    redis_url = os.getenv("REDIS_URL")
+    redis_url = REDIS_URL
     if redis_url and not standalone:
         try:
             import redis

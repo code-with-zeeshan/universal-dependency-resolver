@@ -42,7 +42,6 @@ def _extract_fixed_version(vuln: dict) -> str | None:
 
 def cmd_update(args: argparse.Namespace):
     """Cmd update."""
-
     if args.fix_cve:
         sys.exit(asyncio.run(_fix_cve(args)))
 
@@ -128,7 +127,10 @@ def cmd_update(args: argparse.Namespace):
         existing_constraint = pkg_info.get("original_constraint")
         constraint = existing_constraint or f">={pkg_info.get('resolved_version', '0.0.0')}"
         specs = [(package_name, ecosystem, constraint)]
-        resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
+        include_optional = bool(args.with_dev) if args.with_dev is not None else False
+        resolver_inputs, package_details = await _fetch_package_data_async(
+            aggregator, specs, include_optional=include_optional
+        )
 
         if not resolver_inputs:
             console.print(f"[red]Could not fetch metadata for {package_name}[/red]")
@@ -145,6 +147,7 @@ def cmd_update(args: argparse.Namespace):
             interactive=args.interactive,
             lock_data=lock_data,
             timeout=args.timeout or SOLVER_TIMEOUT,
+            include_optional=include_optional,
         )
 
         rp = resolved.get("resolved_packages", {})
@@ -376,8 +379,12 @@ async def _fix_cve(args: argparse.Namespace):
         specs.append((name, eco, constraint))
         constraint_map[name] = constraint
 
+    include_optional = bool(args.with_dev) if args.with_dev is not None else False
+
     # Fetch package data for all packages to update
-    resolver_inputs, package_details = await _fetch_package_data_async(aggregator, specs)
+    resolver_inputs, package_details = await _fetch_package_data_async(
+        aggregator, specs, include_optional=include_optional
+    )
 
     if not resolver_inputs:
         console.print("[red]Could not fetch metadata for packages[/red]")
@@ -394,6 +401,7 @@ async def _fix_cve(args: argparse.Namespace):
         interactive=args.interactive,
         lock_data=lock_data,
         timeout=args.timeout or SOLVER_TIMEOUT,
+        include_optional=include_optional,
     )
 
     rp = resolved.get("resolved_packages", {})

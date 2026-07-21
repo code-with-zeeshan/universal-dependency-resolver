@@ -235,9 +235,9 @@ class TestParsePackageJson:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_json"})
         assert len(result) == 4
-        assert {"name": "express", "version": "^4.0"} in result
-        assert {"name": "mocha", "version": "^9.0"} in result
-        assert {"name": "react", "version": "^17.0"} in result
+        assert {"name": "express", "version": "^4.0", "optional": False, "peer": False} in result
+        assert {"name": "mocha", "version": "^9.0", "optional": False, "peer": False} in result
+        assert {"name": "react", "version": "^17.0", "optional": False, "peer": True} in result
 
     def test_malformed_json_returns_empty(self, tmp_path):
         p = tmp_path / "package.json"
@@ -1309,3 +1309,172 @@ class TestWorkspaceResolution:
             if p["name"] == "unknown-pkg":
                 assert p["constraint"] == "==0.0.0"
                 assert p.get("_workspace_resolved") is True
+
+
+class TestYarnWorkspace:
+    """Yarn workspace support — "workspaces" field in package.json."""
+
+    def test_yarn_workspace_members_parsed(self, tmp_path):
+        """Root package.json with workspaces field scans members and adds their deps."""
+        (tmp_path / "package.json").write_text(
+            json.dumps({"workspaces": ["packages/*"], "dependencies": {"root-dep": "^1.0"}})
+        )
+        pkg_a = tmp_path / "packages" / "a"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "package.json").write_text(
+            json.dumps({"name": "@scope/a", "version": "1.0.0", "dependencies": {"lodash": "^4.0"}})
+        )
+        pkg_b = tmp_path / "packages" / "b"
+        pkg_b.mkdir(parents=True)
+        (pkg_b / "package.json").write_text(
+            json.dumps(
+                {"name": "@scope/b", "version": "2.0.0", "devDependencies": {"mocha": "^9.0"}}
+            )
+        )
+
+        d = ManifestDetector(str(tmp_path))
+        # Parse only the root package.json; detect() would also find member manifests
+        result = d.parse({"path": str(tmp_path / "package.json"), "parser": "package_json"})
+        # root-dep from root, lodash from pkg a, mocha from pkg b
+        names = {p["name"] for p in result}
+        assert "root-dep" in names
+        assert "lodash" in names
+        assert "mocha" in names
+
+    def test_yarn_workspace_version_map(self, tmp_path):
+        """_load_yarn_workspaces builds version map from member packages."""
+        (tmp_path / "package.json").write_text(json.dumps({"workspaces": ["packages/*"]}))
+        pkg_a = tmp_path / "packages" / "a"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "package.json").write_text(json.dumps({"name": "@scope/a", "version": "1.0.0"}))
+        pkg_b = tmp_path / "packages" / "b"
+        pkg_b.mkdir(parents=True)
+        (pkg_b / "package.json").write_text(json.dumps({"name": "@scope/b", "version": "2.0.0"}))
+
+        d = ManifestDetector(str(tmp_path))
+        version_map, _, found = d._load_yarn_workspaces()
+        assert found is True
+        assert version_map["@scope/a"] == "1.0.0"
+        assert version_map["@scope/b"] == "2.0.0"
+
+    def test_yarn_workspace_object_format(self, tmp_path):
+        """Workspaces field can also be an object with packages array."""
+        (tmp_path / "package.json").write_text(
+            json.dumps({"workspaces": {"packages": ["packages/*"]}})
+        )
+        pkg = tmp_path / "packages" / "my-lib"
+        pkg.mkdir(parents=True)
+        (pkg / "package.json").write_text(json.dumps({"name": "my-lib", "version": "3.0.0"}))
+
+        d = ManifestDetector(str(tmp_path))
+        version_map, _, found = d._load_yarn_workspaces()
+        assert found is True
+        assert version_map["my-lib"] == "3.0.0"
+
+    def test_yarn_no_workspaces_field(self, tmp_path):
+        """package.json without workspaces field returns not found."""
+        (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"express": "^4.0"}}))
+        d = ManifestDetector(str(tmp_path))
+        _, _, found = d._load_yarn_workspaces()
+        assert found is False
+
+    def test_yarn_workspace_resolves_ws_protocol(self, tmp_path):
+        """workspace:* protocol resolves via yarn workspace version map."""
+        (tmp_path / "package.json").write_text(
+            json.dumps({"workspaces": ["packages/*"], "dependencies": {"@scope/a": "workspace:*"}})
+        )
+        pkg_a = tmp_path / "packages" / "a"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "package.json").write_text(json.dumps({"name": "@scope/a", "version": "2.1.0"}))
+
+        d = ManifestDetector(str(tmp_path))
+        manifests = d.detect()
+        parsed = d.parse_all(manifests)
+        normalized = d.normalize(parsed)
+        for p in normalized:
+            if p["name"] == "@scope/a":
+                assert p["constraint"] == "==2.1.0"
+                assert p.get("_workspace_resolved") is True
+                return
+        assert False, "@scope/a not found"
+
+
+class TestCargoWorkspace:
+    """Cargo workspace support — [workspace] section in Cargo.toml."""
+
+    def test_cargo_workspace_members_parsed(self, tmp_path):
+        """Root Cargo.toml with [workspace] members scans and includes member deps."""
+        (tmp_path / "Cargo.toml").write_text(
+            '[workspace]\nmembers = ["crates/*"]\n[dependencies]\nserde = "1.0"\n'
+        )
+        member_dir = tmp_path / "crates" / "my-crate"
+        member_dir.mkdir(parents=True)
+        (member_dir / "Cargo.toml").write_text('[dependencies]\ntokio = "1.0"\n')
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(tmp_path / "Cargo.toml"), "parser": "cargo_toml"})
+        names = {p["name"] for p in result}
+        assert "serde" in names
+        assert "tokio" in names
+
+    def test_cargo_workspace_deps_resolved(self, tmp_path):
+        """Workspace dependencies (workspace = true) resolve from [workspace.dependencies]."""
+        (tmp_path / "Cargo.toml").write_text(
+            '[workspace]\nmembers = ["crates/*"]\n[workspace.dependencies]\nshared-dep = "0.5"\n'
+        )
+        member_dir = tmp_path / "crates" / "my-crate"
+        member_dir.mkdir(parents=True)
+        (member_dir / "Cargo.toml").write_text("[dependencies]\nshared-dep = {workspace = true}\n")
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(tmp_path / "Cargo.toml"), "parser": "cargo_toml"})
+        shared = [p for p in result if p["name"] == "shared-dep"]
+        assert len(shared) == 1
+        assert shared[0]["version"] == "0.5"
+
+    def test_cargo_no_workspace_section(self, tmp_path):
+        """Cargo.toml without [workspace] section parses normally."""
+        (tmp_path / "Cargo.toml").write_text('[dependencies]\nserde = "1.0"\n')
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(tmp_path / "Cargo.toml"), "parser": "cargo_toml"})
+        assert len(result) == 1
+        assert result[0]["name"] == "serde"
+        assert result[0]["version"] == "1.0"
+
+    def test_cargo_workspace_with_package_section(self, tmp_path):
+        """Cargo.toml with both [package] and [workspace] sections."""
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "root"\nversion = "0.1.0"\n'
+            "[workspace]\n"
+            'members = ["crates/*"]\n'
+            "[dependencies]\n"
+            'serde = "1.0"\n'
+            "[workspace.dependencies]\n"
+            'shared = "0.5"\n'
+        )
+        member_dir = tmp_path / "crates" / "my-crate"
+        member_dir.mkdir(parents=True)
+        (member_dir / "Cargo.toml").write_text(
+            '[dependencies]\ntokio = "1.0"\nshared = {workspace = true}\n'
+        )
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(tmp_path / "Cargo.toml"), "parser": "cargo_toml"})
+        names = {p["name"] for p in result}
+        assert "serde" in names
+        assert "tokio" in names
+        assert "shared" in names
+        shared = [p for p in result if p["name"] == "shared"]
+        assert shared[0]["version"] == "0.5"
+
+    def test_cargo_virtual_workspace(self, tmp_path):
+        """Virtual workspace (no [package] section, only [workspace])."""
+        (tmp_path / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/*"]\n')
+        member_dir = tmp_path / "crates" / "my-crate"
+        member_dir.mkdir(parents=True)
+        (member_dir / "Cargo.toml").write_text('[dependencies]\ntokio = "1.0"\n')
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(tmp_path / "Cargo.toml"), "parser": "cargo_toml"})
+        names = {p["name"] for p in result}
+        assert "tokio" in names

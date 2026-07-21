@@ -32,7 +32,7 @@ class PubClient(BaseDataSourceClient):
         self.download_url = "https://pub.dev/api"
 
     async def get_package_info(self, package_name: str) -> dict[str, Any] | None:
-        """async get package info."""
+        """Async get package info."""
         """async get package info."""
         package_name = normalize_package_name(package_name)
         try:
@@ -97,7 +97,7 @@ class PubClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.download_url}/packages/{quote(package_name)}")

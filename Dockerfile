@@ -29,6 +29,7 @@ ENV UDR_HOME=/home/udr \
     UDR_PORT=8000 \
     UDR_HOST=0.0.0.0 \
     ENV=production \
+    SECRET_KEY=change-me-in-production \
     ENABLE_AUTH=true
 
 EXPOSE 8000
@@ -37,7 +38,7 @@ USER udr
 WORKDIR /home/udr
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
 
 ENTRYPOINT ["udr"]
 CMD ["--help"]

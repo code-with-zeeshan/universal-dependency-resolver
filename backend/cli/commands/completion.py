@@ -38,11 +38,11 @@ _BASH_COMPLETION = """_{prog}_completion() {{
             ;;
         lock)
             local lock_flags="--directory --manifest --export --yes --dry-run --interactive --cuda --device --json --report --include-dev --timeout --extras --pin --pin-mode --block --freeze --workspace --prefix --force --target --platform --auto-sync --sign --provenance --check --with-dev --without-optional"
-            COMPREPLY=( $(compgen -W "${lock_flags}" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "${{lock_flags}}" -- "${{cur}}") )
             ;;
         check)
-            local check_flags="--verbose --deps --json --cuda --cve --license --deprecated --device --directory --workspace --lock-file --policy"
-            COMPREPLY=( $(compgen -W "${check_flags}" -- "${cur}") )
+            local check_flags="--verbose --deps --json --cuda --cve --license --deprecated --device --directory --workspace --lock-file --policy --peer"
+            COMPREPLY=( $(compgen -W "${{check_flags}}" -- "${{cur}}") )
             ;;
         update)
             local update_flags="--directory --workspace --lock-file --interactive --dry-run --cuda --device --target --platform --fix-cve --with-dev --without-optional"

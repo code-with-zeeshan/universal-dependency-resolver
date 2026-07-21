@@ -20,6 +20,37 @@ logger = logging.getLogger(__name__)
 
 from backend.settings import SOLVER_MAX_VARIABLES
 
+_MULTI_CONSTRAINT_SEP_RE = re.compile(
+    r"""
+    [,]                          # comma
+    |[&]{2}                      # double ampersand (&&)
+    |[|]{2}                      # double pipe (||)
+    |(?<=\d)\s+(?=[><=!^~&|])    # space between a digit and an operator
+    """,
+    re.VERBOSE,
+)
+
+
+def _split_multi_constraint(constraint: str) -> list[str]:
+    """Split a multi-part constraint string into individual constraint parts.
+
+    Handles separators: comma (``,``), double-ampersand (``&&``), double-pipe
+    (``||``), and whitespace between a version number and a following operator.
+
+    Examples::
+
+        ">=2.1.2,<3.0.0"      -> [">=2.1.2", "<3.0.0"]
+        ">=2.1.2 <3.0.0"      -> [">=2.1.2", "<3.0.0"]
+        ">=1.0 && <2.0"       -> [">=1.0", "<2.0"]
+    """
+    c = constraint.strip()
+    if not c or c in ("*", "any", ""):
+        return [c] if c else []
+
+    parts = _MULTI_CONSTRAINT_SEP_RE.split(c)
+    return [p.strip() for p in parts if p.strip()]
+
+
 try:
     from backend.core.conflict_resolver import _cluster_versions_static as _cluster_versions
 except ImportError:
@@ -147,6 +178,7 @@ class PubGrubSolver:
             Same shape as ``ConflictResolver.resolve_dependencies()``:
             ``{"status": "satisfiable"|"unsatisfiable",
                "resolved_packages": {name: {version, ecosystem, ...}}}``
+
         """
         if system_info is None:
             system_info = self._get_default_system_info()
@@ -558,9 +590,10 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
     if c == "*":
         return ">=0.0.0"
 
-    # Split comma-separated constraints early — each part normalised independently.
-    if "," in c:
-        parts = [p.strip() for p in c.split(",")]
+    # Split multi-part constraints early — handles comma, &&, ||,
+    # and space-separated ranges (e.g. npm ">=2.1.2 <3.0.0").
+    parts = _split_multi_constraint(c)
+    if len(parts) > 1:
         normalised = [_normalize_single_constraint(p, ecosystem) for p in parts if p.strip()]
         normalised = [p for p in normalised if p.strip()]
         return ",".join(normalised) if normalised else c

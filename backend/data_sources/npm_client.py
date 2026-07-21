@@ -89,7 +89,7 @@ class NPMClient(BaseDataSourceClient):
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
-        """cached get."""
+        """Cached get."""
         async with _NPM_SEMAPHORE:
             return await super().cached_get(cache_key, url, ttl=ttl, headers=headers)
 
@@ -101,7 +101,7 @@ class NPMClient(BaseDataSourceClient):
         popularity: float | None = None,
         maintenance: float | None = None,
     ) -> list[dict[str, Any]]:
-        """search packages."""
+        """Search packages."""
         query = normalize_package_name(query)
         params = {"text": query, "size": min(limit, 250)}
 
@@ -156,7 +156,7 @@ class NPMClient(BaseDataSourceClient):
         include_versions: bool = True,
         include_extended: bool = True,
     ) -> dict[str, Any] | None:
-        """get package info."""
+        """Get package info."""
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
@@ -263,7 +263,7 @@ class NPMClient(BaseDataSourceClient):
         return None
 
     async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
-        """async get package version."""
+        """Async get package version."""
         """async get package version."""
         package_name = normalize_package_name(package_name)
         encoded_name = quote(package_name, safe="@/")
@@ -296,7 +296,7 @@ class NPMClient(BaseDataSourceClient):
         include_prereleases: bool = True,
         include_deprecated: bool = False,
     ) -> list[dict[str, Any]]:
-        """get versions."""
+        """Get versions."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(
             package_name, include_readme=False, include_versions=True
@@ -317,7 +317,7 @@ class NPMClient(BaseDataSourceClient):
         return versions
 
     async def resolve_version(self, package_name: str, version_spec: str) -> str | None:
-        """async resolve version."""
+        """Async resolve version."""
         """async resolve version."""
         package_name = normalize_package_name(package_name)
         versions = await self.get_versions(package_name, include_deprecated=False)
@@ -347,7 +347,7 @@ class NPMClient(BaseDataSourceClient):
         include_transitive: bool = False,
         max_depth: int = 3,
     ) -> dict[str, Any]:
-        """get dependencies."""
+        """Get dependencies."""
         package_name = normalize_package_name(package_name)
         if version:
             pkg_data = await self.get_package_version(package_name, version)
@@ -423,7 +423,7 @@ class NPMClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: dict[str, Any]
     ) -> dict[str, Any]:
-        """check compatibility."""
+        """Check compatibility."""
         package_name = normalize_package_name(package_name)
         pkg_data = await self.get_package_version(package_name, version)
         if not pkg_data:
@@ -498,7 +498,7 @@ class NPMClient(BaseDataSourceClient):
     async def get_dependency_tree(
         self, package_name: str, version: str | None = None, max_depth: int = 3
     ) -> dict[str, Any]:
-        """get dependency tree."""
+        """Get dependency tree."""
         package_name = normalize_package_name(package_name)
         tree = {
             "name": package_name,
@@ -571,7 +571,7 @@ class NPMClient(BaseDataSourceClient):
     async def analyze_package(
         self, package_name: str, version: str | None = None
     ) -> dict[str, Any]:
-        """analyze package."""
+        """Analyze package."""
         package_name = normalize_package_name(package_name)
         info = await self.get_package_info(package_name)
         if not info:
@@ -1063,7 +1063,7 @@ class NPMClient(BaseDataSourceClient):
 
 
 async def example_usage():
-    """async example usage."""
+    """Async example usage."""
     async with NPMClient() as client:
         await client.search_packages("react", limit=10, quality=0.8, popularity=0.5)
 

@@ -64,7 +64,7 @@ class GoModulesClient(BaseDataSourceClient):
         self.pkg_dev_url = "https://pkg.go.dev"
 
     async def package_exists(self, package_name: str) -> bool:
-        """async package exists."""
+        """Async package exists."""
         """async package exists."""
         package_name = self._normalize_go_module_path(package_name)
         try:
@@ -76,7 +76,7 @@ class GoModulesClient(BaseDataSourceClient):
             return False
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
-        """async search packages."""
+        """Async search packages."""
         """async search packages."""
         query = normalize_package_name(query)
 
@@ -89,7 +89,7 @@ class GoModulesClient(BaseDataSourceClient):
 
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(self, package_name: str) -> dict[str, Any] | None:
-        """async get package info async."""
+        """Async get package info async."""
         """async get package info async."""
         package_name = self._normalize_go_module_path(package_name)
 
@@ -123,13 +123,13 @@ class GoModulesClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict[str, Any] | None:
-        """get package info."""
+        """Get package info."""
         """get package info."""
         package_name = self._normalize_go_module_path(package_name)
         return run_async(self.get_package_info_async(package_name))
 
     async def get_package_version(self, package_name: str, version: str) -> dict[str, Any] | None:
-        """async get package version."""
+        """Async get package version."""
         """async get package version."""
         package_name = self._normalize_go_module_path(package_name)
 
@@ -150,7 +150,7 @@ class GoModulesClient(BaseDataSourceClient):
         }
 
     async def get_versions(self, package_name: str) -> list[dict[str, Any]]:
-        """async get versions."""
+        """Async get versions."""
         """async get versions."""
         package_name = self._normalize_go_module_path(package_name)
         versions_data = await self._get_versions_list(package_name)
@@ -178,7 +178,7 @@ class GoModulesClient(BaseDataSourceClient):
     async def get_dependencies(
         self, package_name: str, version: str | None = None
     ) -> dict[str, Any]:
-        """get dependencies."""
+        """Get dependencies."""
         package_name = self._normalize_go_module_path(package_name)
 
         if not version:

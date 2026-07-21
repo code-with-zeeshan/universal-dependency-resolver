@@ -33,6 +33,7 @@ class CratesIndexManager:
     ----------
     update_interval:
         Minimum seconds between full syncs (default 3600).
+
     """
 
     def __init__(self, update_interval: int = 3600) -> None:

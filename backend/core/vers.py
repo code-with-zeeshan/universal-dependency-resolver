@@ -106,6 +106,46 @@ def _fmt(v: VersionTuple) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Shared multi-constraint splitter
+# ---------------------------------------------------------------------------
+
+
+_MULTI_CONSTRAINT_SEP_RE = re.compile(
+    r"""
+    [,]                          # comma
+    |[&]{2}                      # double ampersand (&&)
+    |[|]{2}                      # double pipe (||)
+    |(?<=\d)\s+(?=[><=!^~&|])    # space between a digit and an operator
+    """,
+    re.VERBOSE,
+)
+
+
+def _split_multi_constraint(constraint: str) -> list[str]:
+    """Split a multi-part constraint string into individual constraint parts.
+
+    Handles separators: comma (``,``), double-ampersand (``&&``), double-pipe
+    (``||``), and whitespace between a version number and a following operator.
+
+    Examples::
+
+        ">=2.1.2,<3.0.0"      -> [">=2.1.2", "<3.0.0"]
+        ">=2.1.2 <3.0.0"      -> [">=2.1.2", "<3.0.0"]
+        ">=1.0 && <2.0"       -> [">=1.0", "<2.0"]
+        ">=1.0 || ==1.5"      -> [">=1.0", "==1.5"]
+        "^1.2.0"              -> ["^1.2.0"]
+        "1.2.3"               -> ["1.2.3"]
+        "*"                   -> ["*"]
+    """
+    c = constraint.strip()
+    if not c or c in ("*", "any", ""):
+        return [c] if c else []
+
+    parts = _MULTI_CONSTRAINT_SEP_RE.split(c)
+    return [p.strip() for p in parts if p.strip()]
+
+
+# ---------------------------------------------------------------------------
 # Per-ecosystem parsers  (registered in _PARSERS)
 # ---------------------------------------------------------------------------
 
@@ -141,8 +181,9 @@ def _parse_pip(constraint: str, ecosystem: str) -> VersSpec:
         pep = f">={ver}.0.0,<{int(ver) + 1}.0.0"
         return VersSpec(ecosystem, constraint, pep)
 
-    if "," in c:
-        parts = [p.strip() for p in c.split(",")]
+    # Multi-part constraint: split on comma / && / space-before-operator
+    parts = _split_multi_constraint(c)
+    if len(parts) > 1:
         normalised = [_parse_pip(p, ecosystem).pep508 for p in parts]
         valid = [n for n in normalised if n != "*"]
         if valid:
@@ -156,6 +197,15 @@ def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
     c = constraint.strip()
     if not c or c in ("*", "any", ""):
         return VersSpec(ecosystem, constraint, "*")
+
+    # Multi-part constraint: split on comma / space / && / ||
+    # (npm registry returns e.g. ">=1.0 <2.0" space-separated)
+    parts = _split_multi_constraint(c)
+    if len(parts) > 1:
+        normalised = [_parse_npm_like(p, ecosystem).pep508 for p in parts]
+        valid = [n for n in normalised if n != "*"]
+        if valid:
+            return VersSpec(ecosystem, constraint, ",".join(valid))
 
     m = re.match(r"^\^?\s*(\d+)\.\*\s*$", c)
     if m:

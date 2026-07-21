@@ -122,6 +122,66 @@ def _current_abi() -> list[str]:
     return [f"cp{ver.major}{ver.minor}", f"cp{ver.major}{ver.minor}d", "none"]
 
 
+def check_platform_compatibility(
+    platforms: list[str] | None,
+    system_info: dict | None,
+) -> bool:
+    """Check if a version's platforms are compatible with the target system.
+
+    *platforms* — list of human-readable platform strings from PyPI data
+    (e.g. ``"Linux"``, ``"Windows x64"``, ``"macOS"``, ``"Any"``).
+    *system_info* — the system info dict with optional ``platform.system`` /
+    ``platform.architecture`` keys.
+
+    Returns ``True`` when no filtering decision can be made (no platforms,
+    no system info), or when at least one platform matches the target.
+    """
+    if not platforms:
+        return True
+    if "Any" in platforms:
+        return True
+    if not system_info:
+        return True
+
+    plat = system_info.get("platform", {})
+    target_os = (plat.get("system") or "").lower()
+    target_arch = (
+        (plat.get("architecture") or "")
+        .lower()
+        .replace("amd64", "x86_64")
+        .replace("arm64", "aarch64")
+    )
+
+    if not target_os and not target_arch:
+        return True
+
+    for p in platforms:
+        p_lower = p.lower()
+        if p_lower == "any":
+            return True
+        if p_lower in ("linux", "linux x64"):
+            if "linux" in target_os:
+                if "x64" in p_lower:
+                    if "x86_64" in target_arch:
+                        return True
+                else:
+                    return True
+        elif p_lower == "macos":
+            if "darwin" in target_os or "macos" in target_os:
+                return True
+        elif p_lower == "windows x64":
+            if "windows" in target_os and ("x86_64" in target_arch or "amd64" in target_arch):
+                return True
+        elif p_lower == "windows x86":
+            if "windows" in target_os and any(a in target_arch for a in ("x86", "i386", "i686")):
+                return True
+        else:
+            # Unknown platform string — assume compatible
+            return True
+
+    return False
+
+
 def _resolve_platform(target_os: str | None, target_arch: str | None) -> str | None:
     if not target_os and not target_arch:
         return None

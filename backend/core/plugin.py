@@ -46,6 +46,7 @@ class PluginManifest:
         glob: File-name glob pattern (e.g. ``"mix.exs"``, ``"*.cabal"``).
         parser: Method name on the plugin class that parses this manifest.
             The method must accept ``(self, content: str) -> list[dict]``.
+
     """
 
     glob: str
@@ -63,6 +64,7 @@ class PluginLockFile:
             ``(self, content: str) -> dict[str, dict]`` where keys are
             package names and values are dicts with at least ``"version"``
             and optionally ``"dependencies"``.
+
     """
 
     glob: str
@@ -333,7 +335,6 @@ def discover_third_party_plugins():
     Any installed package that declares a ``[project.entry-points."udr.plugins"]``
     section will have its plugin class loaded and registered automatically.
     """
-
     try:
         from importlib.metadata import entry_points
     except ImportError:

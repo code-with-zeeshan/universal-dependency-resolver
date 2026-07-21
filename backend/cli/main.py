@@ -6,6 +6,7 @@ import os
 
 from backend.core.shutdown import ShutdownFlag, register_signal_handlers
 from backend.settings import ECOSYSTEMS
+from backend.settings import reload as reload_settings
 
 # Global shutdown flag for CLI commands
 SHUTDOWN_FLAG = ShutdownFlag()
@@ -98,6 +99,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--deprecated",
         action="store_true",
         help="Check lock file for deprecated or yanked packages",
+    )
+    check_p.add_argument(
+        "--peer",
+        action="store_true",
+        help="Check lock file for peer dependency issues",
     )
     check_p.add_argument(
         "--device",
@@ -756,6 +762,8 @@ def main():
 
     if getattr(args, "offline", None):
         os.environ["UDR_OFFLINE"] = "true"
+
+    reload_settings()
 
     dispatch = {
         "serve": cmd_serve,

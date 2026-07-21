@@ -89,6 +89,7 @@ class ContentAddressedCache:
     default_ttl:
         Default TTL in seconds when ``set()`` is called without an
         explicit *ttl*.  ``None`` means no expiry.
+
     """
 
     def __init__(

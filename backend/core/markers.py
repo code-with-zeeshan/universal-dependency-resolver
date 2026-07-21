@@ -208,6 +208,7 @@ def evaluate_marker_string(marker_str: str, system_info: dict | None = None) -> 
     Returns:
         ``True`` if the marker evaluates positively (dependency should
         be included), ``False`` if it should be excluded.
+
     """
     marker_str = marker_str.strip()
     if not marker_str:

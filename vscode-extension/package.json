@@ -150,13 +150,15 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
-    "test": "node ./out/test/extension.test.js",
+    "test": "node ./out/src/test/runTest.js",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "@vscode/test-electron": "^2.5.2",
+    "mocha": "^11.0.0"
   }
 }

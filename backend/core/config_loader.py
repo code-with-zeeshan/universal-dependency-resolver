@@ -28,6 +28,7 @@ class ProjectConfig:
         cross_deps: List of cross-ecosystem dependency declarations.
         profiles: Dict of named dependency profiles.
         workspaces: Dict of workspace definitions (name → config).
+
     """
 
     def __init__(self, directory: str | Path = "."):
@@ -77,7 +78,7 @@ class ProjectConfig:
                 eco_part, pkg_part = entry.split("/", 1)
                 if eco_part == eco and (pkg_part == "*" or pkg_part == package):
                     return True
-            elif entry == eco or entry == package:
+            elif entry in (eco, package):
                 return True
         return False
 

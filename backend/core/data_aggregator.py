@@ -801,6 +801,7 @@ class DataAggregator:
                                 )
                             )
                     elif isinstance(cat_deps, list):
+                        is_peer = "peer" in category
                         for dep in cat_deps:
                             if isinstance(dep, dict):
                                 normalized["all"].append(
@@ -810,6 +811,7 @@ class DataAggregator:
                                         ecosystem=ecosystem,
                                         dev_only=is_dev,
                                         optional=dep.get("optional", False),
+                                        peer=dep.get("peer", is_peer),
                                         marker=dep.get("marker") or None,
                                     )
                                 )

@@ -1,7 +1,6 @@
 """Module docstring."""
 
 import logging
-import os
 
 from slowapi import Limiter
 
@@ -10,6 +9,7 @@ from backend.core.export_generator import ExportGenerator
 from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import CompatibilityDB
 from backend.orchestrator.resolve import create_solver
+from backend.settings import REDIS_URL
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,10 @@ def _rate_limit_key(request):
     Respects X-Forwarded-For / X-Real-IP only from trusted proxies
     (private IPs or explicitly configured TRUSTED_PROXIES).
     """
-
     return request.client.host if request.client else "unknown"
 
 
-redis_url = os.getenv("REDIS_URL")
+redis_url = REDIS_URL
 if redis_url:
     limiter = Limiter(key_func=_rate_limit_key, storage_uri=redis_url)
 else:

@@ -62,7 +62,7 @@ class SwiftClient(BaseDataSourceClient):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        """get package info async."""
+        """Get package info async."""
         return await self.get_package_info(
             package_name,
             include_dependencies=include_dependencies,
@@ -75,7 +75,7 @@ class SwiftClient(BaseDataSourceClient):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        """get package info."""
+        """Get package info."""
         try:
             owner, repo = self._resolve_package(package_name)
             versions = await self._list_versions(owner, repo) if include_versions else []
@@ -100,7 +100,7 @@ class SwiftClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         info = await self.get_package_info(
             package_name, include_versions=True, include_dependencies=False
         )

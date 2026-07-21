@@ -208,6 +208,7 @@ class ForkingResolver:
         max_forks: Maximum number of parallel fork trials (default 4).
         fork_timeout_ratio: Fraction of the original solver timeout to give each fork
             (default 0.5).  Each fork gets ``max(solver_timeout * ratio // max_forks, 10s)``.
+
     """
 
     def __init__(

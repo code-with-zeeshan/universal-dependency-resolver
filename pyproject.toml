@@ -98,6 +98,7 @@ dev = [
     "ruff>=0.11,<1",
     "mypy>=1.7,<2",
     "pre-commit>=3.6,<4",
+    "hypothesis>=6.100,<7",
 ]
 postgres = [
     "psycopg2-binary>=2.9.9,<3",

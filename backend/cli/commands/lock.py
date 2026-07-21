@@ -497,8 +497,13 @@ async def _fetch_package_data(aggregator, packages, fetch_semaphore, args: argpa
                         combined = pkg_extras
                     else:
                         combined = None
+                    include_optional = bool(args.with_dev) if args.with_dev is not None else False
                     rinput = _aggregator_to_resolver_input(
-                        data, eco, constraint=constraint, extras=combined
+                        data,
+                        eco,
+                        constraint=constraint,
+                        extras=combined,
+                        include_optional=include_optional,
                     )
                 resolver_inputs.append(rinput)
             progress.advance(fetch_task)
@@ -634,6 +639,7 @@ def _build_lock_data(
             "purl": make_purl(pkg_name, ver, eco),
             "registry_url": get_ecosystem_config(eco).get("url", ""),
             "integrity": integrity_val,
+            "peer_dependencies": pkg_detail.get("peer_dependencies", {}).get(eco, {}),
             "vulnerabilities": [
                 {
                     "id": v.get("id", ""),
@@ -1045,6 +1051,7 @@ def cmd_lock(args: argparse.Namespace):
             ) as p:
                 p.add_task("SAT solver", total=None)
                 lock_tree = _build_lock_tree(manifests, directory)
+                include_optional = bool(args.with_dev) if args.with_dev is not None else False
                 resolved = await _run_resolution(
                     aggregator,
                     resolver,
@@ -1058,6 +1065,7 @@ def cmd_lock(args: argparse.Namespace):
                     pinning_policy=_build_pinning_policy(args),
                     incremental=not args.force,
                     cross_deps=cross_deps,
+                    include_optional=include_optional,
                 )
 
             sat_pkgs = resolved.get("resolved_packages", {})

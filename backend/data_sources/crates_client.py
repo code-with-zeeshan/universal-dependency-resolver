@@ -54,7 +54,7 @@ class CratesClient(BaseDataSourceClient):
     async def search_packages(
         self, query: str, limit: int = 10, page: int = 1, sort: str = "relevance"
     ) -> list[dict[str, Any]]:
-        """search packages."""
+        """Search packages."""
         query = normalize_package_name(query)
         try:
             params = {
@@ -102,7 +102,7 @@ class CratesClient(BaseDataSourceClient):
             raise HTTPException(status_code=500, detail=f"Crates search error: {e!s}")
 
     async def get_package_info(self, package_name: str) -> dict[str, Any]:
-        """async get package info."""
+        """Async get package info."""
         """async get package info."""
         package_name = normalize_package_name(package_name)
         try:
@@ -186,7 +186,7 @@ class CratesClient(BaseDataSourceClient):
     async def get_package_versions(
         self, package_name: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/versions")
@@ -271,7 +271,7 @@ class CratesClient(BaseDataSourceClient):
         include_dev: bool = False,
         include_build: bool = False,
     ) -> dict[str, list[dict]]:
-        """get dependencies."""
+        """Get dependencies."""
         package_name = normalize_package_name(package_name)
         try:
             if not version:
@@ -331,7 +331,7 @@ class CratesClient(BaseDataSourceClient):
         max_depth: int = 3,
         visited: set[str] | None = None,
     ) -> dict:
-        """get dependency tree."""
+        """Get dependency tree."""
         package_name = normalize_package_name(package_name)
         if visited is None:
             visited = set()
@@ -371,7 +371,7 @@ class CratesClient(BaseDataSourceClient):
         return tree
 
     async def check_compatibility(self, package_name: str, version: str, system_info: dict) -> dict:
-        """async check compatibility."""
+        """Async check compatibility."""
         """async check compatibility."""
         package_name = normalize_package_name(package_name)
         try:
@@ -700,7 +700,7 @@ class CratesClient(BaseDataSourceClient):
 
 
 async def example_usage():
-    """async example usage."""
+    """Async example usage."""
     client = CratesClient()
 
     try:

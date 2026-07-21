@@ -28,6 +28,7 @@ def get_local_index(ecosystem: str) -> object | None:
         A manager instance with ``search(name)``, ``get(name)``,
         ``sync()``, and ``last_updated``, or ``None`` if the ecosystem
         is not supported or ``ENABLE_LOCAL_INDEX`` is false.
+
     """
     if not _settings.ENABLE_LOCAL_INDEX:
         return None

@@ -156,6 +156,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
             console=err_console,
         ) as p:
             p.add_task("SAT solver", total=None)
+            include_optional = bool(args.with_dev) if args.with_dev is not None else False
             resolved = await _run_resolution(
                 aggregator,
                 resolver,
@@ -165,6 +166,7 @@ def cmd_resolve(args: argparse.Namespace) -> None:
                 interactive=args.interactive,
                 timeout=args.timeout or SOLVER_TIMEOUT,
                 pinning_policy=_build_pinning_policy(args),
+                include_optional=include_optional,
             )
 
         resolved_pkgs = resolved.get("resolved_packages", {})

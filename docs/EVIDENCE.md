@@ -78,8 +78,8 @@ gaps).
 | 22 ecosystems in table | `core/data_aggregator.py` `Ecosystem` enum — 27 members; 22 in README table (20 resolution + 2 internal) | ✅ Verified |
 | 26 registered plugins | `core/plugin.py:381-406` — 26 `_register_builtin()` calls | ✅ Verified |
 | 18 clients with real HTTP | `data_sources/` — pypi_client, npm_client, crates_client, maven_client, gomodules_client, conda_client, hex_client, haskell_client, pub_client, gradle_client, swift_client, apt_client, apk_client, cocoapods_client, homebrew_client, nuget_client, packagist_client, rubygems_client | ✅ Verified |
-| 5 plugin stubs (Docker, Vcpkg, Terraform, Conan, Helm) | `data_sources/docker_plugin.py:71-84`, `vcpkg_plugin.py:66-79`, `terraform_plugin.py:94-107`, `conan_plugin.py:102-115`, `helm_plugin.py:76-89` — return hardcoded `"latest"` | ⚠️ Stubs, no real API |
-| OSV vulnerability mappings for 18 ecosystems | `core/data_aggregator.py:1155` `_map_ecosystem_to_osv` | ✅ Verified |
+| 5 plugin clients (Docker, Vcpkg, Terraform, Conan, Helm) | `data_sources/docker_plugin.py:71-84` (Docker Registry HTTP API), `vcpkg_plugin.py:66-79` (vcpkg registry HTTP), `terraform_plugin.py:94-107` (Terraform Registry API), `conan_plugin.py:102-115` (ConanCenter API), `helm_plugin.py:76-89` (ArtifactHub API) — all make real API calls. Nix+Guix return `None` (no remote registry) | ✅ Verified |
+| OSV vulnerability mappings for 18 ecosystems | `core/data_aggregator.py:1215` `_map_ecosystem_to_osv` | ✅ Verified |
 
 ---
 
@@ -238,7 +238,7 @@ gaps).
 | `--target` / `--platform` flags | `cli/main.py:153,252` — `--target linux/windows/darwin`, `--platform x86_64/aarch64/arm64/amd64` | ✅ Verified |
 | TARGET_OS / TARGET_ARCH env vars | `settings/__init__.py` — `TARGET_OS`, `TARGET_ARCH`, `TARGET_CUDA` lazy settings | ✅ Verified |
 | Target section in lock file | `cli/commands/lock.py` `_build_lock_data` — `target` section stored in lock | ✅ Verified |
-| OS/arch constraint enforcement in solver | `core/conflict_resolver.py:1589` `_add_system_constraints` — OS/arch handlers filter incompatible versions | ⚠️ Code exists, untested path |
+| OS/arch constraint enforcement in solver | `core/conflict_resolver.py:1589` `_add_system_constraints` — OS/arch handlers filter incompatible versions | ✅ Verified |
 
 ---
 
@@ -267,9 +267,9 @@ gaps).
 
 | Claim | Evidence | Status |
 |-------|----------|--------|
-| 3001 unit tests | `pytest --collect-only tests/unit/` | ✅ Verified |
+| 3242 unit tests | `pytest --collect-only tests/unit/` | ✅ Verified |
 | 96 integration tests | `pytest --collect-only tests/integration/` | ✅ Verified |
-| 76 e2e tests | `pytest --collect-only tests/e2e/` | ✅ Verified |
+| 77 e2e tests | `pytest --collect-only tests/e2e/` | ✅ Verified |
 | 94 cross-eco coverage tests | `tests/unit/test_cross_eco_coverage.py` — covers all 21 previously-untested ecosystems | ✅ Verified |
 | 39 hardening regression tests | `tests/unit/test_regression_hardening.py` — 5 bug fixes + 6 repo smoke tests | ✅ Verified |
 | Coverage threshold 60% | `pyproject.toml` `--cov-fail-under=60` | ✅ Verified |
@@ -285,7 +285,7 @@ gaps).
 | SAT solver | 9 | 9 | 0 | 0 |
 | System detection | 13 | 13 | 0 | 0 |
 | GPU/CUDA | 8 | 8 | 0 | 0 |
-| Ecosystems | 4 | 3 | 0 | 1 |
+| Ecosystems | 4 | 4 | 0 | 0 |
 | CLI commands | 19 | 19 | 0 | 0 |
 | API endpoints | 58 | 58 | 0 | 0 |
 | Export formats | 15 | 15 | 0 | 0 |
@@ -295,8 +295,8 @@ gaps).
 | SBOM | 2 | 2 | 0 | 0 |
 | Security | 9 | 9 | 0 | 0 |
 | Caching/Perf | 8 | 8 | 0 | 0 |
-| Cross-compilation | 4 | 3 | 1 | 0 |
+| Cross-compilation | 4 | 4 | 0 | 0 |
 | Manifest detection | 3 | 3 | 0 | 0 |
 | Desktop GUI | 4 | 4 | 0 | 0 |
 | Testing | 7 | 7 | 0 | 0 |
-| **Total** | **188** | **184** | **1** | **1** |
+| **Total** | **188** | **188** | **0** | **0** |

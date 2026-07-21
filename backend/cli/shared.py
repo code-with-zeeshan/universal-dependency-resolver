@@ -120,6 +120,7 @@ async def _run_resolution(
     pinning_policy: Any = None,
     incremental: bool = True,
     cross_deps: list[dict] | None = None,
+    include_optional: bool = False,
 ) -> dict:
     """Run resolution."""
     from backend.core.pinning import PinningPolicy, apply_pinning_policy, freeze_from_lock
@@ -152,6 +153,7 @@ async def _run_resolution(
                 bfs_timeout=bfs_budget,
                 incremental=incremental,
                 cross_deps=cross_deps,
+                include_optional=include_optional,
             ),
             timeout=timeout,
         )
@@ -273,7 +275,10 @@ def _fetch_package_data(
 
 
 async def _fetch_package_data_async(
-    aggregator, specs: list[tuple[str, str, str | None]], extras: list[str] | None = None
+    aggregator,
+    specs: list[tuple[str, str, str | None]],
+    extras: list[str] | None = None,
+    include_optional: bool = False,
 ) -> tuple[list[dict], dict[str, dict]]:
     """Fetch package data async."""
     resolver_inputs = []
@@ -291,7 +296,9 @@ async def _fetch_package_data_async(
                 include_versions=True,
             )
             if data:
-                rinput = _aggregator_to_resolver_input(data, eco, constraint, extras=extras)
+                rinput = _aggregator_to_resolver_input(
+                    data, eco, constraint, extras=extras, include_optional=include_optional
+                )
                 return (rinput, data)
         except Exception as exc:
             err_console.print(f"  [red]Error fetching {pkg_name}:[/red] {exc}")

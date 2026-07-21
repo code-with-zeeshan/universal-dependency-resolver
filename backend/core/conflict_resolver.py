@@ -2223,6 +2223,13 @@ class ConflictResolver:
                             return False
                     except Exception:
                         pass
+                # Wheel platform compatibility check
+                plat_list = pkg.get("version_platforms", {}).get(ver)
+                if plat_list:
+                    from backend.core.wheel_tags import check_platform_compatibility
+
+                    if not check_platform_compatibility(plat_list, system_info):
+                        return False
                 # Check GPU system requirements
                 sys_reqs = pkg.get("system_requirements", {})
                 cuda_req = sys_reqs.get("cuda") or sys_reqs.get("gpu")
@@ -2401,6 +2408,16 @@ class ConflictResolver:
             if min_cuda:
                 sys_cuda = system_info.get("gpu", {}).get("cuda", "")
                 if sys_cuda and compare_versions(sys_cuda, min_cuda) < 0:
+                    continue
+
+            # Wheel platform compatibility check: skip versions whose wheels
+            # are incompatible with the target OS/arch (from PyPI platforms data).
+            version_platforms = package.get("version_platforms", {})
+            plat_list = version_platforms.get(version_str)
+            if plat_list:
+                from backend.core.wheel_tags import check_platform_compatibility
+
+                if not check_platform_compatibility(plat_list, system_info):
                     continue
 
             # Check deprecation/yanked status

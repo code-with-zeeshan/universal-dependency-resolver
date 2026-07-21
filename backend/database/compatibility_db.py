@@ -294,7 +294,7 @@ class CompatibilityDB:
                 db.query(VerifiedCombination)
                 .filter(
                     VerifiedCombination.packages.contains([{"name": package_name}])
-                    if not db.bind.dialect.name == "sqlite"
+                    if db.bind.dialect.name != "sqlite"
                     else VerifiedCombination.packages.like(f'%"{package_name}"%')
                 )
                 .all()
@@ -319,11 +319,19 @@ class CompatibilityDB:
         finally:
             db.close()
 
-    def get_package_by_normalized_name(self, name: str, ecosystem: str) -> Package | None:
+    def get_package_by_normalized_name(
+        self, name: str, ecosystem: str, db: Session | None = None
+    ) -> Package | None:
         """Get package using normalized name."""
         name = normalize_package_name(name)
         ecosystem = sanitize_ecosystem_name(ecosystem)
 
+        if db is not None:
+            return (
+                db.query(Package)
+                .filter(and_(Package.name == name, Package.ecosystem == ecosystem))
+                .first()
+            )
         db = next(get_db())
         try:
             return (
@@ -366,7 +374,7 @@ class CompatibilityDB:
         db = next(get_db())
         try:
             # Get package
-            package = self.get_package_by_normalized_name(package_name, ecosystem)
+            package = self.get_package_by_normalized_name(package_name, ecosystem, db=db)
             if not package:
                 return {
                     "compatible": True,
@@ -447,7 +455,7 @@ class CompatibilityDB:
 
         db = next(get_db())
         try:
-            package = self.get_package_by_normalized_name(package_name, ecosystem)
+            package = self.get_package_by_normalized_name(package_name, ecosystem, db=db)
             if not package:
                 return {"error": "Package not found"}
 
@@ -548,7 +556,6 @@ class CompatibilityDB:
         """Serialize conflict rule."""
         is_package1 = conflict.package1_id == package_id
         # Avoid N+1 lazy-load: access relationship attributes in one query
-        other_pkg = conflict.package2 if is_package1 else conflict.package1
 
         return {
             "conflicting_package": conflict.package2.name

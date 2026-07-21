@@ -256,6 +256,10 @@ docker-volumes/
 !.vscode/extensions.json
 *.code-workspace
 
+# VSCode Extension (build artifacts)
+vscode-extension/out/
+vscode-extension/.vscode-test/
+
 # PyCharm
 .idea/
 *.iws
@@ -409,6 +413,7 @@ AGENTS.md
 questions.md
 tmp.md
 tmp2.md
+status.md
 
 # =============================================================================
 # Testing

@@ -16,6 +16,7 @@ from backend.core.markers import evaluate_marker_string
 from backend.settings import (
     BFS_BATCH_SIZE,
     INCREMENTAL_RESOLUTION,
+    PEER_DEP_MODE,
     SOLVER_MAX_VARIABLES,
 )
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
@@ -213,9 +214,11 @@ def _aggregator_to_resolver_input(
     constraint: str | None = None,
     extras: list[str] | None = None,
     system_info: dict | None = None,
+    include_optional: bool = False,
 ) -> dict:
     available_versions = []
     version_requires_python: dict[str, str] = {}
+    version_platforms: dict[str, list[str]] = {}
     raw_versions = agg_data.get("versions", {}).get(ecosystem, [])
     for vinfo in raw_versions:
         ver = vinfo.get("version", "") if isinstance(vinfo, dict) else str(vinfo)
@@ -228,11 +231,21 @@ def _aggregator_to_resolver_input(
                 rp = vinfo.get("requires_python") or vinfo.get("python_requires")
                 if rp:
                     version_requires_python[ver] = rp
+                platforms = vinfo.get("platforms")
+                if platforms:
+                    version_platforms[ver] = (
+                        list(platforms) if isinstance(platforms, (list, set)) else []
+                    )
     deps = {}
     eco_deps = agg_data.get("dependencies", {})
     eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
     for dep in eco_deps.get("all", []):
-        if getattr(dep, "dev_only", False):
+        if not include_optional:
+            if getattr(dep, "dev_only", False):
+                continue
+            if getattr(dep, "optional", False):
+                continue
+        if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
             continue
         marker = getattr(dep, "marker", None)
         if marker and not evaluate_marker_string(marker, system_info):
@@ -258,6 +271,7 @@ def _aggregator_to_resolver_input(
         "version_constraint": norm_constraint,
         "available_versions": sorted_versions,
         "version_requires_python": version_requires_python,
+        "version_platforms": version_platforms,
         "dependencies": {ecosystem: deps},
         "system_requirements": sys_reqs,
         "cross_ecosystem_deps": agg_data.get("cross_ecosystem_deps", []),
@@ -288,8 +302,10 @@ async def _fetch_dep_info(
 
 def _determine_dep_ecosystem(dep: Any, dep_eco: str, pkg_ecosystem: str) -> str:
     dep_ecosystem = getattr(dep, "ecosystem", None)
-    if dep_ecosystem:
-        return dep_ecosystem.value if hasattr(dep_ecosystem, "value") else str(dep_ecosystem)
+    if dep_ecosystem is not None:
+        dep_eco_str = dep_ecosystem.value if hasattr(dep_ecosystem, "value") else str(dep_ecosystem)
+        if dep_eco_str != pkg_ecosystem:
+            return dep_eco_str
     if dep_eco != pkg_ecosystem:
         return dep_eco
     return pkg_ecosystem
@@ -300,9 +316,10 @@ def _build_dep_pkg(
     dep_ecosystem_val: str,
     dep_info: dict,
     system_info: dict | None = None,
+    include_optional: bool = False,
 ) -> dict | None:
     dep_resolver_input = _aggregator_to_resolver_input(
-        dep_info, dep_ecosystem_val, system_info=system_info
+        dep_info, dep_ecosystem_val, system_info=system_info, include_optional=include_optional
     )
     dep_avail = dep_resolver_input.get("available_versions", [])
     if not dep_avail:
@@ -312,6 +329,7 @@ def _build_dep_pkg(
         "ecosystem": dep_ecosystem_val,
         "available_versions": dep_avail,
         "version_requires_python": dep_resolver_input.get("version_requires_python", {}),
+        "version_platforms": dep_resolver_input.get("version_platforms", {}),
         "dependencies": {},
         "system_requirements": {},
         "cross_ecosystem_deps": dep_resolver_input.get("cross_ecosystem_deps", []),
@@ -320,7 +338,12 @@ def _build_dep_pkg(
     for d_eco, d_data in dep_deps_all.items():
         filtered = []
         for d in d_data.get("all", []):
-            if getattr(d, "dev_only", False):
+            if not include_optional:
+                if getattr(d, "dev_only", False):
+                    continue
+                if getattr(d, "optional", False):
+                    continue
+            if PEER_DEP_MODE == "advisory" and getattr(d, "peer", False):
                 continue
             marker = getattr(d, "marker", None)
             if marker and not evaluate_marker_string(marker, system_info):
@@ -566,6 +589,7 @@ async def _resolve_transitive(
     bfs_timeout: int | None = None,
     incremental: bool = True,
     cross_deps: list[dict] | None = None,
+    include_optional: bool = False,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -666,6 +690,7 @@ async def _resolve_transitive(
         out_list: list[tuple],
         pkg_name: str,
         pkg_eco: str,
+        include_optional: bool = False,
     ) -> None:
         """Extract dependency names from *pkg* and append (name, eco, source) tuples to *out_list*.
         Skips already visited, pre-resolved, or collected packages.
@@ -686,6 +711,10 @@ async def _resolve_transitive(
             else:
                 continue
             for dep in deps_iter:
+                if not include_optional and getattr(dep, "optional", False):
+                    continue
+                if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
+                    continue
                 dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg_eco)
                 key = (dep.name, dep_ecosystem_val)
                 if key in visited or key in all_packages or key in pre_resolved:
@@ -765,7 +794,12 @@ async def _resolve_transitive(
             all_deps = info.get("dependencies", {})
             for dep_eco, dep_data in all_deps.items():
                 for dep in dep_data.get("all", []):
-                    if getattr(dep, "dev_only", False):
+                    if not include_optional:
+                        if getattr(dep, "dev_only", False):
+                            continue
+                        if getattr(dep, "optional", False):
+                            continue
+                    if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
                         continue
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, eco)
                     dep_key = (dep.name, dep_ecosystem_val)
@@ -779,7 +813,14 @@ async def _resolve_transitive(
     # Collect deps from root packages
     for (name, eco), pkg in list(all_packages.items()):
         _collect_current_deps(
-            pkg, visited, all_packages, pre_resolved, current_level_deps, name, eco
+            pkg,
+            visited,
+            all_packages,
+            pre_resolved,
+            current_level_deps,
+            name,
+            eco,
+            include_optional=include_optional,
         )
 
     # Inject cross-ecosystem dependency edges from config (udr.json cross_deps)
@@ -912,12 +953,20 @@ async def _resolve_transitive(
                 eco,
                 info,
                 system_info=system_info,
+                include_optional=include_optional,
             )
             if dep_pkg and key not in all_packages:
                 all_packages[key] = dep_pkg
             # Collect deps from this package for next level
             _collect_current_deps(
-                dep_pkg or {}, visited, all_packages, pre_resolved, next_level_deps, name, eco
+                dep_pkg or {},
+                visited,
+                all_packages,
+                pre_resolved,
+                next_level_deps,
+                name,
+                eco,
+                include_optional=include_optional,
             )
 
         current_level_deps = next_level_deps

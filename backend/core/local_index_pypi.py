@@ -7,6 +7,7 @@ then fetches individual package JSON lazily on first access.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ class PyPIIndexManager:
     ----------
     update_interval:
         Minimum seconds between full syncs (default 3600).
+
     """
 
     def __init__(self, update_interval: int = 3600) -> None:
@@ -178,11 +180,13 @@ class PyPIIndexManager:
         url = _PYPI_JSON_URL.format(package=package)
         async with sem:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers={"Accept": "application/json"}) as resp:
-                        if resp.status != 200:
-                            return None
-                        data = await resp.json()
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.get(url, headers={"Accept": "application/json"}) as resp,
+                ):
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
             except Exception as exc:
                 logger.debug("Failed to fetch PyPI package %s: %s", package, exc)
                 return None
@@ -195,21 +199,17 @@ class PyPIIndexManager:
                 continue
             release_date = None
             requires_python = None
-            try:
+            with contextlib.suppress(IndexError, KeyError):
                 release_date = files[0].get("upload_time")
-            except (IndexError, KeyError):
-                pass
-            try:
+            with contextlib.suppress(IndexError, KeyError):
                 requires_python = files[0].get("requires_python")
-            except (IndexError, KeyError):
-                pass
             deps = self._parse_deps(info.get("requires_dist", []))
             versions.append(
                 {
                     "version": ver_str,
                     "release_date": release_date,
                     "requires_python": requires_python,
-                    "dependencies": {"dependencies": {}} if not deps else deps,
+                    "dependencies": deps if deps else {"dependencies": {}},
                 }
             )
         return {

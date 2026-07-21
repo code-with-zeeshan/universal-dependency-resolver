@@ -75,7 +75,7 @@ class PackagistClient(BaseDataSourceClient):
         self._version_cache: dict[str, ComposerVersionRequirement] = {}
 
     async def package_exists(self, package_name: str) -> bool:
-        """async package exists."""
+        """Async package exists."""
         """async package exists."""
         package_name = normalize_package_name(package_name)
         try:
@@ -92,7 +92,7 @@ class PackagistClient(BaseDataSourceClient):
         package_type: str | None = None,
         tags: list[str] | None = None,
     ) -> list[dict]:
-        """search packages."""
+        """Search packages."""
         query = normalize_package_name(query)
 
         params = {"q": query, "per_page": min(limit, 100)}
@@ -127,7 +127,7 @@ class PackagistClient(BaseDataSourceClient):
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
     ) -> dict | None:
-        """get package info async."""
+        """Get package info async."""
         package_name = normalize_package_name(package_name)
 
         url = f"{self.base_url}/packages/{package_name}.json"
@@ -198,13 +198,13 @@ class PackagistClient(BaseDataSourceClient):
         return info
 
     def get_package_info(self, package_name: str) -> dict:
-        """get package info."""
+        """Get package info."""
         """get package info."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
     async def get_package_version(self, package_name: str, version: str) -> dict | None:
-        """async get package version."""
+        """Async get package version."""
         """async get package version."""
         package_name = normalize_package_name(package_name)
 
@@ -223,7 +223,7 @@ class PackagistClient(BaseDataSourceClient):
         package_name: str,
         include_dev: bool = True,
     ) -> list[dict]:
-        """get versions."""
+        """Get versions."""
         package_name = normalize_package_name(package_name)
 
         info = await self.get_package_info_async(package_name, include_versions=True)
@@ -242,7 +242,7 @@ class PackagistClient(BaseDataSourceClient):
     async def get_dependencies(
         self, package_name: str, version: str | None = None, include_dev: bool = True
     ) -> dict[str, Any]:
-        """get dependencies."""
+        """Get dependencies."""
         package_name = normalize_package_name(package_name)
 
         if version:
@@ -418,7 +418,7 @@ class PackagistClient(BaseDataSourceClient):
     async def check_compatibility(
         self, package_name: str, version: str, system_info: dict[str, Any]
     ) -> dict[str, Any]:
-        """check compatibility."""
+        """Check compatibility."""
         package_name = normalize_package_name(package_name)
 
         pkg_data = await self.get_package_version(package_name, version)
@@ -516,7 +516,7 @@ class PackagistClient(BaseDataSourceClient):
 
 
 async def example_usage():
-    """async example usage."""
+    """Async example usage."""
     async with PackagistClient() as client:
         await client.search_packages("symfony", limit=5)
 

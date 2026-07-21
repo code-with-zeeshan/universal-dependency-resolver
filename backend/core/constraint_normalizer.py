@@ -32,6 +32,14 @@ def normalize_version(ver: str, ecosystem: str = "pypi") -> str:
     # Strip Debian/APK revision for apt/apk ecosystems
     if ecosystem in ("apt", "apk", "debian") and "-" in ver:
         ver = ver.split("-")[0]
+
+    # RPM EVR: "1:2.3.4-5.el8" → "2.3.4"
+    if ecosystem == "rpm":
+        if ":" in ver:
+            ver = ver.split(":", 1)[-1]
+        ver = ver.split("-")[0]
+        return _normalize_upstream(ver)
+
     ver = ver.lstrip("=vV ")
     # Go pseudo-version: vX.Y.Z-0.yyyymmddhhmmss-abcdefabcdef
     m = _GO_PSEUDO_VERSION_RE.match(ver)

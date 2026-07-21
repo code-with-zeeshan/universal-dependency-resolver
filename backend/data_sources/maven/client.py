@@ -272,7 +272,7 @@ class MavenClient(BaseDataSourceClient):
     # -- Public API --
 
     async def search_packages(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        """async search packages."""
+        """Async search packages."""
         """async search packages."""
         try:
             params = {"q": query, "rows": limit, "wt": "json"}
@@ -305,7 +305,7 @@ class MavenClient(BaseDataSourceClient):
         include_dependencies: bool = False,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
-        """get package info async."""
+        """Get package info async."""
         group_id, artifact_id = (
             package_name.split(":", 1) if ":" in package_name else (package_name, package_name)
         )
@@ -391,7 +391,7 @@ class MavenClient(BaseDataSourceClient):
     async def get_package_versions(
         self, group_id: str, artifact_id: str, filters: dict | None = None
     ) -> list[dict]:
-        """get package versions."""
+        """Get package versions."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             session = self._get_session()
@@ -459,7 +459,7 @@ class MavenClient(BaseDataSourceClient):
     async def check_compatibility(
         self, group_id: str, artifact_id: str, version: str, system_info: dict
     ) -> dict:
-        """check compatibility."""
+        """Check compatibility."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             pom_xml = await self._fetch_pom(group_id, artifact_id, version)
@@ -539,7 +539,7 @@ class MavenClient(BaseDataSourceClient):
         active_profiles: list[str] | None = None,
         repositories: list[dict] | None = None,
     ) -> list[dict]:
-        """get dependencies."""
+        """Get dependencies."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         try:
             if not version:
@@ -566,7 +566,7 @@ class MavenClient(BaseDataSourceClient):
         active_profiles: list[str] | None = None,
         repositories: list[dict] | None = None,
     ) -> dict:
-        """get effective pom."""
+        """Get effective pom."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
 
         if repositories is None:
@@ -693,7 +693,7 @@ class MavenClient(BaseDataSourceClient):
     async def resolve_version_from_range(
         self, group_id: str, artifact_id: str, version_range: dict
     ) -> str | None:
-        """resolve version from range."""
+        """Resolve version from range."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if version_range["type"] == "fixed":
             return version_range["version"]
@@ -767,7 +767,7 @@ class MavenClient(BaseDataSourceClient):
         visited: set[str] | None = None,
         exclusions: list[dict] | None = None,
     ) -> list[dict]:
-        """get transitive dependencies."""
+        """Get transitive dependencies."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if visited is None:
             visited = set()
@@ -824,7 +824,7 @@ class MavenClient(BaseDataSourceClient):
         max_depth: int = 2,
         visited: set | None = None,
     ) -> dict:
-        """get dependency tree."""
+        """Get dependency tree."""
         group_id, artifact_id = self._normalize_maven_coordinates(group_id, artifact_id)
         if visited is None:
             visited = set()

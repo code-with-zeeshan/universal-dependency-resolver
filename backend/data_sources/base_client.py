@@ -82,13 +82,13 @@ class BaseDataSourceClient:
         self._circuit_lock = asyncio.Lock()
 
     async def __aenter__(self):
-        """async   aenter."""
+        """Async   aenter."""
         self.session = aiohttp.ClientSession()
         _sessions_registry.append(self.session)
         return self
 
     async def __aexit__(self, *args):
-        """async   aexit."""
+        """Async   aexit."""
         if self.session and not self.session.closed:
             await self.session.close()
             if self.session in _sessions_registry:
@@ -96,7 +96,7 @@ class BaseDataSourceClient:
             self.session = None
 
     async def close(self):
-        """async close."""
+        """Async close."""
         if self.session and not self.session.closed:
             await self.session.close()
             if self.session in _sessions_registry:
@@ -277,7 +277,7 @@ class BaseDataSourceClient:
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
-        """cached get."""
+        """Cached get."""
         import time as _time
 
         cached = await self._cache_get(cache_key)
