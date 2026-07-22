@@ -21,7 +21,7 @@ fail() { ((FAIL++)); echo "  ✗ FAIL: $*"; }
 
 run_udr() {
     local dir="$1"; shift
-    SOLVER_TIMEOUT=600 timeout 600 udr lock --directory "$dir" --yes --json > "$dir/out.json" 2>/dev/null || true
+    SOLVER_TIMEOUT=600 timeout -s KILL 600 udr lock --directory "$dir" --yes --json > "$dir/out.json" 2>/dev/null || true
 }
 
 # ─── Scenario 1: Single-ecosystem resolution (Python PyPI) ───
@@ -78,7 +78,7 @@ fi
 test_name "CUDA variant selection: torch with CUDA 12.1"
 mkdir -p "$TMPDIR/3"
 echo 'torch>=2.0' > "$TMPDIR/3/requirements.txt"
-SOLVER_TIMEOUT=120 timeout 120 udr lock --directory "$TMPDIR/3" --cuda 12.1 --yes --json > "$TMPDIR/3/out.json" 2>/dev/null || true
+SOLVER_TIMEOUT=120 timeout -s KILL 120 udr lock --directory "$TMPDIR/3" --cuda 12.1 --yes --json > "$TMPDIR/3/out.json" 2>/dev/null || true
 CUDA_DEPS=$(python3 -c "
 import json
 d=json.load(open('$TMPDIR/3/out.json'))
@@ -99,7 +99,7 @@ test_name "SAT solver: handle unsatisfiable constraints gracefully"
 mkdir -p "$TMPDIR/4"
 echo 'requests>=2.28' > "$TMPDIR/4/requirements.txt"
 echo 'urllib3>=10.0' >> "$TMPDIR/4/requirements.txt"
-SOLVER_TIMEOUT=60 timeout 60 udr lock --directory "$TMPDIR/4" --yes --json > "$TMPDIR/4/out.json" 2>/dev/null || true
+SOLVER_TIMEOUT=60 timeout -s KILL 60 udr lock --directory "$TMPDIR/4" --yes --json > "$TMPDIR/4/out.json" 2>/dev/null || true
 STATUS=$(python3 -c "
 import json
 d=json.load(open('$TMPDIR/4/out.json'))
