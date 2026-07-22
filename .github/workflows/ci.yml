@@ -327,7 +327,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e ".[dev,system,postgres]"
+          pip install -e ".[dev,system,postgres,z3]"
 
       - name: Run data source tests
         env:
