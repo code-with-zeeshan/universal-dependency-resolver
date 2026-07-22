@@ -469,8 +469,8 @@ async def main():
     )
 
     resolver = create_solver()
-    result = resolver.resolve(
-        [{"name": "flask", "version": ">=2.0"}],
+    result = resolver.resolve_dependencies(
+        packages=[{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,
     )
 
@@ -717,7 +717,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 | Resource | What it covers |
 |---|---|
 | [CLI Reference](CLI.md) | Every command with flags and examples |
-| [API Reference](API.md) | 58 REST endpoints with request/response schemas |
+| [API Reference](API.md) | 54 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |
 | [Development](DEVELOPMENT.md) | Setup, testing, project structure |

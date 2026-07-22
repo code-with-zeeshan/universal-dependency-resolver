@@ -9,8 +9,8 @@
 | ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
 | CLI commands | 19 |
 | Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
-| Tests | **3498** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
-| Coverage threshold | **60%** (enforced CI + pre-commit) |
+| Tests | **3519** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| Coverage threshold | **55%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **7** in `backend/` (4 safety, 3 style) |
 | Missing docstrings | 221 (D100–D417) — incremental fix ongoing |
@@ -159,7 +159,7 @@
 
 ### Phase 4 — Q44-Q47 (Claim Audit, 2026-07-18)
 
-- **Q44**: Doc count mismatches fixed (API endpoints 63→58, exports 12→15, ecosystems 20→22)
+- **Q44**: Doc count mismatches fixed (API endpoints 63→54, exports 12→15, ecosystems 20→22)
 - **Q45**: Cross-eco dependency resolution end-to-end (3 solver tests + E2E tests)
 - **Q46**: EVIDENCE.md created (188 claims, 188/188 verified)
 - **Q47**: Real-repo evidence (6 repos, 5,455 packages, 0 errors)

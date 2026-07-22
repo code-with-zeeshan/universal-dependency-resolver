@@ -110,7 +110,7 @@ gaps).
 
 ---
 
-## 7. API Endpoints (58)
+## 7. API Endpoints (54)
 
 | Route group | Count | File | Status |
 |-------------|-------|------|--------|
@@ -124,7 +124,7 @@ gaps).
 | Completion | 1 | `api/routes/completion.py:125` | ✅ Verified |
 | SBOM | 1 | `api/routes/sbom.py:103` | ✅ Verified |
 | Main (/, /healthz, /readyz, /api/v1/health) | 4 | `api/main.py:343-375` | ✅ Verified |
-| **Total** | **58** | | |
+| **Total** | **54** | | |
 
 ---
 
@@ -287,7 +287,7 @@ gaps).
 | GPU/CUDA | 8 | 8 | 0 | 0 |
 | Ecosystems | 4 | 4 | 0 | 0 |
 | CLI commands | 19 | 19 | 0 | 0 |
-| API endpoints | 58 | 58 | 0 | 0 |
+| API endpoints | 54 | 54 | 0 | 0 |
 | Export formats | 15 | 15 | 0 | 0 |
 | Lock file | 9 | 9 | 0 | 0 |
 | CVE scanning | 4 | 4 | 0 | 0 |
@@ -299,4 +299,4 @@ gaps).
 | Manifest detection | 3 | 3 | 0 | 0 |
 | Desktop GUI | 4 | 4 | 0 | 0 |
 | Testing | 7 | 7 | 0 | 0 |
-| **Total** | **188** | **188** | **0** | **0** |
+| **Total** | **184** | **184** | **0** | **0** |

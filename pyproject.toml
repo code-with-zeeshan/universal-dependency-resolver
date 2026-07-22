@@ -46,8 +46,8 @@ classifiers = [
 
 dependencies = [
     # Core Framework
-    "fastapi>=0.115.0,<0.137",
-    "uvicorn>=0.24,<0.51",
+    "fastapi>=0.115.0,<0.140",
+    "uvicorn>=0.24,<0.52",
     "pydantic>=2.5.0,<3",
     # HTTP & Web Scraping
     "aiohttp>=3.9,<4",
@@ -84,7 +84,7 @@ pubgrub = [
     "pubgrub-py>=1.0,<2",
 ]
 z3 = [
-    "z3-solver>=4.12,<4.16.1",
+    "z3-solver>=4.12,<5.0.1",
 ]
 system = [
     "psutil>=5.9.6,<6",
@@ -100,7 +100,7 @@ dev = [
     "pytest-cov>=4.1,<6",
     "pytest-timeout>=2.2,<4",
     "ruff>=0.11,<1",
-    "mypy>=1.7,<2",
+    "mypy>=1.7,<3",
     "pre-commit>=3.6,<4",
     "hypothesis>=6.100,<7",
 ]
@@ -129,7 +129,7 @@ all = [
     "nvidia-ml-py>=12.535,<13",
     "gputil>=1.4,<2",
     "pubgrub-py>=1.0,<2",
-    "z3-solver>=4.12,<4.16.1",
+    "z3-solver>=4.12,<5.0.1",
     "wmi>=1.5.1,<2 ; platform_system=='Windows'",
     "asyncpg>=0.29,<1",
     "psycopg2-binary>=2.9,<3",

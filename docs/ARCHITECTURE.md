@@ -139,7 +139,7 @@ Routes:
 - **`export_generator.py`** — Jinja2 template-based export. 15 formats using `.j2` templates.
 - **`system_scanner.py`** — Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java. Results cached with 5-min TTL.
 - **`cache.py`** — `DictCache` (in-memory dict + TTL, no dependencies) with optional Redis fallback.
-- **`manifest_detector.py`** — Scans project directories for 20+ manifest formats (requirements.txt, package.json, Cargo.toml, etc.)
+- **`manifest_detector.py`** — Scans project directories for 46+ manifest/lock patterns (requirements.txt, package.json, Cargo.toml, etc.)
 
 ### Solver Pipeline Flow
 

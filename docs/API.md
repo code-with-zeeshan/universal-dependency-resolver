@@ -63,7 +63,7 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 
 ## Endpoint Summary
 
-The API exposes **58 endpoints** organized into the following categories:
+The API exposes **54 endpoints** organized into the following categories:
 
 | # | Method | Path | Auth | Rate Limit |
 |---|---|---|---|---|
@@ -580,30 +580,7 @@ Check if a username is available for registration.
 }
 ```
 
----
 
-### `POST /api/v1/auth/check-email`
-
-Check if an email is available for registration.
-
-**Rate limit:** 30/minute  
-**Auth:** None
-
-**Query parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `email` | string | yes | Email address to check |
-
-**Response:**
-
-```json
-{
-  "available": true
-}
-```
-
----
 
 ### `GET /api/v1/auth/signing-key`
 

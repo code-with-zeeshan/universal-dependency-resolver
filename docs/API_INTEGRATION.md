@@ -14,7 +14,7 @@ udr serve --port 8000 --host 0.0.0.0
 ENABLE_AUTH=false UDR_PORT=8000 udr serve
 ```
 
-With auth disabled, all 59 API routes are available immediately.
+With auth disabled, all 54 API routes are available immediately.
 
 ---
 
@@ -249,7 +249,6 @@ with httpx.Client() as client:
 | `GET /auth/api-keys` | List API keys |
 | `DELETE /auth/api-keys/{id}` | Revoke API key |
 | `POST /auth/logout` | Invalidate session |
-| `POST /auth/check-email` | Check email availability |
 | `POST /auth/check-username` | Check username availability |
 | `POST /auth/gen-key` | Generate signing key |
 | `GET /auth/signing-key` | Get signing public key |
@@ -263,7 +262,7 @@ with httpx.Client() as client:
 |---|---|---|
 | Public (no auth) | 43 | Business + infra routes |
 | Auth-only | 16 | Only mounted when `ENABLE_AUTH=true` |
-| **Total** | **59** | |
+| **Total** | **54** | |
 
 ---
 

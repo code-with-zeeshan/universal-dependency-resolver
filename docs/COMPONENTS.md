@@ -68,7 +68,7 @@ async def check_deps():
     agg = DataAggregator()
     info = await agg.get_package_info("torch", ecosystem="pypi")
     resolver = create_solver()
-    result = resolver.resolve([{"name": "torch", "version": ">=2.0"}])
+    result = resolver.resolve_dependencies(packages=[{"name": "torch", "version": ">=2.0"}])
 ```
 
 **API server — programmatic access:**

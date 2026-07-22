@@ -114,7 +114,7 @@ Yes. Import the factory: `from backend.orchestrator import create_solver`. Retur
 
 > *"Does UDR support private registries and authentication?"*
 
-Yes, with three-tier priority: constructor arg > environment variable > `.netrc`. 18 per-ecosystem env vars follow the pattern `{ECO}_AUTH_TOKEN` (e.g. `NPM_AUTH_TOKEN`, `PYPI_AUTH_TOKEN`). Supports bearer, basic, and header auth types. Wired through all 17 data source clients via `base_client.py.__init__()` and `registry_auth.py`. Private registry mirrors work by setting `registry_url` per client — there's no centralized mirror abstraction layer yet.
+Yes, with three-tier priority: constructor arg > environment variable > `.netrc`. 18 per-ecosystem env vars follow the pattern `{ECO}_AUTH_TOKEN` (e.g. `NPM_AUTH_TOKEN`, `PYPI_AUTH_TOKEN`). Supports bearer, basic, and header auth types. Wired through all 18+ data source clients via `base_client.py.__init__()` and `registry_auth.py`. Private registry mirrors work by setting `registry_url` per client — there's no centralized mirror abstraction layer yet.
 
 ---
 

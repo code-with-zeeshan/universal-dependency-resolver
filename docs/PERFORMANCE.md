@@ -83,7 +83,7 @@ flowchart TB
 The CLI starts in ~0.85s on a modern machine. This is achieved through:
 
 - **Lazy `import z3`**: Z3 is imported inside the `create_solver()` factory (AutoSolver), not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
-- **Lazy data source clients**: All 25 ecosystem clients are registered via `importlib.import_module()` in `_register_client()` builders. They are only imported when first accessed.
+- **Lazy ecosystem plugins**: All 27 ecosystem plugins are registered via `_register_builtin()` in `plugin.py`. They are only imported when first accessed.
 - **Lazy aggregator**: `DataAggregator` creates clients on demand.
 
 ## Resolution performance
