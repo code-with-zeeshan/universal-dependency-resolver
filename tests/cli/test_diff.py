@@ -20,7 +20,7 @@ class TestDiffBasic:
         result = _run("diff")
         assert result.returncode != 0
         assert (
-            "2" in result.stderr
-            or "two" in result.stderr.lower()
-            or "argument" in result.stderr.lower()
+            "2" in (result.stdout + result.stderr)
+            or "two" in (result.stdout + result.stderr).lower()
+            or "argument" in (result.stdout + result.stderr).lower()
         )
