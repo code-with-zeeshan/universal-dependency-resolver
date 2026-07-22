@@ -271,10 +271,50 @@ class _NoOpTracer:
 
 
 class _NoOpSpan:
-    """No-op span context manager."""
+    """No-op span context manager that supports all real Span methods as no-ops."""
 
     def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args: object) -> None:
+        pass
+
+    def set_attribute(self, key: str, value: object) -> None:
+        pass
+
+    def set_attributes(self, attributes: dict[str, object]) -> None:
+        pass
+
+    def add_event(
+        self, name: str, attributes: dict[str, object] | None = None,
+        timestamp: int | None = None,
+    ) -> None:
+        pass
+
+    def record_exception(
+        self, exception: BaseException,
+        attributes: dict[str, object] | None = None,
+        timestamp: int | None = None,
+        escaped: bool = False,
+    ) -> None:
+        pass
+
+    def set_status(self, status: object, description: str | None = None) -> None:
+        pass
+
+    def update_name(self, name: str) -> None:
+        pass
+
+    def end(self, end_time: int | None = None) -> None:
+        pass
+
+    def is_recording(self) -> bool:
+        return False
+
+    def get_span_context(self) -> object:
+        return None
+
+    def add_link(
+        self, context: object, attributes: dict[str, object] | None = None,
+    ) -> None:
         pass

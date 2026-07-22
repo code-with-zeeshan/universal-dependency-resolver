@@ -251,7 +251,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 
 | Item | Effort | Gain | Status |
 |------|--------|------|--------|
-| **Ruff docstrings (74 remaining)** | 1-2 hours per session, incremental | Code clarity, ruff compliance | ✅ All 0 D violations — fixed across 54 files |
+| **Ruff docstrings (221 missing)** | 1-2 hours per session, incremental | Code clarity, ruff compliance | ✅ All 0 D violations — fixed across 54 files |
 | **Type stubs (.pyi) for orchestrator/ and core/** | 2-3 days | Better IDE experience for library consumers | ✅ `.pyi` stubs created for `orchestrator/` (12 exports) and `core/` (21 lazy exports) |
 | **API/CLI parity: add /outdated, /diff, /why, /graph, /verify** | — | — | ✅ All 5 endpoints exist |
 | **Structured error types (ResolutionError hierarchy)** | — | — | ✅ Exists (P2 #25) |
