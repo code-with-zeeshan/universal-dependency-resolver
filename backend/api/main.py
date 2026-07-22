@@ -27,6 +27,19 @@ except ImportError:
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
+    from prometheus_fastapi_instrumentator.routing import _get_route_name as _orig_get_route_name
+
+    def _safe_get_route_name(route):
+        name = _orig_get_route_name(route)
+        if name is None:
+            return name
+        if not hasattr(route, "path"):
+            return str(name) if name else None
+        return name
+
+    import prometheus_fastapi_instrumentator.routing as _pfi_routing
+
+    _pfi_routing._get_route_name = _safe_get_route_name
 
     PROMETHEUS_AVAILABLE = True
 except ImportError:
