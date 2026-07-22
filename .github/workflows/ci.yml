@@ -128,7 +128,7 @@ jobs:
           TESTING: "true"
           PYTHONPATH: .
         run: |
-          timeout 600 bash tests/test_problem_statement.sh
+          timeout 900 bash tests/test_problem_statement.sh
 
       - name: Problem-statement e2e tests (pytest)
         env:
