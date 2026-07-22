@@ -29,13 +29,11 @@ try:
     from prometheus_fastapi_instrumentator import Instrumentator
     from prometheus_fastapi_instrumentator.routing import _get_route_name as _orig_get_route_name
 
-    def _safe_get_route_name(route):
-        name = _orig_get_route_name(route)
-        if name is None:
-            return name
-        if not hasattr(route, "path"):
-            return str(name) if name else None
-        return name
+    def _safe_get_route_name(scope, routes, route_name=None):
+        try:
+            return _orig_get_route_name(scope, routes, route_name)
+        except (AttributeError, TypeError):
+            return route_name or "unknown"
 
     import prometheus_fastapi_instrumentator.routing as _pfi_routing
 
