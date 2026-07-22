@@ -38,6 +38,7 @@ class CustomDbPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch compatibility rules for a package from the database."""
         client = self._get_client()
         import asyncio
 

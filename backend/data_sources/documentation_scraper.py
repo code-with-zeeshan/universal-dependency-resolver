@@ -573,7 +573,7 @@ class DocumentationScraper:
         return requirements
 
     def _scrape_generic_requirements(self, soup: BeautifulSoup) -> dict:
-        """Generic requirements scraper."""
+        """Scrape generic requirements."""
         requirements: dict[str, Any] = {
             "system_requirements": [],
             "dependencies": [],

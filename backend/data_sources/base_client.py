@@ -179,6 +179,7 @@ class BaseDataSourceClient:
 
     async def _make_request(self, method: str, url: str, **kwargs) -> dict | None:
         """Actual HTTP request without circuit breaker.
+
         Returns None for 404, raises IOError for network/server errors.
         """
         await self._maybe_refresh_auth()
@@ -226,6 +227,7 @@ class BaseDataSourceClient:
 
     async def _circuit_breaker_call(self, method: str, url: str, **kwargs) -> dict | None:
         """Execute request with circuit breaker pattern.
+
         404s (None results) do NOT count as circuit failures.
         """
         async with self._circuit_lock:
@@ -311,7 +313,7 @@ class BaseDataSourceClient:
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
-        """Cached get."""
+        """Get from cache or fetch from URL."""
         import time as _time
 
         cached = await self._cache_get(cache_key)

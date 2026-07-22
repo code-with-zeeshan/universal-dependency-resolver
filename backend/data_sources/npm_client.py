@@ -89,7 +89,7 @@ class NPMClient(BaseDataSourceClient):
     async def cached_get(
         self, cache_key: str, url: str, ttl: int | None = None, headers: dict | None = None
     ) -> dict | None:
-        """Cached get."""
+        """Get from cache or fetch from URL."""
         async with _NPM_SEMAPHORE:
             return await super().cached_get(cache_key, url, ttl=ttl, headers=headers)
 
@@ -192,6 +192,13 @@ class NPMClient(BaseDataSourceClient):
         if include_versions:
             versions_info = self._process_versions(data.get("versions", {}), data.get("time", {}))
 
+        repo_info = self._extract_repository_info(data.get("repository"))
+        repo_url = repo_info.get("url") if isinstance(repo_info, dict) else None
+        if repo_url:
+            for v in versions_info:
+                if isinstance(v, dict):
+                    v["source_url"] = repo_url
+
         categorized_deps = self._categorize_dependencies(latest_data)
         # Include peerDependencies in the dependency flow so they participate
         # in resolution. The aggregator marks them with peer=True so the
@@ -206,7 +213,7 @@ class NPMClient(BaseDataSourceClient):
             "license": data.get("license"),
             "author": self._format_person(data.get("author")),  # type: ignore[arg-type]
             "maintainers": [self._format_person(m) for m in data.get("maintainers", [])],
-            "repository": self._extract_repository_info(data.get("repository")),  # type: ignore[arg-type]
+            "repository": repo_info,
             "readme": data.get("readme") if include_readme else None,
             "readmeFilename": data.get("readmeFilename"),
             "dist_tags": data.get("dist-tags", {}),

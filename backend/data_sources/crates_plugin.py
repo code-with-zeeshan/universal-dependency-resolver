@@ -32,10 +32,12 @@ class CratesPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_cargo_toml(content: str) -> list[dict]:
+        """Parse a Cargo.toml file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_cargo_lock(content: str) -> dict[str, dict]:
+        """Parse a Cargo.lock file into a name -> {version} map."""
         return {}
 
     _legacy_client = None
@@ -53,6 +55,7 @@ class CratesPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         try:
             data = await client.get_package_info(package_name)
@@ -66,6 +69,7 @@ class CratesPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         client = self._get_client()
         try:
             return await client.get_package_versions(package_name, filters=filters)
@@ -74,6 +78,7 @@ class CratesPlugin(EcosystemPlugin):
             return []
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         client = self._get_client()
         try:
             return await client.search_packages(query, limit=limit)
@@ -82,5 +87,6 @@ class CratesPlugin(EcosystemPlugin):
             return []
 
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get integrity hash for a specific package version."""
         client = self._get_client()
         return await client.get_artifact_hash(package_name, version)

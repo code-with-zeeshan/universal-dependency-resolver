@@ -476,6 +476,7 @@ class ManifestDetector:
 
     def normalize(self, packages: list[dict]) -> list[dict]:
         """Normalize parsed packages to {name, ecosystem, constraint} format.
+
         Resolves workspace:* and catalog: constraints using workspace config.
         """
         normalized = []

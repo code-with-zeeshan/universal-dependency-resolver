@@ -478,8 +478,7 @@ class PubGrubCoreSolver:
         return None
 
     def _deps_are_feasible(self, package: str, version: str) -> bool:
-        """Return True if *version* of *package* has at least one candidate
-        for each of its dependency constraints.
+        """Return True if *version* of *package* has at least one candidate per dep constraint.
 
         Only checks packages that are KNOWN in _packages — a dependency on a
         completely unknown package is treated as satisfiable (will be handled

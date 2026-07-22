@@ -25,6 +25,7 @@ class CondaPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_conda_env(content: str) -> list[dict]:
+        """Parse a conda environment.yml into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -42,5 +43,6 @@ class CondaPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         return await client.get_package_info_async(package_name)

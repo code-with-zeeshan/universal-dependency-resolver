@@ -599,6 +599,9 @@ class DataAggregator:
 
             # Build _version_metadata from version dicts for deprecation/yanked checking
             version_meta = {}
+            pkg_repo = result.get("repository") or (result.get("unified_data") or {}).get(
+                "repository"
+            )
             for ver_entry in result.get("versions") or []:
                 if isinstance(ver_entry, dict):
                     v_str = ver_entry.get("version", "")
@@ -608,6 +611,12 @@ class DataAggregator:
                             meta["yanked"] = bool(ver_entry["yanked"])
                         if "deprecated" in ver_entry:
                             meta["deprecated"] = ver_entry["deprecated"] is not None
+                        source_url = ver_entry.get("source_url") or pkg_repo
+                        if source_url:
+                            meta["source_url"] = source_url
+                        commit_hash = ver_entry.get("commit_hash")
+                        if commit_hash:
+                            meta["commit_hash"] = commit_hash
                         if meta:
                             version_meta[v_str] = meta
             if version_meta:

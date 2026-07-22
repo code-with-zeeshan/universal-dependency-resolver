@@ -32,18 +32,22 @@ class NpmPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_package_json(content: str) -> list[dict]:
+        """Parse a package.json file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_package_lock(content: str) -> list[dict]:
+        """Parse a package-lock.json file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_yarn_lock(content: str) -> list[dict]:
+        """Parse a yarn.lock file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_pnpm_lock(content: str) -> list[dict]:
+        """Parse a pnpm-lock.yaml file into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -61,6 +65,7 @@ class NpmPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         return await client.get_package_info(
             package_name,
@@ -74,13 +79,16 @@ class NpmPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         client = self._get_client()
         return await client.get_versions(package_name)
 
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get integrity hash for a specific package version."""
         client = self._get_client()
         return await client.get_artifact_hash(package_name, version)
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         client = self._get_client()
         return await client.search_packages(query, limit=limit)

@@ -100,6 +100,7 @@ class GradlePlugin(EcosystemPlugin):
         return "https://plugins.gradle.org/api"
 
     def __init__(self, cache_ttl: int | None = None, max_retries: int | None = None):
+        """Initialize GradlePlugin with optional cache and retry config."""
         super().__init__(cache_ttl=cache_ttl, max_retries=max_retries)
         self.maven_repo_url = "https://repo1.maven.org/maven2"
 
@@ -109,6 +110,7 @@ class GradlePlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         group, artifact = (
             package_name.split(":", 1) if ":" in package_name else (package_name, package_name)
         )
@@ -193,6 +195,7 @@ class GradlePlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         info = await self.get_package_info(package_name, include_versions=True)
         raw = info.get("versions", []) if info else []
         return [{"version": v} if isinstance(v, str) else v for v in raw]

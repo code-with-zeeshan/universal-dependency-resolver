@@ -62,6 +62,12 @@ class PubClient(BaseDataSourceClient):
                     }
                 )
 
+            repo_url = data.get("repository", "")
+            if repo_url:
+                for v_entry in versions:
+                    if isinstance(v_entry, dict):
+                        v_entry["source_url"] = repo_url
+
             # Build aggregated dependencies (latest version's deps)
             deps: dict[str, Any] = {"dependencies": {}}
             latest_pubspec = None

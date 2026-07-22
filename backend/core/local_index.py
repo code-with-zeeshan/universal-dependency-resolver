@@ -313,7 +313,7 @@ class LocalIndexManager:
 
 
 def get_local_index(ecosystem: str) -> LocalIndexManager | None:
-    """Factory: return a ``LocalIndexManager`` for *ecosystem*, or ``None`` if unsupported.
+    """Return a ``LocalIndexManager`` for *ecosystem*, or ``None`` if unsupported.
 
     Only ``pypi``, ``npm``, and ``crates`` are supported.
     When ``ENABLE_LOCAL_INDEX`` is ``false``, returns ``None``.
@@ -362,12 +362,14 @@ async def _fetch_pypi_package_list() -> list[str]:
 
     url = "https://pypi.org/simple/"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers={"Accept": "text/html"}) as resp:
-                if resp.status != 200:
-                    logger.warning("PyPI Simple API returned status %d", resp.status)
-                    return []
-                html = await resp.text()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(url, headers={"Accept": "text/html"}) as resp,
+        ):
+            if resp.status != 200:
+                logger.warning("PyPI Simple API returned status %d", resp.status)
+                return []
+            html = await resp.text()
     except Exception as exc:
         logger.warning("Failed to fetch PyPI package list: %s", exc)
         return []
@@ -385,11 +387,13 @@ async def _fetch_pypi_package_json(package: str, sem: asyncio.Semaphore) -> dict
     url = f"https://pypi.org/pypi/{package}/json"
     async with sem:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers={"Accept": "application/json"}) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(url, headers={"Accept": "application/json"}) as resp,
+            ):
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
         except Exception as exc:
             logger.debug("Failed to fetch PyPI package %s: %s", package, exc)
             return None
@@ -403,14 +407,12 @@ async def _fetch_pypi_package_json(package: str, sem: asyncio.Semaphore) -> dict
         release_date = None
         requires_python = None
         deps = info.get("requires_dist", [])
-        try:
+        import contextlib
+
+        with contextlib.suppress(IndexError, KeyError):
             release_date = files[0].get("upload_time")
-        except (IndexError, KeyError):
-            pass
-        try:
+        with contextlib.suppress(IndexError, KeyError):
             requires_python = files[0].get("requires_python")
-        except (IndexError, KeyError):
-            pass
         versions.append(
             {
                 "version": ver_str,

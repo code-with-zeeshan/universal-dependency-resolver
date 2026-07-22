@@ -385,6 +385,7 @@ async def readyz():
 @limiter.limit("30/minute")
 async def health_check(request: Request, _user=Depends(get_current_user)) -> dict:
     """Health check endpoint that verifies all critical dependencies.
+
     Returns detailed status of each component (requires authentication).
     """
     health_status: dict[str, Any] = {

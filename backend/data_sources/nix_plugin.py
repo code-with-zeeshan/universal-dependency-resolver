@@ -200,6 +200,7 @@ class NixPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         logger.warning(
             "Nix has no remote package API — cannot resolve metadata for %s. "
             "Use flake.lock pins for deterministic resolution.",

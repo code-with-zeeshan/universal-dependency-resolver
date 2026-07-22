@@ -136,6 +136,12 @@ class CratesClient(BaseDataSourceClient):
                         }
                     )
 
+            repo_url = crate.get("repository")
+            if repo_url:
+                for v_entry in versions:
+                    if isinstance(v_entry, dict):
+                        v_entry["source_url"] = repo_url
+
             return {
                 "name": crate["name"],
                 "ecosystem": "crates",

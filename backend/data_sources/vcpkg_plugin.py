@@ -69,6 +69,7 @@ class VcpkgPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             url = f"{self.base_url}/{package_name}/vcpkg.json"
             data = await self._get(url)

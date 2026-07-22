@@ -374,12 +374,12 @@ cache_manager = CacheManager()
 
 
 def cache_key(*args, **kwargs) -> Callable:
-    """Decorator to generate cache keys for methods."""
+    """Generate cache keys for methods."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(self, *method_args, **method_kwargs):
-            """Wrapper."""
+            """Wrap the decorated method with cache key logic."""
             prefix = f"{self.__class__.__name__}:{func.__name__}"
             key = cache_manager._generate_key(prefix, *method_args, **method_kwargs)
 
@@ -401,7 +401,7 @@ def cache_key(*args, **kwargs) -> Callable:
 
 
 def cached(ttl: int | None = None, key_prefix: str | None = None):
-    """Decorator for caching function results."""
+    """Cache function results."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)

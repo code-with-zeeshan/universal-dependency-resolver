@@ -765,7 +765,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main():
-    """Main."""
+    """Run the CLI entry point."""
     register_signal_handlers(SHUTDOWN_FLAG)
     parser = _build_parser()
     args = parser.parse_args()

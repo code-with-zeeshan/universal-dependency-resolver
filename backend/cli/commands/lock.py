@@ -639,6 +639,8 @@ def _build_lock_data(
             "purl": make_purl(pkg_name, ver, eco),
             "registry_url": get_ecosystem_config(eco).get("url", ""),
             "integrity": integrity_val,
+            "source_url": dep_info.get("source_url"),
+            "commit_hash": dep_info.get("commit_hash"),
             "peer_dependencies": pkg_detail.get("peer_dependencies", {}).get(eco, {}),
             "vulnerabilities": [
                 {

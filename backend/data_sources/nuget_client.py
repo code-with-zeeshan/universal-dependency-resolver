@@ -248,6 +248,15 @@ class NuGetClient(BaseDataSourceClient):
             reverse=True,
         )
 
+        repo_url = None
+        if latest_data:
+            repo_info = self._extract_repository_info(latest_data)
+            repo_url = repo_info.get("url") if isinstance(repo_info, dict) else None
+            if repo_url:
+                for v in versions_info:
+                    if isinstance(v, dict):
+                        v["source_url"] = repo_url
+
         if latest_data:
             info.update(
                 {
@@ -270,7 +279,7 @@ class NuGetClient(BaseDataSourceClient):
                         "requireLicenseAcceptance", False
                     ),
                     "package_types": latest_data.get("packageTypes", []),
-                    "repository": self._extract_repository_info(latest_data),
+                    "repository": repo_info,
                     "dependencies": self._extract_dependencies(
                         latest_data.get("dependencyGroups", [])
                     ),

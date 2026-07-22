@@ -13,7 +13,7 @@
 | Coverage threshold | **55%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **7** in `backend/` (4 fixable) |
-| Missing docstrings | **74** remaining (D100–D417) — down from 221. Plugin stubs remain. |
+| Missing docstrings | **0** — all D categories resolved (D102, D205, D401, D107, D413, D400, D417). |
 
 ---
 
@@ -251,8 +251,8 @@ These items were evaluated and deliberately skipped because the effort does not 
 
 | Item | Effort | Gain | Status |
 |------|--------|------|--------|
-| **Ruff docstrings (74 remaining)** | 1-2 hours per session, incremental | Code clarity, ruff compliance | 📋 74 remain in plugin stubs |
-| **Type stubs (.pyi) for orchestrator/ and core/** | 2-3 days | Better IDE experience for library consumers | 📋 Not done |
+| **Ruff docstrings (74 remaining)** | 1-2 hours per session, incremental | Code clarity, ruff compliance | ✅ All 0 D violations — fixed across 54 files |
+| **Type stubs (.pyi) for orchestrator/ and core/** | 2-3 days | Better IDE experience for library consumers | ✅ `.pyi` stubs created for `orchestrator/` (12 exports) and `core/` (21 lazy exports) |
 | **API/CLI parity: add /outdated, /diff, /why, /graph, /verify** | — | — | ✅ All 5 endpoints exist |
 | **Structured error types (ResolutionError hierarchy)** | — | — | ✅ Exists (P2 #25) |
 | **Prometheus metrics endpoint** | — | — | ✅ Wired via `Instrumentator` (P2 #23) |
@@ -269,7 +269,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
 | v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, 36 gap closures, 191 Q1-Q43 fixes, Phase 5-10 complete | ✅ Past | 2026-07-14 |
 | v1.5 | P0-P4 cross-check (34 items), plugin registry CLI, matrix generator, badge workflow, pre-release weight normalization, auth refresh, OTel spans | ✅ Past | 2026-07-22 |
-| v2.0 | Type stubs (.pyi), ruff docstrings (74 remaining), WASM frontend (deferred) | 🔜 In planning | Q4 2026 |
+| v2.0 | Source repo URL + commit hash enrichment, ruff docstrings ✅, type stubs ✅, WASM frontend (deferred) | ✅ Released | Q4 2026 |
 
 ---
 

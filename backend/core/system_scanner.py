@@ -2368,7 +2368,7 @@ class SystemScanner:
 
 # Example usage
 async def example_usage():
-    """Example usage."""
+    """Run example usage."""
     scanner = SystemScanner(enable_cache=True, parallel_scan=True, deep_scan=False)
 
     async with scanner:

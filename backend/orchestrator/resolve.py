@@ -699,6 +699,7 @@ async def _resolve_transitive(
         include_optional: bool = False,
     ) -> None:
         """Extract dependency names from *pkg* and append (name, eco, source) tuples to *out_list*.
+
         Skips already visited, pre-resolved, or collected packages.
         """
         if not pkg:

@@ -97,6 +97,7 @@ class TerraformPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             url = f"{self.base_url}/providers/{package_name}/versions"
             data = await self._get(url)

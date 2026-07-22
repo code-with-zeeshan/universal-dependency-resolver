@@ -172,6 +172,8 @@ class PubGrubSolver:
             ``available_versions``, ``dependencies``.
         system_info
             Ignored by PubGrub (CUDA/system constraints handled separately).
+        **kwargs
+            Ignored by PubGrub (for API compat with ``ConflictResolver``).
 
         Returns
         -------

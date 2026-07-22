@@ -276,6 +276,7 @@ async def get_current_active_user(
 
 def require_scopes(*required_scopes: str):
     """Dependency factory to require specific OAuth scopes.
+
     Used in route definitions: ``require_scopes("packages:read")``.
     """
 

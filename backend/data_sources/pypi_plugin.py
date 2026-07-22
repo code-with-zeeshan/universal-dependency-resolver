@@ -33,26 +33,32 @@ class PypiPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_requirements(content: str) -> list[dict]:
+        """Parse a requirements.txt file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_pipfile(content: str) -> list[dict]:
+        """Parse a Pipfile into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_pipfile_lock(content: str) -> list[dict]:
+        """Parse a Pipfile.lock into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_pyproject(content: str) -> list[dict]:
+        """Parse a pyproject.toml file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_poetry_lock(content: str) -> list[dict]:
+        """Parse a poetry.lock file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_uv_lock(content: str) -> list[dict]:
+        """Parse a uv.lock file into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -70,6 +76,7 @@ class PypiPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         data = await client.get_package_info_async(package_name)
         if data is None:
@@ -85,13 +92,16 @@ class PypiPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         client = self._get_client()
         return await client.get_versions(package_name)
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         client = self._get_client()
         return await client.search(query, limit=limit)
 
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get integrity hash for a specific package version."""
         client = self._get_client()
         return await client.get_artifact_hash(package_name, version)

@@ -92,7 +92,7 @@ class PyPIClient(BaseDataSourceClient):
             return None
 
     def get_package_info(self, package_name: str) -> dict[str, Any] | None:
-        """Synchronous wrapper for get_package_info_async."""
+        """Wrap get_package_info_async synchronously."""
         package_name = normalize_package_name(package_name)
         return run_async(self.get_package_info_async(package_name))
 
@@ -198,6 +198,12 @@ class PyPIClient(BaseDataSourceClient):
         # Extract development status
         dev_status = self._extract_development_status(info.get("classifiers") or [])
 
+        repo_url = self._extract_repository_url(info)
+        if repo_url:
+            for v in versions_info:
+                if isinstance(v, dict):
+                    v["source_url"] = repo_url
+
         return {
             "name": info.get("name"),
             "version": latest_version,
@@ -205,7 +211,7 @@ class PyPIClient(BaseDataSourceClient):
             "description": info.get("summary"),
             "long_description": info.get("description"),
             "homepage": info.get("home_page"),
-            "repository": self._extract_repository_url(info),
+            "repository": repo_url,
             "documentation": self._extract_documentation_url(info),
             "author": info.get("author"),
             "author_email": info.get("author_email"),

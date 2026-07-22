@@ -74,6 +74,7 @@ class DockerPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             from ..data_sources.docker_client import DockerRegistryClient
 

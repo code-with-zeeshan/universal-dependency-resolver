@@ -147,6 +147,7 @@ class HexPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         pkg = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/packages/{pkg}")
@@ -189,6 +190,7 @@ class HexPlugin(EcosystemPlugin):
             return []
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         data = await self._get(
             f"{self.base_url}/packages",
             params={"sort": "name", "search": query, "per_page": limit},

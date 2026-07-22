@@ -98,6 +98,7 @@ class SwiftPlugin(EcosystemPlugin):
         return GITHUB_API
 
     def __init__(self, cache_ttl: int | None = None, max_retries: int | None = None):
+        """Initialize SwiftPlugin with optional cache and retry config."""
         config = get_ecosystem_config("swift")
         configured_url = config.get("url", "").rstrip("/")
         self._registry_url = configured_url or GITHUB_API
@@ -110,6 +111,7 @@ class SwiftPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             owner, repo = self._resolve_package(package_name)
             versions = await self._list_versions(owner, repo) if include_versions else []
@@ -136,6 +138,7 @@ class SwiftPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         info = await self.get_package_info(
             package_name, include_versions=True, include_dependencies=False
         )

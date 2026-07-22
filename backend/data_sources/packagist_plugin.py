@@ -25,10 +25,12 @@ class PackagistPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_composer_json(content: str) -> list[dict]:
+        """Parse a composer.json file into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_composer_lock(content: str) -> list[dict]:
+        """Parse a composer.lock file into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -46,9 +48,11 @@ class PackagistPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         return await client.get_package_info_async(package_name, include_versions=include_versions)
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         client = self._get_client()
         return await client.search_packages(query, limit=limit)

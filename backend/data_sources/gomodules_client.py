@@ -107,13 +107,19 @@ class GoModulesClient(BaseDataSourceClient):
 
         dependencies = await self._parse_go_mod(module_info)
 
+        versions = [_strip_v(v) for v in versions_data]
+        repo_url = f"https://{package_name}"
+        for v_entry in versions:
+            if isinstance(v_entry, dict):
+                v_entry["source_url"] = repo_url
+
         info = {
             "name": package_name,
             "version": _strip_v(latest_version),
-            "versions": [_strip_v(v) for v in versions_data],
+            "versions": versions,
             "description": f"Go module: {package_name}",
             "homepage": f"https://pkg.go.dev/{package_name}",
-            "repository": f"https://{package_name}",
+            "repository": repo_url,
             "license": "See repository",
             "dependencies": dependencies,
             "system_requirements": {"go": {"min_version": self._extract_go_version(module_info)}},

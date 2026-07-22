@@ -44,6 +44,7 @@ class PackageSpec:
         versions: List of version strings available for this package.
         constraint: Version constraint string (e.g. ``">=1.0.0"``).
         deps: Map of ``{ecosystem: {name: constraint}}`` dependencies.
+
     """
 
     name: str
@@ -77,6 +78,7 @@ class MatrixGenerator:
     """
 
     def __init__(self, seed: int = 42):
+        """Initialize MatrixGenerator with given random seed."""
         self._rng = random.Random(seed)  # noqa: S311 — reproducible non-crypto randomness for test matrix generation
 
     def generate_package(
@@ -105,6 +107,7 @@ class MatrixGenerator:
 
         Returns:
             A new ``PackageSpec``.
+
         """
         if available_versions is not None:
             versions = available_versions
@@ -153,6 +156,7 @@ class MatrixGenerator:
 
         Returns:
             List of ``PackageSpec`` instances forming a DAG.
+
         """
         if ecosystems is None:
             ecosystems = ["pypi"]

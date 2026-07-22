@@ -155,13 +155,19 @@ class PackagistClient(BaseDataSourceClient):
             reverse=True,
         )
 
+        repo_url = package_data.get("repository")
+        if repo_url:
+            for v in versions_info:
+                if isinstance(v, dict):
+                    v["source_url"] = repo_url
+
         downloads = await self._get_download_stats(package_name)
 
         info = {
             "name": package_data.get("name"),
             "description": package_data.get("description"),
             "type": package_data.get("type", "library"),
-            "repository": package_data.get("repository"),
+            "repository": repo_url,
             "homepage": package_data.get("homepage"),
             "language": package_data.get("language"),
             "abandoned": package_data.get("abandoned", False),

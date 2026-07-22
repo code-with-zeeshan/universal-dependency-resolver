@@ -24,6 +24,7 @@ class GoModulesPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_go_mod(content: str) -> list[dict]:
+        """Parse a go.mod file into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -41,5 +42,6 @@ class GoModulesPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         return await client.get_package_info_async(package_name)

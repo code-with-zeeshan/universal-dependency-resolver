@@ -241,7 +241,7 @@ def register_ecosystem(
     name: str = "",
     auth_prefix: str = "",
 ):
-    """Decorator that registers a plugin class for *ecosystem*.
+    """Register a plugin class for *ecosystem*.
 
     Usage::
 
@@ -409,9 +409,7 @@ def _register_builtin(ecosystem: str, module_path: str):
 
 
 def import_builtin_plugins():
-    """Import all built-in plugin modules so their ``@register_ecosystem``
-    decorators fire.  Safe to call multiple times.
-    """
+    """Import all built-in plugin modules so their ``@register_ecosystem`` decorators fire."""
     import importlib
 
     for ecosystem, module_path in list(_BUILTIN_PLUGIN_MODULES.items()):

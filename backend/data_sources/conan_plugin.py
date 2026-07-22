@@ -60,9 +60,7 @@ class ConanPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_conanfile_py(content: str) -> list[dict]:
-        """Parse conanfile.py for ``self.requires("pkg/1.2.3")`` or
-        ``requires = ("pkg/1.2.3",)`` patterns.
-        """
+        """Parse conanfile.py for ``self.requires("pkg/1.2.3")`` or ``requires = ("pkg/1.2.3",)`` patterns."""
         if not isinstance(content, str):
             return []
         deps: list[dict] = []
@@ -105,6 +103,7 @@ class ConanPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             url = f"{self.base_url}/v1/conans/{package_name}"
             data = await self._get(url)

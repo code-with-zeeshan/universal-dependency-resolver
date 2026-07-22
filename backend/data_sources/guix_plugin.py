@@ -65,6 +65,7 @@ class GuixPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         logger.warning(
             "Guix has no remote package API — cannot resolve metadata for %s. "
             "Use guix lock files for deterministic resolution.",

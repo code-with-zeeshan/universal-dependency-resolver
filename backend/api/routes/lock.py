@@ -126,6 +126,7 @@ async def verify_lock(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Validate a lock file — check all resolved versions still exist.
+
     Mirrors `udr verify`.
     """
     aggregator = DataAggregator()
@@ -197,6 +198,7 @@ async def dependency_graph(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Get dependency tree for one or more packages.
+
     Mirrors `udr graph`.
     """
     resolver = create_solver()
@@ -278,6 +280,7 @@ async def update_package(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Re-resolve a single package and return updated lock data.
+
     Mirrors `udr update <package> --directory <path> --json`.
     """
     aggregator = DataAggregator()
@@ -371,6 +374,7 @@ async def _run_lock_pipeline(
     system_override: dict[str, Any] | None = None,
 ) -> dict:
     """Full pipeline: write manifests to temp dir, detect, parse, fetch, resolve, build lock data.
+
     Mirrors ``udr lock --json`` internally.
     """
     tmp = Path(tempfile.mkdtemp(prefix="udr_lock_"))
@@ -687,6 +691,7 @@ async def install_commands(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Generate native install commands grouped by ecosystem from lock data.
+
     Mirrors `udr install <package>` using locked versions.
     """
     lock_data = req.lock_data
@@ -747,6 +752,7 @@ async def why_package(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Explain why a package version was selected — dependency chain, constraint, direct/transitive.
+
     Mirrors `udr why <package>`.
     """
     lock_data = req.lock_data
@@ -786,6 +792,7 @@ async def outdated_packages(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Check all packages against registries for newer versions.
+
     Mirrors `udr outdated --json`.
     """
     aggregator = DataAggregator()
@@ -848,6 +855,7 @@ async def diff_lock_files(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Compare two lock data objects and report package differences.
+
     Mirrors `udr diff <file_a> <file_b> --json`.
     """
     pkgs_a = req.lock_a.get("packages", {})

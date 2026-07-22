@@ -114,6 +114,7 @@ def parse_version(version_str: str) -> version.Version | None:
 
 def parse_version_key(version_str: str) -> Version:
     """Parse a version string for use as a sort key.
+
     Returns ``Version("0.0.0")`` for unparseable versions (never None).
     """
     parsed = parse_version(version_str)

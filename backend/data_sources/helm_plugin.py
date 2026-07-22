@@ -127,6 +127,7 @@ class HelmPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         try:
             url = f"{self.base_url}/api/v1/packages/helm/{package_name}"
             data = await self._get(url)

@@ -296,7 +296,7 @@ class ConflictResolver:
         prefer_compatibility: bool = True,
         solver_timeout: int | None = None,
     ) -> dict[str, Any]:
-        """Internal implementation of resolve_dependencies (holds _resolve_lock)."""
+        """Hold _resolve_lock during dependency resolution."""
         # Reassign (not clear) to give each call fresh state
 
         self.version_vars = {}
@@ -876,7 +876,7 @@ class ConflictResolver:
         prefer_compatibility: bool = True,
         solver_timeout: int | None = None,
     ) -> dict[str, Any]:
-        """Synchronous implementation of dependency resolution (extracted for caching)."""
+        """Run dependency resolution synchronously."""
         try:
             return self.resolve_dependencies(
                 packages,
@@ -2201,9 +2201,7 @@ class ConflictResolver:
             return True
 
         def _check_constraints(name: str, version_str: str, assignment: dict[str, str]) -> bool:
-            """Forward checking: does version_str for name satisfy all constraints
-            from already-assigned packages that depend on name?
-            """
+            """Check if version_str satisfies constraints from already-assigned packages."""
             if name not in dep_constraints:
                 return True
             for con_str, eco in dep_constraints[name]:

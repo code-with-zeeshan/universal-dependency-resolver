@@ -103,6 +103,7 @@ class HaskellPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         pkg = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/package/{pkg}.json")
@@ -133,5 +134,6 @@ class HaskellPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         info = await self.get_package_info(package_name, include_versions=True)
         return info.get("versions", []) if info else []

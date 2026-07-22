@@ -25,10 +25,12 @@ class RubyGemsPlugin(EcosystemPlugin):
 
     @staticmethod
     def parse_gemfile(content: str) -> list[dict]:
+        """Parse a Gemfile into a list of dependency dicts."""
         return []
 
     @staticmethod
     def parse_gemfile_lock(content: str) -> list[dict]:
+        """Parse a Gemfile.lock into a list of dependency dicts."""
         return []
 
     _legacy_client = None
@@ -46,13 +48,16 @@ class RubyGemsPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         client = self._get_client()
         return await client.get_package_info_async(package_name, include_versions=include_versions)
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         client = self._get_client()
         return await client.search_packages(query, limit=limit)
 
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
+        """Get integrity hash for a specific package version."""
         client = self._get_client()
         return await client.get_artifact_hash(package_name, version)

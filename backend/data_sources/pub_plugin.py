@@ -97,6 +97,7 @@ class PubPlugin(EcosystemPlugin):
         include_dependencies: bool = True,
         include_versions: bool = True,
     ) -> dict[str, Any] | None:
+        """Fetch package metadata from the registry."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/packages/{quote(package_name)}")
@@ -157,6 +158,7 @@ class PubPlugin(EcosystemPlugin):
         package_name: str,
         filters: dict | None = None,
     ) -> list[dict]:
+        """Fetch all available versions for a package."""
         package_name = normalize_package_name(package_name)
         try:
             data = await self._get(f"{self.base_url}/packages/{quote(package_name)}")
@@ -186,6 +188,7 @@ class PubPlugin(EcosystemPlugin):
             return []
 
     async def search_packages(self, query: str, limit: int = 20) -> list[dict]:
+        """Search for packages matching the query."""
         try:
             data = await self._get(
                 f"{self.base_url}/search",
