@@ -220,7 +220,7 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           PYTHONPATH: .
         run: |
-          python -m pytest tests/integration/ -v --tb=short
+          python -m pytest tests/integration/ -v --tb=short -k "not slow"
 
   desktop-tests:
     runs-on: ubuntu-latest

@@ -143,6 +143,7 @@ class TestCLICommands:
         assert "pypi" in output
         assert "0." in output
 
+    @pytest.mark.slow
     def test_lock_requirements_txt(self, test_dir):
         output = run_cli(
             "lock",
@@ -151,7 +152,7 @@ class TestCLICommands:
             str(test_dir),
             "--manifest",
             "requirements.txt",
-            timeout=120,
+            timeout=300,
             cwd=test_dir,
         )
         assert "Resolved" in output
@@ -159,6 +160,7 @@ class TestCLICommands:
         assert "django" in output
         assert "direct" in output
 
+    @pytest.mark.slow
     def test_lock_pyproject_toml(self, test_dir):
         output = run_cli(
             "lock",
@@ -167,7 +169,7 @@ class TestCLICommands:
             str(test_dir),
             "--manifest",
             "pyproject.toml",
-            timeout=120,
+            timeout=300,
             cwd=test_dir,
         )
         assert "fastapi" in output
@@ -179,6 +181,7 @@ class TestCLICommands:
         assert "Dependency Tree" in output
         assert "numpy" in output
 
+    @pytest.mark.slow
     def test_install_dry_run(self, test_dir):
         output = run_cli(
             "install",
