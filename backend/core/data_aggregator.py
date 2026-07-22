@@ -26,6 +26,7 @@ from backend.core.utils import (
     sanitize_ecosystem_name,
 )
 from backend.settings import DETECT_ECOSYSTEMS_TIMEOUT, OSV_API_URL
+from backend.tracing_config import get_tracer
 
 from ._json import dumps
 
@@ -258,6 +259,12 @@ class DataAggregator:
         include_extended: bool = True,
     ) -> dict[str, Any]:
         """Get comprehensive package information from all sources."""
+        _tracer = get_tracer(__name__)
+        _span = _tracer.start_as_current_span("DataAggregator.get_package_info")
+        _span.__enter__()
+        _span.set_attribute("package_name", package_name)
+        _span.set_attribute("ecosystem", str(ecosystem or ""))
+        _span.set_attribute("version", version or "")
         if ecosystem and isinstance(ecosystem, str):
             eco_str = ecosystem
         elif ecosystem and isinstance(ecosystem, Ecosystem):
@@ -288,11 +295,13 @@ class DataAggregator:
 
                 cached_result = await content_cache.get(cache_key)
                 if cached_result is not None:
+                    _span.__exit__(None, None, None)
                     return cached_result
         except Exception:
             pass
         cached_result = await cache_manager.get(cache_key)
         if cached_result:
+            _span.__exit__(None, None, None)
             return cached_result
 
         # Determine ecosystems to check
@@ -410,6 +419,9 @@ class DataAggregator:
         except Exception:
             pass
 
+        _span.set_attribute("ecosystems_checked", str([e.value for e in ecosystems]))
+        _span.set_attribute("result_keys", list(aggregated_info.keys()))
+        _span.__exit__(None, None, None)
         return aggregated_info
 
     async def _detect_ecosystems(self, package_name: str) -> list[Ecosystem]:

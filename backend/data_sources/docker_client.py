@@ -34,6 +34,7 @@ class DockerRegistryClient:
         registry: str = "registry-1.docker.io",
         auth_token: str | None = None,
     ):
+        """Initialize the Docker Registry client."""
         self.registry = registry.rstrip("/")
         self.base_url = f"https://{registry}/v2"
         self._auth_token = auth_token
@@ -52,6 +53,7 @@ class DockerRegistryClient:
         return self._session
 
     async def close(self):
+        """Close the underlying aiohttp session."""
         if self._session:
             await self._session.close()
             self._session = None

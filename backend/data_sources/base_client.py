@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -70,6 +71,10 @@ class BaseDataSourceClient:
             registry_url=base_url,
             explicit_headers=auth_headers,
         )
+        self._auth_explicit = bool(auth_headers)
+        self._auth_env_prefix = ecosystem.upper()
+        self._auth_last_check = time.monotonic()
+        self._auth_refresh_interval = 60  # seconds
         self._request_timestamps: list = []
         self._throttle_lock = asyncio.Lock()
         self._circuit_state = "CLOSED"
@@ -94,6 +99,34 @@ class BaseDataSourceClient:
             if self.session in _sessions_registry:
                 _sessions_registry.remove(self.session)
             self.session = None
+
+    def refresh_auth(self) -> None:
+        """Re-read authentication from env vars and .netrc.
+
+        Use after environment variable changes or SIGHUP to pick up new
+        credentials without restarting the process.
+
+        Explicit constructor-level ``auth_headers`` take priority and are
+        *not* overwritten by environment variables.
+        """
+        if self._auth_explicit:
+            return
+        old = self._auth_headers.copy()
+        self._auth_headers = resolve_auth_headers(
+            ecosystem=self.ecosystem,
+            registry_url=self.base_url,
+        )
+        if old != self._auth_headers:
+            logger.info("Auth headers refreshed for ecosystem '%s'", self.ecosystem)
+        self._auth_last_check = time.monotonic()
+
+    async def _maybe_refresh_auth(self) -> None:
+        """Periodic auth refresh guard — called before each request."""
+        if self._auth_explicit:
+            return
+        elapsed = time.monotonic() - self._auth_last_check
+        if elapsed > self._auth_refresh_interval:
+            self.refresh_auth()
 
     async def close(self):
         """Async close."""
@@ -148,6 +181,7 @@ class BaseDataSourceClient:
         """Actual HTTP request without circuit breaker.
         Returns None for 404, raises IOError for network/server errors.
         """
+        await self._maybe_refresh_auth()
         await self._throttle()
         session = self._get_session()
         headers = kwargs.pop("headers", {})

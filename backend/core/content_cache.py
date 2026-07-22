@@ -97,6 +97,7 @@ class ContentAddressedCache:
         cache_dir: str | Path | None = None,
         default_ttl: int | None = _DEFAULT_TTL,
     ) -> None:
+        """Initialize the ContentAddressedCache."""
         self._root = Path(cache_dir) if cache_dir else _CAC_DIR
         self._blobs = self._root / "blobs"
         self._index_path = self._root / "index.json"

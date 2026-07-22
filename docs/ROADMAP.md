@@ -1,6 +1,6 @@
 # UDR Roadmap
 
-## Project Status (2026-07-21)
+## Project Status (2026-07-22)
 
 | Metric | Value |
 |--------|-------|
@@ -12,8 +12,8 @@
 | Tests | **3519** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | Coverage threshold | **55%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
-| Ruff violations | **7** in `backend/` (4 safety, 3 style) |
-| Missing docstrings | 221 (D100–D417) — incremental fix ongoing |
+| Ruff violations | **7** in `backend/` (4 fixable) |
+| Missing docstrings | **74** remaining (D100–D417) — down from 221. Plugin stubs remain. |
 
 ---
 
@@ -185,8 +185,8 @@
 
 | # | Item | Status |
 |---|------|--------|
-| 7.1 | WASM frontend | ❌ Deferred (no clear user need) |
-| 7.2 | Desktop app (Electron→Tauri) | ⚠️ Electron works (43 tests), Tauri deferred |
+| 7.1 | WASM frontend | 🔧 Deferred (no clear user need) |
+| 7.2 | Desktop app (Electron→Tauri) | ✅ Electron works (43 tests, 82.88% coverage on testable modules), Tauri deferred |
 | 7.3 | VSCode extension | ✅ 13 commands, CI wired, tsconfig fixed |
 | 7.4 | GitHub Actions | ✅ lock-check.yml |
 | 7.5 | GitLab CI | ✅ .gitlab-ci.yml template |
@@ -243,22 +243,22 @@ These items were evaluated and deliberately skipped because the effort does not 
 | **WASM frontend** | Compile entire resolver to WASM | No clear user need. Current frontend works via REST API. |
 | **Desktop Tauri rewrite** | Full rewrite of Electron app | Electron works (43 tests pass). Desktop adoption is niche. |
 | **Benchmark regression suite** | pytest-benchmark + historical tracking | Existing `scripts/benchmark.py` + weekly CI benchmark workflow provide basic coverage. No direct user benefit. |
-| **Coverage 60%→65%** | Hardest 10% takes 90% effort | Current 60% is green. Focus on high-risk paths rather than line count. |
+| **Coverage 55%→65%** | Hardest 10% takes 90% effort | Current 55% is green. Focus on high-risk paths rather than line count. |
 | **Full incremental re-resolution (skip BFS)** | Rewrite BFS to track subgraph changes | Resolution hash caching already skips SAT for unchanged subtrees. BFS walk is not the bottleneck. |
 | **Man page** | Writing + packaging | `udr --help` + CLI.md serve the same purpose. |
 
 ### Nice-to-Have (If Someone Wants To Build)
 
-| Item | Effort | Gain |
-|------|--------|------|
-| **Ruff docstrings (221 missing)** | 1-2 hours per session, incremental | Code clarity, ruff compliance |
-| **API/CLI parity: add /outdated, /diff, /why, /graph, /verify** | 2-3 days | Library consumer parity |
-| **Structured error types (ResolutionError hierarchy)** | 1-2 days | Better error handling for library users |
-| **Type stubs (.pyi) for orchestrator/ and core/** | 2-3 days | Better IDE experience for library consumers |
-| **Prometheus metrics endpoint** | 1 day | Production observability |
-| **OpenTelemetry spans** | 2-3 days | Distributed tracing for enterprise deployments |
-| **Ecosystem version normalization table (Debian epoch, RPM EVR, Conda glob)** | 2-3 days | Better cross-eco version comparison |
-| **Ecosystem aliases (node→npm, pip→pypi, rust→crates)** | 1 day | Reduced user confusion |
+| Item | Effort | Gain | Status |
+|------|--------|------|--------|
+| **Ruff docstrings (74 remaining)** | 1-2 hours per session, incremental | Code clarity, ruff compliance | 📋 74 remain in plugin stubs |
+| **Type stubs (.pyi) for orchestrator/ and core/** | 2-3 days | Better IDE experience for library consumers | 📋 Not done |
+| **API/CLI parity: add /outdated, /diff, /why, /graph, /verify** | — | — | ✅ All 5 endpoints exist |
+| **Structured error types (ResolutionError hierarchy)** | — | — | ✅ Exists (P2 #25) |
+| **Prometheus metrics endpoint** | — | — | ✅ Wired via `Instrumentator` (P2 #23) |
+| **OpenTelemetry spans** | — | — | ✅ Manual spans on 3 critical paths (P2 #24) |
+| **Ecosystem version normalization table** | — | — | ✅ Pre-release + multi-format in `constraint_normalizer.py` (P2 #19) |
+| **Ecosystem aliases** | — | — | ✅ `sanitize_ecosystem_name` handles all common aliases (P2 #21) |
 
 ---
 
@@ -268,8 +268,8 @@ These items were evaluated and deliberately skipped because the effort does not 
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
 | v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, 36 gap closures, 191 Q1-Q43 fixes, Phase 5-10 complete | ✅ Past | 2026-07-14 |
-| v1.5 | Remaining nice-to-haves: ruff docstrings, API parity, type stubs, error types | 🔜 In planning | Q4 2026 |
-| v2.0 | Plugin system, ecosystem aliases, cross-compilation CI, Prometheus/OpenTelemetry | 🔮 Future | Q1 2027 |
+| v1.5 | P0-P4 cross-check (34 items), plugin registry CLI, matrix generator, badge workflow, pre-release weight normalization, auth refresh, OTel spans | ✅ Past | 2026-07-22 |
+| v2.0 | Type stubs (.pyi), ruff docstrings (74 remaining), WASM frontend (deferred) | 🔜 In planning | Q4 2026 |
 
 ---
 

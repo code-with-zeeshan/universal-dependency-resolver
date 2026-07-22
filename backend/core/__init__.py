@@ -16,12 +16,19 @@ if typing.TYPE_CHECKING:
         PluginLockFile,
         PluginManifest,
         discover_all_plugins,
+        discover_local_plugins,
         get_all_plugins,
         get_plugin,
+        handle_plugin_constraint,
         import_builtin_plugins,
+        register_constraint_handler,
         register_ecosystem,
+        scan_plugin_directory,
     )
+    from .pubgrub_core import ResolutionError  # noqa: F401
+    from .resolution_result import ResolutionResult  # noqa: F401
     from .system_scanner import SystemScanner  # noqa: F401
+    from .test_matrix import MatrixGenerator, PackageSpec  # noqa: F401
 
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
@@ -31,12 +38,20 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "EcosystemPlugin": (".plugin", "EcosystemPlugin"),
     "PluginLockFile": (".plugin", "PluginLockFile"),
     "PluginManifest": (".plugin", "PluginManifest"),
+    "ResolutionError": (".pubgrub_core", "ResolutionError"),
+    "ResolutionResult": (".resolution_result", "ResolutionResult"),
     "discover_all_plugins": (".plugin", "discover_all_plugins"),
+    "discover_local_plugins": (".plugin", "discover_local_plugins"),
     "get_all_plugins": (".plugin", "get_all_plugins"),
     "get_plugin": (".plugin", "get_plugin"),
+    "handle_plugin_constraint": (".plugin", "handle_plugin_constraint"),
     "import_builtin_plugins": (".plugin", "import_builtin_plugins"),
+    "register_constraint_handler": (".plugin", "register_constraint_handler"),
     "register_ecosystem": (".plugin", "register_ecosystem"),
+    "scan_plugin_directory": (".plugin", "scan_plugin_directory"),
     "SystemScanner": (".system_scanner", "SystemScanner"),
+    "MatrixGenerator": (".test_matrix", "MatrixGenerator"),
+    "PackageSpec": (".test_matrix", "PackageSpec"),
 }
 
 

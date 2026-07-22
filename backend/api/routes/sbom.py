@@ -17,6 +17,8 @@ router = APIRouter()
 
 
 class SBOMRequest(BaseModel):
+    """Request model for SBOM generation from lock data."""
+
     lock_data: dict[str, Any]
     format: str = "spdx"
 

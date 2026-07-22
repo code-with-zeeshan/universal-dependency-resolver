@@ -11,6 +11,9 @@ try:
 except ImportError:
     HAS_PUBGRUB = False
 
+# Pure-Python fallback — always available
+from backend.core.pubgrub_core import PubGrubCoreSolver as _PureCoreSolver  # noqa: E402
+
 
 class TestNormalizeConstraint:
     def test_empty_returns_default(self):
@@ -235,3 +238,130 @@ class TestPubGrubSolver:
         ver = result["resolved_packages"]["lib"]["version"]
         parsed = tuple(int(x) for x in ver.split("."))
         assert parsed >= (1, 0, 0)
+
+
+class TestPurePythonFallback:
+    """Tests for the pure-Python PubGrubCoreSolver fallback path.
+
+    Known limitations documented as xfail:
+    - ``test_semver_caret_constraint`` — pure-Python solver doesn't normalize caret ranges.
+    - ``test_multiple_ecosystems`` — pure-Python solver has issues with mixed ecosystems.
+    """
+
+    def _prepare(self, packages: list[dict]) -> tuple[_PureCoreSolver, dict[str, str]]:
+        solver = _PureCoreSolver()
+        requirements: dict[str, str] = {}
+        for pkg in packages:
+            name: str = pkg["name"]
+            requirements[name] = pkg.get("version_constraint", ">=0.0.0")
+            for ver in pkg.get("available_versions", []):
+                deps: dict[str, str] = {}
+                for eco_deps in pkg.get("dependencies", {}).values():
+                    for dep in eco_deps.get("all", []):
+                        dep_name = dep.get("name", "")
+                        dep_con = dep.get("version_spec", ">=0.0.0")
+                        if dep_name:
+                            deps[dep_name] = dep_con
+                solver.add_package(name, ver, deps)
+        return solver, requirements
+
+    def test_resolve_simple(self):
+        pkgs = [
+            {
+                "name": "pkg",
+                "ecosystem": "pypi",
+                "version_constraint": ">=1.0.0",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {"pypi": {"all": []}},
+            }
+        ]
+        solver, reqs = self._prepare(pkgs)
+        result = solver.resolve(reqs)
+        assert isinstance(result, dict)
+        assert "pkg" in result
+
+    def test_resolve_with_dependencies(self):
+        pkgs = [
+            {
+                "name": "app",
+                "ecosystem": "pypi",
+                "version_constraint": ">=1.0.0",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"all": [{"name": "lib", "version_spec": ">=1.0.0"}]}},
+            },
+            {
+                "name": "lib",
+                "ecosystem": "pypi",
+                "version_constraint": ">=1.0.0",
+                "available_versions": ["1.0.0", "2.0.0"],
+                "dependencies": {"pypi": {"all": []}},
+            },
+        ]
+        solver, reqs = self._prepare(pkgs)
+        result = solver.resolve(reqs)
+        assert "app" in result
+        assert "lib" in result
+
+    def test_conflicting_deps(self):
+        pkgs = [
+            {
+                "name": "app",
+                "ecosystem": "pypi",
+                "version_constraint": ">=1.0.0",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"all": [{"name": "lib", "version_spec": ">=2.0.0"}]}},
+            },
+            {
+                "name": "lib",
+                "ecosystem": "pypi",
+                "version_constraint": "<2.0.0",
+                "available_versions": ["1.0.0"],
+                "dependencies": {"pypi": {"all": []}},
+            },
+        ]
+        solver, reqs = self._prepare(pkgs)
+        with pytest.raises(Exception):
+            solver.resolve(reqs)
+
+    @pytest.mark.timeout(5)
+    @pytest.mark.xfail(reason="pure-Python PubGrubCoreSolver cannot normalise npm caret ranges")
+    def test_semver_caret_constraint(self):
+        pkgs = [
+            {
+                "name": "express",
+                "ecosystem": "npm",
+                "version_constraint": "^4.18.0",
+                "available_versions": ["4.17.0", "4.18.0", "4.18.2", "5.0.0"],
+                "dependencies": {"npm": {"all": []}},
+            }
+        ]
+        solver, reqs = self._prepare(pkgs)
+        result = solver.resolve(reqs)
+        ver = result.get("express", "")
+        assert ver in ("4.18.0", "4.18.2")
+
+    @pytest.mark.timeout(5)
+    @pytest.mark.xfail(
+        reason="pure-Python PubGrubCoreSolver has issues with mixed ecosystem resolution"
+    )
+    def test_multiple_ecosystems(self):
+        pkgs = [
+            {
+                "name": "requests",
+                "ecosystem": "pypi",
+                "version_constraint": ">=2.28.0",
+                "available_versions": ["2.28.0", "2.31.0"],
+                "dependencies": {"pypi": {"all": []}},
+            },
+            {
+                "name": "express",
+                "ecosystem": "npm",
+                "version_constraint": "^4.18.0",
+                "available_versions": ["4.18.0", "4.19.0"],
+                "dependencies": {"npm": {"all": []}},
+            },
+        ]
+        solver, reqs = self._prepare(pkgs)
+        result = solver.resolve(reqs)
+        assert "requests" in result
+        assert "express" in result

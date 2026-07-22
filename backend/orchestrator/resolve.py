@@ -20,6 +20,7 @@ from backend.settings import (
     SOLVER_MAX_VARIABLES,
 )
 from backend.settings import ECOSYSTEMS as _SETTINGS_ECOSYSTEMS
+from backend.tracing_config import get_tracer
 
 _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custom_db")}
 
@@ -764,18 +765,23 @@ async def _resolve_transitive(
         batch_size: int,
     ) -> list[tuple]:
         """Fetch *items* in chunks of *batch_size*, gathering each chunk in parallel."""
-        results: list[tuple] = []
-        for i in range(0, len(items), batch_size):
-            chunk = items[i : i + batch_size]
-            chunk_results = await asyncio.gather(
-                *[_fetch_one(item) for item in chunk], return_exceptions=True
-            )
-            for r in chunk_results:
-                if isinstance(r, (list, tuple)) and len(r) > 2 and r[2] is not None:
-                    results.append(r)
-                elif isinstance(r, BaseException):
-                    logger.warning("Batch fetch failed: %s", r)
-        return results
+        _tracer = get_tracer(__name__)
+        with _tracer.start_as_current_span("resolve._batch_fetch") as _span:
+            _span.set_attribute("total_items", len(items))
+            _span.set_attribute("batch_size", batch_size)
+            results: list[tuple] = []
+            for i in range(0, len(items), batch_size):
+                chunk = items[i : i + batch_size]
+                chunk_results = await asyncio.gather(
+                    *[_fetch_one(item) for item in chunk], return_exceptions=True
+                )
+                for r in chunk_results:
+                    if isinstance(r, (list, tuple)) and len(r) > 2 and r[2] is not None:
+                        results.append(r)
+                    elif isinstance(r, BaseException):
+                        logger.warning("Batch fetch failed: %s", r)
+            _span.set_attribute("fetched_count", len(results))
+            return results
 
     # Phase 1: batch-fetch root packages that aren't pre-resolved
     roots_to_fetch = [

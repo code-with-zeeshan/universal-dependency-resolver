@@ -43,6 +43,7 @@ class AutoSolver:
         use_optimization: bool = True,
         solver_timeout: int | None = None,
     ) -> None:
+        """Initialize the AutoSolver."""
         self._use_optimization = use_optimization
         self._solver_timeout = solver_timeout
 

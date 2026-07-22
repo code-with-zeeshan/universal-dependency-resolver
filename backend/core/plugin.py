@@ -18,15 +18,22 @@ Plugin discovery
 - **Built-in plugins** are imported eagerly by ``import_builtin_plugins()``.
 - **Third-party plugins** (installed via ``pip install udr-hex``) are
   discovered via entry points.
+- **Local plugins** placed in a directory (e.g. ``~/.config/udr/plugins/``)
+  are discovered at runtime by ``scan_plugin_directory()``.
 """
 
 from __future__ import annotations
 
 import abc
 import dataclasses
+import importlib.util
 import logging
 import threading
-from typing import Any, ClassVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from backend.data_sources.base_client import BaseDataSourceClient
 from backend.settings import CACHE_TTL, get_ecosystem_config
@@ -115,6 +122,7 @@ class EcosystemPlugin(BaseDataSourceClient, abc.ABC):
         cache_ttl: int | None = None,
         max_retries: int | None = None,
     ):
+        """Initialize the EcosystemPlugin."""
         config = get_ecosystem_config(self.ecosystem)
         super().__init__(
             ecosystem=self.ecosystem,
@@ -274,6 +282,96 @@ def get_all_plugins() -> dict[str, type[EcosystemPlugin]]:
         return dict(_plugin_registry)
 
 
+def scan_plugin_directory(directory: str) -> list[type[EcosystemPlugin]]:
+    """Walk *directory*, import each ``.py`` file, return registered plugin classes.
+
+    Any class that inherits from ``EcosystemPlugin`` (or is registered via
+    ``@register_ecosystem``) will be discovered and also added to the global
+    registry.
+    """
+    discovered: list[type[EcosystemPlugin]] = []
+    root = Path(directory).expanduser().resolve()
+    if not root.is_dir():
+        logger.debug("Plugin directory %s does not exist", root)
+        return discovered
+
+    for py_file in sorted(root.rglob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        module_name = f"_udr_plugin_{py_file.stem}"
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception as exc:
+            logger.warning("Failed to import plugin %s: %s", py_file, exc)
+            continue
+
+        for attr_name in dir(mod):
+            attr = getattr(mod, attr_name)
+            if (
+                isinstance(attr, type)
+                and issubclass(attr, EcosystemPlugin)
+                and attr is not EcosystemPlugin
+            ):
+                if attr not in discovered:
+                    discovered.append(attr)
+                with _plugin_lock:
+                    if attr.ecosystem not in _plugin_registry:  # type: ignore[attr-defined]
+                        _plugin_registry[attr.ecosystem] = attr  # type: ignore[attr-defined]
+                        logger.debug(
+                            "Discovered local plugin %s for %s", attr.__name__, attr.ecosystem
+                        )
+
+    return discovered
+
+
+def discover_local_plugins(directory: str | None = None) -> int:
+    """Discover plugins from local directory (default ``~/.config/udr/plugins/``).
+
+    Returns the number of plugin classes found.
+    """
+    if directory is None:
+        directory = str(Path.home() / ".config" / "udr" / "plugins")
+    plugins = scan_plugin_directory(directory)
+    return len(plugins)
+
+
+# ---------------------------------------------------------------------------
+# Constraint handler hooks
+# ---------------------------------------------------------------------------
+
+_PLUGIN_CONSTRAINT_HANDLERS: dict[str, Callable[[str, str], str | None]] = {}
+
+
+def register_constraint_handler(ecosystem: str, handler: Callable[[str, str], str | None]):
+    """Register *handler* to normalize constraints for *ecosystem*.
+
+    The handler receives ``(constraint_raw: str, ecosystem: str)`` and should
+    return a normalized PEP 440 constraint string, or ``None`` to decline.
+    """
+    _PLUGIN_CONSTRAINT_HANDLERS[ecosystem] = handler
+    logger.debug("Registered constraint handler for ecosystem %r", ecosystem)
+
+
+def handle_plugin_constraint(constraint: str, ecosystem: str) -> str | None:
+    """Run registered constraint handlers for *ecosystem* against *constraint*.
+
+    Returns the normalized constraint string, or ``None`` if no handler
+    accepted the constraint.
+    """
+    handler = _PLUGIN_CONSTRAINT_HANDLERS.get(ecosystem)
+    if handler is None:
+        return None
+    try:
+        return handler(constraint, ecosystem)
+    except Exception as exc:
+        logger.warning("Constraint handler for %s failed: %s", ecosystem, exc)
+        return None
+
+
 def list_plugin_manifests() -> list[tuple[str, str, str]]:
     """Aggregate ``(glob, ecosystem, parser_name)`` triples from all plugins.
 
@@ -405,3 +503,8 @@ _register_builtin("conan", "backend.data_sources.conan_plugin")
 _register_builtin("docker", "backend.data_sources.docker_plugin")
 _register_builtin("helm", "backend.data_sources.helm_plugin")
 _register_builtin("terraform", "backend.data_sources.terraform_plugin")
+
+
+# ---------------------------------------------------------------------------
+# Dynamic directory scanner (Item 27: CLI tools register-plugin)
+# ---------------------------------------------------------------------------

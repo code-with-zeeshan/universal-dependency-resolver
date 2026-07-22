@@ -27,6 +27,7 @@ from .commands.sbom import cmd_sbom
 from .commands.scan import cmd_scan
 from .commands.search import cmd_search
 from .commands.serve import cmd_serve
+from .commands.tools import cmd_tools
 from .commands.update import cmd_update
 from .commands.verify import cmd_verify
 from .commands.why import cmd_why
@@ -743,6 +744,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all", "-a", action="store_true", help="Sync all supported ecosystems"
     )
 
+    tools_p = sub.add_parser("tools", help="Manage plugins and extensions")
+    tools_sub = tools_p.add_subparsers(dest="tools_command", required=True)
+
+    reg_parser = tools_sub.add_parser(
+        "register-plugin", help="Scan a directory for third-party plugins and register them"
+    )
+    reg_parser.add_argument(
+        "--path",
+        required=True,
+        help="Directory path containing plugin Python files",
+    )
+    reg_parser.add_argument(
+        "--name",
+        default=None,
+        help="Optional name tag for the plugin group",
+    )
+
     return parser
 
 
@@ -785,6 +803,7 @@ def main():
         "details": cmd_details,
         "auth": cmd_auth,
         "index": cmd_index,
+        "tools": cmd_tools,
     }
     dispatch[args.command](args)
 

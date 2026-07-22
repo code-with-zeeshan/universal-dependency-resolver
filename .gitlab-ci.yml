@@ -1,5 +1,6 @@
 stages:
   - udr-lock
+  - udr-check
 
 udr-lock-check:
   stage: udr-lock
@@ -8,7 +9,20 @@ udr-lock-check:
   before_script:
     - pip install ud-resolver
   script:
-    - udr verify
+    - udr lock --check  # fails with exit 1 when lock file is stale
+  only:
+    - merge_requests
+    - main
+
+udr-verify:
+  stage: udr-check
+  image: python:3.12-slim
+  timeout: 5 minutes
+  before_script:
+    - pip install ud-resolver
+  script:
+    - udr verify           # validates integrity + hashes
+    - udr check --deprecated --license  # checks for deprecated pkgs & license issues
   only:
     - merge_requests
     - main

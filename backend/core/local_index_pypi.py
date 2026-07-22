@@ -39,6 +39,7 @@ class PyPIIndexManager:
     """
 
     def __init__(self, update_interval: int = 3600) -> None:
+        """Initialize the PyPIIndexManager."""
         self.update_interval = update_interval
         self._last_updated: datetime | None = None
 

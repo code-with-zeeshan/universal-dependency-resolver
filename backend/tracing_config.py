@@ -5,7 +5,13 @@ services (Grafana Cloud, Datadog, Honeycomb, New Relic, etc.)
 via standard OTEL environment variables.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Self
 
 from backend.settings import (
     ENV as _ENV,
@@ -233,3 +239,42 @@ def setup_tracing(app=None):
         protocol=OTEL_EXPORTER_OTLP_PROTOCOL,
         sampler=f"{OTEL_SAMPLER_TYPE}({OTEL_SAMPLER_ARG})",
     )
+
+
+def get_tracer(name: str = __name__) -> object:
+    """Return an OpenTelemetry tracer, or a no-op stub if disabled/unavailable.
+
+    Usage::
+
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span("my_span"):
+            ...
+    """
+    if not OTEL_ENABLED or not _OTEL_AVAILABLE or _trace is None:
+        return _NoOpTracer()
+    return _trace.get_tracer(name)
+
+
+class _NoOpTracer:
+    """No-op tracer stub used when OpenTelemetry is disabled or unavailable.
+
+    Every method is a no-op that returns self for fluent chaining,
+    allowing ``with tracer.start_as_current_span(...)`` to work safely
+    without runtime overhead.
+    """
+
+    def start_as_current_span(self, name: str, **kwargs: object) -> _NoOpSpan:
+        return _NoOpSpan()
+
+    def start_span(self, name: str, **kwargs: object) -> _NoOpSpan:
+        return _NoOpSpan()
+
+
+class _NoOpSpan:
+    """No-op span context manager."""
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass

@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 from packaging import version
 
+from backend.tracing_config import get_tracer
+
 from ._json import dumps
 
 if TYPE_CHECKING:
@@ -272,13 +274,20 @@ class ConflictResolver:
         solver_timeout: int | None = None,
     ) -> dict[str, Any]:
         """Resolve package dependencies and conflicts."""
-        self._resolve_lock.acquire()
-        try:
-            return self._resolve_dependencies_impl(
-                packages, system_info, prefer_compatibility, solver_timeout
-            )
-        finally:
-            self._resolve_lock.release()
+        _tracer = get_tracer(__name__)
+        with _tracer.start_as_current_span("ConflictResolver.resolve_dependencies") as _span:
+            _span.set_attribute("package_count", len(packages))
+            _span.set_attribute("solver_timeout_ms", solver_timeout or 0)
+            self._resolve_lock.acquire()
+            try:
+                result = self._resolve_dependencies_impl(
+                    packages, system_info, prefer_compatibility, solver_timeout
+                )
+                _span.set_attribute("result.status", result.get("status", "unknown"))
+                _span.set_attribute("resolved_count", len(result.get("resolved_packages", {})))
+                return result
+            finally:
+                self._resolve_lock.release()
 
     def _resolve_dependencies_impl(
         self,

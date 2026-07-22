@@ -336,6 +336,8 @@ async def show_signing_key(
 
 
 class GenKeyResponse(BaseModel):
+    """Response model for signing key generation."""
+
     status: str
     message: str
     public_key_base64: str

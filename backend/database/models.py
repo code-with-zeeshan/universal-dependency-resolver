@@ -34,7 +34,7 @@ if _sys_path_appended not in sys.path:
 
 
 class Base(DeclarativeBase):
-    pass
+    """Base class for all SQLAlchemy ORM models."""
 
 
 class Package(Base):

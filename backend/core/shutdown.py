@@ -13,6 +13,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 from contextlib import contextmanager
@@ -27,16 +28,20 @@ class ShutdownFlag:
     """
 
     def __init__(self):
+        """Initialize the ShutdownFlag."""
         self._shutdown_requested = False
 
     @property
     def running(self) -> bool:
+        """Return ``True`` while no shutdown has been requested."""
         return not self._shutdown_requested
 
     def request_shutdown(self):
+        """Signal that a graceful shutdown has been requested."""
         self._shutdown_requested = True
 
     def reset(self):
+        """Reset the shutdown flag to ``False``."""
         self._shutdown_requested = False
 
 
@@ -55,10 +60,8 @@ def register_signal_handlers(flag: ShutdownFlag):
     try:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
+            with contextlib.suppress(NotImplementedError, ValueError, RuntimeError):
                 loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_async_handler(s)))
-            except (NotImplementedError, ValueError, RuntimeError):
-                pass  # Windows, non-main thread, or closed loop
     except RuntimeError:
         # No running loop — CLI mode
         try:
@@ -97,16 +100,20 @@ class ManagedExecutor:
     """Context-managed ThreadPoolExecutor."""
 
     def __init__(self, max_workers: int | None = None):
+        """Initialize the ManagedExecutor."""
         import concurrent.futures
 
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
     def __enter__(self):
+        """Return the underlying executor for use as a context manager."""
         return self._executor
 
     def __exit__(self, *args: object):
+        """Shut down the executor on context exit."""
         self._executor.shutdown(wait=True)
         logger.debug("ThreadPoolExecutor shut down")
 
     def submit(self, fn, *args, **kwargs):
+        """Submit a callable to the executor pool."""
         return self._executor.submit(fn, *args, **kwargs)

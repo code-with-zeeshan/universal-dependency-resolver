@@ -36,6 +36,10 @@ _BASH_COMPLETION = """_{prog}_completion() {{
         --cuda)
             COMPREPLY=( $(compgen -W "12.8 12.7 12.6 12.5 12.4 12.3 12.2 12.1 12.0 11.8 11.7 11.6 11.4 11.3 11.2 11.1 11.0" -- "${{cur}}") )
             ;;
+        serve)
+            local serve_flags="--host --port --reload --mode --ssl-keyfile --ssl-certfile --workers --log-level"
+            COMPREPLY=( $(compgen -W "${{serve_flags}}" -- "${{cur}}") )
+            ;;
         lock)
             local lock_flags="--directory --manifest --export --yes --dry-run --interactive --cuda --device --json --report --include-dev --timeout --extras --pin --pin-mode --block --freeze --workspace --prefix --force --target --platform --auto-sync --sign --provenance --check --with-dev --without-optional"
             COMPREPLY=( $(compgen -W "${{lock_flags}}" -- "${{cur}}") )
@@ -59,6 +63,53 @@ _BASH_COMPLETION = """_{prog}_completion() {{
         install)
             local install_flags="--directory --lock-file --workspace --ecosystem --dry-run --yes --restore --production --cuda --target --platform"
             COMPREPLY=( $(compgen -W "${{install_flags}}" -- "${{cur}}") )
+            ;;
+        graph)
+            local graph_flags="--ecosystem --json --cuda --device"
+            COMPREPLY=( $(compgen -W "${{graph_flags}}" -- "${{cur}}") )
+            ;;
+        list-ecosystems)
+            local list_flags="--json"
+            COMPREPLY=( $(compgen -W "${{list_flags}}" -- "${{cur}}") )
+            ;;
+        why)
+            local why_flags="--all --directory --json --workspace --lock-file"
+            COMPREPLY=( $(compgen -W "${{why_flags}}" -- "${{cur}}") )
+            ;;
+        outdated)
+            local outdated_flags="--directory --json --ecosystem --workspace --lock-file"
+            COMPREPLY=( $(compgen -W "${{outdated_flags}}" -- "${{cur}}") )
+            ;;
+        diff)
+            local diff_flags="--json --directory --workspace"
+            COMPREPLY=( $(compgen -W "${{diff_flags}}" -- "${{cur}}") )
+            ;;
+        search)
+            local search_flags="--ecosystems --limit --json"
+            COMPREPLY=( $(compgen -W "${{search_flags}}" -- "${{cur}}") )
+            ;;
+        details)
+            local details_flags="--ecosystem --json"
+            COMPREPLY=( $(compgen -W "${{details_flags}}" -- "${{cur}}") )
+            ;;
+        auth)
+            local auth_actions="create revoke list gen-key show-key"
+            local auth_flags="--name --role --description"
+            COMPREPLY=( $(compgen -W "${{auth_actions}} ${{auth_flags}}" -- "${{cur}}") )
+            ;;
+        index)
+            local index_actions="pull build status sync"
+            local index_flags="--ecosystem --all --packages --directory --json"
+            COMPREPLY=( $(compgen -W "${{index_actions}} ${{index_flags}}" -- "${{cur}}") )
+            ;;
+        completion)
+            local completion_flags="bash zsh fish"
+            COMPREPLY=( $(compgen -W "${{completion_flags}}" -- "${{cur}}") )
+            ;;
+        tools)
+            local tools_actions="register-plugin"
+            local tools_flags="--path --name"
+            COMPREPLY=( $(compgen -W "${{tools_actions}} ${{tools_flags}}" -- "${{cur}}") )
             ;;
     esac
     return 0
@@ -170,6 +221,71 @@ _{prog}() {{
                 completion)
                     _arguments "1:shell:(bash zsh fish)"
                     ;;
+                graph)
+                    _arguments \
+                        "--ecosystem=[Ecosystem]" \
+                        "--json[JSON output]" \
+                        "--cuda=[CUDA version]" \
+                        "--device=[Device]:dev:(cpu cuda mps)"
+                    ;;
+                list-ecosystems)
+                    _arguments "--json[JSON output]"
+                    ;;
+                why)
+                    _arguments \
+                        "--all[Show all transitive paths]" \
+                        "--directory=[Project directory]" \
+                        "--json[JSON output]" \
+                        "--workspace=[Workspace name]" \
+                        "--lock-file=[Explicit lock file path]"
+                    ;;
+                outdated)
+                    _arguments \
+                        "--directory=[Project directory]" \
+                        "--json[JSON output]" \
+                        "--ecosystem=[Ecosystem]" \
+                        "--workspace=[Workspace name]" \
+                        "--lock-file=[Explicit lock file path]"
+                    ;;
+                diff)
+                    _arguments \
+                        "--json[JSON output]" \
+                        "--directory=[Project directory]" \
+                        "--workspace=[Workspace name]"
+                    ;;
+                search)
+                    _arguments \
+                        "--ecosystems[Ecosystems to search]" \
+                        "--limit=[Max results]" \
+                        "--json[JSON output]"
+                    ;;
+                details)
+                    _arguments \
+                        "--ecosystem=[Ecosystem]" \
+                        "--json[JSON output]"
+                    ;;
+                auth)
+                    _arguments \
+                        "1: :(create revoke list gen-key show-key)" \
+                        "--name=[Key name]" \
+                        "--role=[Key role]:role:(read-only read-write admin)" \
+                        "--description=[Key description]"
+                    ;;
+                index)
+                    _arguments \
+                        "1: :(pull build status sync)" \
+                        "--ecosystem=[Ecosystem]" \
+                        "--packages=[Package list file]" \
+                        "--directory=[Index directory]" \
+                        "--all[Sync all indexes]" \
+                        "--json[JSON output]"
+                    ;;
+                tools)
+                    _arguments \
+                        "1: :(register-plugin)" \
+                        "--path=[Plugin directory path]" \
+                        "--name=[Optional name tag]"
+                    ;;
             esac
             ;;
     esac
@@ -245,6 +361,42 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l format -xa 'spdx cyclonedx'
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l output -d 'Output file path'
     complete -c {prog} -n "__fish_seen_subcommand_from completion" -xa 'bash zsh fish'
+    complete -c {prog} -n "__fish_seen_subcommand_from graph" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from graph" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from graph" -l cuda -d 'CUDA version'
+    complete -c {prog} -n "__fish_seen_subcommand_from graph" -l device -xa 'cpu cuda mps'
+    complete -c {prog} -n "__fish_seen_subcommand_from list-ecosystems" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from why" -l all -d 'Show all transitive paths'
+    complete -c {prog} -n "__fish_seen_subcommand_from why" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from why" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from why" -l workspace -d 'Workspace name'
+    complete -c {prog} -n "__fish_seen_subcommand_from why" -l lock-file -d 'Explicit lock file path'
+    complete -c {prog} -n "__fish_seen_subcommand_from outdated" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from outdated" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from outdated" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from outdated" -l workspace -d 'Workspace name'
+    complete -c {prog} -n "__fish_seen_subcommand_from outdated" -l lock-file -d 'Explicit lock file path'
+    complete -c {prog} -n "__fish_seen_subcommand_from diff" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from diff" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from diff" -l workspace -d 'Workspace name'
+    complete -c {prog} -n "__fish_seen_subcommand_from search" -l ecosystems -d 'Ecosystems to search'
+    complete -c {prog} -n "__fish_seen_subcommand_from search" -l limit -d 'Max results'
+    complete -c {prog} -n "__fish_seen_subcommand_from search" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from details" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from details" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from auth" -xa 'create revoke list gen-key show-key'
+    complete -c {prog} -n "__fish_seen_subcommand_from auth" -l name -d 'Key name'
+    complete -c {prog} -n "__fish_seen_subcommand_from auth" -l role -xa 'read-only read-write admin'
+    complete -c {prog} -n "__fish_seen_subcommand_from auth" -l description -d 'Key description'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -xa 'pull build status sync'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -l all -d 'Sync all indexes'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -l packages -d 'Package list file'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -l directory -d 'Index directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from index" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from tools" -xa 'register-plugin'
+    complete -c {prog} -n "__fish_seen_subcommand_from tools" -l path -d 'Plugin directory path'
+    complete -c {prog} -n "__fish_seen_subcommand_from tools" -l name -d 'Optional name tag'
 end
 
 _{prog}_completion

@@ -217,6 +217,7 @@ class ForkingResolver:
         max_forks: int = 4,
         fork_timeout_ratio: float = 0.5,
     ) -> None:
+        """Initialize the ForkingResolver."""
         self._solver = base_solver
         self._max_forks = max_forks
         self._fork_timeout_ratio = fork_timeout_ratio

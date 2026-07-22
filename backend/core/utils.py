@@ -32,6 +32,7 @@ CLI_COMMANDS = (
     "scan",
     "search",
     "serve",
+    "tools",
     "update",
     "verify",
     "why",
@@ -71,6 +72,7 @@ ECOSYSTEM_PURL_TYPE: dict[str, str] = {
 
 
 def make_purl(name: str, version: str, ecosystem: str) -> str:
+    """Build a Package URL (purl) string from name, version, and ecosystem."""
     ptype = ECOSYSTEM_PURL_TYPE.get(ecosystem, ecosystem)
     purl = f"pkg:{ptype}/{_purl_encode(name)}"
     if version:

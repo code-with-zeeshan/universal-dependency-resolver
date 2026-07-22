@@ -73,10 +73,112 @@ def parse_semver(ver: str):
     return major, minor, patch
 
 
+# Pre-release weight map: lower weight = earlier in release cycle
+_PRERELEASE_WEIGHTS: dict[str, int] = {
+    "dev": 0,
+    "a": 1,
+    "alpha": 1,
+    "b": 2,
+    "beta": 2,
+    "rc": 3,
+    "pre": 3,
+    "preview": 3,
+}
+
+_PRERELEASE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"(?:^|[-.])(dev|preview)(?:$|[-.]?\d*)", re.I), "dev"),
+    (re.compile(r"(?:^|[-.])(alpha)(?:$|[-.]?\d*)", re.I), "a"),
+    (re.compile(r"(?:^|[-.])(beta)(?:$|[-.]?\d*)", re.I), "b"),
+    (re.compile(r"(?:^|[-.])(rc|pre)(?:$|[-.]?\d*)", re.I), "rc"),
+    (re.compile(r"(?:^|[-.])a(?:\d*)$", re.I), "a"),  # standalone a1, a2 etc (PEP 440)
+    (re.compile(r"(?:^|[-.])b(?:\d*)$", re.I), "b"),  # standalone b1, b2
+]
+
+
+def normalize_prerelease_weight(ver: str) -> int:
+    """Return numeric pre-release weight (0=dev, 1=alpha, 2=beta, 3=rc, 100=release).
+
+    Handles PEP 440 (``1.0.0.dev1``, ``1.0.0a1``, ``1.0.0rc2``) and
+    semver (``1.0.0-dev.1``, ``1.0.0-alpha.1``, ``1.0.0-rc.2``) formats.
+    Used for cross-ecosystem pre-release ordering decisions.
+    """
+    ver = ver.strip().lower()
+    if ":" in ver:
+        ver = ver.split(":", 1)[-1]
+    ver = ver.lstrip("=vV ")
+    # Try PEP 440 parser first
+    try:
+        from packaging.version import Version
+
+        pv = Version(ver)
+        if pv.dev is not None:
+            return 0
+        if pv.pre is not None:
+            pre_key, _ = pv.pre
+            return _PRERELEASE_WEIGHTS.get(pre_key, 1)
+        if pv.is_prerelease:
+            return 1  # unknown pre-release type
+        return 100
+    except Exception:
+        pass
+    # Fallback: regex matching for non-PEP 440 (npm, etc.)
+    for sep in ("-", "."):
+        parts = ver.split(sep, 1)
+        if len(parts) < 2:
+            continue
+        for pattern, key in _PRERELEASE_PATTERNS:
+            if pattern.search(parts[1]):
+                return _PRERELEASE_WEIGHTS.get(key, 100)
+    return 100
+
+
+def compare_versions_with_prerelease(v1: str, v2: str) -> int:
+    """Compare two versions, accounting for pre-release weight.
+
+    Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2.
+    """
+    w1 = normalize_prerelease_weight(v1)
+    w2 = normalize_prerelease_weight(v2)
+    if w1 != w2:
+        return -1 if w1 < w2 else 1
+    # Same pre-release phase — compare lexicographically
+    from packaging.version import Version
+
+    try:
+        pv1 = Version(v1)
+        pv2 = Version(v2)
+        if pv1 < pv2:
+            return -1
+        if pv1 > pv2:
+            return 1
+        return 0
+    except Exception:
+        if v1 < v2:
+            return -1
+        if v1 > v2:
+            return 1
+        return 0
+
+
 def normalize_constraint(constraint: str, ecosystem: str) -> str | None:
     """Normalize *constraint* for *ecosystem* using the universal vers layer.
 
     Returns a PEP 508 / PEP 440 string compatible with ``SpecifierSet``,
     or ``"*"`` for any-version, or the raw constraint if no parser matches.
     """
-    return str(VersSpec.parse(constraint, ecosystem))
+    normalized = str(VersSpec.parse(constraint, ecosystem))
+    if normalized == constraint:
+        plugin_result = _try_plugin_constraint(constraint, ecosystem)
+        if plugin_result is not None:
+            return plugin_result
+    return normalized
+
+
+def _try_plugin_constraint(constraint: str, ecosystem: str) -> str | None:
+    """Try registered plugin constraint handlers as a fallback."""
+    try:
+        from .plugin import handle_plugin_constraint
+
+        return handle_plugin_constraint(constraint, ecosystem)
+    except Exception:
+        return None

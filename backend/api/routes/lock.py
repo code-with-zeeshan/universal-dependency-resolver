@@ -72,6 +72,7 @@ class GenerateLockRequest(BaseModel):
     @field_validator("manifest_contents")
     @classmethod
     def validate_manifest_contents(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        """Validate manifest contents size and filename length."""
         if v is None:
             return v
         if len(v) > 50:
@@ -921,15 +922,21 @@ async def restore_commands(
 
 
 class LockCheckRequest(BaseModel):
+    """Request body for lock drift check."""
+
     manifest_contents: dict[str, str] | None = None
     existing_lock_data: dict[str, Any] | None = None
 
 
 class SignedLockData(BaseModel):
+    """Request body for lock file signing."""
+
     lock_data: dict[str, Any]
 
 
 class UpdateFixRequest(BaseModel):
+    """Request body for CVE fix within lock data."""
+
     lock_data: dict[str, Any]
     package: str | None = None
 
@@ -939,6 +946,7 @@ async def lock_check(
     req: LockCheckRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    """Check lock file for drift against current manifest contents."""
     from backend.core.data_aggregator import DataAggregator
     from backend.manifest_detector import ManifestDetector
 
@@ -1039,6 +1047,7 @@ async def lock_sign(
     req: SignedLockData,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    """Sign lock data with Ed25519 key (auto-generated if missing)."""
     import base64
     import hashlib
     import json
@@ -1104,6 +1113,7 @@ async def lock_update_with_fix(
     req: UpdateFixRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    """Update lock data with CVE fixes for vulnerable packages."""
     from backend.core.data_aggregator import DataAggregator
 
     aggregator = DataAggregator()
@@ -1146,6 +1156,8 @@ async def lock_update_with_fix(
 
 
 class UpdateManifestsRequest(BaseModel):
+    """Request body for manifest update suggestions."""
+
     lock_data: dict[str, Any]
     manifest_contents: dict[str, str]
 
@@ -1187,6 +1199,8 @@ async def lock_update_manifests(
 
 
 class LockReportRequest(BaseModel):
+    """Request body for lock report generation."""
+
     lock_data: dict[str, Any]
 
 
@@ -1259,6 +1273,8 @@ async def lock_report(
 
 
 class ApplyPinningRequest(BaseModel):
+    """Request body for pinning policy application."""
+
     lock_data: dict[str, Any]
     pin: list[str] | None = None
     block: list[str] | None = None

@@ -1,3 +1,5 @@
+"""API route blueprints — auth, check, completion, index, lock, packages, sbom, scan, system."""
+
 from . import auth as auth_routes
 from . import check as check_routes
 from . import completion as completion_routes

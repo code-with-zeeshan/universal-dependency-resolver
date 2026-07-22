@@ -32,6 +32,7 @@ class ProjectConfig:
     """
 
     def __init__(self, directory: str | Path = "."):
+        """Initialize the ProjectConfig."""
         self.directory = Path(directory)
         self.cross_deps: list[dict[str, str]] = []
         self.profiles: dict[str, list[str]] = {}
@@ -55,6 +56,7 @@ class ProjectConfig:
         self.workspaces = data.get("workspaces", {})
 
     def ensure_loaded(self):
+        """Load the config if it has not been loaded yet."""
         if not self._loaded:
             self.load()
 
