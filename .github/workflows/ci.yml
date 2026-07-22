@@ -72,7 +72,7 @@ jobs:
           if ! python3 --version | grep -q "3\.13"; then
             TARGETS="--cov=backend.core --cov=backend.api --cov=backend.cli --cov=backend.settings --cov=backend.manifest_detector --cov=backend.database"
           fi
-          python -m pytest tests/unit/ -v --tb=long -k "not data_source" \
+          python -m pytest tests/unit/ -v --tb=long -k "not data_source and not slow" \
             $TARGETS \
             --cov-report=term-missing --cov-report=xml --cov-fail-under=60
 

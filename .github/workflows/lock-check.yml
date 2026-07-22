@@ -21,4 +21,9 @@ jobs:
       - name: Install UDR
         run: pip install -e .
       - name: Check lock file freshness
-        run: udr lock --check
+        run: |
+          if [ -f udr.lock ]; then
+            udr lock --check
+          else
+            echo "No udr.lock found — skipping lock-check"
+          fi

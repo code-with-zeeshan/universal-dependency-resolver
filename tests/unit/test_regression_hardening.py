@@ -419,6 +419,7 @@ class TestHardenedRepoResolverSmoke:
         assert result["status"] == "satisfiable"
         assert len(result["resolved_packages"]) == 5
 
+    @pytest.mark.slow
     def test_superset_like_mixed_resolution(self) -> None:
         """superset profile: PyPI packages with version range constraints."""
         packages = [

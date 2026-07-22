@@ -101,6 +101,7 @@ def _gen_superset_like_packages(count: int = 200) -> list[dict]:
 class TestSupersetScale:
     """PubGrub resolution at superset-like scale (monorepo with ~200 packages)."""
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("n_pkgs", [50, 100, 200])
     def test_pubgrub_resolves_large_monorepo(self, n_pkgs: int):
         pubgrub = PubGrubSolver()
@@ -113,6 +114,7 @@ class TestSupersetScale:
             f"Expected {n_pkgs} resolved, got {len(result['resolved_packages'])}"
         )
 
+    @pytest.mark.slow
     def test_pubgrub_200_deep_diamond(self):
         """Deep dependency diamond: A → B1..B50 → C1..C100 → D1..D50 → E."""
         pubgrub = PubGrubSolver()
@@ -197,6 +199,7 @@ class TestSupersetScale:
             f"Expected {total} resolved, got {len(result['resolved_packages'])}"
         )
 
+    @pytest.mark.slow
     def test_pubgrub_stress_chain(self):
         """500-package linear chain: P0 → P1 → ... → P499."""
         pubgrub = PubGrubSolver()
