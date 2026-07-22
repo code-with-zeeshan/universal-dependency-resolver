@@ -1,238 +1,290 @@
 .TH UDR 1 "July 2026" "udr v1.4.0" "User Commands"
 .SH NAME
-udr \- Universal Dependency Resolver
+udr \- Universal Dependency Resolver — cross-ecosystem dependency management
 .SH SYNOPSIS
 .B udr
 [\fI\-\-version\fR] [\fI\-\-help\fR] [\fI\-\-offline\fR]
 \fI<command>\fR [\fI<args>\fR]
 .SH DESCRIPTION
-\fBUniversal Dependency Resolver (UDR)\fR is a cross-ecosystem dependency
-resolution tool that resolves, locks, and manages dependencies across 27
-package ecosystems. It uses an AutoSolver (profiles workload, delegates to
-PubGrub/Z3/Hybrid) with SCC batch partitioning, CUDA-aware conflict
-resolution, and DFS backtracking to produce consistent, reproducible lock
-files.
-
-UDR supports in-place manifest updates, CVE scanning, license compliance
-checking, SBOM generation (SPDX/CycloneDX), supply chain attestation with
-Ed25519 signing, policy enforcement, cross-compilation targeting, offline-
-first indexed caches, and per-ecosystem solver isolation.
+\fBUniversal Dependency Resolver (UDR)\fR resolves, locks, and manages
+dependencies across 25+ package ecosystems (PyPI, npm, Crates.io, Go Modules,
+Maven, NuGet, RubyGems, Conda, Packagist, Homebrew, CocoaPods, Pub, Gradle,
+Swift, Hex, Haskell, Nix, Guix, Vcpkg, Conan, Docker, Helm, Terraform,
+APT, APK, and more).
+.P
+UDR uses a multi-strategy solver architecture (PubGrub, Z3 SAT solver, DFS
+backtracking with forward checking, or hybrid AutoSolver) to produce
+consistent, reproducible lock files. It features CUDA-aware conflict
+resolution, platform marker filtering (PEP 508), cross-compilation targeting,
+offline-first indexed caches, per-ecosystem solver isolation, and a content-
+addressed integrity cache.
+.P
+Additional capabilities include in-place manifest updates across 18 ecosystems,
+CVE scanning via the OSV database, license compliance checking (SPDX),
+SBOM generation (SPDX 2.3 / CycloneDX 1.5), supply chain attestation with
+Ed25519 signing, YAML-based policy enforcement, deprecation detection,
+and CI drift checking.
 .SH COMMANDS
+.SS Lock and resolution
 .TP
 .B lock
-Resolve dependencies and write a lock file
-.RS
-Supports \fB\-\-manifest\fR, \fB\-\-export\fR, \fB\-\-cuda\fR,
-\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
-\fB\-\-sign\fR, \fB\-\-provenance\fR, \fB\-\-check\fR,
-\fB\-\-workspace\fR, \fB\-\-json\fR, \fB\-\-dry-run\fR,
-\fB\-\-timeout\fR, \fB\-\-force\fR, \fB\-\-auto-sync\fR.
-.RE
-.TP
-.B install
-Install dependencies from a lock file
-.RS
-Supports \fB\-\-ecosystem\fR, \fB\-\-dry-run\fR, \fB\-\-production\fR,
-\fB\-\-cuda\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
-\fB\-\-workspace\fR.
-.RE
+Auto-detect manifests in the project directory, resolve all dependencies
+across ecosystems, and write a lock file (udr.lock). Supports CUDA/device
+overrides, cross-compilation (\fB\-\-target\fR, \fB\-\-platform\fR),
+SLSA provenance (\fB\-\-provenance\fR), Ed25519 signing (\fB\-\-sign\fR),
+CI drift checking (\fB\-\-check\fR), manifest updating (\fB\-\-yes\fR),
+and workspace monorepo support (\fB\-\-workspace\fR).
 .TP
 .B resolve
-Resolve dependencies without writing a lock file
-.RS
-Supports \fB\-\-ecosystem\fR, \fB\-\-format\fR, \fB\-\-cuda\fR,
-\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
-\fB\-\-timeout\fR, \fB\-\-interactive\fR.
-.RE
-.TP
-.B scan
-Scan a project directory for manifests and detect ecosystems
-.RS
-Supports \fB\-\-ecosystem\fR, \fB\-\-format\fR, \fB\-\-cuda\fR,
-\fB\-\-device\fR.
-.RE
+Resolve one or more packages (e.g.\& \fInumpy@pypi express@npm\fR) and
+print the resolution result without writing a lock file. Supports interactive
+conflict resolution, pinning, blocking, freezing, extras, and CUDA/device/
+cross-compilation overrides.
 .TP
 .B update
-Update manifest files from a lock file
-.RS
-Supports \fB\-\-interactive\fR, \fB\-\-dry-run\fR, \fB\-\-cuda\fR,
-\fB\-\-device\fR, \fB\-\-target\fR, \fB\-\-platform\fR,
-\fB\-\-fix-cve\fR, \fB\-\-workspace\fR, \fB\-\-lock-file\fR.
-.RE
+Re-resolve a specific package (or all vulnerable packages with
+\fB\-\-fix-cve\fR) and update the existing lock file. Supports interactive
+mode, dry-run, CUDA/device overrides, cross-compilation, and workspace
+monorepo support.
 .TP
-.B graph
-Print a dependency tree / graph
-.RS
-Outputs ASCII or DOT-format dependency graph.
-.RE
-.TP
-.B serve
-Start the UDR API server
-.RS
-Supports \fB\-\-host\fR, \fB\-\-port\fR, \fB\-\-reload\fR,
-\fB\-\-mode\fR (local|saas), \fB\-\-workers\fR,
-\fB\-\-ssl-keyfile\fR, \fB\-\-ssl-certfile\fR,
-\fB\-\-log-level\fR.
-.RE
-.TP
-.B why
-Show why a package is required (dependency chain + constraint trace)
-.RS
-Takes a package name; \fB\-\-all\fR shows all chains.
-.RE
-.TP
-.B details
-Display detailed package information
-.RE
-.TP
-.B diff
-Compare two lock files or workspace lock files
-.RS
-\fBudr diff [old] [new]\fR or \fB\-\-workspace\fR convenience mode.
-.RE
-.TP
-.B outdated
-List outdated packages from a lock file
-.RS
-Supports \fB\-\-json\fR for machine-readable output.
-.RE
-.TP
-.B search
-Search for packages across registries
-.RE
+.B install
+Install packages from a udr.lock file using each ecosystem's native
+package manager (pip, npm, cargo, go, gem, etc.). Supports ecosystem-
+specific filtering, dry-run, production mode (skip dev deps), CUDA wheel
+selection, and cross-compilation.
+.SS Inspection and analysis
 .TP
 .B check
-Check system compatibility, CVEs, licenses, deprecated packages, or policy
-.RS
-Flags: \fB\-\-cve\fR, \fB\-\-license\fR, \fB\-\-deprecated\fR,
-\fB\-\-policy\fR, \fB\-\-deps\fR, \fB\-\-cuda\fR,
-\fB\-\-device\fR, \fB\-\-verbose\fR, \fB\-\-json\fR,
-\fB\-\-workspace\fR, \fB\-\-lock-file\fR.
-.RE
+Run compatibility checks against the current system or a lock file.
+Use \fB\-\-cve\fR to scan for known vulnerabilities, \fB\-\-license\fR for
+license compliance (SPDX), \fB\-\-deprecated\fR for deprecated/yanked
+packages, \fB\-\-policy\fR for YAML policy enforcement, \fB\-\-deps\fR for
+project dependency listing, and \fB\-\-device\fR/\fB\-\-cuda\fR for
+simulated system checks.
 .TP
 .B verify
-Verify lock file integrity and (optionally) Ed25519 signatures
-.RS
-Supports \fB\-\-json\fR, \fB\-\-signature\fR, \fB\-\-workspace\fR.
-.RE
+Validate a lock file: check that all pinned versions still exist in their
+registries and that integrity hashes match (when
+\fBPIN_INTEGRITY=true\fR). With \fB\-\-signature\fR, verify the Ed25519
+signature on the lock file.
+.TP
+.B why
+Show why a package version was selected by tracing its dependency chain
+(which package required it and with what constraint). Use \fB\-\-all\fR to
+display chains for every package in the lock file.
+.TP
+.B outdated
+List packages in the lock file that have newer versions available in their
+registries. Supports ecosystem filtering and JSON output.
+.TP
+.B diff
+Compare two lock files and show added, removed, and changed packages.
+Supports workspace convenience mode (\fB\-\-workspace backend\fR compares
+udr.lock vs udr-backend.lock).
+.TP
+.B graph
+Print a dependency tree or DOT-format graph for one or more packages.
+Supports CUDA/device overrides and JSON output.
+.SS Search and discovery
+.TP
+.B search
+Search for packages across ecosystem registries. Supports filtering by
+ecosystem and limiting results per ecosystem.
+.TP
+.B details
+Display detailed information about a specific package: available versions,
+dependencies, metadata, and deprecation status.
 .TP
 .B list-ecosystems
-List all supported ecosystems with their registries
-.RE
-.TP
-.B completion
-Generate shell completion scripts for bash, zsh, or fish
-.RS
-Usage: \fBudr completion bash\fR | \fBzsh\fR | \fBfish\fR
-.RE
-.TP
-.B auth
-Manage API keys and signing keys (gen-key, show-key)
-.RE
-.TP
-.B index
-Manage offline package indexes (build, sync, info)
-.RE
+List all supported ecosystems with their display names, identifiers, and
+capability categories (resolvable or query-only).
+.SS Supply chain and compliance
 .TP
 .B sbom
-Generate an SBOM in SPDX 2.3 or CycloneDX 1.5 format
+Generate a Software Bill of Materials from a lock file in SPDX 2.3
+(default) or CycloneDX 1.5 format. Supports workspace and custom output
+file path.
+.SS Authentication and keys
+.TP
+.B auth
+Manage API keys for the UDR API server and Ed25519 signing keys for lock
+file attestation.
 .RS
-Supports \fB\-\-format\fR (spdx|cyclonedx), \fB\-\-output\fR,
-\fB\-\-workspace\fR, \fB\-\-lock-file\fR.
+Subcommands:
+.B create
+\fI\-\-name\fR \fI\-\-role\fR \fI\-\-description\fR \(em create a new API key.
+.B revoke
+\fI<key_id>\fR \(em revoke an API key by ID.
+.B list
+\(em list all API keys.
+.B gen-key
+\(em generate a new Ed25519 signing key pair.
+.B show-key
+\(em display the current Ed25519 public signing key.
 .RE
+.SS Offline indexes
+.TP
+.B index
+Manage offline SQLite indexes for air-gapped environments.
+.RS
+Subcommands:
+.B pull
+\fI<url>\fR \(em download pre-built indexes.
+.B build
+\(em build indexes from resolved packages in udr.lock.
+.B status
+\(em show local offline index status.
+.B sync
+\fI\-\-all\fR | \fI\-\-ecosystem\fR \(em sync local indexes from remote registries.
+.RE
+.SS Plugin system
+.TP
+.B tools
+Manage plugins and extensions.
+.RS
+Subcommands:
+.B register-plugin
+\fI\-\-path\fR <dir> \(em scan a directory for third-party plugins and
+register them.
+.RE
+.SS Other
+.TP
+.B scan
+Scan a GitHub repository or local directory for dependency manifests,
+detect ecosystems, and optionally resolve and write a lock file. Supports
+Github repo URL scanning, manifest-specific processing, CUDA/device
+overrides, and interactive mode.
+.TP
+.B serve
+Start the UDR API server. Supports local and SaaS modes, SSL termination,
+worker process configuration, and hot-reload for development.
+.TP
+.B completion
+Generate shell completion scripts for bash, zsh, or fish. If no shell is
+specified, the shell is auto-detected.
 .SH OPTIONS
 .TP
 .B \-\-version
-Show version and exit.
+Print the UDR version and exit.
 .TP
 .B \-\-help
-Show help message and exit.
+Print a help message and exit.
 .TP
 .B \-\-offline
-Use cached data only; no network requests.
-.SH FILES
+Run in offline mode: use cached data only; no network requests are made.
+Equivalent to setting the
+.B UDR_OFFLINE
+environment variable.
+.SS Common command flags
+These flags are available on multiple commands:
 .TP
-.I udr.lock
-Universal lock file (JSON) containing resolved dependency graph, integrity
-hashes, and provenance metadata.
+.B \-\-directory=\fI<dir>\fR, \-d \fI<dir>\fR
+Project directory to operate in (default: current directory). Supported by
+check, lock, verify, update, install, why, outdated, diff, sbom.
 .TP
-.I udr\-policy.yaml
-YAML policy file for \fBudr check \-\-policy\fR with rules for allowed
-licenses, blocked packages, vulnerability thresholds, etc.
+.B \-\-workspace=\fI<name>\fR
+Workspace name for monorepo support. The lock file is resolved as
+\fIudr-{workspace}.lock\fR instead of the default \fIudr.lock\fR.
+Supported by lock, check, update, install, verify, diff, why, outdated,
+sbom, resolve.
 .TP
-.I ~/.config/udr/
-User configuration directory containing:
-.RS
+.B \-\-lock-file=\fI<path>\fR, \-l \fI<path>\fR
+Explicit lock file path. Overrides \fB\-\-directory\fR and
+\fB\-\-workspace\fR resolution. Supported by check, update, install, why,
+outdated, sbom.
 .TP
-.I keys/
-Ed25519 signing keypair for lock file attestation.
+.B \-\-json
+Output results as JSON for machine parsing. Supported by lock, check,
+resolve, graph, verify, outdated, diff, search, details,
+list-ecosystems, why.
 .TP
-.I config.toml
-Optional user preferences (defaults to env vars).
-.RE
+.B \-\-cuda=\fI<version>\fR
+Target CUDA version (e.g.\& 12.1). Overrides auto-detection for GPU-
+aware package resolution (e.g.\& PyTorch CUDA variants). Supported by
+lock, check, resolve, graph, update, install, scan.
 .TP
-.I ~/.cache/udr/
-Cache directory for API responses and offline indexes.
-.SH ENVIRONMENT
+.B \-\-device=\fI<device>\fR
+Target compute device: \fBcpu\fR, \fBcuda\fR, \fBmps\fR (Apple Silicon),
+or \fBrocm\fR (AMD GPU). Supported by lock, check, resolve, graph, update,
+scan.
 .TP
-.B USE_Z3_SOLVER
-Set to "true" to force Z3 solver instead of default PubGrub.
+.B \-\-target=\fI<os>\fR
+Target operating system for cross-compilation: \fBlinux\fR, \fBwindows\fR,
+or \fBdarwin\fR. Supported by lock, resolve, update, install.
 .TP
-.B USE_PUBGRUB_SOLVER
-Set to "true" (default false) to enable PubGrub solver.
+.B \-\-platform=\fI<arch>\fR
+Target CPU architecture for cross-compilation: \fBx86_64\fR, \fBaarch64\fR,
+\fBarm64\fR, \fBi386\fR, or \fBamd64\fR. Supported by lock, resolve,
+update, install.
 .TP
-.B SOLVER_TIMEOUT
-Overall resolution timeout in seconds (default 60).
+.B \-\-with-dev
+Include dev/optional dependency manifests during resolution. Supported by
+lock, resolve, update.
 .TP
-.B SOLVER_MAX_VARIABLES
-Maximum SAT variables before solver gives up (default 50000).
+.B \-\-without-optional
+Exclude optional dependencies during resolution. Supported by lock,
+resolve, update.
 .TP
-.B SOLVER_REJECT_DEPRECATED
-Reject deprecated/yanked packages during resolution (default false,
-warn only).
+.B \-\-fix-cve
+Update vulnerable packages to versions that fix known CVEs. Supported by
+update.
 .TP
-.B SOLVER_OPTIMIZATION_THRESHOLD
-Version count above which Z3 optimization is disabled (default 100).
+.B \-\-sign
+Sign the lock file with an Ed25519 signing key. Supported by lock.
 .TP
-.B BFS_BATCH_SIZE
-Parallel batch size for BFS dependency fetching (default 20).
+.B \-\-provenance
+Add a SLSA provenance section to the lock file. Supported by lock.
 .TP
-.B PIN_INTEGRITY
-Set to "true" to verify package integrity hashes (default false).
+.B \-\-check, \-c
+Check if the lock file is up to date (CI mode). Exits with code 0 if
+current, 1 if drift is detected. Does not modify the lock file.
+Supported by lock.
 .TP
-.B NPM_CONCURRENCY
-Max concurrent npm API requests (default 10).
+.B \-\-signature, \-\-sig
+Verify the Ed25519 signature on a lock file. Supported by verify.
 .TP
-.B TARGET_OS
-Override target OS for cross-compilation (linux|windows|darwin).
+.B \-\-policy=\fI<file>\fR, \-p \fI<file>\fR
+Path to a YAML policy file (default: ./udr-policy.yaml). Supported by
+check.
 .TP
-.B TARGET_ARCH
-Override target architecture (x86_64|aarch64|arm64|i386|amd64).
+.B \-\-dry-run
+Show what would be done without modifying any files. Supported by lock,
+update, install, scan.
 .TP
-.B TARGET_CUDA
-Override target CUDA version for cross-compilation.
+.B \-\-interactive, \-i
+Interactive mode for selecting manifests and resolving conflicts manually.
+Supported by lock, resolve, update, scan.
 .TP
-.B DETECT_ECOSYSTEMS_TIMEOUT
-Timeout in seconds for ecosystem detection probes (default 15).
+.B \-\-timeout=\fI<seconds>\fR
+Resolution timeout in seconds (default: 120). Supported by lock, resolve,
+update.
 .TP
-.B RETRY_MAX_DELAY
-Maximum retry backoff delay in seconds (default 10).
+.B \-\-auto-sync
+Auto-sync stale local indexes before resolution. Supported by lock,
+resolve.
 .TP
-.B INDEX_AUTO_SYNC
-Set to "true" to auto-sync stale indexes before resolution (default false).
+.B \-\-pin=\fI<spec>\fR
+Pin a package to an exact version, e.g.\& \fB\-\-pin 'numpy==1.24'\fR.
+Repeatable. Supported by lock, resolve.
 .TP
-.BI {ECOSYSTEM}_AUTH_TOKEN
-Authentication token for a specific ecosystem registry.
-.BI {ECOSYSTEM}_AUTH_TYPE
-Auth type: bearer (default), basic, or header.
-.BI {ECOSYSTEM}_AUTH_USERNAME
-Username for basic auth.
-.BI {ECOSYSTEM}_AUTH_PASSWORD
-Password for basic auth.
-.PD
+.B \-\-pin-mode=\fI<mode>\fR
+Global pinning strategy: \fBnone\fR (default), \fBpatch\fR, \fBminor\fR,
+or \fBexact\fR. Supported by lock, resolve.
+.TP
+.B \-\-block=\fI<package>\fR
+Block a package from resolution, e.g.\& \fB\-\-block tensorflow\fR.
+Repeatable. Supported by lock, resolve.
+.TP
+.B \-\-freeze
+Freeze all packages at their lock-file versions. Supported by lock,
+resolve.
+.TP
+.B \-\-extras=\fI<list>\fR
+Comma-separated extras groups to activate (e.g.\& \fBdotenv,speedups\fR).
+Supported by lock, resolve.
 .SH EXAMPLES
 .TP
-Resolve and lock dependencies
+Resolve and lock dependencies in the current directory
 .B udr lock
 .TP
 Resolve with CUDA 12.1 and JSON output
@@ -241,42 +293,282 @@ Resolve with CUDA 12.1 and JSON output
 Cross-compile for ARM Linux
 .B udr lock --target linux --platform aarch64
 .TP
-Check for CVEs
+Sign a lock file with SLSA provenance
+.B udr lock --sign --provenance
+.TP
+CI drift check (exit 1 if lock file is stale)
+.B udr lock --check
+.TP
+Update manifests automatically after resolution
+.B udr lock --yes
+.TP
+Check for CVEs in the lock file
 .B udr check --cve
 .TP
 Check license compliance
 .B udr check --license
 .TP
-Check policy
+Check deprecated packages
+.B udr check --deprecated
+.TP
+Enforce a YAML policy
 .B udr check --policy udr-policy.yaml
-.TP
-Generate SBOM
-.B udr sbom --format spdx --output bom.json
-.TP
-Update manifests from lock file
-.B udr update
 .TP
 Fix vulnerable packages automatically
 .B udr update --fix-cve
 .TP
-Sign lock file
-.B udr lock --sign
+Generate an SPDX SBOM
+.B udr sbom --format spdx --output bom.json
 .TP
-Verify signed lock file
-.B udr verify --signature
-.TP
-CI drift check (exit 1 if lock file is stale)
-.B udr lock --check
-.TP
-Show why flask is required
+Show why flask is required (dependency chain)
 .B udr why flask
+.TP
+Search for a package
+.B udr search requests
+.TP
+Install all packages from the lock file
+.B udr install
+.TP
+Install production dependencies only (skip dev)
+.B udr install --production
+.TP
+Resolve a cross-ecosystem dependency set
+.B udr resolve numpy@pypi express@npm lodash
 .TP
 Compare workspace lock files
 .B udr diff --workspace backend
 .TP
+Verify lock file integrity and signature
+.B udr verify --signature
+.TP
 Generate bash completions
 .B udr completion bash > /etc/bash_completion.d/udr
+.TP
+Scan a GitHub repository
+.B udr scan --github https://github.com/user/repo
+.TP
+Start the API server on port 8199
+.B udr serve --port 8199
+.SH ENVIRONMENT
+UDR behaviour can be configured through the following environment variables.
+All settings are evaluated lazily on first access, allowing configuration
+changes without restart.
+.SS Solver behaviour
+.TP
+.B SOLVER_TIMEOUT
+Overall resolution timeout in seconds (default: 120). Applied per
+resolution call; the solver receives 80% of this budget.
+.TP
+.B SOLVER_MAX_VARIABLES
+Maximum number of SAT variables before the solver gives up and returns
+unsatisfiable (default: 50000).
+.TP
+.B SOLVER_REJECT_DEPRECATED
+When set to "true", deprecated or yanked packages are excluded during
+resolution. When "false" (default), deprecation warnings are collected
+but packages are still considered.
+.TP
+.B SOLVER_OPTIMIZATION_THRESHOLD
+Version count above which Z3 optimization is disabled (default: 500).
+When a package exceeds this many candidates, the solver falls back to a
+plain SAT search with post-resolution upgrade.
+.TP
+.B SOLVER_PRERELEASE_PENALTY
+Prerelease version penalty weight for optimization (default: 100000).
+.TP
+.B SOLVER_DFS_MAX_NODES
+Maximum nodes visited in DFS backtracking fallback (default: 200000).
+.TP
+.B USE_PUBGRUB_SOLVER
+Set to "true" to use the PubGrub solver (requires pubgrub-py).
+Default: false.
+.TP
+.B USE_Z3_SOLVER
+Set to "true" to force the Z3 SAT solver. Default: false (auto-detected).
+.TP
+.B USE_Z3_OPTIMIZE
+Set to "true" to use z3.Optimize() for version preference. Default: false.
+.TP
+.B USE_FORKING_SOLVER
+Set to "true" to enable the ForkingResolver meta-solver, which forks
+parallel alternative resolution scenarios when the primary solver fails.
+Default: false.
+.TP
+.B FORKING_MAX_FORKS
+Maximum number of parallel fork attempts (default: 4).
+.TP
+.B FORKING_TIMEOUT_RATIO
+Fraction of remaining timeout allocated to each fork (default: 0.5).
+.TP
+.B SOLVER_API_TIMEOUT
+API endpoint resolution timeout in seconds (default: 60).
+.TP
+.B PEER_DEP_MODE
+Peer dependency resolution mode: "hard" (default) or "soft".
+.SS Caching and offline mode
+.TP
+.B UDR_OFFLINE
+Set to "true", "1", or "yes" to disable all network requests. Only cached
+data is used. Equivalent to the \fB\-\-offline\fR CLI flag.
+.TP
+.B PIN_INTEGRITY
+Set to "true" to verify package integrity hashes (sha256/sha512/cksum)
+during lock and verify operations. Default: false.
+.TP
+.B USE_CONTENT_CACHE
+Set to "true" to enable the content-addressed cache (SHA256-addressed
+blob store). Default: false.
+.TP
+.B INDEX_AUTO_SYNC
+Set to "true" to automatically sync stale local indexes before resolution.
+Default: false.
+.TP
+.B LOCAL_INDEX_UPDATE_INTERVAL
+Seconds between automatic local index refresh attempts (default: 3600).
+.TP
+.B CACHE_TTL
+Default cache TTL in seconds for API responses (default: 3600).
+.TP
+.B BFS_BATCH_SIZE
+Number of dependencies fetched in parallel per batch during BFS traversal
+(default: 20).
+.SS Cross-compilation
+.TP
+.B TARGET_OS
+Override target OS for cross-compilation (linux, windows, darwin).
+.TP
+.B TARGET_ARCH
+Override target CPU architecture (x86_64, aarch64, arm64, i386, amd64).
+.TP
+.B TARGET_CUDA
+Override target CUDA version for cross-compilation.
+.SS Authentication
+.TP
+.BI {ECOSYSTEM}_AUTH_TOKEN
+Authentication token for a specific ecosystem registry (e.g.\&
+PYPI_AUTH_TOKEN, NPM_AUTH_TOKEN).
+.TP
+.BI {ECOSYSTEM}_AUTH_TYPE
+Auth type: "bearer" (default), "basic", or "header".
+.TP
+.BI {ECOSYSTEM}_AUTH_USERNAME
+Username for basic auth with an ecosystem registry.
+.TP
+.BI {ECOSYSTEM}_AUTH_PASSWORD
+Password for basic auth with an ecosystem registry.
+.TP
+.B API_KEY
+API key for the UDR API server. Auto-generated if not set.
+.TP
+.B SIGNING_KEY_PASSWORD
+Password for the Ed25519 signing key.
+.SS Network and retry
+.TP
+.B NPM_CONCURRENCY
+Maximum concurrent NPM API requests (default: 10).
+.TP
+.B DETECT_ECOSYSTEMS_TIMEOUT
+Timeout in seconds for ecosystem detection probes during manifest scanning
+(default: 15).
+.TP
+.B MAX_RETRIES
+Maximum number of retry attempts for failed HTTP requests (default: 3).
+.TP
+.B RETRY_MAX_DELAY
+Maximum retry backoff delay in seconds (default: 10).
+.TP
+.B REQUEST_TIMEOUT
+HTTP request timeout in seconds (default: 30).
+.SS OpenTelemetry
+.TP
+.B OTEL_ENABLED
+Set to "true" to enable OpenTelemetry tracing. Default: false.
+.TP
+.B OTEL_EXPORTER_OTLP_ENDPOINT
+OTLP exporter endpoint URL.
+.TP
+.B OTEL_SERVICE_NAME
+Service name for tracing (default: universal-dependency-resolver).
+.SS Server
+.TP
+.B UDR_PORT
+API server port (default: 8199).
+.TP
+.B UDR_HOST
+API server bind address (default: 127.0.0.1).
+.TP
+.B UDR_MODE
+Run mode: "cli" (default) or "saas".
+.TP
+.B ENV
+Deployment environment: "development" (default) or "production".
+.TP
+.B SECRET_KEY
+Secret key for JWT token signing. Must be changed in production.
+.TP
+.B ENABLE_AUTH
+Set to "true" (default) to enable authentication on the API server.
+.TP
+.B PROMETHEUS_ENABLED
+Set to "true" to expose Prometheus metrics at /metrics. Default: false.
+.SH FILES
+.TP
+.I udr.lock
+Universal lock file (JSON). Contains the resolved dependency graph with
+integrity hashes, deprecation flags, system information, provenance
+metadata, and workspace labels. By convention,
+\fIudr-{workspace}.lock\fR is used for monorepo workspaces.
+.TP
+.I udr-policy.yaml
+YAML policy file for \fBudr check \-\-policy\fR. Supports rules for
+blocked packages, allowed licenses, deprecated/yanked rejection,
+vulnerability thresholds, mandatory transitive pinning, and vendor
+requirements.
+.TP
+.I ~/.config/udr/
+User configuration directory.
+.RS
+.TP
+.I keys/
+Ed25519 signing key pair (\fIudr_ed25519\fR, \fIudr_ed25519.pub\fR) for
+lock file attestation, generated by \fBudr auth gen-key\fR.
+.TP
+.I config.toml
+Optional user preferences file (environment variables take precedence).
+.RE
+.TP
+.I ~/.cache/udr/
+Cache directory for API responses, offline indexes, and content-
+addressed blob storage.
+.RS
+.TP
+.I indexes/
+SQLite offline indexes for air-gapped resolution.
+.TP
+.I {ecosystem}/
+Per-ecosystem JSON response caches (DictCache with debounced flush).
+.TP
+.I cac/
+Content-addressed cache blobs (SHA256-addressed, git-like sharding).
+.RE
+.SH EXIT STATUS
+.TP
+0
+Successful completion.
+.TP
+1
+General error, policy violation, or lock file drift detected
+(\fBudr lock \-\-check\fR).
+.TP
+2
+Invalid command line syntax or arguments.
+.SH BUGS
+Report bugs and feature requests at
+.B https://github.com/anomalyco/universal-dependency-resolver/issues
 .SH SEE ALSO
 .BR udr.lock (5),
 .BR udr-policy.yaml (5),
-.BR https://opencode.ai
+.BR pip (1),
+.BR npm (1),
+.BR cargo (1),
+.BR go (1)

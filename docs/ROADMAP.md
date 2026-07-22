@@ -10,7 +10,7 @@
 | CLI commands | 19 |
 | Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
 | Tests | **3519** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
-| Coverage threshold | **55%** (enforced CI + pre-commit) |
+| Coverage threshold | **60%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **7** in `backend/` (4 fixable) |
 | Missing docstrings | **0** — all D categories resolved (D102, D205, D401, D107, D413, D400, D417). |

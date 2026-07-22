@@ -29,8 +29,9 @@ ENV UDR_HOME=/home/udr \
     UDR_PORT=8000 \
     UDR_HOST=0.0.0.0 \
     ENV=production \
-    SECRET_KEY=change-me-in-production \
     ENABLE_AUTH=true
+
+RUN printf '#!/bin/bash\nif [ "$SECRET_KEY" = "change-me-in-production" ] || [ -z "$SECRET_KEY" ]; then\n  export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")\nfi\nexec udr "$@"\n' > /usr/local/bin/udr-entrypoint.sh && chmod +x /usr/local/bin/udr-entrypoint.sh
 
 EXPOSE 8000
 
@@ -40,5 +41,5 @@ WORKDIR /home/udr
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
 
-ENTRYPOINT ["udr"]
+ENTRYPOINT ["/usr/local/bin/udr-entrypoint.sh"]
 CMD ["--help"]

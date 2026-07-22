@@ -170,6 +170,17 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 app.add_middleware(SlowAPIMiddleware)
 setup_middleware(app)
 
+def _sentry_before_send(event: dict, hint: dict) -> dict | None:
+    """Strip sensitive data from Sentry events before sending."""
+    if "request" in event:
+        request = event["request"]
+        request.pop("data", None)
+        headers = request.get("headers", {})
+        for sensitive_header in ("authorization", "cookie", "x-api-key", "x-auth-token"):
+            headers.pop(sensitive_header, None)
+        request["headers"] = headers
+    return event
+
 # Setup monitoring
 if SENTRY_DSN and SENTRY_AVAILABLE:
     sentry_sdk.init(
@@ -178,6 +189,7 @@ if SENTRY_DSN and SENTRY_AVAILABLE:
         traces_sample_rate=0.1,
         send_default_pii=False,
         environment=ENV,
+        before_send=_sentry_before_send,
     )
     logger.info("Sentry monitoring enabled")
 
