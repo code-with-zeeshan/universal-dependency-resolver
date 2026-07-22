@@ -251,7 +251,7 @@ defmodule MyApp.MixProject do
   end
 end
 MIX
-run_udr "$TMPDIR/10"
+SOLVER_TIMEOUT=90 timeout -s KILL 90 udr lock --directory "$TMPDIR/10" --yes --json > "$TMPDIR/10/out.json" 2>/dev/null || true
 MIX_CHECK=$(python3 -c "
 import json
 try:
@@ -274,7 +274,7 @@ name: mypackage
 version: 0.1.0
 build-depends: base >=4.16 && <5, containers >=0.6
 CABAL
-run_udr "$TMPDIR/11"
+SOLVER_TIMEOUT=90 timeout -s KILL 90 udr lock --directory "$TMPDIR/11" --yes --json > "$TMPDIR/11/out.json" 2>/dev/null || true
 CABAL_CHECK=$(python3 -c "
 import json
 try:
@@ -292,7 +292,7 @@ fi
 test_name "No GPU: CPU-only resolution should not pull CUDA deps"
 mkdir -p "$TMPDIR/12"
 echo 'requests>=2.28' > "$TMPDIR/12/requirements.txt"
-udr lock --directory "$TMPDIR/12" --yes --json > "$TMPDIR/12/out.json" 2>/dev/null || true
+SOLVER_TIMEOUT=120 timeout -s KILL 120 udr lock --directory "$TMPDIR/12" --yes --json > "$TMPDIR/12/out.json" 2>/dev/null || true
 CUDA_CHECK=$(python3 -c "
 import json
 d=json.load(open('$TMPDIR/12/out.json'))
