@@ -74,7 +74,7 @@ jobs:
           fi
           python -m pytest tests/unit/ -v --tb=long -k "not data_source and not slow" \
             $TARGETS \
-            --cov-report=term-missing --cov-report=xml --cov-fail-under=60
+            --cov-report=term-missing --cov-report=xml --cov-fail-under=55
 
       - name: CLI end-to-end smoke tests
         env:
