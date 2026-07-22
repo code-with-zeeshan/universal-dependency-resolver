@@ -18,6 +18,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from backend.core.utils import is_compatible_version
 from backend.settings import SOLVER_MAX_VARIABLES
 
 _MULTI_CONSTRAINT_SEP_RE = re.compile(
@@ -220,13 +221,19 @@ class PubGrubSolver:
             constraint = pkg.get("version_constraint", "*")
             if not constraint or constraint == "*":
                 constraint = ">=0.0.0"
-            requirements[name] = _normalize_constraint(constraint, eco)
+            norm_constraint = _normalize_constraint(constraint, eco)
+            requirements[name] = norm_constraint
 
             ver_python_reqs = pkg.get("version_requires_python", {})
             versions = _cluster_versions(pkg.get("available_versions", []))
             ver_map: dict[str, list[str]] = {}
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
+                # Skip versions incompatible with root constraint
+                if norm_constraint != ">=0.0.0" and not is_compatible_version(
+                    ver_str, norm_constraint
+                ):
+                    continue
                 # Skip if per-version Python requirement is incompatible
                 py_req = ver_python_reqs.get(ver_str)
                 if py_req and self._pubgrub_sys_py_version:
@@ -268,6 +275,18 @@ class PubGrubSolver:
                             dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
                 deps_map.setdefault(name, {})[safe_ver] = dep_specs
                 sanitized_to_original[name] = ver_map
+
+            if not ver_map:
+                logger.warning(
+                    "No versions of %s satisfy constraint %s — unsatisfiable",
+                    name,
+                    constraint,
+                )
+                return {
+                    "status": "unsatisfiable",
+                    "resolution_error": f"No versions of {name} satisfy {constraint}",
+                    "resolved_packages": {},
+                }
 
             for safe_ver, deps in deps_map.get(name, {}).items():
                 resolver.add_package(name, safe_ver, deps)
@@ -385,12 +404,18 @@ class PubGrubSolver:
             constraint = pkg.get("version_constraint", "*")
             if not constraint or constraint == "*":
                 constraint = ">=0.0.0"
-            requirements[name] = _normalize_constraint(constraint, eco)
+            norm_constraint = _normalize_constraint(constraint, eco)
+            requirements[name] = norm_constraint
 
             ver_python_reqs = pkg.get("version_requires_python", {})
             versions = _cluster_versions(pkg.get("available_versions", []))
             ver_map: dict[str, list[str]] = {}
             for ver_str in versions:
+                # Skip versions incompatible with root constraint
+                if norm_constraint != ">=0.0.0" and not is_compatible_version(
+                    ver_str, norm_constraint
+                ):
+                    continue
                 # Skip if per-version Python requirement is incompatible
                 py_req = ver_python_reqs.get(ver_str)
                 if py_req and self._pubgrub_sys_py_version:
@@ -431,7 +456,19 @@ class PubGrubSolver:
                         if d_name:
                             dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
                 solver.add_package(name, safe_ver, dep_specs)
-                sanitized_to_original[name] = ver_map
+
+            if not ver_map:
+                logger.warning(
+                    "No versions of %s satisfy constraint %s — unsatisfiable",
+                    name,
+                    constraint,
+                )
+                return {
+                    "status": "unsatisfiable",
+                    "resolution_error": f"No versions of {name} satisfy {constraint}",
+                    "resolved_packages": {},
+                }
+            sanitized_to_original[name] = ver_map
 
         try:
             if self._solver_timeout:
