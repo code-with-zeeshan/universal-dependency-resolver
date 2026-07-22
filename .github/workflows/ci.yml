@@ -62,15 +62,11 @@ jobs:
           PYTHONPATH: .
           ENABLE_CSRF: "false"
         run: |
+          TARGETS="--cov=backend.core --cov=backend.api --cov=backend.cli --cov=backend.settings --cov=backend.manifest_detector --cov=backend.database"
           # Python 3.13: coverage C extension (ctrace) segfaults with multiple --cov flags;
-          # use sysmon + single --cov=backend to avoid crash
+          # use sysmon instead
           if python3 --version | grep -q "3\.13"; then
             export COVERAGE_CORE=sysmon
-          fi
-          TARGETS="--cov=backend"
-          # On non-3.13, use separate targets for better per-module reporting
-          if ! python3 --version | grep -q "3\.13"; then
-            TARGETS="--cov=backend.core --cov=backend.api --cov=backend.cli --cov=backend.settings --cov=backend.manifest_detector --cov=backend.database"
           fi
           python -m pytest tests/unit/ -v --tb=long -k "not data_source and not slow" \
             $TARGETS \
