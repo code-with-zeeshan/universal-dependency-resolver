@@ -10,6 +10,9 @@
 [![Tests](https://img.shields.io/badge/3242%20unit%2B96%20integration%2B77%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Coverage](https://img.shields.io/badge/coverage-55%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![GitHub issues](https://img.shields.io/github/issues/code-with-zeeshan/universal-dependency-resolver?color=red&label=%F0%9F%90%9B%20Issues)](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues)
+[![Last commit](https://img.shields.io/github/last-commit/code-with-zeeshan/universal-dependency-resolver?color=blue&label=%F0%9F%93%85%20Last%20commit)](https://github.com/code-with-zeeshan/universal-dependency-resolver/commits/main)
 
 ---
 
@@ -93,7 +96,7 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | 🎛️ **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| 🌐 **58 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🌐 **54 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
 | 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -180,8 +183,8 @@ async def main():
     )
 
     resolver = create_solver()
-    result = resolver.resolve(
-        [{"name": "flask", "version": ">=2.0"}],
+    result = resolver.resolve_dependencies(
+        packages=[{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,
     )
 
@@ -231,10 +234,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Metric | Value |
 |---|---|
-| ✅ Supported ecosystems | **27** (22 active resolution + 5 plugin-only; 25 user-facing + 2 internal) |
+| ✅ Supported ecosystems | **27** (25 user-facing: 18 resolvable + 7 query-only; 2 internal) |
 | 🧪 Unit tests passing | **3242** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | 🎛️ CLI commands | **19** |
-| 🌐 API endpoints | **58** |
+| 🌐 API endpoints | **54** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
 | 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |

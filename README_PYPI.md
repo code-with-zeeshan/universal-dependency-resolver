@@ -57,7 +57,7 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| **58 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **54 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |
@@ -97,7 +97,6 @@ udr scan --github https://github.com/user/repo
 
 # System info
 udr check
-udr info
 
 # List all supported ecosystems
 udr list-ecosystems
@@ -124,8 +123,8 @@ async def main():
     )
 
     resolver = create_solver()
-    result = resolver.resolve(
-        [{"name": "flask", "version": ">=2.0"}],
+    result = resolver.resolve_dependencies(
+        packages=[{"name": "flask", "version": ">=2.0"}],
         system_info=system_info,
     )
 
