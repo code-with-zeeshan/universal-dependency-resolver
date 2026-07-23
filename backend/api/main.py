@@ -170,6 +170,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 app.add_middleware(SlowAPIMiddleware)
 setup_middleware(app)
 
+
 def _sentry_before_send(event: dict, hint: dict) -> dict | None:
     """Strip sensitive data from Sentry events before sending."""
     if "request" in event:
@@ -180,6 +181,7 @@ def _sentry_before_send(event: dict, hint: dict) -> dict | None:
             headers.pop(sensitive_header, None)
         request["headers"] = headers
     return event
+
 
 # Setup monitoring
 if SENTRY_DSN and SENTRY_AVAILABLE:

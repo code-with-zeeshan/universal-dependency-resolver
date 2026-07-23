@@ -2,25 +2,36 @@
 
 ## Table of Contents
 
-1. [Introduction](#1-introduction)
-2. [Prerequisites](#2-prerequisites)
-3. [Installation](#3-installation)
-4. [Quick Start](#4-quick-start)
-5. [How It Works](#5-how-it-works)
-6. [Components](#6-components)
-7. [CLI Usage](#7-cli-usage)
-8. [API Usage](#8-api-usage)
-9. [Python Library Usage](#9-python-library-usage)
-10. [Desktop App](#10-desktop-app)
-11. [Features in Detail](#11-features-in-detail)
-12. [Deployment](#12-deployment)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Performance](#14-performance)
-15. [Where to Go Next](#15-where-to-go-next)
+1. [Who This Is For](#1-who-this-is-for)
+2. [Introduction](#2-introduction)
+3. [Quick Start](#3-quick-start)
+4. [Installation](#4-installation)
+5. [Prerequisites](#5-prerequisites)
+6. [How It Works](#6-how-it-works)
+7. [Components](#7-components)
+8. [CLI Usage](#8-cli-usage)
+9. [API Usage](#9-api-usage)
+10. [Python Library Usage](#10-python-library-usage)
+11. [Desktop App](#11-desktop-app)
+12. [Features in Detail](#12-features-in-detail)
+13. [Deployment](#13-deployment)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Performance](#15-performance)
+16. [Where to Go Next](#16-where-to-go-next)
 
 ---
 
-## 1. Introduction
+## 1. Who This Is For
+
+| You... | The problem | What UDR does |
+|---|---|---|
+| 🏗️ **Run a multi-language monorepo** | pip + npm + cargo + go — each its own lock file, each its own audit tool, each its own version scheme. The same dep pinned to different versions across ecosystems? No tool catches it. | One `udr.lock` across all ecosystems. `udr lock --check` in CI catches cross-ecosystem version drift before prod. |
+| 🧠 **Deploy ML models with GPU deps** | torch + CUDA toolkit + nvidia-* wheels — wrong variant means silent CPU fallback or crash. Every ML team wastes days on this. | Auto-detects CUDA version, selects correct `torch+cu121` variant. CUDA 11-vs-12 conflict rules prevent incompatible pairs. |
+| 🔒 **Own supply chain compliance** | Quarterly audits = run `pip-audit` + `npm audit` + `cargo audit` + `go list -m` + `bundler-audit` separately. | `udr check --cve` against OSV across **18 ecosystems** at once. `udr sbom` for SPDX/CycloneDX. Done. |
+
+---
+
+## 2. Introduction
 
 **Universal Dependency Resolver (UDR)** is a cross-ecosystem dependency resolution tool. It resolves, locks, and exports dependencies across **25 package ecosystems** (18 resolvable + 7 query-only) using an AutoSolver (profiles graph → Z3/PubGrub/Hybrid per workload) that finds compatible versions even across ecosystem boundaries.
 
@@ -34,44 +45,26 @@ Existing tools only work within one ecosystem. `pip-compile` handles Python. `np
 
 ---
 
-## 2. Prerequisites
+## 3. Quick Start
 
-### CLI / Library / API Server
+```bash
+# Resolve cross-ecosystem packages
+udr resolve flask>=2.0 react@^18
+udr resolve numpy@pypi express@npm serde@crates
 
-| Requirement | Version | Notes |
-|---|---|---|
-| Python | 3.11 – 3.13 | 3.10 may work but is not tested |
-| pip | 23+ | `pip install --upgrade pip` if older |
-| OS | Linux, macOS, Windows | All features tested on Linux; macOS/Windows have full support |
+# Lock all dependencies in your project
+udr lock
 
-No other services required. SQLite + in-memory cache work out of the box.
+# Check system compatibility
+udr check
 
-### Desktop App
-
-No prerequisites. The desktop app bundles everything — Python backend, all dependencies, and the GUI — into a single installable package.
-
-### Optional dependencies
-
-| Extra | Adds | Used for |
-|---|---|---|
-| `[system]` | psutil, py-cpuinfo, distro, gputil, nvidia-ml-py | GPU detection, CPU info, OS details |
-| `[postgres]` | psycopg2-binary, redis, celery, aiocache | PostgreSQL + Redis + async task queue |
-| `[monitoring]` | OpenTelemetry, Sentry, Prometheus | Tracing, error tracking, metrics |
-| `[all]` | Everything above | Full install |
-
-### Build tools (for compiling native extensions)
-
-If `z3-solver` or other packages fail to compile:
-
-| OS | Command |
-|---|---|
-| Ubuntu/Debian | `sudo apt-get install build-essential pkg-config python3-dev` |
-| macOS | `xcode-select --install` |
-| Windows | Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) |
+# Start the API server
+udr serve --port 8000
+```
 
 ---
 
-## 3. Installation
+## 4. Installation
 
 ### Install from PyPI
 
@@ -105,26 +98,48 @@ udr list-ecosystems
 
 ---
 
-## 4. Quick Start
+## 5. Prerequisites
 
-```bash
-# Resolve cross-ecosystem packages
-udr resolve flask>=2.0 react@^18
-udr resolve numpy@pypi express@npm serde@crates
+### CLI / Library / API Server
 
-# Lock all dependencies in your project
-udr lock
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.11 – 3.13 | 3.10 may work but is not tested |
+| pip | 23+ | `pip install --upgrade pip` if older |
+| OS | Linux, macOS, Windows | All features tested on Linux; macOS/Windows have full support |
 
-# Check system compatibility
-udr check
+No other services required. SQLite + in-memory cache work out of the box.
 
-# Start the API server
-udr serve --port 8000
-```
+### Desktop App
+
+No prerequisites. The desktop app bundles everything — Python backend, all dependencies, and the GUI — into a single installable package.
+
+### Optional dependencies
+
+Recommended: `pip install "ud-resolver[z3,pubgrub,system]"` — see each row below for what they add.
+
+| Extra | Adds | Used for |
+|---|---|---|
+| `[z3]` | z3-solver (46MB) | CUDA XOR conflict rules + cross-eco constraints. GPU filtering works without it (pre-filtered before solver). |
+| `[pubgrub]` | Rust-backed PubGrub solver | Faster CDCL on 100+ package graphs. Falls back to pure-Python automatically if wheel unavailable. |
+| `[system]` | psutil, py-cpuinfo, distro, gputil, nvidia-ml-py | CPU model strings, GPU temperature/utilization, per-process memory. Base install detects GPU/OS/CPU via nvidia-smi/lspci/platform — no extra needed for constraint resolution. |
+| `[postgres]` | psycopg2-binary, redis, celery, aiocache | PostgreSQL + Redis + async task queue |
+| `[monitoring]` | OpenTelemetry, Sentry, Prometheus | Tracing, error tracking, metrics |
+| `[all]` | All extras above | Full install |
+
+### Build tools (for compiling native extensions)
+
+If `z3-solver` or other packages fail to compile:
+
+| OS | Command |
+|---|---|
+| Ubuntu/Debian | `sudo apt-get install build-essential pkg-config python3-dev` |
+| macOS | `xcode-select --install` |
+| Windows | Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) |
 
 ---
 
-## 5. How It Works
+## 6. How It Works
 
 ```mermaid
 sequenceDiagram
@@ -211,7 +226,7 @@ graph TB
 
 ---
 
-## 6. Components
+## 7. Components
 
 | Component | What it is | How to get | Best for |
 |---|---|---|---|
@@ -231,7 +246,7 @@ graph TB
 
 ---
 
-## 7. CLI Usage
+## 8. CLI Usage
 
 All 19 commands support `--help` for inline usage.
 
@@ -395,7 +410,7 @@ udr lock --target linux --platform x86_64       # resolve for linux/amd64
 
 ---
 
-## 8. API Usage
+## 9. API Usage
 
 Start the server:
 
@@ -450,7 +465,7 @@ curl -X POST http://localhost:8000/api/v1/packages/resolve \
 
 ---
 
-## 9. Python Library Usage
+## 10. Python Library Usage
 
 ```python
 import asyncio
@@ -479,7 +494,7 @@ asyncio.run(main())
 
 ---
 
-## 10. Desktop App
+## 11. Desktop App
 
 The desktop app is a standalone Electron application — no Python, Node.js, or any runtime required.
 
@@ -516,7 +531,7 @@ Single-page app with a collapsible icon sidebar:
 
 ---
 
-## 11. Features in Detail
+## 12. Features in Detail
 
 ### 25 supported ecosystems (18 resolvable + 7 query-only + 2 internal)
 
@@ -622,7 +637,7 @@ Resolves transitive dependencies across ecosystem boundaries. For example, if an
 
 ---
 
-## 12. Deployment
+## 13. Deployment
 
 ### Production server
 
@@ -665,7 +680,7 @@ See `.env.example` in the repository root for all available variables.
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 ### Common issues
 
@@ -690,7 +705,7 @@ Open an issue at https://github.com/code-with-zeeshan/universal-dependency-resol
 
 ---
 
-## 14. Performance
+## 15. Performance
 
 | Operation | Typical time |
 |---|---|
@@ -712,7 +727,7 @@ All registry API calls use `aiohttp` with connection pooling and concurrent fetc
 
 ---
 
-## 15. Where to Go Next
+## 16. Where to Go Next
 
 | Resource | What it covers |
 |---|---|

@@ -5,20 +5,17 @@
 [![License](https://img.shields.io/pypi/l/ud-resolver)](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/LICENSE)
 [![CI](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 
-Resolve dependencies across **25 ecosystems** in a single pass. One tool for Python, npm, Rust, Java, Go, C++, and more — detects cross-ecosystem conflicts before they reach production.
+Your Python backend needs PyPI. Your React frontend needs npm. Your Rust CLI needs crates.io. Your Go service needs Go modules. **One `udr lock` gives you one lock file for all of them.**
 
 ```bash
-# Resolve across ecosystems together
+# Resolve across ecosystems in one command
 udr resolve flask>=2.0 torch@pypi react@^18
 
-# Lock your project's dependencies
+# Lock your project across all manifests
 udr lock
 
-# Check system compatibility + CVE + deprecated packages
+# Check system + CVE + deprecated packages — 18 ecosystems at once
 udr check --cve --deprecated
-
-# Start the API server
-udr serve --port 8000
 ```
 
 ---
@@ -56,8 +53,8 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| **54 REST API endpoints** | Full programmatic API with OpenAPI docs |
+| **20 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom, tools |
+| **56 REST API endpoints** | Full programmatic API with OpenAPI docs |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required |
 | **Lock file** | Reproducible `udr.lock` with full system snapshot |

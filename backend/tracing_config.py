@@ -286,13 +286,16 @@ class _NoOpSpan:
         pass
 
     def add_event(
-        self, name: str, attributes: dict[str, object] | None = None,
+        self,
+        name: str,
+        attributes: dict[str, object] | None = None,
         timestamp: int | None = None,
     ) -> None:
         pass
 
     def record_exception(
-        self, exception: BaseException,
+        self,
+        exception: BaseException,
         attributes: dict[str, object] | None = None,
         timestamp: int | None = None,
         escaped: bool = False,
@@ -315,6 +318,8 @@ class _NoOpSpan:
         return None
 
     def add_link(
-        self, context: object, attributes: dict[str, object] | None = None,
+        self,
+        context: object,
+        attributes: dict[str, object] | None = None,
     ) -> None:
         pass

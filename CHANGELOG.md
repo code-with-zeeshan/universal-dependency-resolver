@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] - 2026-07-23
 
 ### Fixed
 
@@ -149,6 +149,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TROUBLESHOOTING.md**: Added Nix/Guix manifest patterns to supported list.
 - **Mermaid diagrams**: `ConflictResolver`→`AutoSolver (Z3/PubGrub/Hybrid)` in README.md, USER_GUIDE.md, ARCHITECTURE.md.
 - **Man page**: `docs/man/udr.1` updated — version `v4.0.0`→`v1.4.0`, solver description corrected from "PubGrub (default)" to "AutoSolver".
+- **README, README_PYPI, USER_GUIDE — audience-first rewrite**: Replaced generic taglines with 3 audience profiles (monorepo teams, ML/deploy teams, compliance teams). Each profile states a concrete problem and what UDR does about it.
+- **USER_GUIDE.md restructured**: New section 1 "Who This Is For"; Quick Start moved to section 3 (before Installation); Prerequisites moved to section 5 (after Installation) — evaluation flow now leads with audience and quick-start, not technical prerequisites.
+- **Accuracy fixes across README, README_PYPI**: CLI commands corrected 19→20 (added `tools`); API endpoints corrected 54→56; unit test count 3242→3334; export formats in mermaid diagram 12→15.
+- **COMPONENTS.md extras table**: Added `[z3]` and `[pubgrub]` extras; added recommended install line; `[all]` now says "All extras above" instead of "Everything".
 
 ## [1.3.3] - 2026-07-05
 

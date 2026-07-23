@@ -27,14 +27,18 @@ The core resolver engine — a Python application with:
 pip install ud-resolver
 ```
 
+Recommended: `pip install "ud-resolver[z3,pubgrub,system]"` — see each row below for what they add.
+
 Extras:
 
 | Flag | Adds |
 |---|---|
-| `[system]` | GPU & system scanning (`psutil`, `pynvml`, `cpuinfo`) |
+| `[z3]` | Z3 SAT solver for CUDA XOR conflict rules + cross-eco constraints |
+| `[pubgrub]` | Rust-backed PubGrub solver (faster on 100+ package graphs) |
+| `[system]` | GPU temperature/utilization, CPU model string, per-process memory |
 | `[postgres]` | PostgreSQL support |
 | `[monitoring]` | OpenTelemetry & Sentry |
-| `[all]` | Everything |
+| `[all]` | All extras above |
 
 ### Prerequisites
 

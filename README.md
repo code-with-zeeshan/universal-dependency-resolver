@@ -16,7 +16,13 @@
 
 ---
 
-## ✨ One tool. 27 ecosystems. Infinite possibilities.
+## Who is this for?
+
+| You... | The problem | What UDR does |
+|---|---|---|
+| 🏗️ **Run a multi-language monorepo** | pip + npm + cargo + go — each its own lock file, each its own audit tool, each its own version scheme. The same dep pinned to different versions across ecosystems? No tool catches it. | One `udr.lock` across all ecosystems. `udr lock --check` in CI catches cross-ecosystem version drift before prod. |
+| 🧠 **Deploy ML models with GPU deps** | torch + CUDA toolkit + nvidia-* wheels — wrong variant means silent CPU fallback or crash. Every ML team wastes days on this. | Auto-detects CUDA version, selects correct `torch+cu121` variant. CUDA 11-vs-12 conflict rules prevent incompatible pairs. |
+| 🔒 **Own supply chain compliance** | Quarterly audits = run `pip-audit` + `npm audit` + `cargo audit` + `go list -m` + `bundler-audit` separately. | `udr check --cve` against OSV across **18 ecosystems** at once. `udr sbom` for SPDX/CycloneDX. Done. |
 
 ```bash
 udr resolve torch@pypi express@npm serde@crates
@@ -26,18 +32,6 @@ udr resolve torch@pypi express@npm serde@crates
 
 > **Say goodbye to fragmented dependency management.**  
 > No more juggling `pip-compile`, `npm ls`, and `cargo tree` separately.
-
----
-
-## 🎯 Why You Need This
-
-| The old way | With UDR |
-|---|---|
-| 😤 Manage dependencies separately per ecosystem | 🎉 Resolve everything in one command |
-| 😰 Cross-ecosystem conflicts caught at runtime | 🛡️ Detected & resolved at lock time |
-| 🤷‍♂️ CUDA/GPU compatibility? Hope and pray | 🧠 Auto-detected and handled |
-| 📝 Pin transitive deps manually | 🔗 SAT solver pins them automatically |
-| 🐌 Slow, repetitive, error-prone | ⚡ Fast, cached, reproducible |
 
 ---
 
@@ -95,8 +89,8 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| 🎛️ **19 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom |
-| 🌐 **54 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🎛️ **20 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom, tools |
+| 🌐 **56 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
 | 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -107,7 +101,7 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 
 | Component | What it is | How to get | Best for |
 |---|---|---|---|
-| 🖥️ **CLI** | Terminal tool with 19 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
+| 🖥️ **CLI** | Terminal tool with 20 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
 | 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
 | 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
 | 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
@@ -213,7 +207,7 @@ flowchart LR
     B["🌐 Fetch metadata<br/>from registry APIs"] --> C
     C["🔍 Scan system<br/>OS · GPU · CUDA · Python"] --> D
     D["🧠 AutoSolver + SAT backends<br/>Per-eco isolation · CUDA-aware<br/>Backtracking · SCC batching"] --> E
-    E["📤 Export / Lock<br/>12 formats · udr.lock"]
+    E["📤 Export / Lock<br/>15 formats · udr.lock"]
 
     B -->|"aiohttp"| F["📦 PyPI · npm · Crates · Maven<br/>+ 14 more registries"]
     C -->|"pynvml"| G["🖥️ NVIDIA · AMD · Apple Silicon<br/>TPU · NPU · ANE"]
@@ -235,8 +229,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **27** (25 user-facing: 18 resolvable + 7 query-only; 2 internal) |
-| 🧪 Unit tests passing | **3242** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
-| 🎛️ CLI commands | **19** |
+| 🧪 Unit tests passing | **3334** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| 🎛️ CLI commands | **20** |
 | 🌐 API endpoints | **54** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
@@ -278,7 +272,7 @@ cd desktop && node --test tests/
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
 | 🎮 [CLI Reference](docs/CLI.md) | All 19 commands, flags, examples, exit codes |
-| 🌐 [API Reference](docs/API.md) | 58 REST endpoints, request/response schemas |
+| 🌐 [API Reference](docs/API.md) | 56 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
 | 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |

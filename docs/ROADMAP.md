@@ -7,9 +7,9 @@
 | Resolution ecosystems | **25** (18 resolvable + 7 query-only + 2 internal) |
 | Solver | PubGrub (Rust-backed, default) → Z3 fallback (`USE_Z3_SOLVER=true`) |
 | ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
-| CLI commands | 19 |
+| CLI commands | 20 |
 | Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
-| Tests | **3519** (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| Tests | **3610** (3334 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | Coverage threshold | **60%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **7** in `backend/` (4 fixable) |
@@ -223,7 +223,7 @@
 | 10.3 | `udr diff` | ✅ Lock file comparison |
 | 10.4 | `udr outdated` | ✅ Stale package detection |
 | 10.5 | Shell completions | ✅ Bash/zsh/fish |
-| 10.6 | Man page | ❌ Deferred |
+| 10.6 | Man page | ✅ docs/man/udr.1 |
 
 ---
 
@@ -266,10 +266,10 @@ These items were evaluated and deliberately skipped because the effort does not 
 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
-| v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Past | Q3 2026 |
-| v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, 36 gap closures, 191 Q1-Q43 fixes, Phase 5-10 complete | ✅ Past | 2026-07-14 |
-| v1.5 | P0-P4 cross-check (34 items), plugin registry CLI, matrix generator, badge workflow, pre-release weight normalization, auth refresh, OTel spans | ✅ Past | 2026-07-22 |
-| v2.0 | Source repo URL + commit hash enrichment, ruff docstrings ✅, type stubs ✅, WASM frontend (deferred) | ✅ Released | Q4 2026 |
+| v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
+| v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | 🔜 Current | 2026-07-23 |
+| v1.5 | Remaining deferred items, WASM frontend (if demand), community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
+| v2.0 | Source repo URL + commit hash enrichment, ruff docstrings (all D violations → 0), type stubs (.pyi), desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 
 ---
 
