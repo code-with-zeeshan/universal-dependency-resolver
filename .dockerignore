@@ -23,6 +23,7 @@ tests/
 docs/
 .github/
 *.md
+!README_PYPI.md
 AGENTS.md
 LICENSE
 Makefile
