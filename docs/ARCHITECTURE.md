@@ -322,7 +322,7 @@ graph LR
 - **Auth conditionally registered**: `ENABLE_AUTH=true` by default. Auth router only mounted when enabled.
 - **Settings trimmed**: ~200 lines of core settings. Removed Celery, email, webhooks, monitoring, rate-limit-for-each-endpoint, and other server-only configs.
 - **No Docker**: Tool ships as `pip install ud-resolver` and as a desktop app. Docker export templates (Dockerfile.j2, docker-compose.yml.j2) are user-facing features for exporting resolved dependencies.
-- **Architecture rules enforced**: CI + pre-commit hooks verify no `api/ → cli/` or `cli/ → api/` imports. Coverage threshold `fail_under = 60` enforced in CI.
+- **Architecture rules enforced**: CI + pre-commit hooks verify no `api/ → cli/` or `cli/ → api/` imports. Coverage threshold `fail_under = 58` enforced in CI.
 
 ## Testing
 

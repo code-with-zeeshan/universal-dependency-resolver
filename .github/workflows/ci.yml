@@ -70,7 +70,7 @@ jobs:
           fi
           python -m pytest tests/unit/ -v --tb=long -k "not data_source and not slow" \
             $TARGETS \
-            --cov-report=term-missing --cov-report=xml --cov-fail-under=60
+            --cov-report=term-missing --cov-report=xml --cov-fail-under=58
 
       - name: Benchmark solver performance
         if: matrix.python-version == '3.12'

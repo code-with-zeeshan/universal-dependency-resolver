@@ -2,7 +2,9 @@
 import pytest
 
 from backend.core.constraint_normalizer import (
+    compare_versions_with_prerelease,
     normalize_constraint,
+    normalize_prerelease_weight,
     normalize_version,
     parse_semver,
 )
@@ -54,6 +56,33 @@ class TestNormalizeVersion:
 
     def test_conda_star_suffix(self):
         assert normalize_version("3.9*", "conda") == "3.9.0"
+
+    # --- RPM ---
+
+    def test_rpm_evr_full(self):
+        assert normalize_version("1:2.3.4-5.el8", "rpm") == "2.3.4"
+
+    def test_rpm_no_epoch(self):
+        assert normalize_version("2.3.4-5.el8", "rpm") == "2.3.4"
+
+    def test_rpm_no_release(self):
+        assert normalize_version("2.3.4", "rpm") == "2.3.4"
+
+    # --- Go pseudo-versions ---
+
+    def test_go_pseudo_version(self):
+        assert normalize_version("v0.0.0-0.20230101000000-abcdefabcdef") == "0.0.0"
+
+    def test_go_pseudo_version_no_v(self):
+        assert normalize_version("1.2.3-0.20230101000000-abcdefabcdef") == "1.2.3"
+
+    # --- Apt/apk revision strip ---
+
+    def test_apt_revision_stripped(self):
+        assert normalize_version("1.2.3-4ubuntu1", "apt") == "1.2.3"
+
+    def test_apk_revision_stripped(self):
+        assert normalize_version("2.0.0-r1", "apk") == "2.0.0"
 
 
 class TestParseSemver:
@@ -232,3 +261,100 @@ class TestVersSpec:
     def test_shorthand_parse(self):
         s = parse("^1.0.0", "npm")
         assert s.pep508 == ">=1.0.0,<2.0.0"
+
+
+class TestNormalizePrereleaseWeight:
+    def test_stable_release(self):
+        assert normalize_prerelease_weight("1.2.3") == 100
+
+    def test_dev_release(self):
+        assert normalize_prerelease_weight("1.0.0.dev1") == 0
+
+    def test_alpha(self):
+        assert normalize_prerelease_weight("1.0.0a1") == 1
+
+    def test_beta(self):
+        assert normalize_prerelease_weight("1.0.0b2") == 2
+
+    def test_rc(self):
+        assert normalize_prerelease_weight("1.0.0rc3") == 3
+
+    def test_alpha_long(self):
+        assert normalize_prerelease_weight("1.0.0alpha1") == 1
+
+    def test_beta_long(self):
+        assert normalize_prerelease_weight("1.0.0beta1") == 2
+
+    def test_preview(self):
+        assert normalize_prerelease_weight("1.0.0-preview.1") == 3
+
+    def test_dev_dash(self):
+        assert normalize_prerelease_weight("1.0.0-dev.1") == 0
+
+    def test_npm_prerelease(self):
+        assert normalize_prerelease_weight("1.0.0-alpha.1") == 1
+
+    def test_npm_rc(self):
+        assert normalize_prerelease_weight("1.0.0-rc.1") == 3
+
+    def test_v_prefix(self):
+        assert normalize_prerelease_weight("v2.0.0") == 100
+
+    def test_empty_returns_100(self):
+        assert normalize_prerelease_weight("") == 100
+
+    def test_epoch_stripped(self):
+        assert normalize_prerelease_weight("1:1.0.0") == 100
+
+    def test_version_with_prerelease_contains(self):
+        assert normalize_prerelease_weight("1.0.0.beta1") == 2
+
+    def test_npm_semver_dev(self):
+        assert normalize_prerelease_weight("3.0.0-dev") >= 0
+
+    def test_standalone_a(self):
+        assert normalize_prerelease_weight("1.0.0a1") == 1
+
+    def test_standalone_b(self):
+        assert normalize_prerelease_weight("1.0.0b1") == 2
+
+
+class TestCompareVersionsWithPrerelease:
+    def test_stable_equal(self):
+        assert compare_versions_with_prerelease("1.0.0", "1.0.0") == 0
+
+    def test_stable_greater(self):
+        assert compare_versions_with_prerelease("2.0.0", "1.0.0") == 1
+
+    def test_stable_less(self):
+        assert compare_versions_with_prerelease("1.0.0", "2.0.0") == -1
+
+    def test_dev_less_than_alpha(self):
+        assert compare_versions_with_prerelease("1.0.0.dev1", "1.0.0a1") == -1
+
+    def test_alpha_less_than_beta(self):
+        assert compare_versions_with_prerelease("1.0.0a1", "1.0.0b1") == -1
+
+    def test_beta_less_than_rc(self):
+        assert compare_versions_with_prerelease("1.0.0b1", "1.0.0rc1") == -1
+
+    def test_rc_less_than_stable(self):
+        assert compare_versions_with_prerelease("1.0.0rc1", "1.0.0") == -1
+
+    def test_dev_less_than_stable(self):
+        assert compare_versions_with_prerelease("1.0.0.dev1", "1.0.0") == -1
+
+    def test_same_phase_compare(self):
+        assert compare_versions_with_prerelease("1.0.0a1", "1.0.0a2") == -1
+
+    def test_invalid_versions_fallback(self):
+        result = compare_versions_with_prerelease("not-a-version", "also-not")
+        assert isinstance(result, int)
+
+    def test_invalid_vs_valid(self):
+        result = compare_versions_with_prerelease("abc", "1.0.0")
+        assert isinstance(result, int)
+
+    def test_npm_prerelease_ordering(self):
+        assert compare_versions_with_prerelease("1.0.0-alpha.1", "1.0.0") == -1
+        assert compare_versions_with_prerelease("1.0.0-alpha.1", "1.0.0-beta.1") == -1

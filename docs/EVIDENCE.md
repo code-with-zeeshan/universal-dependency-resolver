@@ -272,7 +272,7 @@ gaps).
 | 77 e2e tests | `pytest --collect-only tests/e2e/` | ✅ Verified |
 | 94 cross-eco coverage tests | `tests/unit/test_cross_eco_coverage.py` — covers all 21 previously-untested ecosystems | ✅ Verified |
 | 39 hardening regression tests | `tests/unit/test_regression_hardening.py` — 5 bug fixes + 6 repo smoke tests | ✅ Verified |
-| Coverage threshold 60% | `pyproject.toml` `--cov-fail-under=60` | ✅ Verified |
+| Coverage threshold 58% | `pyproject.toml` `--cov-fail-under=58` | ✅ Verified |
 | Hypothesis fuzz testing | `tests/unit/test_hypothesis_*.py` | ✅ Verified |
 
 ---

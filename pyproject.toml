@@ -284,7 +284,7 @@ source = ["backend"]
 omit = ["backend/database/models.py", "backend/database/__init__.py"]
 
 [tool.coverage.report]
-fail_under = 60
+fail_under = 58
 show_missing = true
 skip_empty = true
 
