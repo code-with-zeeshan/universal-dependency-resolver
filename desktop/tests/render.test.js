@@ -25,7 +25,7 @@ describe('Electron render test', { skip: !xvfbAvailable && !process.env.DISPLAY 
 
     const result = spawnSync(cmd, args, {
       cwd: path.join(__dirname, '..'),
-      timeout: 30000,
+      timeout: 60000,
       stdio: 'pipe',
       env: { ...process.env, ELECTRON_ENABLE_STACK_DUMPING: 'false' },
     })

@@ -1,6 +1,24 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
+
+// Register handlers that app.js depends on, so IPC calls don't fail
+ipcMain.handle('get-backend-url', () => 'http://127.0.0.1:8199')
+
+async function waitForElement(win, js, label, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs
+  let lastErr
+  while (Date.now() < deadline) {
+    try {
+      const result = await win.webContents.executeJavaScript(js)
+      if (result) return result
+    } catch (err) {
+      lastErr = err
+    }
+    await new Promise(r => setTimeout(r, 300))
+  }
+  throw lastErr || new Error(`Timed out waiting for ${label}`)
+}
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
@@ -15,7 +33,14 @@ app.whenReady().then(async () => {
 
   try {
     await win.loadFile(path.join(__dirname, '..', 'index.html'))
-    await new Promise(r => setTimeout(r, 3000))
+
+    // Wait for static DOM elements to be present (instead of fixed timeout)
+    await waitForElement(win, '!!document.getElementById("statusDot")', 'statusDot')
+    await waitForElement(win, '!!document.getElementById("tabNav")', 'tabNav')
+    console.log('PASS: DOM elements found')
+
+    // Give page JS a moment to render
+    await new Promise(r => setTimeout(r, 1000))
 
     const image = await win.capturePage()
     const screenshotPath = '/tmp/udr-render-test.png'
@@ -36,26 +61,6 @@ app.whenReady().then(async () => {
       return
     }
     console.log(`PASS: Title="${title}"`)
-
-    const hasStatusDot = await win.webContents.executeJavaScript(
-      '!!document.getElementById("statusDot")'
-    )
-    if (!hasStatusDot) {
-      console.error('FAIL: statusDot element not found')
-      app.exit(1)
-      return
-    }
-    console.log('PASS: statusDot element found')
-
-    const hasNav = await win.webContents.executeJavaScript(
-      '!!document.getElementById("tabNav")'
-    )
-    if (!hasNav) {
-      console.error('FAIL: navigation element not found')
-      app.exit(1)
-      return
-    }
-    console.log('PASS: navigation element found')
 
     console.log('All render tests PASSED')
     app.exit(0)
