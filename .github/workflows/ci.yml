@@ -82,7 +82,7 @@ jobs:
         run: |
           echo "## Solver Performance (10 slowest tests)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          python -m pytest tests/unit/test_conflict_resolver.py tests/unit/test_pubgrub_core.py tests/unit/test_hybrid_solver.py -v --durations=10 --tb=short 2>&1 | \
+          python -m pytest tests/unit/test_orchestrator_resolve.py tests/unit/test_pubgrub_solver.py tests/unit/test_hybrid_solver.py tests/unit/test_forking_resolver.py -v --durations=10 --tb=short 2>&1 | \
             tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage
