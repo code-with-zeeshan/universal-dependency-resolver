@@ -14,11 +14,6 @@ RUN pip install --no-cache-dir -e ".[system,postgres]"
 
 FROM python:3.12-slim-bookworm AS runtime
 
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN groupadd -r udr && useradd -r -g udr -d /home/udr -m udr
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
