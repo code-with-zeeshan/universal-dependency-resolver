@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
 export class CliRunner {
     private output: vscode.OutputChannel;
@@ -14,8 +14,8 @@ export class CliRunner {
 
     isAvailable(): boolean {
         try {
-            execSync(`${this.cliPath} --version`, { timeout: 5000, encoding: 'utf-8' });
-            return true;
+            const result = spawnSync(this.cliPath, ['--version'], { timeout: 5000, encoding: 'utf-8' });
+            return result.status === 0;
         } catch {
             return false;
         }
@@ -23,14 +23,21 @@ export class CliRunner {
 
     run(args: string[]): void {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '.';
-        const cmd = `${this.cliPath} ${args.join(' ')}`;
         this.output.clear();
-        this.output.appendLine(`$ ${cmd}`);
+        this.output.appendLine(`$ ${this.cliPath} ${args.join(' ')}`);
         this.output.show();
 
         try {
-            const result = execSync(cmd, { cwd: workspaceRoot, encoding: 'utf-8', timeout: 120000 });
-            this.output.appendLine(result);
+            const result = spawnSync(this.cliPath, args, {
+                cwd: workspaceRoot, encoding: 'utf-8', timeout: 120000,
+            });
+            if (result.status === 0) {
+                this.output.appendLine(result.stdout || '');
+            } else {
+                const errMsg = result.stderr || `exit code ${result.status}`;
+                this.output.appendLine(`[error] ${errMsg}`);
+                vscode.window.showErrorMessage(`UDR: ${errMsg}`);
+            }
         } catch (err: any) {
             this.output.appendLine(`[error] ${err.stderr || err.message}`);
             vscode.window.showErrorMessage(`UDR: ${err.message}`);
@@ -40,9 +47,10 @@ export class CliRunner {
     runSilent(args: string[]): string {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '.';
         try {
-            return execSync(`${this.cliPath} ${args.join(' ')}`, {
+            const result = spawnSync(this.cliPath, args, {
                 cwd: workspaceRoot, encoding: 'utf-8', timeout: 60000,
             });
+            return result.status === 0 ? (result.stdout || '') : '';
         } catch {
             return '';
         }
