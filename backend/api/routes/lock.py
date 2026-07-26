@@ -1,6 +1,5 @@
 """Module docstring."""
-
-from __future__ import annotations
+from packaging.version import parse as parse_version
 
 # backend/api/routes/lock.py
 import asyncio
@@ -699,8 +698,6 @@ async def install_commands(
     ecosystem_groups: dict[str, list[tuple]] = {}
 
     for name, info in packages.items():
-        if not info.get("direct", True):
-            continue
         eco = info.get("ecosystem", "pypi")
         ver = info.get("resolved_version")
         if ver:
@@ -817,7 +814,7 @@ async def outdated_packages(
                 ]
                 sorted_vers = sorted(
                     [v for v in version_strings if v],
-                    key=lambda x: __import__("packaging.version").parse(x),
+                    key=lambda x: parse_version(x),
                     reverse=True,
                 )
                 latest_str = sorted_vers[0] if sorted_vers else ver

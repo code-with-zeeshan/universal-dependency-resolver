@@ -247,11 +247,12 @@ class TestInstallCommands:
         ecosystems = {c["ecosystem"] for c in data["commands"]}
         assert ecosystems == {"pypi", "npm"}
 
-    def test_install_commands_skips_transitive(self, client):
+    def test_install_commands_includes_all_packages(self, client):
         response = client.post("/api/v1/install-commands", json={"lock_data": SAMPLE_LOCK_DATA})
         data = response.json()
         urllib3_cmds = [c for c in data["commands"] if "urllib3" in c["command"]]
-        assert len(urllib3_cmds) == 0
+        assert len(urllib3_cmds) == 1
+        assert "urllib3==2.0.7" in urllib3_cmds[0]["command"]
 
     def test_install_commands_empty(self, client):
         response = client.post("/api/v1/install-commands", json={"lock_data": {"packages": {}}})
