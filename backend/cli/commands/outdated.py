@@ -15,6 +15,8 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from backend.core.concurrency import get_semaphore
+
 from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
 
 
@@ -87,7 +89,7 @@ async def _cmd_outdated_async(args: argparse.Namespace) -> int:
                 logger.warning("Failed to check outdated status for %s", name, exc_info=True)
             progress.advance(check_task)
 
-        _outdated_sem = asyncio.Semaphore(20)
+        _outdated_sem = get_semaphore("cli_outdated", concurrency=20)
 
         async def _bounded_check(n, i):
             async with _outdated_sem:

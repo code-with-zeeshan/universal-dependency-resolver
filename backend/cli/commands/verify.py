@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from backend.core.concurrency import get_semaphore
 from backend.settings import PIN_INTEGRITY as _pin_integrity
 
 from ..shared import _read_lock_file, _resolve_lock_path, console, err_console
@@ -111,7 +112,7 @@ async def _cmd_verify_async(args: argparse.Namespace):
                 return {"name": name, "issue": str(exc), "severity": "error"}
             return None
 
-        _verify_sem = asyncio.Semaphore(20)
+        _verify_sem = get_semaphore("cli_verify", concurrency=20)
 
         async def _bounded_check(n, i):
             async with _verify_sem:

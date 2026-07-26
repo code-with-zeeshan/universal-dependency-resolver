@@ -90,7 +90,7 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
 | 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | 🎛️ **20 CLI commands** | serve, check, resolve, lock, scan, graph, verify, list-ecosystems, update, install, completion, why, outdated, diff, search, details, auth, index, sbom, tools |
-| 🌐 **56 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
+| 🌐 **54 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
 | 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
 | 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
@@ -271,8 +271,8 @@ cd desktop && node --test tests/
 | Guide | Description |
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
-| 🎮 [CLI Reference](docs/CLI.md) | All 19 commands, flags, examples, exit codes |
-| 🌐 [API Reference](docs/API.md) | 56 REST endpoints, request/response schemas |
+| 🎮 [CLI Reference](docs/CLI.md) | All 20 commands, flags, examples, exit codes |
+| 🌐 [API Reference](docs/API.md) | 54 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
 | 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |

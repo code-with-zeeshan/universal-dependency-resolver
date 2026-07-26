@@ -274,3 +274,48 @@ def compare_versions(v1: str, v2: str) -> int:
     except Exception as e:
         logger.error(f"Failed to compare versions {v1} and {v2}: {e}")
         return 0
+
+
+OS_ALIASES: dict[str, list[str]] = {
+    "linux": ["linux", "manylinux", "unix", "posix"],
+    "windows": ["windows", "win", "win32", "win_amd64"],
+    "macos": ["macos", "darwin", "osx", "mac"],
+    "darwin": ["macos", "darwin", "osx", "mac"],
+}
+
+ARCH_ALIASES: dict[str, list[str]] = {
+    "x86_64": ["x86_64", "amd64", "x64"],
+    "amd64": ["x86_64", "amd64", "x64"],
+    "i386": ["i386", "i686", "x86"],
+    "i686": ["i386", "i686", "x86"],
+    "arm64": ["arm64", "aarch64"],
+    "aarch64": ["arm64", "aarch64"],
+    "armv7": ["armv7", "armv7l"],
+    "armv7l": ["armv7", "armv7l"],
+}
+
+
+def resolve_os_alias(os_name: str) -> list[str]:
+    """Resolve an OS name to its canonical aliases."""
+    return OS_ALIASES.get(os_name.lower(), [os_name.lower()])
+
+
+def resolve_arch_alias(arch: str) -> list[str]:
+    """Resolve an architecture name to its canonical aliases."""
+    return ARCH_ALIASES.get(arch.lower(), [arch.lower()])
+
+
+def safe_read_file(path: str | Path) -> str | None:
+    """Read a file and return its contents. Returns None on failure."""
+    try:
+        with open(path) as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.debug("File not found: %s", path)
+        return None
+    except PermissionError:
+        logger.debug("Permission denied: %s", path)
+        return None
+    except Exception as e:
+        logger.warning("Failed to read file %s: %s", path, e)
+        return None

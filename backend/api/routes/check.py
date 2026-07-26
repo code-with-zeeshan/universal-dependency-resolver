@@ -1,19 +1,15 @@
 """REST endpoints for CVE, license, deprecation, and policy checks."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.api.dependencies import get_data_aggregator, limiter
-
-if TYPE_CHECKING:
-    from backend.core.data_aggregator import DataAggregator
+from backend.core.data_aggregator import DataAggregator
 from backend.core.license_checker import check_license_compatibility
 from backend.core.policy_engine import check_policy, load_policy
 

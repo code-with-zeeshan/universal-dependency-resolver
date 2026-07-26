@@ -57,11 +57,20 @@ def register_signal_handlers(flag: ShutdownFlag):
         logger.warning("Received signal %s — shutting down gracefully...", sig.name)
         flag.request_shutdown()
 
+    def _task_done(task: asyncio.Task) -> None:
+        exc = task.exception()
+        if exc:
+            logger.error("Signal handler task failed: %s", exc, exc_info=exc)
+
+    def _signal_task(sig: signal.Signals) -> None:
+        task = asyncio.create_task(_async_handler(sig))
+        task.add_done_callback(_task_done)
+
     try:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(NotImplementedError, ValueError, RuntimeError):
-                loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_async_handler(s)))
+                loop.add_signal_handler(sig, lambda s=sig: _signal_task(s))
     except RuntimeError:
         # No running loop — CLI mode
         try:

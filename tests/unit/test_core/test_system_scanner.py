@@ -7,6 +7,7 @@ from backend.core.system_scanner import (
     OSType,
     SystemScanner,
 )
+from backend.core.utils import safe_read_file
 
 
 class TestSystemScanner:
@@ -23,22 +24,22 @@ class TestSystemScanner:
         assert scanner.deep_scan is False
         assert scanner.system_info == {}
 
-    # -- _safe_read_file ----------------------------------------------------
+    # -- safe_read_file ----------------------------------------------------
 
-    def test_safe_read_file_success(self, scanner, tmp_path):
+    def test_safe_read_file_success(self, tmp_path):
         f = tmp_path / "test.txt"
         f.write_text("hello world\nline2")
-        assert scanner._safe_read_file(str(f)) == "hello world\nline2"
+        assert safe_read_file(str(f)) == "hello world\nline2"
 
-    def test_safe_read_file_not_found(self, scanner, tmp_path):
-        assert scanner._safe_read_file(tmp_path / "nope.txt") is None
+    def test_safe_read_file_not_found(self, tmp_path):
+        assert safe_read_file(tmp_path / "nope.txt") is None
 
-    def test_safe_read_file_permission_error(self, scanner, tmp_path):
+    def test_safe_read_file_permission_error(self, tmp_path):
         f = tmp_path / "noaccess.txt"
         f.write_text("secret")
         f.chmod(0o000)
         try:
-            result = scanner._safe_read_file(str(f))
+            result = safe_read_file(str(f))
             assert result is None
         finally:
             f.chmod(0o644)

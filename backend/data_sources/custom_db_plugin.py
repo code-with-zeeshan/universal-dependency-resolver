@@ -42,6 +42,6 @@ class CustomDbPlugin(EcosystemPlugin):
         client = self._get_client()
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, client.get_compatibility_rules, package_name)
         return result if result else None

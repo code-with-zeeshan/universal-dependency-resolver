@@ -33,7 +33,7 @@ async def _download_github_repo(url: str, branch: str) -> Path:
         if contents and contents[0].is_dir():
             return contents[0]
         return tmp
-    except:
+    except Exception:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
 

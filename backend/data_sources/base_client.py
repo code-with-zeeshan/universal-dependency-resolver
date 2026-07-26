@@ -26,6 +26,20 @@ from backend.settings import (
 logger = logging.getLogger(__name__)
 
 
+class DataSourceError(Exception):
+    """Exception raised by data source clients for recoverable errors.
+
+    Carries an HTTP-compatible status code so API boundaries can convert
+    to the appropriate HTTP response without data_sources/ depending on
+    the API layer.
+    """
+
+    def __init__(self, message: str, status_code: int = 500) -> None:
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
 # Registry of all active sessions for clean shutdown
 _sessions_registry: list[aiohttp.ClientSession] = []
 

@@ -10,6 +10,8 @@ from enum import Enum
 from typing import Any
 from urllib.parse import quote
 
+from ..core.concurrency import get_semaphore
+from ..core.constraint_normalizer import is_prerelease_version
 from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
@@ -48,7 +50,7 @@ class VersionRequirement:
 # Controls how many simultaneous requests are made to the npm registry.
 # Configurable via NPM_CONCURRENCY env var (default: 10).
 # Rate limiting (429 handling, RPM tracking) is handled by BaseDataSourceClient._throttle().
-_NPM_SEMAPHORE = asyncio.Semaphore(NPM_CONCURRENCY)
+_NPM_SEMAPHORE = get_semaphore("npm", concurrency=NPM_CONCURRENCY)
 
 
 class NPMClient(BaseDataSourceClient):
@@ -1015,7 +1017,7 @@ class NPMClient(BaseDataSourceClient):
         return any(pkg in deps for pkg in native_packages)
 
     def _is_prerelease(self, version: str) -> bool:
-        return bool(re.search(r"-(alpha|beta|rc|pre|dev|canary|next)", version))
+        return is_prerelease_version(version)
 
     def _format_person(self, person: str | dict[str, Any]) -> dict[str, str]:
         if isinstance(person, str):

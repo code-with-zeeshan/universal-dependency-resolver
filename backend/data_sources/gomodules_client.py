@@ -9,6 +9,7 @@ from typing import Any
 import aiohttp
 
 from backend.core.cache import cached
+from backend.core.concurrency import get_semaphore
 from backend.core.utils import (
     normalize_package_name,
     parse_version_key,
@@ -16,6 +17,7 @@ from backend.core.utils import (
 )
 from backend.settings import (
     CACHE_TTL,
+    GOMODULES_CONCURRENCY,
     GOPROXY_AUTH_BASIC,
     GOPROXY_AUTH_TOKEN,
     RETRY_BACKOFF_FACTOR,
@@ -29,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 # Rate limiter: shared across all Go client instances
-_GO_SEMAPHORE = asyncio.Semaphore(8)
+_GO_SEMAPHORE = get_semaphore("gomodules", concurrency=GOMODULES_CONCURRENCY)
 
 
 def _strip_v(version: str) -> str:

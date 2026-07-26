@@ -21,15 +21,12 @@ from backend.api.dependencies import (
 from backend.api.helpers.compatibility import (
     SystemSpec,
     _check_version_compatibility_detailed,
-    _is_prerelease,
 )
 from backend.api.helpers.packages import (
-    _count_dependencies,
     _extract_version_compatibility,
     _filter_by_python_version,
     _generate_compatibility_summary,
     _get_package_metrics,
-    _get_recursive_dependencies,
     _sort_search_results,
     validate_ecosystem,
 )
@@ -40,7 +37,8 @@ from backend.api.schemas import (
 )
 from backend.core.cache import cache_manager
 from backend.core.conflict_resolver import ConflictResolver
-from backend.core.data_aggregator import DataAggregator, Ecosystem
+from backend.core.constraint_normalizer import is_prerelease_version
+from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
 from backend.core.system_scanner import SystemScanner
 from backend.orchestrator.db_service import CompatibilityDB, User
@@ -301,13 +299,18 @@ async def get_package_versions(
     try:
         logger.info(f"Getting versions for: {ecosystem}/{package_name}")
 
-        try:
-            eco_enum = Ecosystem(ecosystem)
-            source = aggregator._get_client(eco_enum)
-        except (ValueError, KeyError):
-            raise HTTPException(status_code=400, detail=f"Unknown ecosystem: {ecosystem}")
+        pkg_info = await aggregator.get_package_info(
+            package_name, ecosystem=ecosystem, include_versions=True, include_dependencies=False
+        )
+        if not pkg_info:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Package {package_name} not found in {ecosystem}",
+            )
 
-        versions = await source.get_versions(package_name)
+        raw_versions: list[dict] = pkg_info.get("versions", {}).get(ecosystem, [])
+        if not raw_versions:
+            raw_versions = pkg_info.get("info", {}).get("versions", [])
 
         # Parse system spec if provided
         system_spec = None
@@ -317,37 +320,28 @@ async def get_package_versions(
 
         # Filter and annotate versions
         filtered_versions = []
-        for v in versions:
-            # Skip yanked versions if not requested
+        for v in raw_versions:
             if not include_yanked and v.get("yanked", False):
                 continue
-
-            # Skip pre-release versions if not requested
-            if not include_prerelease and _is_prerelease(v.get("version", "")):
+            if not include_prerelease and is_prerelease_version(v.get("version", "")):
                 continue
-
-            # Check compatibility if system spec provided
             if system_spec:
                 is_compatible, notes = _check_version_compatibility_detailed(v, system_spec)
                 v["compatible"] = is_compatible
                 v["compatibility_notes"] = notes
-
-                # Only include compatible versions unless explicitly showing all
                 if not is_compatible and compatible_with:
                     continue
-
             filtered_versions.append(v)
 
-        # Sort versions (newest first)
         filtered_versions.sort(key=lambda x: version.parse(x.get("version", "0.0.0")), reverse=True)
 
-        logger.info(f"Found {len(filtered_versions)}/{len(versions)} versions after filtering")
+        logger.info(f"Found {len(filtered_versions)}/{len(raw_versions)} versions after filtering")
 
         return {
             "status": "success",
             "package": package_name,
             "ecosystem": ecosystem,
-            "total_versions": len(versions),
+            "total_versions": len(raw_versions),
             "filtered_count": len(filtered_versions),
             "versions": filtered_versions,
             "filters": {
@@ -384,29 +378,28 @@ async def get_package_dependencies(
     try:
         logger.info(f"Getting dependencies for: {ecosystem}/{package_name}@{version or 'latest'}")
 
-        try:
-            eco_enum = Ecosystem(ecosystem)
-            source = aggregator._get_client(eco_enum)
-        except (ValueError, KeyError):
-            raise HTTPException(status_code=400, detail=f"Unknown ecosystem: {ecosystem}")
+        pkg_info = await aggregator.get_package_info(
+            package_name, ecosystem=ecosystem, include_versions=False, include_dependencies=True
+        )
+        if not pkg_info:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Package {package_name} not found in {ecosystem}",
+            )
 
-        if recursive:
-            logger.debug(f"Getting recursive dependencies with max_depth={max_depth}")
-            # Get recursive dependencies
-            dep_tree = await _get_recursive_dependencies(source, package_name, version, max_depth)
-            return {
-                "status": "success",
-                "package": package_name,
-                "version": version or "latest",
-                "dependency_tree": dep_tree,
-                "total_dependencies": _count_dependencies(dep_tree),
-            }
-        # Get direct dependencies only
-        dependencies = await source.get_dependencies(package_name, version)
+        dependencies: dict = pkg_info.get("info", {}).get("dependencies", {})
+        if not dependencies:
+            # Fallback: top-level key
+            for key in ("dependencies", "requires", "requirements"):
+                val = pkg_info.get(key, {})
+                if val:
+                    dependencies = val
+                    break
 
         return {
             "status": "success",
             "package": package_name,
+            "ecosystem": ecosystem,
             "version": version or "latest",
             "dependencies": dependencies,
         }

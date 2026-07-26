@@ -12,13 +12,14 @@ import aiohttp
 from bs4 import BeautifulSoup
 from packaging.requirements import Requirement
 
+from ..core.concurrency import get_semaphore
 from ..core.utils import (
     normalize_package_name,
     parse_version,
     parse_version_key,
     run_async,
 )
-from ..settings import CACHE_TTL
+from ..settings import CACHE_TTL, PYPI_CONCURRENCY
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class PyPIClient(BaseDataSourceClient):
         self.xmlrpc_url = "https://pypi.org/pypi"
         self._search_cache = {}
         self._search_cache_ttl = CACHE_TTL // 2
-        self._rate_limiter = asyncio.Semaphore(5)
+        self._rate_limiter = get_semaphore("pypi", concurrency=PYPI_CONCURRENCY)
 
     async def _get(self, url: str, **kwargs) -> dict | None:
         for attempt in range(3):
@@ -723,7 +724,7 @@ class PyPIClient(BaseDataSourceClient):
         """Search using PyPI XML-RPC API."""
         try:
             # Use asyncio to run the XML-RPC call in a thread
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             def xmlrpc_search():
                 client = xmlrpc.client.ServerProxy(self.xmlrpc_url)

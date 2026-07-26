@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from backend.data_sources.base_client import DataSourceError
 
 from backend.data_sources.maven_client import MavenClient
 
@@ -68,7 +68,7 @@ class TestMavenClient:
     @pytest.mark.asyncio
     async def test_search_packages_returns_empty_on_failure(self, client):
         with patch.object(client, "_make_request", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException):
+            with pytest.raises(DataSourceError):
                 await client.search_packages("nonexistent")
 
     @pytest.mark.asyncio
@@ -123,7 +123,7 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.return_value = mock_cm
         with patch.object(client, "_get_session", return_value=mock_session):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("com.nonexistent", "missing")
         assert exc_info.value.status_code == 404
 
@@ -1702,7 +1702,7 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.return_value = mock_cm
         with patch.object(client, "_get_session", return_value=mock_session):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_versions("g", "a")
         assert exc_info.value.status_code == 404
 
@@ -1716,7 +1716,7 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.return_value = mock_cm
         with patch.object(client, "_get_session", return_value=mock_session):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("g", "a")
         assert exc_info.value.status_code == 404
 
@@ -1726,7 +1726,7 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.side_effect = Exception("Network error")
         with patch.object(client, "_get_session", return_value=mock_session):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("g", "a")
         assert exc_info.value.status_code == 500
 
@@ -1796,7 +1796,7 @@ class TestMavenClient:
         mock_session = MagicMock()
         mock_session.get.side_effect = Exception("Network error")
         with patch.object(client, "_get_session", return_value=mock_session):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_versions("g", "a")
         assert exc_info.value.status_code == 500
 

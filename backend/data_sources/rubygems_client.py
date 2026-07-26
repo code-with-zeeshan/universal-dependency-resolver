@@ -307,7 +307,7 @@ class RubyGemsClient(BaseDataSourceClient):
                     "version": data.get("version_downloads", 0),
                 }
         except Exception:
-            pass
+            logger.debug("Failed to parse RubyGems download counts", exc_info=True)
         return {"total": 0, "version": 0}
 
     async def _get_dependencies(self, package_name: str, version: str) -> dict:

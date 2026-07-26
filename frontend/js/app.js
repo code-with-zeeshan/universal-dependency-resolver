@@ -90,9 +90,11 @@ const App = {
     });
     document.getElementById('cve-run')?.addEventListener('click', () => this._runCVE());
     document.getElementById('policy-run')?.addEventListener('click', () => this._runPolicy());
-    document.getElementById('lock-verify')?.addEventListener('click', () => this._verifyLock());
-    document.getElementById('lock-outdated')?.addEventListener('click', () => this._checkOutdated());
     document.getElementById('system-refresh')?.addEventListener('click', () => this._renderSystemInfo(true));
+    const lockVerify = document.getElementById('lock-verify');
+    if (lockVerify) lockVerify.addEventListener('click', () => this._verifyLock());
+    const lockOutdated = document.getElementById('lock-outdated');
+    if (lockOutdated) lockOutdated.addEventListener('click', () => this._checkOutdated());
   },
 
   _setupFileDrops() {
@@ -435,9 +437,9 @@ const App = {
       <div class="lock-stat"><div class="num">${transitive.length}</div><div class="lbl">Transitive</div></div>
     </div>`;
 
+    const actions = document.getElementById('lock-actions');
+    if (actions) actions.style.display = 'flex';
     html += `<div class="btn-group mb-4">
-      <button class="btn btn-sm" onclick="App._verifyLock()">Verify</button>
-      <button class="btn btn-sm" onclick="App._checkOutdated()">Check Outdated</button>
       <button class="btn btn-sm" onclick="App._exportLock()">Export</button>
       <button class="btn btn-sm" onclick="App._clearLock()">Clear</button>
     </div>`;
@@ -532,6 +534,8 @@ const App = {
     this.state.cveResults = null;
     this.state.licenseResults = null;
     document.getElementById('lock-content').innerHTML = `<div class="empty-state"><div class="icon">&#128196;</div><h3>No lock file loaded</h3><p>Drop a <code>udr.lock</code> file or click to browse.</p></div>`;
+    const actions = document.getElementById('lock-actions');
+    if (actions) actions.style.display = 'none';
     Utils.makeToast('Lock file cleared', 'info');
     this._updateLockInfo();
     this._renderDashboard();

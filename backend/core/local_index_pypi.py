@@ -15,6 +15,7 @@ from typing import Any
 
 import aiohttp
 
+from backend.core.concurrency import get_semaphore
 from backend.core.offline_index import (
     _connect,
     create_or_update_index,
@@ -116,7 +117,7 @@ class PyPIIndexManager:
             self._last_updated = datetime.now(UTC)
             return 0
 
-        sem = asyncio.Semaphore(10)
+        sem = get_semaphore("local_index", concurrency=10)
         batch_size = 50
         total = 0
 

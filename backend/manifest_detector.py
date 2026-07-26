@@ -6,6 +6,7 @@ package to its ecosystem for resolution.
 """
 
 import concurrent.futures
+import fnmatch
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .core._json import loads
-from .core.utils import normalize_package_name
+from .core.utils import normalize_package_name, sanitize_ecosystem_name
 from .settings import MAX_MANIFEST_SIZE as _MAX_MANIFEST_SIZE
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,54 @@ try:
     MANIFEST_PATTERNS.extend(list_plugin_manifests())
     MANIFEST_PATTERNS.extend(list_plugin_lock_files())
 except ImportError:
-    pass
+    logger.debug("Plugin imports not available (not running from backend package)", exc_info=True)
+
+# Reverse mapping: parser_key → ecosystem, used by the content-sniffing
+# fallback so that sniffed files get a real ecosystem name instead of a
+# parser key (e.g. "package_lock" → "npm").
+PARSER_TO_ECOSYSTEM: dict[str, str] = {parser: eco for _, eco, parser in MANIFEST_PATTERNS}
+
+# Glob patterns for filenames that *might* be dependency manifests.
+# Content-sniffing only applies to files matching at least one of these,
+# preventing random JSON/XML files from being misdetected as manifests.
+_MANIFEST_NAME_PATTERNS: tuple[str, ...] = (
+    "*.lock",
+    "*.json",
+    "*.yaml",
+    "*.yml",
+    "*.toml",
+    "*.xml",
+    "*.txt",
+    "*.cabal",
+    "Dockerfile*",
+    "Makefile",
+    "CMakeLists.txt",
+    "build.gradle*",
+    "settings.gradle*",
+)
+
+# JSON keys that suggest a file is a genuine package manifest (not just any JSON)
+_JSON_MANIFEST_INDICATORS: tuple[str, ...] = (
+    '"name"',
+    '"dependencies"',
+    '"packages"',
+    '"devDependencies"',
+    '"peerDependencies"',
+    '"require"',
+    '"specs"',
+    '"locked-version"',
+)
+
+
+def _looks_like_json_manifest(content: str) -> bool:
+    """Check if a JSON-ish file looks like a real package manifest."""
+    stripped = content[:8192].lstrip()
+    if not stripped.startswith("{"):
+        return False
+    for indicator in _JSON_MANIFEST_INDICATORS:
+        if indicator in stripped:
+            return True
+    return False
 
 
 class ManifestDetector:
@@ -282,7 +330,7 @@ class ManifestDetector:
                 continue
 
             # Skip project config files that look like manifests (e.g. udr.json)
-            if fp.name == "udr.json":
+            if fp.name in ("udr.json", "udr.lock"):
                 continue
 
             # Fast path: exact filename match
@@ -318,7 +366,7 @@ class ManifestDetector:
                             continue
                     except OSError:
                         pass
-                ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
+                ecosystem = sanitize_ecosystem_name(raw_eco)
                 seen_paths.add(str_path)
                 found.append(
                     {
@@ -329,21 +377,38 @@ class ManifestDetector:
                     }
                 )
             else:
-                # Content-based fallback: sniff file content for known types
+                # Content-based fallback: sniff file content for known types.
+                # Only applies to files with a plausible manifest filename
+                # (e.g. *.json, *.lock, *.yaml) — not random or backup files.
+                if not any(fnmatch.fnmatch(fp.name, pat) for pat in _MANIFEST_NAME_PATTERNS):
+                    continue
                 from backend.core.content_detector import sniff_content, suggest_parsers
 
                 content_type = sniff_content(str_path)
                 if content_type:
+                    # For JSON files, verify they look like actual package manifests
+                    if content_type == "json":
+                        try:
+                            raw = fp.read_bytes()[:8192]
+                            if not _looks_like_json_manifest(raw.decode("utf-8", errors="replace")):
+                                continue
+                        except OSError:
+                            continue
                     suggested = suggest_parsers(content_type)
                     if suggested:
-                        raw_eco = suggested[0]
+                        for parser_key in suggested:
+                            eco = PARSER_TO_ECOSYSTEM.get(parser_key)
+                            if eco:
+                                break
+                        else:
+                            continue
                         seen_paths.add(str_path)
                         found.append(
                             {
                                 "path": str_path,
                                 "filename": rel.name,
-                                "ecosystem": raw_eco,
-                                "parser": raw_eco,
+                                "ecosystem": eco,
+                                "parser": parser_key,
                             }
                         )
 
@@ -408,6 +473,45 @@ class ManifestDetector:
             logger.warning("Failed to parse %s using %s", path, parser_key, exc_info=True)
             return []
 
+    def parse_source(self, content: str, filename: str = "") -> list[dict]:
+        """Parse manifest content directly (in-memory, no disk read).
+
+        Looks up the parser key from ``MANIFEST_PATTERNS`` by filename,
+        then calls the parser with the given content.
+        """
+        from .core.content_detector import sniff_content
+
+        content = content.lstrip("\ufeff")
+        parser_key = ""
+        for fname, _raw_eco, pkey in MANIFEST_PATTERNS:
+            if glob_chars_re.search(fname):
+                import fnmatch
+
+                if fnmatch.fnmatch(filename, fname):
+                    parser_key = pkey
+                    break
+            elif filename.endswith(fname):
+                parser_key = pkey
+                break
+
+        if not parser_key:
+            content_type = sniff_content(filename)
+            if content_type == "json":
+                parser_key = "package_json"
+            else:
+                raise KeyError(f"No parser found for {filename!r}")
+
+        parser = self._get_parser(parser_key)
+        try:
+            if parser_key in ("requirements",):
+                packages = parser(content)
+            else:
+                packages = parser(content)
+            return packages
+        except Exception:
+            logger.warning("Failed to parse in-memory content for %s", filename, exc_info=True)
+            return []
+
     def _get_plugin_parser(self, key: str):
         """Look up a parser method from registered plugins.
 
@@ -469,11 +573,6 @@ class ManifestDetector:
             all_packages.extend(pkgs)
         return all_packages
 
-    ECOSYSTEM_ALIASES = {
-        "cargo": "crates",
-        "go": "gomodules",
-    }
-
     def normalize(self, packages: list[dict]) -> list[dict]:
         """Normalize parsed packages to {name, ecosystem, constraint} format.
 
@@ -485,7 +584,7 @@ class ManifestDetector:
             if not raw_name:
                 continue
             raw_eco = pkg.get("_ecosystem", "pypi")
-            ecosystem = self.ECOSYSTEM_ALIASES.get(raw_eco, raw_eco)
+            ecosystem = sanitize_ecosystem_name(raw_eco)
             # Only normalize names for case-insensitive ecosystems (PyPI, npm, crates)
             # All others preserve original case and separators
             if raw_eco in ("pypi", "pip", "npm", "node", "crates", "cargo", "rust"):
@@ -628,7 +727,7 @@ class ManifestDetector:
                             if not req.marker.evaluate():
                                 continue
                         except Exception:
-                            pass
+                            logger.debug("Marker evaluation failed in manifest", exc_info=True)
                     if req.extras:
                         packages.append(
                             {
@@ -1156,6 +1255,7 @@ class ManifestDetector:
             content = Path(lock_path).read_text(encoding="utf-8")
             data = loads(content)
         except Exception:
+            logger.warning("Failed to parse package-lock.json: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         for path, info in data.get("packages", {}).items():
@@ -1183,6 +1283,7 @@ class ManifestDetector:
             content = Path(lock_path).read_text(encoding="utf-8")
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Failed to parse Cargo.lock: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         for pkg in data.get("package", []):
@@ -1205,6 +1306,7 @@ class ManifestDetector:
             content = Path(lock_path).read_text(encoding="utf-8")
             data = loads(content)
         except Exception:
+            logger.warning("Failed to parse composer.lock: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         for section in ("packages", "packages-dev"):
@@ -1229,6 +1331,7 @@ class ManifestDetector:
             content = Path(lock_path).read_text(encoding="utf-8")
             data = tomllib.loads(content)
         except Exception:
+            logger.warning("Failed to parse poetry.lock: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         for entry in data.get("package", []):
@@ -1256,6 +1359,7 @@ class ManifestDetector:
         try:
             content = Path(lock_path).read_text(encoding="utf-8")
         except Exception:
+            logger.warning("Failed to parse Gemfile.lock: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         in_specs = False
@@ -1297,6 +1401,7 @@ class ManifestDetector:
             content = Path(lock_path).read_text(encoding="utf-8")
             data = yaml.safe_load(content)
         except Exception:
+            logger.warning("Failed to parse pnpm-lock.yaml: %s", lock_path, exc_info=True)
             return None
         tree: dict[str, dict] = {}
         for key, info in data.get("packages", {}).items():
@@ -1467,12 +1572,6 @@ class ManifestDetector:
                 if match:
                     dep_name = match.group(1)
                     dep_version = match.group(2)
-                    if (
-                        dep_version.startswith("v")
-                        and len(dep_version) > 1
-                        and dep_version[1].isdigit()
-                    ):
-                        dep_version = dep_version[1:]
                     packages.append(
                         {"name": dep_name, "version": normalize_version(dep_version, "gomodules")}
                     )

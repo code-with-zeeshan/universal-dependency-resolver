@@ -7,8 +7,8 @@ from backend.api.helpers.compatibility import (
     _check_python_compatibility,
     _check_version_compatibility,
     _check_version_compatibility_detailed,
-    _is_prerelease,
 )
+from backend.core.constraint_normalizer import is_prerelease_version
 
 
 class TestSystemSpec:
@@ -191,29 +191,29 @@ class TestCheckVersionCompatibilityDetailed:
 
 class TestIsPrerelease:
     def test_pep440_dev(self):
-        assert _is_prerelease("1.0.0.dev1") is True
+        assert is_prerelease_version("1.0.0.dev1") is True
 
     def test_pep440_alpha(self):
-        assert _is_prerelease("1.0.0a1") is True
+        assert is_prerelease_version("1.0.0a1") is True
 
     def test_pep440_beta(self):
-        assert _is_prerelease("1.0.0b1") is True
+        assert is_prerelease_version("1.0.0b1") is True
 
     def test_pep440_rc(self):
-        assert _is_prerelease("1.0.0rc1") is True
+        assert is_prerelease_version("1.0.0rc1") is True
 
     def test_stable(self):
-        assert _is_prerelease("1.0.0") is False
+        assert is_prerelease_version("1.0.0") is False
 
     def test_npm_alpha(self):
-        assert _is_prerelease("1.0.0-alpha.1") is True
+        assert is_prerelease_version("1.0.0-alpha.1") is True
 
     def test_npm_beta(self):
-        assert _is_prerelease("1.0.0-beta.1") is True
+        assert is_prerelease_version("1.0.0-beta.1") is True
 
     def test_invalid_versions(self):
-        result = _is_prerelease("zzz")
+        result = is_prerelease_version("zzz")
         assert isinstance(result, bool)
 
     def test_pre_in_version(self):
-        assert _is_prerelease("1.0.0-pre.1") is True
+        assert is_prerelease_version("1.0.0-pre.1") is True

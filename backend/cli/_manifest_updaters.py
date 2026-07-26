@@ -1,7 +1,10 @@
 """Manifest file updaters — modify manifest files with pinned versions."""
 
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def _update_package_json(content: str, pkg_name: str, resolved_ver: str) -> str | None:
@@ -231,6 +234,7 @@ def _update_pyproject_toml(content: str, pkg_name: str, resolved_ver: str) -> st
 
         data = tomllib.loads(content)
     except Exception:
+        logger.warning("Failed to parse pyproject.toml for update", exc_info=True)
         return None
 
     # Check if pkg_name exists in either [tool.poetry.dependencies] or [project] dependencies
@@ -564,6 +568,9 @@ def _update_packages_config(content: str, pkg_name: str, resolved_ver: str) -> s
     try:
         import xml.etree.ElementTree as ET
     except Exception:
+        logger.warning(
+            "Failed to import xml.etree.ElementTree for packages.config update", exc_info=True
+        )
         return None
     try:
         root = ET.fromstring(content)
@@ -708,10 +715,12 @@ def _update_pom_xml(content: str, pkg_name: str, resolved_ver: str) -> str | Non
     try:
         import xml.etree.ElementTree as ET
     except ImportError:
+        logger.warning("Failed to import xml.etree.ElementTree for pom.xml update", exc_info=True)
         return None
     try:
         root = ET.fromstring(content)
     except Exception:
+        logger.warning("Failed to parse pom.xml for update", exc_info=True)
         return None
     ns = {"m": "http://maven.apache.org/POM/4.0.0"}
     updated = False

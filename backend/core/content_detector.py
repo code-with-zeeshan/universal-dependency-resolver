@@ -64,7 +64,7 @@ def sniff_content(path: str) -> str | None:
             if mime and mime != "application/octet-stream":
                 return mime
         except Exception:
-            pass
+            logger.debug("MIME detection failed", exc_info=True)
     except ImportError:
         pass
 

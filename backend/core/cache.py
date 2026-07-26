@@ -83,7 +83,7 @@ class DictCache:
         """Schedule a debounced flush to disk."""
         if self._debounce_handle is not None:
             self._debounce_handle.cancel()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._debounce_handle = loop.call_later(CACHE_DEBOUNCE_MS / 1000, self._flush)
 
     def _flush(self):

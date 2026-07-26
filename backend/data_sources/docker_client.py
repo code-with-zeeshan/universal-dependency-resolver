@@ -6,17 +6,19 @@ manifests and tags.  Used by ``docker_plugin.py``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from typing import Any
 
 import aiohttp
 
+from ..core.concurrency import get_semaphore
+from ..settings import DOCKER_CONCURRENCY
+
 logger = logging.getLogger(__name__)
 
 # Default concurrency
-_DOCKER_SEMAPHORE = asyncio.Semaphore(4)
+_DOCKER_SEMAPHORE = get_semaphore("docker", concurrency=DOCKER_CONCURRENCY)
 
 
 class DockerRegistryClient:

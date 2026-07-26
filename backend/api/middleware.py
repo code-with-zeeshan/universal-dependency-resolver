@@ -105,7 +105,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                                 body_sensitive = True
                                 break
                     except Exception:
-                        pass
+                        logger.debug("Request body sensitivity check failed", exc_info=True)
 
                 # Recreate request with body
                 async def receive():

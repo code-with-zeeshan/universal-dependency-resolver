@@ -154,10 +154,17 @@ class TestGetPackageDetails:
 
 
 class TestGetPackageVersions:
+    def _mock_versions(self, mock_aggregator, versions, eco="pypi", side_effect=None):
+        mock_aggregator.get_package_info.return_value = {
+            "versions": {eco: versions},
+        }
+        if side_effect:
+            mock_aggregator.get_package_info.side_effect = side_effect
+
     def test_get_versions_success(self, client, mock_aggregator):
-        self._setup_mock_source(
+        self._mock_versions(
             mock_aggregator,
-            return_value=[
+            versions=[
                 {"version": "2.3.3", "upload_time": "2023-08-15"},
                 {"version": "2.3.2", "upload_time": "2023-05-20"},
             ],
@@ -168,10 +175,9 @@ class TestGetPackageVersions:
         assert data["status"] == "success"
         assert data["package"] == "flask"
         assert len(data["versions"]) == 2
-        mock_aggregator._get_client.assert_called_once()
 
     def test_get_versions_empty(self, client, mock_aggregator):
-        self._setup_mock_source(mock_aggregator, return_value=[])
+        self._mock_versions(mock_aggregator, versions=[])
         response = client.get("/api/v1/packages/pypi/unknown/versions")
         assert response.status_code == 200
         data = response.json()
@@ -183,17 +189,10 @@ class TestGetPackageVersions:
         data = response.json()
         assert "Invalid ecosystem" in data.get("error", {}).get("message", data.get("detail", ""))
 
-    def _setup_mock_source(self, mock_aggregator, return_value=None, side_effect=None):
-        """Helper to mock _get_client instead of sources dict."""
-        mock_source = MagicMock()
-        mock_source.get_versions = AsyncMock(return_value=return_value, side_effect=side_effect)
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
-        return mock_source
-
     def test_get_versions_filters_yanked(self, client, mock_aggregator):
-        self._setup_mock_source(
+        self._mock_versions(
             mock_aggregator,
-            return_value=[
+            versions=[
                 {"version": "1.0.0", "yanked": True},
                 {"version": "1.1.0", "yanked": False},
             ],
@@ -205,9 +204,9 @@ class TestGetPackageVersions:
         assert data["versions"][0]["version"] == "1.1.0"
 
     def test_get_versions_includes_yanked(self, client, mock_aggregator):
-        self._setup_mock_source(
+        self._mock_versions(
             mock_aggregator,
-            return_value=[
+            versions=[
                 {"version": "1.0.0", "yanked": True},
                 {"version": "1.1.0", "yanked": False},
             ],
@@ -218,17 +217,23 @@ class TestGetPackageVersions:
         assert len(data["versions"]) == 2
 
     def test_get_versions_handles_source_error(self, client, mock_aggregator):
-        self._setup_mock_source(
+        self._mock_versions(
             mock_aggregator,
+            versions=[],
             side_effect=Exception("Version fetch failed"),
         )
         response = client.get("/api/v1/packages/pypi/flask/versions")
         assert response.status_code == 500
 
+    def test_get_versions_returns_404_when_not_found(self, client, mock_aggregator):
+        mock_aggregator.get_package_info.return_value = None
+        response = client.get("/api/v1/packages/pypi/unknown/versions")
+        assert response.status_code == 404
+
     def test_get_versions_with_compatibility_filter(self, client, mock_aggregator):
-        self._setup_mock_source(
+        self._mock_versions(
             mock_aggregator,
-            return_value=[
+            versions=[
                 {
                     "version": "1.0.0",
                     "python_requires": ">=3.8",
@@ -419,59 +424,48 @@ class TestExportConfiguration:
 
 
 class TestGetPackageDependencies:
+    def _mock_deps(self, mock_aggregator, deps, eco="pypi"):
+        mock_aggregator.get_package_info.return_value = {
+            "dependencies": {eco: {"all": deps}},
+        }
+
     def test_get_dependencies_success(self, client, mock_aggregator):
-        mock_source = MagicMock()
-        mock_source.get_dependencies = AsyncMock(
-            return_value=[{"name": "urllib3", "version_spec": ">=1.21.1,<3"}]
+        self._mock_deps(
+            mock_aggregator,
+            deps=[{"name": "urllib3", "version_spec": ">=1.21.1,<3"}],
         )
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
         response = client.get("/api/v1/packages/pypi/requests/dependencies")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert data["package"] == "requests"
-        assert len(data["dependencies"]) == 1
-        mock_aggregator._get_client.assert_called_once()
+        assert "urllib3" in str(data["dependencies"])
 
     def test_get_dependencies_with_version(self, client, mock_aggregator):
-        mock_source = MagicMock()
-        mock_source.get_dependencies = AsyncMock(return_value=[])
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
+        self._mock_deps(mock_aggregator, deps=[])
         response = client.get("/api/v1/packages/pypi/requests/dependencies?version=2.31.0")
         assert response.status_code == 200
         data = response.json()
         assert data["version"] == "2.31.0"
-
-    def test_get_dependencies_recursive(self, client, mock_aggregator):
-        mock_source = MagicMock()
-        mock_source.get_dependencies = AsyncMock(return_value={"urllib3": ">=1.21.1"})
-        mock_source.get_package_info = AsyncMock(return_value={})
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
-        response = client.get(
-            "/api/v1/packages/pypi/requests/dependencies?recursive=true&max_depth=2"
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["package"] == "requests"
 
     def test_get_dependencies_invalid_ecosystem(self, client, mock_aggregator):
         response = client.get("/api/v1/packages/invalideco/pkg/dependencies")
         assert response.status_code == 400
 
     def test_get_dependencies_value_error(self, client, mock_aggregator):
-        mock_source = MagicMock()
-        mock_source.get_dependencies = AsyncMock(side_effect=ValueError("Bad request"))
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
+        mock_aggregator.get_package_info.side_effect = ValueError("Bad request")
         response = client.get("/api/v1/packages/pypi/pkg/dependencies")
         assert response.status_code == 400
 
     def test_get_dependencies_server_error(self, client, mock_aggregator):
-        mock_source = MagicMock()
-        mock_source.get_dependencies = AsyncMock(side_effect=RuntimeError("Server error"))
-        mock_aggregator._get_client = MagicMock(return_value=mock_source)
+        mock_aggregator.get_package_info.side_effect = RuntimeError("Server error")
         response = client.get("/api/v1/packages/pypi/pkg/dependencies")
         assert response.status_code == 500
+
+    def test_get_dependencies_returns_404_when_not_found(self, client, mock_aggregator):
+        mock_aggregator.get_package_info.return_value = None
+        response = client.get("/api/v1/packages/pypi/unknown/dependencies")
+        assert response.status_code == 404
 
 
 class TestGetPackageCompatibility:

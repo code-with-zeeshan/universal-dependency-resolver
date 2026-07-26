@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from backend.core.concurrency import get_semaphore
 from backend.core.policy_engine import check_policy, load_policy
 
 from ..shared import (
@@ -208,7 +209,7 @@ async def _check_cve(args: argparse.Namespace) -> bool:
             f"Checking {len(packages)} packages for CVEs...", total=len(packages)
         )
 
-        _cve_sem = asyncio.Semaphore(20)
+        _cve_sem = get_semaphore("cli_cve", concurrency=20)
 
         async def _check_one(name: str, info: dict) -> None:
             async with _cve_sem:

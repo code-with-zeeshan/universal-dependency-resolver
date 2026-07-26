@@ -19,6 +19,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from rich.table import Table
 
+from backend.core.concurrency import get_semaphore
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
 from backend.core.utils import make_purl
@@ -1008,7 +1009,7 @@ def cmd_lock(args: argparse.Namespace):
         if not manifests or not packages:
             return 1
 
-        fetch_semaphore = asyncio.Semaphore(10)
+        fetch_semaphore = get_semaphore("cli_fetch", concurrency=10)
         resolver_inputs, package_details = await _fetch_package_data(
             aggregator,
             packages,

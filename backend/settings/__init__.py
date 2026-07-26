@@ -152,6 +152,9 @@ EXPORT_FORMAT_METADATA = {
     "Cargo.toml": {"ecosystem": "crates", "description": "Rust Cargo manifest"},
     "build.gradle": {"ecosystem": "gradle", "description": "Gradle build file"},
     "pom.xml": {"ecosystem": "maven", "description": "Maven POM file"},
+    "Gemfile": {"ecosystem": "rubygems", "description": "Ruby Gemfile manifest"},
+    "composer.json": {"ecosystem": "packagist", "description": "PHP Composer manifest"},
+    "go.mod": {"ecosystem": "gomodules", "description": "Go module manifest"},
 }
 
 INSTALLERS: dict[str, tuple[str, ...]] = {
@@ -178,6 +181,8 @@ INSTALLERS: dict[str, tuple[str, ...]] = {
     "conan": ("conan", "install"),
     "helm": ("helm", "install"),
     "terraform": ("terraform", "init"),
+    "haskell": ("cabal", "install"),
+    "docker": ("docker", "pull"),
 }
 
 # =============================================================================
@@ -208,7 +213,7 @@ _register(
     lambda v: "DEBUG" if _get("ENV") == "development" else v,
 )
 _register("DATABASE_URL", "DATABASE_URL", "sqlite:///./udr.db")
-_register("REDIS_URL", "REDIS_URL", "redis://localhost:6379")
+_register("REDIS_URL", "REDIS_URL", "")
 _register("OSV_API_URL", "OSV_API_URL", "https://api.osv.dev/v1/query")
 _register("TARGET_OS", "TARGET_OS", "")
 _register("TARGET_ARCH", "TARGET_ARCH", "")
@@ -227,6 +232,9 @@ _register("CIRCUIT_BREAKER_OPEN_TIME", "CIRCUIT_BREAKER_OPEN_TIME", "30", int)
 _register("REQUEST_TIMEOUT", "REQUEST_TIMEOUT", "30", int)
 _register("DETECT_ECOSYSTEMS_TIMEOUT", "DETECT_ECOSYSTEMS_TIMEOUT", "15", int)
 _register("NPM_CONCURRENCY", "NPM_CONCURRENCY", "10", int)
+_register("DOCKER_CONCURRENCY", "DOCKER_CONCURRENCY", "4", int)
+_register("GOMODULES_CONCURRENCY", "GOMODULES_CONCURRENCY", "8", int)
+_register("PYPI_CONCURRENCY", "PYPI_CONCURRENCY", "5", int)
 _register("CACHE_TTL", "CACHE_TTL", "3600", int)
 _register("CACHE_TTL_SHORT", "CACHE_TTL_SHORT", "300", int)
 _register("CACHE_TTL_VERSIONS", "CACHE_TTL_VERSIONS", "600", int)

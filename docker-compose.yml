@@ -7,9 +7,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ENV=production
+      - ENV=development
       - ENABLE_AUTH=${UDR_ENABLE_AUTH:-true}
-      - SECRET_KEY=${UDR_SECRET_KEY:-your-secret-key-here-change-in-production}
+      # Override with a strong random secret in production:
+      #   UDR_SECRET_KEY=$(openssl rand -hex 32) docker compose up
+      - SECRET_KEY=${UDR_SECRET_KEY:-dev-only-insecure-replace-in-prod}
       - DATABASE_URL=${UDR_DATABASE_URL:-sqlite:///data/udr.db}
       - REDIS_URL=${UDR_REDIS_URL:-redis://redis:6379/0}
       - ENABLE_CACHE=${UDR_ENABLE_CACHE:-true}

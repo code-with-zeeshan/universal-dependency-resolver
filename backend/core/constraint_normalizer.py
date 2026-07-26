@@ -1,6 +1,9 @@
 """Constraint normalization — delegates to ``vers`` for all ecosystem parsers."""
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from .vers import VersSpec
 
@@ -95,6 +98,29 @@ _PRERELEASE_PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
+def is_prerelease_version(ver: str) -> bool:
+    """Check if a version string represents a pre-release.
+
+    Handles:
+    - PEP 440 (``1.0.0.dev1``, ``1.0.0a1``, ``1.0.0rc2``)
+    - Semver (``1.0.0-alpha.1``, ``1.0.0-rc.2``)
+    - NPM semver (``1.0.0-canary.1``, ``1.0.0-next``)
+
+    Falls back from ``packaging.version`` to regex patterns for
+    non-standard version strings.
+    """
+    try:
+        from packaging.version import Version
+
+        parsed = Version(ver)
+        return parsed.is_prerelease
+    except Exception:
+        pass
+    return any(p.search(ver) for p, _ in _PRERELEASE_PATTERNS) or bool(
+        re.search(r"-(alpha|beta|rc|pre|dev|canary|next)", ver, re.IGNORECASE)
+    )
+
+
 def normalize_prerelease_weight(ver: str) -> int:
     """Return numeric pre-release weight (0=dev, 1=alpha, 2=beta, 3=rc, 100=release).
 
@@ -120,7 +146,7 @@ def normalize_prerelease_weight(ver: str) -> int:
             return 1  # unknown pre-release type
         return 100
     except Exception:
-        pass
+        logger.debug("PEP 440 pre-release weight parsing failed", exc_info=True)
     # Fallback: regex matching for non-PEP 440 (npm, etc.)
     for sep in ("-", "."):
         parts = ver.split(sep, 1)

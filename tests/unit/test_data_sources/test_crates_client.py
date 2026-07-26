@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import HTTPException
+from backend.data_sources.base_client import DataSourceError
 
 from backend.data_sources.crates_client import CratesClient
 
@@ -139,7 +139,7 @@ class TestCratesClient:
     @pytest.mark.asyncio
     async def test_get_package_info_not_found(self, client):
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("nonexistent")
         assert exc_info.value.status_code == 404
 
@@ -147,7 +147,7 @@ class TestCratesClient:
     async def test_get_package_info_handles_missing_crate_key(self, client):
         with (
             patch.object(client, "_get", new_callable=AsyncMock, return_value={"versions": []}),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(DataSourceError) as exc_info,
         ):
             await client.get_package_info("bad-data")
         assert exc_info.value.status_code == 500
@@ -168,7 +168,7 @@ class TestCratesClient:
     @pytest.mark.asyncio
     async def test_get_package_versions_empty_on_no_data(self, client):
         with patch.object(client, "_get", new_callable=AsyncMock, return_value=None):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_versions("nonexistent")
         assert exc_info.value.status_code == 404
 
@@ -381,16 +381,16 @@ class TestCratesClient:
         assert len(versions) == 1
         assert versions[0]["version"] == "2.0.0"
 
-    # === New test: get_package_versions re-raises HTTPException ===
+    # === New test: get_package_versions re-raises DataSourceError ===
     @pytest.mark.asyncio
     async def test_get_package_versions_http_exception(self, client):
         with patch.object(
             client,
             "_get",
             new_callable=AsyncMock,
-            side_effect=HTTPException(status_code=404, detail="Not found"),
+            side_effect=DataSourceError("Not found", status_code=404),
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_versions("unknown")
         assert exc_info.value.status_code == 404
 
@@ -400,10 +400,10 @@ class TestCratesClient:
         with patch.object(
             client, "_get", new_callable=AsyncMock, side_effect=ValueError("connection error")
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_versions("bad")
         assert exc_info.value.status_code == 500
-        assert "Crates versions error" in exc_info.value.detail
+        assert "Crates versions error" in exc_info.value.message
 
     # === New test: get_dependencies with include_dev=True ===
     @pytest.mark.asyncio
@@ -926,16 +926,16 @@ class TestCratesClient:
         assert result["compatible"] is True
         assert any("network error" in w for w in result["warnings"])
 
-    # === New test: get_package_info re-raises HTTPException ===
+    # === New test: get_package_info re-raises DataSourceError ===
     @pytest.mark.asyncio
     async def test_get_package_info_http_exception(self, client):
         with patch.object(
             client,
             "_get",
             new_callable=AsyncMock,
-            side_effect=HTTPException(status_code=429, detail="rate limited"),
+            side_effect=DataSourceError("rate limited", status_code=429),
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("serde")
         assert exc_info.value.status_code == 429
 
@@ -945,10 +945,10 @@ class TestCratesClient:
         with patch.object(
             client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_package_info("serde")
         assert exc_info.value.status_code == 500
-        assert "Crates package info error" in exc_info.value.detail
+        assert "Crates package info error" in exc_info.value.message
 
     # === New test: get_package_versions skips invalid version strings ===
     @pytest.mark.asyncio
@@ -991,9 +991,9 @@ class TestCratesClient:
             client,
             "_get",
             new_callable=AsyncMock,
-            side_effect=HTTPException(status_code=429, detail="rate limited"),
+            side_effect=DataSourceError("rate limited", status_code=429),
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.search_packages("serde")
         assert exc_info.value.status_code == 429
 
@@ -1002,10 +1002,10 @@ class TestCratesClient:
         with patch.object(
             client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.search_packages("serde")
         assert exc_info.value.status_code == 500
-        assert "Crates search error" in exc_info.value.detail
+        assert "Crates search error" in exc_info.value.message
 
     # === Coverage: get_package_versions except for features (lines 237-238) ===
     @pytest.mark.asyncio
@@ -1079,9 +1079,9 @@ class TestCratesClient:
             client,
             "_get",
             new_callable=AsyncMock,
-            side_effect=HTTPException(status_code=429, detail="rate limited"),
+            side_effect=DataSourceError("rate limited", status_code=429),
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_dependencies("serde", "1.0.0")
         assert exc_info.value.status_code == 429
 
@@ -1090,10 +1090,10 @@ class TestCratesClient:
         with patch.object(
             client, "_get", new_callable=AsyncMock, side_effect=ValueError("bad data")
         ):
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(DataSourceError) as exc_info:
                 await client.get_dependencies("serde", "1.0.0")
         assert exc_info.value.status_code == 500
-        assert "Crates dependencies error" in exc_info.value.detail
+        assert "Crates dependencies error" in exc_info.value.message
 
     # === Coverage: check_compatibility compatible branch (line 408) ===
     @pytest.mark.asyncio

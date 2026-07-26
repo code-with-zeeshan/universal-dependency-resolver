@@ -10,23 +10,30 @@ Outputs only the changelog section for that specific version.
 import re
 import sys
 
-if len(sys.argv) < 2:
-    print("Usage: extract_changelog.py <version>", file=sys.stderr)
+
+def main() -> None:
+    """Parse args and extract the changelog section for the requested version."""
+    if len(sys.argv) < 2:
+        print("Usage: extract_changelog.py <version>", file=sys.stderr)
+        sys.exit(1)
+
+    target = sys.argv[1].lstrip("v")
+
+    with open("CHANGELOG.md") as f:
+        text = f.read()
+
+    sections = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
+    header = sections[0]
+
+    for s in sections[1:]:
+        m = re.match(r"^## \[(\d+\.\d+\.\d+)\]", s)
+        if m and m.group(1) == target:
+            sys.stdout.write(s.strip())
+            sys.exit(0)
+
+    print(f"No changelog section found for version {target}", file=sys.stderr)
     sys.exit(1)
 
-target = sys.argv[1].lstrip("v")
 
-with open("CHANGELOG.md") as f:
-    text = f.read()
-
-sections = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
-header = sections[0]
-
-for s in sections[1:]:
-    m = re.match(r"^## \[(\d+\.\d+\.\d+)\]", s)
-    if m and m.group(1) == target:
-        sys.stdout.write(s.strip())
-        sys.exit(0)
-
-print(f"No changelog section found for version {target}", file=sys.stderr)
-sys.exit(1)
+if __name__ == "__main__":
+    main()

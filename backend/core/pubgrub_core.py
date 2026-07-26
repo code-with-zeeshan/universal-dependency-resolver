@@ -501,6 +501,7 @@ class PubGrubCoreSolver:
                         has_candidate = True
                         break
                 except Exception:
+                    logger.debug("Candidate version check failed", exc_info=True)
                     continue
             if not has_candidate:
                 return False

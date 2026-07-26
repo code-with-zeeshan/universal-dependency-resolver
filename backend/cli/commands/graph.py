@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 from rich.panel import Panel
 from rich.tree import Tree
@@ -91,11 +92,35 @@ def cmd_graph(args: argparse.Namespace):
                 if not system_info["gpu"].get("cuda"):
                     system_info["gpu"]["cuda"] = "12.1"
 
-        specs = [_parse_package_spec(p, args.ecosystem) for p in args.packages]
+        # Auto-detect ecosystem from existing lock file when no ecosystem is
+        # explicitly specified by the user (default is "pypi").
+        lock_eco_map: dict[str, str] = {}
+        lock_dir = getattr(args, "directory", None) or "."
+        lock_path = Path(lock_dir) / "udr.lock"
+        if lock_path.is_file():
+            try:
+                lock_data = json.loads(lock_path.read_text())
+                pkgs = lock_data.get("packages", {})
+                if isinstance(pkgs, dict):
+                    lock_eco_map = {n: v.get("ecosystem", "pypi") for n, v in pkgs.items()}
+            except Exception:
+                pass
+
+        specs = []
+        used_lock_eco = False
+        for p in args.packages:
+            if "@" not in p and p in lock_eco_map:
+                specs.append(_parse_package_spec(f"{p}@{lock_eco_map[p]}", args.ecosystem))
+                used_lock_eco = True
+            else:
+                specs.append(_parse_package_spec(p, args.ecosystem))
         resolver_inputs, _package_details = await _fetch_package_data_async(aggregator, specs)
 
         if not resolver_inputs:
-            console.print("[red]No packages could be resolved[/red]")
+            msg = "[red]No packages could be resolved[/red]"
+            if args.ecosystem == "pypi" and not used_lock_eco and lock_path.is_file():
+                msg += "\n[dim]Hint: Try [cyan]udr graph PACKAGE@ECOSYSTEM[/cyan] (e.g. [cyan]udr graph lodash@npm[/cyan])[/dim]"
+            console.print(msg)
             await aggregator.close()
             return
 
@@ -109,7 +134,10 @@ def cmd_graph(args: argparse.Namespace):
 
         rp = resolved.get("resolved_packages", {})
         if not rp:
-            console.print("[yellow]No packages resolved.[/yellow]")
+            msg = "[yellow]No packages resolved.[/yellow]"
+            if args.ecosystem == "pypi" and not used_lock_eco:
+                msg += "\n[dim]Hint: Try [cyan]udr graph PACKAGE@ECOSYSTEM[/cyan] (e.g. [cyan]udr graph lodash@npm[/cyan])[/dim]"
+            console.print(msg)
             await aggregator.close()
             return
 

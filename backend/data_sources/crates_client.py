@@ -9,15 +9,13 @@ from enum import Enum
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import HTTPException
-
 from ..core.utils import normalize_package_name, parse_version, parse_version_key
 from ..settings import (
     CACHE_TTL,
     CACHE_TTL_SHORT,
     get_ecosystem_config,
 )
-from .base_client import BaseDataSourceClient
+from .base_client import BaseDataSourceClient, DataSourceError
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +94,10 @@ class CratesClient(BaseDataSourceClient):
 
             return results
 
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Crates search error: {e!s}")
+            raise DataSourceError(f"Crates search error: {e!s}", status_code=500)
 
     async def get_package_info(self, package_name: str) -> dict[str, Any]:
         """Async get package info."""
@@ -108,7 +106,7 @@ class CratesClient(BaseDataSourceClient):
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}")
             if not data:
-                raise HTTPException(status_code=404, detail="Crates package not found")
+                raise DataSourceError("Crates package not found", status_code=404)
 
             crate = data["crate"]
             versions_data = data.get("versions", [])
@@ -173,10 +171,10 @@ class CratesClient(BaseDataSourceClient):
                 },
             }
 
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Crates package info error: {e!s}")
+            raise DataSourceError(f"Crates package info error: {e!s}", status_code=500)
 
     async def get_artifact_hash(self, package_name: str, version: str) -> dict | None:
         """Get crates.io artifact integrity hash (cksum = SHA256)."""
@@ -197,7 +195,7 @@ class CratesClient(BaseDataSourceClient):
         try:
             data = await self._get(f"{self.base_url}/crates/{quote(package_name)}/versions")
             if not data:
-                raise HTTPException(status_code=404, detail="Crates package versions not found")
+                raise DataSourceError("Crates package versions not found", status_code=404)
 
             versions: list[Any] = []
             for version_data in data["versions"]:
@@ -264,10 +262,10 @@ class CratesClient(BaseDataSourceClient):
                 reverse=True,
             )
 
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Crates versions error: {e!s}")
+            raise DataSourceError(f"Crates versions error: {e!s}", status_code=500)
 
     async def get_dependencies(
         self,
@@ -325,10 +323,10 @@ class CratesClient(BaseDataSourceClient):
 
             return dependencies
 
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Crates dependencies error: {e!s}")
+            raise DataSourceError(f"Crates dependencies error: {e!s}", status_code=500)
 
     async def get_dependency_tree(
         self,

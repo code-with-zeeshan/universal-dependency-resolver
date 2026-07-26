@@ -51,9 +51,7 @@ class TestBuildSpdx:
     def test_basic_spdx_structure(self, sample_lock_data):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "udr.lock"
-        result = _build_spdx(sample_lock_data, lock_path)
+        result = _build_spdx(sample_lock_data, document_name="udr-sbom-udr.lock")
 
         assert result["spdxVersion"] == "SPDX-2.3"
         assert result["dataLicense"] == "CC0-1.0"
@@ -64,9 +62,7 @@ class TestBuildSpdx:
     def test_spdx_packages(self, sample_lock_data):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "udr.lock"
-        result = _build_spdx(sample_lock_data, lock_path)
+        result = _build_spdx(sample_lock_data, document_name="udr-sbom-udr.lock")
 
         pkgs = result["packages"]
         pkg_names = {p["name"] for p in pkgs}
@@ -84,9 +80,7 @@ class TestBuildSpdx:
     def test_spdx_relationships(self, sample_lock_data):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "udr.lock"
-        result = _build_spdx(sample_lock_data, lock_path)
+        result = _build_spdx(sample_lock_data, document_name="udr-sbom-udr.lock")
 
         rels = result["relationships"]
         assert len(rels) == 2
@@ -98,9 +92,7 @@ class TestBuildSpdx:
     def test_spdx_integrity_checksums(self, sample_lock_data_with_integrity):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "udr.lock"
-        result = _build_spdx(sample_lock_data_with_integrity, lock_path)
+        result = _build_spdx(sample_lock_data_with_integrity, document_name="udr-sbom-udr.lock")
 
         pkgs = result["packages"]
         requests_pkg = next(p for p in pkgs if p["name"] == "requests")
@@ -111,9 +103,7 @@ class TestBuildSpdx:
     def test_spdx_empty_packages(self):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "empty.lock"
-        result = _build_spdx({"packages": {}}, lock_path)
+        result = _build_spdx({"packages": {}}, document_name="udr-sbom-empty.lock")
 
         assert result["packages"] == []
         assert result["relationships"] == []
@@ -121,9 +111,7 @@ class TestBuildSpdx:
     def test_spdx_name_includes_lock_filename(self, sample_lock_data):
         from backend.cli.commands.sbom import _build_spdx
 
-        lock_path = MagicMock()
-        lock_path.name = "udr-backend.lock"
-        result = _build_spdx(sample_lock_data, lock_path)
+        result = _build_spdx(sample_lock_data, document_name="udr-sbom-udr-backend.lock")
 
         assert "udr-backend.lock" in result["name"]
 

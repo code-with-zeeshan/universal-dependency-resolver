@@ -45,7 +45,7 @@ from backend.utils.errors import (
 )
 
 from .cache import cached
-from .constraint_normalizer import normalize_version
+from .constraint_normalizer import is_prerelease_version, normalize_version
 from .utils import (
     compare_versions,
     is_compatible_version,
@@ -858,7 +858,7 @@ class ConflictResolver:
             with self._resolve_lock:
                 if self._executor is None:
                     self._executor = concurrent.futures.ThreadPoolExecutor()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         func = functools.partial(
             self._resolve_dependencies_sync,
             packages,
@@ -1420,14 +1420,8 @@ class ConflictResolver:
                     )
 
     def _is_prerelease(self, ver: str) -> bool:
-        """Check if a version is a pre-release (alpha, beta, dev, rc)."""
-        try:
-            parsed = version.parse(ver)
-            return parsed.is_prerelease
-        except version.InvalidVersion:
-            return bool(
-                re.search(r"(a|alpha|b|beta|rc|dev|pre|preview)[._-]?\d*$", ver, re.IGNORECASE)
-            )
+        """Check if a version is a pre-release (alpha, beta, dev, rc, canary, next)."""
+        return is_prerelease_version(ver)
 
     def _get_max_clusters(self, n_versions: int) -> int:
         """Compute dynamic cluster count based on version count.
@@ -1489,8 +1483,7 @@ class ConflictResolver:
         self._sys_python_version = (
             system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
         )
-        sys_gpu = system_info.get("gpu", {})
-        self._sys_cuda_version = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+        self._sys_cuda_version = _get_gpu_version(system_info, "cuda")
         self._sys_rocm_version = _get_gpu_version(system_info, "rocm")
         self._sys_intel_gpu_version = _get_gpu_version(system_info, "intel_gpu")
         self._sys_metal_version = _get_gpu_version(system_info, "metal")
@@ -1555,7 +1548,7 @@ class ConflictResolver:
                             if sys_py not in SpecifierSet(py_req):
                                 continue
                         except Exception:
-                            pass
+                            logger.debug("SpecifierSet check failed", exc_info=True)
                     elif sys_py and min_python and compare_versions(sys_py, min_python) < 0:
                         continue
                     var_name = f"{pkg_name}_{v}"
@@ -1655,8 +1648,7 @@ class ConflictResolver:
                 min_ver = req_value.get("min_version", "") if isinstance(req_value, dict) else ""
                 if not min_ver:
                     continue
-                sys_gpu = system_info.get("gpu", {})
-                sys_cuda = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+                sys_cuda = _get_gpu_version(system_info, "cuda")
                 if not sys_cuda or compare_versions(sys_cuda, min_ver) < 0:
                     self.solver.add(z3.Not(version_var))
             elif req_type in ("rocm", "intel_gpu", "metal"):
@@ -2030,7 +2022,9 @@ class ConflictResolver:
                 spec = SpecifierSet(constraint)
                 return v in spec
             except (InvalidSpecifier, Exception):
-                pass
+                logger.debug(
+                    "SpecifierSet parse failed for constraint=%r", constraint, exc_info=True
+                )
             return True
 
         def _check_assignment(assigned: dict[str, str]) -> bool:
@@ -2068,7 +2062,7 @@ class ConflictResolver:
                         if self._sys_python_version not in SpecifierSet(py_req):
                             continue
                     except Exception:
-                        pass
+                        logger.debug("Python version check failed", exc_info=True)
                 # Check GPU system requirements for this package
                 sr = pkg_sys_reqs.get(pkg_name, {})
                 # Check CUDA
@@ -2197,7 +2191,7 @@ class ConflictResolver:
                 spec = SpecifierSet(normed)
                 return version_str in spec
             except (InvalidSpecifier, Exception):
-                pass
+                logger.debug("SpecifierSet parse failed for normed=%r", normed, exc_info=True)
             return True
 
         def _check_constraints(name: str, version_str: str, assignment: dict[str, str]) -> bool:
@@ -2227,7 +2221,7 @@ class ConflictResolver:
                             if ver not in spec:
                                 return False
                         except (InvalidSpecifier, Exception):
-                            pass
+                            logger.debug("SpecifierSet membership check failed", exc_info=True)
                 # Check per-version Python requirement
                 py_req = pkg.get("version_requires_python", {}).get(ver)
                 if py_req and sys_py:
@@ -2235,7 +2229,7 @@ class ConflictResolver:
                         if sys_py not in SpecifierSet(py_req):
                             return False
                     except Exception:
-                        pass
+                        logger.debug("Python requirement check failed", exc_info=True)
                 # Wheel platform compatibility check
                 plat_list = pkg.get("version_platforms", {}).get(ver)
                 if plat_list:
@@ -2249,8 +2243,7 @@ class ConflictResolver:
                 if cuda_req and isinstance(cuda_req, dict):
                     min_cuda = cuda_req.get("min_version", "")
                     if min_cuda:
-                        sys_gpu = system_info.get("gpu", {})
-                        sys_cuda = sys_gpu.get("cuda", "") if isinstance(sys_gpu, dict) else ""
+                        sys_cuda = _get_gpu_version(system_info, "cuda")
                         if not sys_cuda or compare_versions(sys_cuda, min_cuda) < 0:
                             return False
                 rocm_req = sys_reqs.get("rocm")
@@ -2415,7 +2408,7 @@ class ConflictResolver:
                     if sys_python not in SpecifierSet(py_req):
                         continue
                 except Exception:
-                    pass
+                    logger.debug("Python version filter failed", exc_info=True)
             elif sys_python and min_python and compare_versions(sys_python, min_python) < 0:
                 continue
             if min_cuda:

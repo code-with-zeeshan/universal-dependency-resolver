@@ -60,7 +60,7 @@ def _get_value(var_name: str, system_info: dict | None) -> str:
                     break
             return str(val) if val else ""
         except Exception:
-            pass
+            logger.debug("Failed to resolve marker variable", exc_info=True)
     # Fallback: read from live environment
     fallbacks: dict[str, str] = {
         "sys_platform": _platform.system().lower(),
@@ -228,7 +228,7 @@ def evaluate_marker_string(marker_str: str, system_info: dict | None = None) -> 
             return m.evaluate(env)
         return m.evaluate()
     except Exception:
-        pass
+        logger.debug("packaging.markers evaluation failed", exc_info=True)
 
     # Fall back to our token-based evaluator
     try:
@@ -259,6 +259,6 @@ def filter_deps_by_marker(
                 if not evaluate_marker_string(marker, system_info):
                     continue
             except Exception:
-                pass
+                logger.debug("Marker evaluation failed for dep", exc_info=True)
         result.append(dep)
     return result

@@ -19,6 +19,11 @@ from backend.core.local_index import (
     _parse_pypi_deps,
     get_local_index,
 )
+from backend.core.local_index_factory import get_local_index as factory_get_local_index
+from backend.core.local_index_npm import NpmIndexManager
+from backend.core.local_index_pypi import PyPIIndexManager
+from backend.core.local_index_crates import CratesIndexManager
+from backend.core.registry_index_manager import NullIndexManager, SearchApiIndexManager
 from backend.settings import ENABLE_LOCAL_INDEX, LOCAL_INDEX_DIR, LOCAL_INDEX_UPDATE_INTERVAL
 
 
@@ -424,3 +429,87 @@ class TestGetLocalIndex:
             assert get_local_index("gradle") is None
             assert get_local_index("swift") is None
             assert get_local_index("unknown") is None
+
+
+class TestFactoryGetLocalIndex:
+    """Tests for the new factory in local_index_factory.py (all 28 ecosystems)."""
+
+    def test_factory_returns_none_when_disabled(self):
+        """Returns None when ENABLE_LOCAL_INDEX is false."""
+        with patch("backend.settings.ENABLE_LOCAL_INDEX", False):
+            assert factory_get_local_index("pypi") is None
+            assert factory_get_local_index("npm") is None
+            assert factory_get_local_index("unknown") is None
+
+    def test_factory_returns_specialized_manager(self):
+        """Returns specialized manager classes for pypi/npm/crates."""
+        with patch("backend.settings.ENABLE_LOCAL_INDEX", True):
+            assert isinstance(factory_get_local_index("pypi"), PyPIIndexManager)
+            assert isinstance(factory_get_local_index("npm"), NpmIndexManager)
+            assert isinstance(factory_get_local_index("crates"), CratesIndexManager)
+
+    def test_factory_returns_search_api_manager(self):
+        """Returns SearchApiIndexManager for ecosystems with listing APIs."""
+        with patch("backend.settings.ENABLE_LOCAL_INDEX", True):
+            for eco in (
+                "conda",
+                "maven",
+                "nuget",
+                "rubygems",
+                "packagist",
+                "pub",
+                "hex",
+                "cocoapods",
+                "homebrew",
+            ):
+                mgr = factory_get_local_index(eco)
+                assert isinstance(mgr, SearchApiIndexManager), f"{eco} → {type(mgr)}"
+
+    def test_factory_returns_null_manager(self):
+        """Returns NullIndexManager for ecosystems without listing APIs."""
+        with patch("backend.settings.ENABLE_LOCAL_INDEX", True):
+            for eco in (
+                "apt",
+                "apk",
+                "swift",
+                "gradle",
+                "haskell",
+                "gomodules",
+                "nix",
+                "guix",
+                "vcpkg",
+                "conan",
+                "docker",
+                "helm",
+                "terraform",
+                "docs",
+                "custom_db",
+            ):
+                mgr = factory_get_local_index(eco)
+                assert isinstance(mgr, NullIndexManager), f"{eco} → {type(mgr)}"
+
+    def test_all_ecosystems_have_manager(self):
+        """Every ecosystem returns a manager when enabled."""
+        from backend.settings import ECOSYSTEMS
+
+        with patch("backend.settings.ENABLE_LOCAL_INDEX", True):
+            for eco in ECOSYSTEMS:
+                mgr = factory_get_local_index(eco)
+                assert mgr is not None, f"{eco} returned None"
+
+    def test_search_api_manager_sync_returns_int(self):
+        """SearchApiIndexManager.sync returns an int (0 when offline)."""
+        mgr = SearchApiIndexManager(
+            ecosystem="packagist",
+            url="https://packagist.org/packages/list.json",
+            parser=lambda d: [{"name": "test", "versions": [{"version": "1.0"}]}],
+            single_page=True,
+        )
+        result = asyncio.run(mgr.sync())
+        assert isinstance(result, int)
+
+    def test_null_manager_sync_returns_zero(self):
+        """NullIndexManager.sync always returns 0."""
+        mgr = NullIndexManager(ecosystem="test", update_interval=0)
+        result = asyncio.run(mgr.sync())
+        assert result == 0

@@ -888,7 +888,7 @@ async def _resolve_transitive(
                 current_level_deps.append((dep_name, dep_eco, None))
 
     if bfs_timeout is not None:
-        bfs_deadline = asyncio.get_event_loop().time() + bfs_timeout
+        bfs_deadline = asyncio.get_running_loop().time() + bfs_timeout
     else:
         bfs_deadline = None
 
@@ -902,7 +902,7 @@ async def _resolve_transitive(
                 len(all_packages),
             )
             break
-        if bfs_deadline is not None and asyncio.get_event_loop().time() >= bfs_deadline:
+        if bfs_deadline is not None and asyncio.get_running_loop().time() >= bfs_deadline:
             logger.warning(
                 "BFS timed out after %ds — continuing with %d packages fetched",
                 bfs_timeout,

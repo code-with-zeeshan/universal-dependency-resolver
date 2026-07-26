@@ -15,11 +15,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Self
 
-_background_tasks: set[asyncio.Task] = set()
-
 import aiohttp
 
 from backend.core.cache import cache_manager
+from backend.core.concurrency import get_semaphore
 from backend.core.utils import (
     hash_system_info,
     normalize_package_name,
@@ -174,7 +173,8 @@ class DataAggregator:
         self._ecosystem_cache: dict[str, list[Ecosystem]] = {}
         self._ecosystem_pending: dict[str, asyncio.Future] = {}
         self._cve_session: aiohttp.ClientSession | None = None
-        self._cve_semaphore = asyncio.Semaphore(10)
+        self._cve_semaphore = get_semaphore("cve_check", concurrency=10)
+        self._background_tasks: set[asyncio.Task] = set()
 
     @property
     def sources(self) -> dict[str, Any]:
@@ -298,7 +298,7 @@ class DataAggregator:
                     _span.__exit__(None, None, None)
                     return cached_result
         except Exception:
-            pass
+            logger.debug("Content cache read failed", exc_info=True)
         cached_result = await cache_manager.get(cache_key)
         if cached_result:
             _span.__exit__(None, None, None)
@@ -417,7 +417,7 @@ class DataAggregator:
 
                 await content_cache.set(cache_key, aggregated_info, ttl=self.cache_ttl)
         except Exception:
-            pass
+            logger.debug("Content cache write failed", exc_info=True)
 
         _span.set_attribute("ecosystems_checked", str([e.value for e in ecosystems]))
         _span.set_attribute("result_keys", list(aggregated_info.keys()))
@@ -437,7 +437,7 @@ class DataAggregator:
             return await self._ecosystem_pending[package_name]
 
         # Create a future so concurrent callers can wait for our result
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         self._ecosystem_pending[package_name] = future
 
         ecosystems: list[Ecosystem] = []
@@ -447,7 +447,10 @@ class DataAggregator:
             for eco in Ecosystem:
                 if eco == Ecosystem.DOCS:
                     continue
-                tasks.append(asyncio.create_task(self._check_ecosystem_exists(eco, package_name)))
+                task = asyncio.create_task(self._check_ecosystem_exists(eco, package_name))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+                tasks.append(task)
 
             timeout = DETECT_ECOSYSTEMS_TIMEOUT
             done, pending = await asyncio.wait(tasks, timeout=timeout)
@@ -489,7 +492,7 @@ class DataAggregator:
             if hasattr(client, "package_exists"):
                 if asyncio.iscoroutinefunction(client.package_exists):
                     return await client.package_exists(package_name)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 return await loop.run_in_executor(
                     self.executor, client.package_exists, package_name
                 )
@@ -498,7 +501,7 @@ class DataAggregator:
                 if hasattr(client, "get_package_info_async"):
                     info = await client.get_package_info_async(package_name)
                 else:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     info = await loop.run_in_executor(
                         self.executor, client.get_package_info, package_name
                     )
@@ -591,7 +594,7 @@ class DataAggregator:
                 result = await method(*args, **kwargs)
             else:
                 method = getattr(client, method_name)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
 
             if result is None:
@@ -627,8 +630,8 @@ class DataAggregator:
 
             if not UDR_OFFLINE:
                 task = asyncio.create_task(self._auto_index_package(ecosystem, result))
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
             return result
 
@@ -1277,7 +1280,7 @@ class DataAggregator:
             method = getattr(client, method_name)
             if asyncio.iscoroutinefunction(method):
                 return await method(*args, **kwargs)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self.executor, lambda: method(*args, **kwargs))
         raise AttributeError(f"Client has no method {method_name}")
 

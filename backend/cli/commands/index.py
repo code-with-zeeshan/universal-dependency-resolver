@@ -22,6 +22,8 @@ from pathlib import Path
 from rich import box
 from rich.table import Table
 
+from backend.core.concurrency import get_semaphore
+
 from ..shared import _read_lock_file, console, err_console
 
 logger = logging.getLogger(__name__)
@@ -181,7 +183,7 @@ async def _build_from_lock_async(args: argparse.Namespace) -> int:
     err_console.print(f"[dim]Found {len(packages)} packages in lock file[/dim]")
 
     aggregator = DataAggregator()
-    sem = asyncio.Semaphore(10)
+    sem = get_semaphore("cli_index", concurrency=10)
 
     eco_batches: dict[str, list[dict]] = {}
     errors = 0
@@ -224,7 +226,7 @@ async def _build_from_names_async(args: argparse.Namespace) -> int:
     ecosystem = args.ecosystem
 
     aggregator = DataAggregator()
-    sem = asyncio.Semaphore(10)
+    sem = get_semaphore("cli_index", concurrency=10)
 
     batch: list[dict] = []
     errors = 0

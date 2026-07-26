@@ -3,7 +3,7 @@
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>19 commands"]:::cli
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>20 commands"]:::cli
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code><br/>Standalone binary"]:::desktop
     end
 
@@ -74,7 +74,7 @@ graph TB
 
 ### CLI layer (`backend/cli/`)
 
-Modular CLI package with 23 files across 19 commands:
+Modular CLI package with 23 files across 20 commands:
 
 ```
 backend/cli/

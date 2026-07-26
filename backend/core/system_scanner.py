@@ -14,7 +14,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from backend.core.detectors import gpu as gpu_detector
@@ -28,7 +27,7 @@ from backend.core.scanner_models import (
     PackageInfo,
     RuntimeInfo,
 )
-from backend.core.utils import hash_system_info
+from backend.core.utils import hash_system_info, safe_read_file
 
 from ._json import dumps, loads
 
@@ -126,21 +125,6 @@ class SystemScanner:
         if merge_stderr:
             return (result.stderr or "").strip()
         return result.stdout.strip()
-
-    def _safe_read_file(self, path: str | Path) -> str | None:
-        """Read a file and return contents. Returns None on failure."""
-        try:
-            with open(path) as f:
-                return f.read()
-        except FileNotFoundError:
-            logger.debug("File not found: %s", path)
-            return None
-        except PermissionError:
-            logger.debug("Permission denied: %s", path)
-            return None
-        except Exception as e:
-            logger.warning("Failed to read file %s: %s", path, e)
-            return None
 
     async def __aenter__(self):
         """Aenter."""
@@ -264,7 +248,7 @@ class SystemScanner:
         if asyncio.iscoroutinefunction(scanner_func):
             result = await scanner_func()
         else:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(self._executor, scanner_func)
 
         # Cache result
@@ -341,7 +325,7 @@ class SystemScanner:
 
         # Fallback to os-release
         elif os.path.exists("/etc/os-release"):
-            content = self._safe_read_file("/etc/os-release")
+            content = safe_read_file("/etc/os-release")
             if content:
                 for line in content.splitlines():
                     if "=" in line:
@@ -350,7 +334,7 @@ class SystemScanner:
 
         # Additional detection for specific distros
         if os.path.exists("/etc/redhat-release"):
-            content = self._safe_read_file("/etc/redhat-release")
+            content = safe_read_file("/etc/redhat-release")
             if content:
                 dist_info["redhat_release"] = content.strip()
 
@@ -588,7 +572,7 @@ class SystemScanner:
 
         # Fallback for basic memory info
         elif platform.system() == "Linux":
-            content = self._safe_read_file("/proc/meminfo")
+            content = safe_read_file("/proc/meminfo")
             if content:
                 for line in content.splitlines():
                     if line.startswith("MemTotal:"):

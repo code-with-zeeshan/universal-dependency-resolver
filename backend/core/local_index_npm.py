@@ -14,6 +14,7 @@ from typing import Any
 
 import aiohttp
 
+from backend.core.concurrency import get_semaphore
 from backend.core.offline_index import (
     _connect,
     _ensure_index,
@@ -115,7 +116,7 @@ class NpmIndexManager:
 
     async def _seed_from_search(self) -> int:
         """Seed the index by paginating through ``/-/v1/search``."""
-        sem = asyncio.Semaphore(10)
+        sem = get_semaphore("local_index", concurrency=10)
         total = 0
         from_arg = 0
         size = 250
@@ -181,7 +182,7 @@ class NpmIndexManager:
         if not rows:
             return 0
 
-        sem = asyncio.Semaphore(10)
+        sem = get_semaphore("local_index", concurrency=10)
         batch_size = 25
         total = 0
         new_since = since

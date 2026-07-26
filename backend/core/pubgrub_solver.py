@@ -19,42 +19,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from backend.core.utils import is_compatible_version
+from backend.core.vers import _split_multi_constraint
 from backend.settings import SOLVER_MAX_VARIABLES
-
-_MULTI_CONSTRAINT_SEP_RE = re.compile(
-    r"""
-    [,]                          # comma
-    |[&]{2}                      # double ampersand (&&)
-    |[|]{2}                      # double pipe (||)
-    |(?<=\d)\s+(?=[><=!^~&|])    # space between a digit and an operator
-    """,
-    re.VERBOSE,
-)
-
-
-def _split_multi_constraint(constraint: str) -> list[str]:
-    """Split a multi-part constraint string into individual constraint parts.
-
-    Handles separators: comma (``,``), double-ampersand (``&&``), double-pipe
-    (``||``), and whitespace between a version number and a following operator.
-
-    Examples::
-
-        ">=2.1.2,<3.0.0"      -> [">=2.1.2", "<3.0.0"]
-        ">=2.1.2 <3.0.0"      -> [">=2.1.2", "<3.0.0"]
-        ">=1.0 && <2.0"       -> [">=1.0", "<2.0"]
-    """
-    c = constraint.strip()
-    if not c or c in ("*", "any", ""):
-        return [c] if c else []
-
-    parts = _MULTI_CONSTRAINT_SEP_RE.split(c)
-    return [p.strip() for p in parts if p.strip()]
-
 
 try:
     from backend.core.conflict_resolver import _cluster_versions_static as _cluster_versions
 except ImportError:
+    logger.warning(
+        "Could not import _cluster_versions_static from conflict_resolver; "
+        "using simple truncation fallback"
+    )
 
     def _cluster_versions(versions: list[str], max_clusters: int = 100) -> list[str]:
         if len(versions) <= max_clusters:
@@ -245,7 +219,7 @@ class PubGrubSolver:
                         if self._pubgrub_sys_py_version not in SpecifierSet(py_req):
                             continue
                     except Exception:
-                        pass
+                        logger.debug("PubGrub Python version check failed", exc_info=True)
                 safe_ver = _sanitize_version(ver_str)
                 ver_map.setdefault(safe_ver, []).append(ver_str)
                 # Collect dependencies from ALL ecosystems (cross-eco support)
@@ -297,7 +271,7 @@ class PubGrubSolver:
             if self._solver_timeout:
 
                 async def _resolve_with_timeout():
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     return await asyncio.wait_for(
                         loop.run_in_executor(None, resolver.resolve, requirements),
                         timeout=self._solver_timeout / 1000.0,
@@ -427,7 +401,7 @@ class PubGrubSolver:
                         if self._pubgrub_sys_py_version not in SpecifierSet(py_req):
                             continue
                     except Exception:
-                        pass
+                        logger.debug("PubGrub Python version check failed", exc_info=True)
                 safe_ver = _sanitize_version(ver_str)
                 ver_map.setdefault(safe_ver, []).append(ver_str)
                 # Collect dependencies from ALL ecosystems (cross-eco support)
@@ -476,7 +450,7 @@ class PubGrubSolver:
             if self._solver_timeout:
 
                 async def _resolve_with_timeout():
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     return await asyncio.wait_for(
                         loop.run_in_executor(None, solver.resolve, requirements),
                         timeout=self._solver_timeout / 1000.0,

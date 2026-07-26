@@ -416,6 +416,11 @@ tmp2.md
 status.md
 completed.md
 TODO.md
+analysis_backend.md
+analysis_*.md
+finding.md
+report.md
+.opencodeignore
 
 # =============================================================================
 # Testing

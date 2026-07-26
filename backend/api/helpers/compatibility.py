@@ -5,6 +5,8 @@ import logging
 from packaging import version
 from pydantic import BaseModel, Field
 
+from backend.core.utils import OS_ALIASES
+
 
 class SystemSpec(BaseModel):
     """System Spec functionality."""
@@ -58,6 +60,7 @@ def _check_version_compatibility(version_info: dict, system_spec: str) -> bool:
         is_compatible, _ = _check_version_compatibility_detailed(version_info, spec)
         return is_compatible
     except Exception:
+        logger.warning("Version compatibility check failed", exc_info=True)
         return True
 
 
@@ -124,13 +127,7 @@ def _check_os_compatibility(system_os: str, supported_platforms: list[str]) -> b
     """Check os compatibility."""
     if not supported_platforms or "any" in supported_platforms:
         return True
-    os_mapping = {
-        "linux": ["linux", "manylinux", "unix", "posix"],
-        "windows": ["windows", "win", "win32", "win_amd64"],
-        "macos": ["macos", "darwin", "osx", "mac"],
-        "darwin": ["macos", "darwin", "osx", "mac"],
-    }
-    system_aliases = os_mapping.get(system_os.lower(), [system_os.lower()])
+    system_aliases = OS_ALIASES.get(system_os.lower(), [system_os.lower()])
     for platform in supported_platforms:
         platform_lower = platform.lower()
         if any(alias in platform_lower for alias in system_aliases):
@@ -161,14 +158,3 @@ def _check_cuda_compatibility(system_cuda: str, required_cuda: list[str]) -> boo
     except Exception as e:
         logger.warning(f"Failed to check CUDA compatibility: {e}")
         return True
-
-
-def _is_prerelease(version_str: str) -> bool:
-    """Check if prerelease."""
-    try:
-        v = version.parse(version_str)
-        return v.is_prerelease
-    except Exception:
-        prerelease_indicators = ["alpha", "beta", "rc", "dev", "pre", "a", "b"]
-        version_lower = version_str.lower()
-        return any(indicator in version_lower for indicator in prerelease_indicators)

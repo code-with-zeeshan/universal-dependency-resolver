@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from backend import settings as _settings
+from backend.core.concurrency import get_semaphore
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ class LocalIndexManager:
             return 0
 
         # Batch-fetch new packages in parallel
-        sem = asyncio.Semaphore(10)
+        sem = get_semaphore("local_index", concurrency=10)
         batch_size = 50
         total_synced = 0
         for i in range(0, len(new_packages), batch_size):
@@ -154,7 +155,7 @@ class LocalIndexManager:
             logger.info("npm changes feed returned no rows")
             return 0
 
-        sem = asyncio.Semaphore(10)
+        sem = get_semaphore("local_index", concurrency=10)
         batch_size = 25
         total_synced = 0
         new_since = since
@@ -206,7 +207,8 @@ class LocalIndexManager:
         if not index_dir.exists():
             logger.info("Cloning crates.io-index Git repo (first sync) …")
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     [
                         "git",
                         "clone",
@@ -224,7 +226,8 @@ class LocalIndexManager:
                 return await self._sync_crates_api()
         else:
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     ["git", "-C", str(index_dir), "pull", "--ff-only"],
                     capture_output=True,
                     text=True,
@@ -292,6 +295,7 @@ class LocalIndexManager:
                             create_or_update_index("crates", batch)
                             total += len(batch)
                 except Exception:
+                    logger.warning("crates.io API sync interrupted by error", exc_info=True)
                     break
         logger.info("crates.io API sync complete: %d packages registered", total)
         return total
@@ -340,10 +344,12 @@ def _offline_conn(ecosystem: str, create: bool = False) -> Any:
         try:
             return _ensure_index(ecosystem)
         except Exception:
+            logger.warning("Failed to ensure offline index for %s", ecosystem, exc_info=True)
             return None
     try:
         return _connect(ecosystem)
     except Exception:
+        logger.warning("Failed to connect to offline index for %s", ecosystem, exc_info=True)
         return None
 
 
@@ -499,6 +505,7 @@ def _parse_crate_index_file(crate_file: Any) -> dict | None:
     try:
         content = crate_file.read_text(encoding="utf-8")
     except Exception:
+        logger.warning("Failed to read crate index file: %s", crate_file, exc_info=True)
         return None
 
     versions = []

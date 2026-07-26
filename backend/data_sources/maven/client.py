@@ -8,7 +8,6 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import HTTPException
 from packaging import version as packaging_version
 
 from ...core.utils import normalize_package_name, parse_version
@@ -16,7 +15,7 @@ from ...settings import (
     ENABLE_CACHE,
     get_ecosystem_config,
 )
-from ..base_client import BaseDataSourceClient
+from ..base_client import BaseDataSourceClient, DataSourceError
 from .pom_parser import PomParser
 from .version_utils import (
     _compare_java_versions,
@@ -76,9 +75,9 @@ class MavenClient(BaseDataSourceClient):
                         return None
 
                     if response.status != 200:
-                        raise HTTPException(
+                        raise DataSourceError(
+                            f"Maven API error: {response.status}",
                             status_code=response.status,
-                            detail=f"Maven API error: {response.status}",
                         )
 
                     content_type = response.headers.get("Content-Type", "")
@@ -100,9 +99,9 @@ class MavenClient(BaseDataSourceClient):
                     await asyncio.sleep(2**attempt)
                     continue
 
-        raise HTTPException(
+        raise DataSourceError(
+            f"Failed after {self.max_retries} attempts: {last_error}",
             status_code=500,
-            detail=f"Failed after {self.max_retries} attempts: {last_error}",
         )
 
     def _clean_cache(self) -> None:
@@ -279,7 +278,7 @@ class MavenClient(BaseDataSourceClient):
 
             data = await self._make_request(self.base_url, params=params)
             if not data:
-                raise HTTPException(status_code=500, detail="Failed to search Maven packages")
+                raise DataSourceError("Failed to search Maven packages", status_code=500)
 
             results = []
             for doc in data.get("response", {}).get("docs", []):
@@ -295,7 +294,7 @@ class MavenClient(BaseDataSourceClient):
             return results
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Maven search error: {e!s}")
+            raise DataSourceError(f"Maven search error: {e!s}", status_code=500)
 
     # ── Standard interface (used by DataAggregator) ─────────────────────
 
@@ -362,11 +361,11 @@ class MavenClient(BaseDataSourceClient):
             params = {"q": f"g:{group_id} AND a:{artifact_id}", "rows": 1, "wt": "json"}  # type: ignore[misc]
             async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
-                    raise HTTPException(status_code=404, detail="Maven package not found")
+                    raise DataSourceError("Maven package not found", status_code=404)
                 data = await response.json()
                 docs = data.get("response", {}).get("docs", [])
                 if not docs:
-                    raise HTTPException(status_code=404, detail="Maven package not found")
+                    raise DataSourceError("Maven package not found", status_code=404)
 
                 doc = docs[0]
                 return {
@@ -383,10 +382,10 @@ class MavenClient(BaseDataSourceClient):
                     "system_requirements": {"java_versions": ["8+"], "os": ["any"]},
                     "compatibility_matrix": {"java": {"minimum": "1.8", "recommended": "11"}},
                 }
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Maven package info error: {e!s}")
+            raise DataSourceError(f"Maven package info error: {e!s}", status_code=500)
 
     async def get_package_versions(
         self, group_id: str, artifact_id: str, filters: dict | None = None
@@ -403,7 +402,7 @@ class MavenClient(BaseDataSourceClient):
             }  # type: ignore[misc]
             async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
                 if response.status != 200:
-                    raise HTTPException(status_code=404, detail="Maven package versions not found")
+                    raise DataSourceError("Maven package versions not found", status_code=404)
                 data = await response.json()
                 versions: list[Any] = []
                 for doc in data.get("response", {}).get("docs", []):
@@ -451,10 +450,10 @@ class MavenClient(BaseDataSourceClient):
                     key=lambda x: _sort_maven_version(x["version"]),
                     reverse=True,
                 )
-        except HTTPException:
+        except DataSourceError:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Maven versions error: {e!s}")
+            raise DataSourceError(f"Maven versions error: {e!s}", status_code=500)
 
     async def check_compatibility(
         self, group_id: str, artifact_id: str, version: str, system_info: dict

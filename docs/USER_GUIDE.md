@@ -186,7 +186,7 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph UserLayer["👤 User Interfaces"]
-        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>19 commands"]
+        CLI["🖥️ CLI<br/><code>backend/cli/</code><br/>20 commands"]
         DESKTOP["🖥️ Desktop App<br/><code>Electron + GUI</code>"]
     end
 
@@ -248,7 +248,7 @@ graph TB
 
 ## 8. CLI Usage
 
-All 19 commands support `--help` for inline usage.
+All 20 commands support `--help` for inline usage.
 
 ### Global flags
 

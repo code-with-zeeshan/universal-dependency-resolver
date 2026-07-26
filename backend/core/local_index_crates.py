@@ -6,6 +6,7 @@ parses the sparse directory structure into the offline SQLite index.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import subprocess
@@ -102,14 +103,9 @@ class CratesIndexManager:
         if not index_dir.exists():
             logger.info("Cloning crates.io-index Git repo (first sync) …")
             try:
-                subprocess.run(
-                    [
-                        "git",
-                        "clone",
-                        "--depth=1",
-                        _CRATES_INDEX_REPO,
-                        str(index_dir),
-                    ],
+                await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "clone", "--depth=1", _CRATES_INDEX_REPO, str(index_dir)],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -120,7 +116,8 @@ class CratesIndexManager:
                 return await self._sync_api()
         else:
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     ["git", "-C", str(index_dir), "pull", "--ff-only"],
                     capture_output=True,
                     text=True,

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.scanner_models import GPUInfo
+from backend.core.utils import safe_read_file
 
 from .._json import JSONDecodeError, loads
 
@@ -207,7 +208,7 @@ def _detect_rocm_info(scanner) -> dict[str, Any] | None:
 
     version_file = Path("/opt/rocm/.version")
     if version_file.exists():
-        content = scanner._safe_read_file(str(version_file))
+        content = safe_read_file(str(version_file))
         if content:
             version_match = re.search(r"(\d+\.\d+\.\d+)", content.strip())
             if version_match:
@@ -258,7 +259,7 @@ def _detect_intel_gpu_info(scanner) -> dict[str, Any] | None:
 
     intel_info["available"] = True
 
-    mod_ver = scanner._safe_read_file("/sys/module/i915/version")
+    mod_ver = safe_read_file("/sys/module/i915/version")
     if mod_ver:
         version_match = re.search(r"(\d+\.\d+\.\d+)", mod_ver.strip())
         if version_match:
@@ -276,9 +277,9 @@ def _detect_intel_gpu_info(scanner) -> dict[str, Any] | None:
 
     for drm_path in Path("/sys/class/drm").glob("card*"):
         if drm_path.is_dir():
-            vendor = scanner._safe_read_file(str(drm_path / "device/vendor"))
+            vendor = safe_read_file(str(drm_path / "device/vendor"))
             if vendor and "0x8086" in vendor.strip():
-                dev_id = scanner._safe_read_file(str(drm_path / "device/device"))
+                dev_id = safe_read_file(str(drm_path / "device/device"))
                 if dev_id:
                     intel_info["device_id"] = dev_id.strip()
 
@@ -347,7 +348,7 @@ def _detect_cudnn_version(scanner) -> dict[str, str] | None:
 
     for header_path in header_paths:
         if os.path.exists(header_path):
-            content = scanner._safe_read_file(header_path)
+            content = safe_read_file(header_path)
             if content:
                 major = re.search(r"#define CUDNN_MAJOR (\d+)", content)
                 minor = re.search(r"#define CUDNN_MINOR (\d+)", content)
