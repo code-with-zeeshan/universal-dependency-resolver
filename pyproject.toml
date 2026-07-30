@@ -101,7 +101,7 @@ dev = [
     "pytest-timeout>=2.2,<4",
     "ruff>=0.11,<1",
     "mypy>=1.7,<3",
-    "pre-commit>=3.6,<4",
+    "pre-commit>=3.6,<5",
     "hypothesis>=6.100,<7",
 ]
 postgres = [
