@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -229,7 +230,13 @@ async def api_key_middleware(request: Request, call_next):
     if not api_key:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Missing API key"},
+            content={
+                "error": {
+                    "message": "Missing API key",
+                    "type": "auth_error",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            },
         )
 
     # 1. Check against env var API_KEY (super-admin, backward compat)
@@ -252,7 +259,13 @@ async def api_key_middleware(request: Request, call_next):
 
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        content={"detail": "Invalid or missing API key"},
+        content={
+            "error": {
+                "message": "Invalid or missing API key",
+                "type": "auth_error",
+                "timestamp": datetime.now().isoformat(),
+            }
+        },
     )
 
 
@@ -292,6 +305,30 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
                 "message": exc.detail,
                 "type": "http_error",
                 "status_code": exc.status_code,
+                "timestamp": datetime.now().isoformat(),
+            }
+        },
+    )
+
+
+# Handler for Pydantic validation errors (422) — return consistent {"error": ...} format
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Handle validation errors with consistent format."""
+    errors_raw = exc.errors()
+    errors_clean = []
+    for err in errors_raw:
+        clean = {"loc": err.get("loc", []), "msg": err.get("msg", ""), "type": err.get("type", "")}
+        errors_clean.append(clean)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": {
+                "message": "Validation error",
+                "type": "validation_error",
+                "details": errors_clean,
                 "timestamp": datetime.now().isoformat(),
             }
         },

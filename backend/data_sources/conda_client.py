@@ -1,6 +1,7 @@
 """Module docstring."""
 
 # conda_client.py
+import asyncio
 import io
 import logging
 import re
@@ -64,12 +65,30 @@ class CondaClient(BaseDataSourceClient):
         """Async get package info async."""
         package_name = normalize_package_name(package_name)
         try:
+            # Probe all channels in parallel with a per-channel timeout.
+            async def _probe_channel(
+                channel_name: str,
+            ) -> dict | None:
+                try:
+                    info = await asyncio.wait_for(
+                        self._fetch_from_anaconda_api(package_name, channel_name),
+                        timeout=15,
+                    )
+                    if info:
+                        info["channel_name"] = channel_name
+                    return info
+                except (TimeoutError, Exception):
+                    return None
+
+            results = await asyncio.gather(
+                *[_probe_channel(cn) for cn in self.channels],
+                return_exceptions=True,
+            )
+
             package_info = None
-            for channel_name, channel_url in self.channels.items():
-                info = await self._fetch_from_anaconda_api(package_name, channel_name)
-                if info:
-                    package_info = info
-                    package_info["channel_name"] = channel_name
+            for r in results:
+                if isinstance(r, dict) and r.get("name"):
+                    package_info = r
                     break
 
             if not package_info:
@@ -92,21 +111,34 @@ class CondaClient(BaseDataSourceClient):
         package_name = normalize_package_name(package_name)
         try:
             api_url = f"https://api.anaconda.org/package/{channel}/{package_name}"
-
+            files_url = f"{api_url}/files"
             session = self._get_session()
-            async with session.get(api_url) as response:
-                if response.status != 200:
-                    return None
 
-                data = await response.json()
+            async def _fetch_json(url: str) -> Any:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        return None
+                    return await resp.json()
 
-                files_url = f"{api_url}/files"
-                async with session.get(files_url) as files_response:
-                    if files_response.status == 200:
-                        files_data = await files_response.json()
-                        data["files"] = files_data
+            pkg_task = asyncio.create_task(_fetch_json(api_url))
+            files_task = asyncio.create_task(_fetch_json(files_url))
+            done, _ = await asyncio.wait(
+                [pkg_task, files_task], timeout=20, return_when=asyncio.ALL_COMPLETED
+            )
 
-                return data
+            data = None
+            if pkg_task in done and pkg_task.exception() is None:
+                data = pkg_task.result()
+
+            if data is None:
+                return None
+
+            if files_task in done and files_task.exception() is None:
+                files_data = files_task.result()
+                if files_data:
+                    data["files"] = files_data
+
+            return data
 
         except Exception as e:
             logger.debug(f"Package {package_name} not found in {channel}: {e}")
@@ -401,6 +433,10 @@ class CondaClient(BaseDataSourceClient):
 
         return metadata
 
+    @staticmethod
+    def _is_conda_virtual(name: str) -> bool:
+        return name.startswith("__")
+
     def _parse_conda_dependency(self, dep_string: str) -> tuple[str | None, str]:
         if not dep_string or not isinstance(dep_string, str):
             return None, ""
@@ -409,10 +445,16 @@ class CondaClient(BaseDataSourceClient):
 
         match = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*([><=!]+)\s*(.+)$", dep_string)
         if match:
-            return match.group(1), f"{match.group(2)}{match.group(3)}"
+            name = match.group(1)
+            if self._is_conda_virtual(name):
+                return None, ""
+            return name, f"{match.group(2)}{match.group(3)}"
 
         match = re.match(r"^([a-zA-Z0-9_\-\.]+)\s+([0-9].*)$", dep_string)
         if match:
+            name = match.group(1)
+            if self._is_conda_virtual(name):
+                return None, ""
             version_part = match.group(2)
             if "*" in version_part:
                 base_version = version_part.replace(".*", "")
@@ -420,17 +462,20 @@ class CondaClient(BaseDataSourceClient):
                 if parsed_base:
                     try:
                         next_major = f"{parsed_base.major}.{parsed_base.minor + 1}"
-                        return match.group(1), f">={base_version},<{next_major}"
+                        return name, f">={base_version},<{next_major}"
                     except Exception:
-                        return match.group(1), f"=={version_part}"
+                        return name, f"=={version_part}"
                 else:
-                    return match.group(1), f"=={version_part}"
+                    return name, f"=={version_part}"
             else:
-                return match.group(1), f"=={version_part}"
+                return name, f"=={version_part}"
 
         match = re.match(r"^([a-zA-Z0-9_\-\.]+)$", dep_string)
         if match:
-            return match.group(1), "*"
+            name = match.group(1)
+            if self._is_conda_virtual(name):
+                return None, ""
+            return name, "*"
 
         return dep_string, "*"
 

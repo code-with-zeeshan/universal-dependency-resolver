@@ -14,6 +14,7 @@ from hypothesis import assume, given, strategies as st
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
 from backend.core.pubgrub_solver import _normalize_constraint as pubgrub_normalize_constraint
 from backend.core.pubgrub_solver import _sanitize_version, _to_semver
+from backend.core.pubgrub_solver import _normalize_constraint  # noqa: F401 — used by TestConstraintEdgeCases
 from backend.core.utils import is_compatible_version
 from backend.core.vers import VersSpec, _parse_semver
 
@@ -388,6 +389,147 @@ class TestVersEdgeCases:
         assert spec.pep508 is not None
 
 
+class TestConstraintEdgeCases:
+    """Edge-case package names that must never crash _normalize_constraint or _sanitize_version."""
+
+    # Python reserved keywords used as package names
+    _python_keywords = [
+        "import",
+        "pass",
+        "None",
+        "class",
+        "if",
+        "else",
+        "True",
+        "False",
+        "and",
+        "or",
+        "not",
+        "def",
+        "return",
+        "yield",
+        "lambda",
+        "with",
+        "as",
+    ]
+
+    # npm scoped package names
+    _npm_scoped = [
+        "@babel/core",
+        "@types/node",
+        "@angular/core",
+        "@scope/package-name",
+    ]
+
+    # Go module paths
+    _go_module_paths = [
+        "github.com/user/pkg",
+        "golang.org/x/net",
+        "k8s.io/client-go",
+    ]
+
+    # Package names with special / dangerous characters
+    _special_chars = [
+        "a-b_c.d/e@f",
+        "..",
+        ".",
+        "../../../etc/passwd",
+    ]
+
+    def _check_no_crash(self, name: str, eco: str = "pypi", constraint: str = ">=1.0"):
+        _normalize_constraint(constraint, eco)
+        _sanitize_version("1.0.0")
+
+    # ── Python reserved keywords ────────────────────────────────────────
+
+    @pytest.mark.parametrize("name", _python_keywords)
+    def test_python_keyword_as_package_name(self, name: str):
+        """Python reserved keywords as package names must not crash."""
+        _normalize_constraint(f">={name}", "pypi")
+        _sanitize_version(f"{name}.0.0")
+
+    @pytest.mark.parametrize("name", _python_keywords)
+    def test_python_keyword_in_version_constraint(self, name: str):
+        """Version constraint containing Python keywords must not crash."""
+        _normalize_constraint(f">={name}", "pypi")
+
+    # ── npm scoped packages ─────────────────────────────────────────────
+
+    @pytest.mark.parametrize("name", _npm_scoped)
+    def test_npm_scoped_package_in_constraint(self, name: str):
+        """npm scoped package names must not crash."""
+        _normalize_constraint(f"^{name}", "npm")
+
+    @pytest.mark.parametrize("name", _npm_scoped)
+    def test_npm_scoped_package_sanitize(self, name: str):
+        """npm scoped package names sanitized as version must not crash."""
+        _sanitize_version(f"{name}.0")
+
+    # ── Go module paths ─────────────────────────────────────────────────
+
+    @pytest.mark.parametrize("name", _go_module_paths)
+    def test_go_module_path_as_package(self, name: str):
+        """Go module paths as package names must not crash."""
+        _normalize_constraint(f"v{name}", "gomodules")
+
+    @pytest.mark.parametrize("name", _go_module_paths)
+    def test_go_module_path_sanitize(self, name: str):
+        """Go module paths sanitized as version must not crash."""
+        _sanitize_version(f"v{name}")
+
+    # ── Special characters ──────────────────────────────────────────────
+
+    @pytest.mark.parametrize("name", _special_chars)
+    def test_special_char_package_name(self, name: str):
+        """Package names with special/dangerous characters must not crash."""
+        _normalize_constraint(f">={name}", "npm")
+
+    @pytest.mark.parametrize("name", _special_chars)
+    def test_special_char_in_version(self, name: str):
+        """Strings with special characters as versions must not crash."""
+        result = _sanitize_version(name)
+        assert isinstance(result, str)
+
+    # ── Cross-ecosystem smoke tests ─────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        "constraint,eco",
+        [
+            ("^1.2.3", "npm"),
+            ("~1.2.3", "npm"),
+            (">=1.0.0,<2.0.0", "pypi"),
+            ("~> 2.0", "rubygems"),
+            (">=1.0.0", "crates"),
+            ("^1.2.3", "nuget"),
+            (">= 1.0.0", "packagist"),
+            ("v1.2.3", "gomodules"),
+            (">=1.0.0", "haskell"),
+        ],
+    )
+    def test_ecosystem_operators_dont_crash(self, constraint: str, eco: str):
+        """Common ecosystem operator formats must not crash the normalizer."""
+        result = _normalize_constraint(constraint, eco)
+        assert isinstance(result, str)
+
+    @pytest.mark.parametrize(
+        "name", _python_keywords + _npm_scoped + _go_module_paths + _special_chars
+    )
+    def test_all_edge_case_names_normalize_zero_crash(self, name: str):
+        """Every edge-case name fed to _normalize_constraint must not crash."""
+        for eco in ["pypi", "npm", "crates", "gomodules"]:
+            _normalize_constraint(f">={name}", eco)
+            _normalize_constraint(f"=={name}", eco)
+            _normalize_constraint(name, eco)
+
+    @pytest.mark.parametrize(
+        "name", _python_keywords + _npm_scoped + _go_module_paths + _special_chars
+    )
+    def test_all_edge_case_names_sanitize_zero_crash(self, name: str):
+        """Every edge-case name fed to _sanitize_version must not crash."""
+        result = _sanitize_version(name)
+        assert isinstance(result, str)
+
+
 class TestVersSpecTargetedCoverage:
     """Targeted tests covering uncovered branches in vers.py."""
 
@@ -482,7 +624,7 @@ class TestVersSpecTargetedCoverage:
     # _parse_npm_like bare version >= fallback (line 192)
     def test_npm_bare_version(self):
         spec = VersSpec.parse("1.2.3", "npm")
-        assert spec.pep508 == ">=1.2.3"
+        assert spec.pep508 == "==1.2.3"
 
     # _parse_npm_like operator-only (lines 194-196)
     @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 {
   "name": "udr-vscode",
   "displayName": "UDR - Universal Dependency Resolver",
-  "description": "Dependency management for 20+ ecosystems — lock file viewer, CVE diagnostics, manifest editing, and udr CLI integration",
+  "description": "Dependency management for 20+ ecosystems \u2014 lock file viewer, CVE diagnostics, manifest editing, and udr CLI integration",
   "version": "0.1.0",
   "publisher": "udr",
   "license": "MIT",
@@ -139,7 +139,12 @@
         "udr.cveSeverityThreshold": {
           "type": "string",
           "default": "MEDIUM",
-          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL"
+          ],
           "description": "Minimum severity to show in Problems panel"
         }
       }
@@ -155,9 +160,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
-    "@types/node": "^20.10.0",
+    "@types/node": "24.13.3",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.0",
+    "typescript": "5.9.3",
     "@vscode/test-electron": "^2.5.2",
     "mocha": "^11.0.0"
   }

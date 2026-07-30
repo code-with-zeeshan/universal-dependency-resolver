@@ -42,6 +42,120 @@ class PolicyCheckRequest(BaseModel):
     policy_yaml: str | None = None
 
 
+class CombinedCheckRequest(BaseModel):
+    """Combined check request — runs CVE, license, deprecated, and policy in one call."""
+
+    packages: dict[str, dict[str, Any]]
+    policy_yaml: str | None = None
+
+
+@router.post("/check/all")
+@limiter.limit("5/minute")
+async def check_all(
+    request: Request,
+    body: CombinedCheckRequest,
+    aggregator: DataAggregator = Depends(get_data_aggregator),
+) -> dict:
+    """Run all checks (CVE, license, deprecated, policy) in a single call."""
+    cve_results: list[dict] = []
+    vuln_lock = asyncio.Lock()
+
+    async def _check_cve_one(name: str, info: dict) -> None:
+        eco = info.get("ecosystem", "")
+        ver = info.get("resolved_version", "")
+        if not eco or not ver:
+            return
+        try:
+            vulns = await aggregator.check_vulnerabilities(name, eco, ver)
+            async with vuln_lock:
+                for v in vulns:
+                    cve_results.append(
+                        {
+                            "package": name,
+                            "version": ver,
+                            "cve_id": v.get("id", "?"),
+                            "severity": v.get("severity", "UNKNOWN"),
+                            "summary": v.get("summary", ""),
+                        }
+                    )
+        except Exception:
+            logger.warning("CVE check failed for %s", name, exc_info=True)
+
+    await asyncio.gather(*[_check_cve_one(n, i) for n, i in body.packages.items()])
+
+    package_licenses: dict[str, str | list[str]] = {}
+    missing_licenses: list[tuple[str, str]] = []
+
+    for pname, pinfo in body.packages.items():
+        raw_license = pinfo.get("license")
+        if raw_license:
+            package_licenses[pname] = raw_license
+        else:
+            eco = pinfo.get("ecosystem", "pypi")
+            missing_licenses.append((pname, eco))
+
+    if missing_licenses:
+        for pname, eco in missing_licenses:
+            try:
+                data = await aggregator.get_package_info(
+                    pname, ecosystem=eco, include_dependencies=False, include_versions=False
+                )
+                if data:
+                    lic = data.get("license") or data.get("info", {}).get("license", "")
+                    if lic:
+                        package_licenses[pname] = lic
+            except Exception:
+                logger.warning("Failed to fetch license for %s", pname, exc_info=True)
+
+    license_results: dict[str, dict] = {}
+    if package_licenses:
+        license_results = check_license_compatibility(package_licenses)
+
+    deprecated_results: list[dict] = []
+    for pname, pinfo in body.packages.items():
+        ver = pinfo.get("resolved_version", "")
+        if pinfo.get("yanked"):
+            deprecated_results.append({"package": pname, "version": ver, "status": "yanked"})
+        elif pinfo.get("deprecated"):
+            deprecated_results.append({"package": pname, "version": ver, "status": "deprecated"})
+
+    policy_violations: list[dict] = []
+    if body.policy_yaml:
+        import tempfile
+        from pathlib import Path as _Path
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+            tmp.write(body.policy_yaml)
+        try:
+            policy = load_policy(tmp.name)
+        finally:
+            _Path(tmp.name).unlink(missing_ok=True)
+
+        lock_data = {"packages": body.packages}
+        policy_violations = check_policy(lock_data, policy)
+
+    return {
+        "status": "success",
+        "cve": {
+            "total_vulnerabilities": len(cve_results),
+            "results": cve_results,
+        },
+        "license": {
+            "total_checked": len(license_results),
+            "denied": sorted({n for n, r in license_results.items() if r["status"] == "denied"}),
+            "results": license_results,
+        },
+        "deprecated": {
+            "total_deprecated": len(deprecated_results),
+            "results": deprecated_results,
+        },
+        "policy": {
+            "total_violations": len(policy_violations),
+            "results": policy_violations,
+        },
+    }
+
+
 @router.post("/check/cve")
 @limiter.limit("10/minute")
 async def check_cve(
@@ -113,14 +227,14 @@ async def check_license(
                 logger.warning("Failed to fetch license for %s", pname, exc_info=True)
 
     if not package_licenses:
-        return {"status": "ok", "message": "No license information found.", "results": {}}
+        return {"status": "success", "message": "No license information found.", "results": {}}
 
     results = check_license_compatibility(package_licenses)
     denied = {n for n, r in results.items() if r["status"] == "denied"}
     warnings = {n for n, r in results.items() if r["status"] == "warning"}
 
     return {
-        "status": "violation" if denied else ("warning" if warnings else "ok"),
+        "status": "violation" if denied else ("warning" if warnings else "success"),
         "total_checked": len(results),
         "denied": sorted(denied),
         "warnings": sorted(warnings),

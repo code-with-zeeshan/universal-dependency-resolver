@@ -106,7 +106,7 @@ gaps).
 | details | `cli/main.py:672` `cmd_details` | ✅ Verified |
 | auth | `cli/main.py:682` `cmd_auth` (subcommands: create, revoke, list, gen-key, show-key) | ✅ Verified |
 | index | `cli/main.py:703` `cmd_index` (subcommands: pull, build, status, sync) | ✅ Verified |
-| Dispatch table | `cli/main.py:786-807` `dispatch` dict mapping all 20 commands | ✅ Verified |
+| Dispatch table | `cli/main.py:786-807` `dispatch` dict mapping all 24 commands | ✅ Verified |
 
 ---
 

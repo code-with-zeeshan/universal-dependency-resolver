@@ -7,7 +7,7 @@
 | Resolution ecosystems | **25** (18 resolvable + 7 query-only + 2 internal) |
 | Solver | PubGrub (Rust-backed, default) → Z3 fallback (`USE_Z3_SOLVER=true`) |
 | ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
-| CLI commands | 20 |
+| CLI commands | 24 |
 | Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
 | Tests | **3610** (3334 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | Coverage threshold | **58%** (enforced CI + pre-commit) |

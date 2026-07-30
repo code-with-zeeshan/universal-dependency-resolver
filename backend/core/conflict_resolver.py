@@ -26,13 +26,13 @@ if TYPE_CHECKING:
 
 from backend.settings import (
     CACHE_TTL,
-    SOLVER_DFS_MAX_NODES,
     SOLVER_MAX_CLUSTERS,
     SOLVER_MAX_CLUSTERS_MAX,
     SOLVER_MAX_CLUSTERS_MIN,
     SOLVER_MAX_VARIABLES,
     SOLVER_OPTIMIZATION_THRESHOLD,
     SOLVER_PRERELEASE_PENALTY,
+    SOLVER_REJECT_DEPRECATED,
 )
 from backend.settings import (
     USE_Z3_OPTIMIZE as USE_OPTIMIZATION,
@@ -130,6 +130,97 @@ _APK_RE = re.compile(r"^(\d[\w.]*)-r\d+$")
 
 def _is_apk_version(v: str) -> bool:
     return bool(_APK_RE.match(v))
+
+
+def _normalize_npm_constraint(constraint_str: str, dep_eco: str) -> str | None:
+    """Normalize an npm-style constraint to PEP 440 for Z3's SpecifierSet.
+
+    Handles ``^``, ``~``, ``~>``, x-ranges, and compound constraints.
+    Falls back to ``None`` if no valid normalisation is possible.
+    """
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+    def _try_spec(norm: str) -> bool:
+        if norm == "*":
+            return True
+        try:
+            SpecifierSet(norm)
+            return True
+        except InvalidSpecifier:
+            try:
+                SpecifierSet(f"=={norm}")
+                return True
+            except InvalidSpecifier:
+                return False
+
+    def _normalize_part(part: str) -> str | None:
+        part = part.strip()
+        if not part:
+            return None
+
+        # Try direct VersSpec first
+        from .vers import VersSpec
+
+        parsed = str(VersSpec.parse(part, dep_eco))
+        if _try_spec(parsed):
+            return parsed
+        # Handle ^X.Y.Z-pre — strip pre-release suffix
+        c_match = re.match(r"^\^(\d+(?:\.\d+)*)", part)
+        if c_match:
+            base = c_match.group(1)
+            parts = base.split(".")
+            major = int(parts[0])
+            p_low = _cluster_versions_static.__globals__.get("_to_semver", lambda v: v)(base)
+            if not p_low:
+                p_low = base
+            built = f">={p_low},<{major + 1}.0.0"
+            if _try_spec(built):
+                return built
+        # Handle ~X.Y.Z-pre — strip pre-release suffix
+        t_match = re.match(r"^~(\d+(?:\.\d+)*)", part)
+        if t_match:
+            base = t_match.group(1)
+            parts = base.split(".")
+            if len(parts) >= 2:
+                low = f"{parts[0]}.{parts[1]}.0" if parts[1][0].isdigit() else f"{parts[0]}.0.0"
+                minor = int(parts[1])
+                built = f">={low},<{parts[0]}.{minor + 1}.0"
+            else:
+                major = int(parts[0])
+                built = f">={parts[0]}.0.0,<{major + 1}.0.0"
+            if _try_spec(built):
+                return built
+        # Handle ~> (RubyGems pessimistic)
+        rg_match = re.match(r"^~>\s*(\d+(?:\.\d+)*)", part)
+        if rg_match:
+            base = rg_match.group(1)
+            parts = base.split(".")
+            if len(parts) >= 2:
+                low = f"{parts[0]}.{parts[1]}.0"
+                major = int(parts[0])
+                built = f">={low},<{major + 1}.0.0"
+            else:
+                major = int(parts[0])
+                built = f">={parts[0]}.0.0,<{major + 1}.0.0"
+            if _try_spec(built):
+                return built
+        return None
+
+    parts = [p.strip() for p in constraint_str.split(",")]
+    normalized_parts = []
+    for part in parts:
+        result = _normalize_part(part)
+        if result is not None:
+            normalized_parts.append(result)
+    if normalized_parts:
+        rejoined = ",".join(normalized_parts)
+        if _try_spec(rejoined):
+            return rejoined
+        # If compound fails, try each individually
+        valid_specs = [p for p in normalized_parts if _try_spec(p)]
+        if valid_specs:
+            return ",".join(valid_specs)
+    return None
 
 
 def _cluster_versions_static(versions: list[str], max_clusters: int = 100) -> list[str]:
@@ -356,9 +447,14 @@ class ConflictResolver:
                 },
             )
 
-            # Try SCC-based batch resolution for large graphs with multiple SCCs
+            # Try SCC-based batch resolution for large graphs with actual cycles
+            # (more than 1 SCC, at least one cycle among them, and enough packages
+            # to justify the overhead).  Skip for pure DAGs where each package
+            # is its own SCC — the monolithic solver handles cross-package
+            # constraints correctly there.
             sccs_found = list(nx.strongly_connected_components(self.dependency_graph))
-            if len(sccs_found) > 1 and len(normalized_packages) > 20:
+            has_cycles = any(len(scc) > 1 for scc in sccs_found)
+            if has_cycles and len(sccs_found) > 1 and len(normalized_packages) > 20:
                 scc_result = self._batch_resolve_sccs(
                     normalized_packages, system_info, prefer_compatibility, solver_timeout
                 )
@@ -419,7 +515,30 @@ class ConflictResolver:
                         **resolution_context,
                     },
                 )
-            return self._resolve_with_alternatives(normalized_packages, system_info)
+            conflicts = solution.get("conflicts", [])
+            diag = self._resolve_with_alternatives(normalized_packages, system_info)
+            diag_list = list(diag.get("diagnosis", []))
+            for c in conflicts:
+                desc = c.get("description", "")
+                if desc and desc not in diag_list:
+                    diag_list.append(desc)
+            result: dict[str, Any] = {"status": "unsatisfiable", "resolved_packages": {}}
+            if diag_list:
+                result["resolution_error"] = "; ".join(diag_list)
+            elif conflicts:
+                pkg_names: set[str] = set()
+                for c in conflicts:
+                    for p in c.get("packages", []):
+                        pkg_names.add(p.get("name", ""))
+                result["resolution_error"] = (
+                    f"Unsatisfiable constraints involving: {', '.join(sorted(pkg_names))}"
+                )
+            else:
+                result["resolution_error"] = (
+                    "Constraint conflict detected — run with --json for details"
+                )
+            result["conflicts"] = conflicts
+            return result
 
         except ResolverError as exc:
             logger.warning(
@@ -493,6 +612,36 @@ class ConflictResolver:
             scc_failures: int = 0
             total_sccs: int = len(topo_order)
 
+            # Build map from package name to SCC id for cross-SCC constraint propagation
+            package_to_scc: dict[str, int] = {}
+            for sid, spkgs in scc_packages.items():
+                for sp in spkgs:
+                    sp_name = sp.get("name", "")
+                    if sp_name:
+                        package_to_scc[sp_name] = sid
+
+            # Collect downstream constraints: for each package, gather all dependency
+            # constraints from predecessor SCCs (nodes that depend on this package).
+            # These are constraints that will be enforced later but must be satisfied
+            # by the version chosen now in this leaf SCC.
+            downstream_constraints: dict[str, list[str]] = {}
+            for sid, spkgs in scc_packages.items():
+                for sp in spkgs:
+                    pkg_name = sp.get("name", "")
+                    pkg_eco = sp.get("ecosystem", "unknown")
+                    pkg_node = f"{pkg_name}@{pkg_eco}"
+                    for pred_node in self.dependency_graph.predecessors(pkg_node):
+                        pred_name = pred_node.rsplit("@", 1)[0]
+                        pred_scc = package_to_scc.get(pred_name, sid)
+                        if pred_scc != sid:
+                            edge_data = self.dependency_graph.get_edge_data(pred_node, pkg_node)
+                            if edge_data:
+                                constraint = edge_data.get("constraint", "")
+                                if constraint:
+                                    downstream_constraints.setdefault(pkg_name, []).append(
+                                        constraint
+                                    )
+
             logger.info(
                 "Batch resolving %d SCCs from dependency graph",
                 len(topo_order),
@@ -506,6 +655,18 @@ class ConflictResolver:
 
                 # Pin already-resolved deps in this SCC
                 scc_pkg_names = {p["name"] for p in pkgs}
+
+                # Merge downstream constraints from dependents in other SCCs
+                for pkg in pkgs:
+                    pkg_name = pkg.get("name", "")
+                    if pkg_name in downstream_constraints:
+                        for dep_constraint in downstream_constraints[pkg_name]:
+                            existing = pkg.get("version_constraint", "*")
+                            if existing and existing != "*":
+                                pkg["version_constraint"] = f"{existing},{dep_constraint}"
+                            else:
+                                pkg["version_constraint"] = dep_constraint
+
                 for pkg in pkgs:
                     pinned_deps = {}
                     for eco, deps in pkg.get("dependencies", {}).items():
@@ -543,15 +704,7 @@ class ConflictResolver:
                             scc_id,
                             extra={"event": "scc_unsat", "scc_id": scc_id},
                         )
-                        alt_result = self._resolve_with_alternatives(pkgs, system_info)
-                        alt_pkgs = alt_result.get("packages", {})
-                        for pname, pinfo in alt_pkgs.items():
-                            ver = pinfo.get("version", "")
-                            if ver:
-                                resolved_versions[pname] = ver
-                            all_results[pname] = pinfo
-                        if not alt_pkgs:
-                            scc_failures += 1
+                        scc_failures += 1
                 except Exception as exc:
                     scc_failures += 1
                     logger.warning(
@@ -1104,11 +1257,8 @@ class ConflictResolver:
 
             gpu_info = resolved_system_info["gpu"]
             if not isinstance(gpu_info, dict):
-                raise ResolverError(
-                    message="gpu information must be a dictionary.",
-                    code=ResolverErrorCode.SYSTEM_INFO_ERROR,
-                    details={"gpu": gpu_info, **context},
-                )
+                gpu_info = {}
+                resolved_system_info["gpu"] = gpu_info
 
             gpu_info.setdefault("available", bool(gpu_info.get("cuda")))
             gpu_info.setdefault("cuda", None)
@@ -1494,8 +1644,22 @@ class ConflictResolver:
             pkg_name = package["name"]  # Already normalized
             versions = package.get("available_versions", [])
 
-            # Cluster versions to reduce solver variables and avoid old versions
-            clustered = self._cluster_versions(versions)
+            # Cluster versions to reduce solver variables and avoid old versions.
+            # Skip clustering when per-version deps are present — the solver needs
+            # all version variables to match version-specific edge constraints.
+            # Also skip for packages that are depended on by packages with per-version
+            # deps — clustering may drop versions needed by specific package versions.
+            has_version_deps = bool(package.get("version_dependencies", {}))
+            inherited_version_deps = has_version_deps
+            if not inherited_version_deps:
+                pkg_id = f"{pkg_name}@{package.get('ecosystem', 'unknown')}"
+                if pkg_id in self.dependency_graph:
+                    for pred in self.dependency_graph.predecessors(pkg_id):
+                        pred_data = self.dependency_graph.nodes[pred]
+                        if pred_data and bool(pred_data.get("version_dependencies", {})):
+                            inherited_version_deps = True
+                            break
+            clustered = versions if inherited_version_deps else self._cluster_versions(versions)
 
             # Create boolean variable for each version
             constraint = package.get("version_constraint", "*")
@@ -1535,10 +1699,18 @@ class ConflictResolver:
                 vars_list = []
                 self._create_version_mapping(pkg_name, ver_list)
                 pkg_eco = package.get("ecosystem", "pypi")
+                ver_meta = package.get("_version_metadata", {}) or {}
                 for v in ver_list:
                     norm_v = normalize_version(v, pkg_eco)
                     if constraint != "*" and not is_compatible_version(norm_v, constraint):
                         continue
+                    # Skip deprecated/yanked versions when SOLVER_REJECT_DEPRECATED is true
+                    meta = ver_meta.get(v, {})
+                    if meta:
+                        is_yanked = meta.get("yanked", False)
+                        is_deprecated = bool(meta.get("deprecated", False))
+                        if (is_yanked or is_deprecated) and SOLVER_REJECT_DEPRECATED:
+                            continue
                     # Skip version if Python requirement is incompatible
                     py_req = ver_python_reqs.get(v)
                     if py_req and sys_py:
@@ -1558,7 +1730,7 @@ class ConflictResolver:
                     self._var_to_version[str(var)] = v
                     sorted_idx = self.version_to_int.get(var_name, 0)
                     total_vers = len(ver_list)
-                    weight = total_vers - sorted_idx
+                    weight = sorted_idx + 1
                     if self._is_prerelease(v):
                         weight += SOLVER_PRERELEASE_PENALTY
                     self._version_weights.append(weight * var)
@@ -1575,7 +1747,19 @@ class ConflictResolver:
                 if constraint != "*" and not is_compatible_version(v, constraint):
                     continue
                 full_candidates.append(v)
-            self._candidate_lists[pkg_name] = full_candidates if full_candidates else versions
+            candidate_list = full_candidates if full_candidates else versions
+            from packaging.version import InvalidVersion
+            from packaging.version import Version as PkgVersion
+
+            try:
+                candidate_list = sorted(
+                    candidate_list,
+                    key=lambda v: PkgVersion(v) if v.count(".") >= 2 else PkgVersion(v + ".0"),
+                    reverse=True,
+                )
+            except (InvalidVersion, Exception):
+                pass
+            self._candidate_lists[pkg_name] = candidate_list
 
             version_vars = _build_vars(clustered)
             versions_used = clustered
@@ -1700,17 +1884,30 @@ class ConflictResolver:
                 dep_eco = successor_data.get("ecosystem", "unknown")
                 parsed_constraint = str(VersSpec.parse(constraint_str, dep_eco))
                 if parsed_constraint != "*":
+                    spec_valid = False
                     try:
                         SpecifierSet(parsed_constraint)
+                        spec_valid = True
                     except InvalidSpecifier:
                         try:
                             SpecifierSet(f"=={parsed_constraint}")
                             parsed_constraint = f"=={parsed_constraint}"
+                            spec_valid = True
                         except InvalidSpecifier:
-                            logger.debug(
-                                f"Skipping unparseable constraint '{constraint_str}' for dep edge"
+                            pass
+                    if not spec_valid:
+                        fallback = _normalize_npm_constraint(constraint_str, dep_eco)
+                        if fallback is not None:
+                            parsed_constraint = fallback
+                            spec_valid = True
+                        else:
+                            logger.warning(
+                                "Failed to normalize dependency constraint '%s' for %s — "
+                                "treating as 'any version'",
+                                constraint_str,
+                                dep_eco,
                             )
-                            continue
+                            parsed_constraint = "*"
 
                 # Get successor package info
                 dep_name = successor_data.get("name", successor.rsplit("@", 1)[0])
@@ -1734,12 +1931,61 @@ class ConflictResolver:
 
                 # For each version of the dependent package
                 if pkg_name in constraints["package_versions"]:
-                    valid_dep_vars = compat_cache[cache_key]
-
                     for pkg_var in constraints["package_versions"][pkg_name]:
                         pkg_var_ref = self.version_vars.get(str(pkg_var))
 
                         if pkg_var_ref is not None:
+                            # Start with the flat-edge constraint's compatible dep versions.
+                            valid_dep_vars = compat_cache[cache_key]
+
+                            # Check for version-specific dependency constraints.
+                            # Some packages (notably npm) have different deps per version —
+                            # the edge's flat constraint is from the latest version only.
+                            pkg_version = self._var_to_version.get(str(pkg_var), "")
+                            version_deps = node_data.get("version_dependencies", {})
+                            ver_specific = (
+                                version_deps.get(pkg_version, {})
+                                if isinstance(version_deps, dict)
+                                else {}
+                            )
+                            if ver_specific:
+                                ver_dep_constraint = None
+                                dep_ecosystem_val = successor_data.get("ecosystem", "unknown")
+                                for v_eco, v_deps in ver_specific.items():
+                                    if dep_name in v_deps:
+                                        ver_dep_constraint = v_deps[dep_name]
+                                        break
+                                if (
+                                    ver_dep_constraint is not None
+                                    and ver_dep_constraint != constraint_str
+                                ):
+                                    ver_parsed = str(
+                                        VersSpec.parse(ver_dep_constraint, dep_ecosystem_val)
+                                    )
+                                    cache_key_ver = (dep_name, ver_parsed)
+                                    if cache_key_ver not in compat_cache:
+                                        valid_ver = []
+                                        if dep_name in constraints["package_versions"]:
+                                            for dep_var in constraints["package_versions"][
+                                                dep_name
+                                            ]:
+                                                dep_version = self._var_to_version.get(
+                                                    str(dep_var), str(dep_var).split("_")[-1]
+                                                )
+                                                norm_dep_version = normalize_version(
+                                                    dep_version, dep_ecosystem_val
+                                                )
+                                                dep_var_ref = self.version_vars.get(str(dep_var))
+                                                if (
+                                                    dep_var_ref is not None
+                                                    and is_compatible_version(
+                                                        norm_dep_version, ver_parsed
+                                                    )
+                                                ):
+                                                    valid_ver.append(dep_var_ref)
+                                        compat_cache[cache_key_ver] = valid_ver
+                                    valid_dep_vars = compat_cache[cache_key_ver]
+
                             if valid_dep_vars:
                                 self.solver.add(z3.Implies(pkg_var_ref, z3.Or(valid_dep_vars)))
                             elif (
@@ -1892,6 +2138,7 @@ class ConflictResolver:
             if op == "!=":
                 return cmp != 0
         except Exception:
+            logger.debug("Field comparison failed: %s %s %s", field_val, op, target, exc_info=True)
             return False
         return False
 
@@ -1919,12 +2166,20 @@ class ConflictResolver:
                     var_ref = self.version_vars.get(str(var))
                     if var_ref is not None and z3.is_true(model.eval(var_ref)):
                         version_str = self._var_to_version.get(str(var), str(var).split("_", 1)[-1])
-                        # Use original name if available
                         display_name = self._name_map.get(pkg_name, pkg_name)
-                        solution["packages"][display_name] = {
+                        pkg_entry: dict[str, Any] = {
                             "version": version_str,
                             "ecosystem": self._get_ecosystem(pkg_name),
                         }
+                        node = self._node_by_name.get(pkg_name)
+                        if node:
+                            nd = self.dependency_graph.nodes.get(node, {})
+                            meta = nd.get("_version_metadata", {}).get(version_str, {})
+                            if meta.get("yanked"):
+                                pkg_entry["yanked"] = True
+                            if meta.get("deprecated"):
+                                pkg_entry["deprecated"] = True
+                        solution["packages"][display_name] = pkg_entry
                         break
 
             # Fold deprecation/yanked warnings into solution
@@ -2051,6 +2306,8 @@ class ConflictResolver:
             for c in candidates:
                 if c == current_ver:
                     break  # candidates are sorted newest-first; past current = older
+                if self._is_prerelease(c):
+                    continue
                 # Check own-version constraint (e.g. numpy>=1.20,<1.25)
                 own_con = own_constraints.get(pkg_name)
                 if own_con and not _check_version(c, own_con, pkg_eco.get(pkg_name, "pypi")):
@@ -2101,6 +2358,14 @@ class ConflictResolver:
                         or compare_versions(self._sys_metal_version, min_metal) < 0
                     ):
                         continue
+                # Check deprecation/yanked when SOLVER_REJECT_DEPRECATED is True
+                if SOLVER_REJECT_DEPRECATED:
+                    node_id = f"{pkg_name}@{pkg_eco.get(pkg_name, 'unknown')}"
+                    if node_id in self.dependency_graph:
+                        nd = self.dependency_graph.nodes[node_id]
+                        meta = nd.get("_version_metadata", {}).get(c, {})
+                        if meta.get("yanked") or bool(meta.get("deprecated")):
+                            continue
                 # Try this version
                 old = current[pkg_name]
                 current[pkg_name] = c
@@ -2116,243 +2381,90 @@ class ConflictResolver:
                 }
 
     def _resolve_with_alternatives(self, packages: list[dict], system_info: dict) -> dict:
-        """DFS backtracking with forward checking — tries to satisfy all cross-package constraints.
+        """Conflict diagnostic tool: explains WHY Z3 could not find a solution.
 
-        Falls back to the best partial solution when a complete solution cannot be found.
+        Instead of attempting an alternative resolution (Z3's CDCL is already
+        complete), this method analyses the dependency graph and produces a
+        human-readable explanation of the conflict.
+
+        Returns a dict with ``"status": "unsatisfiable"`` and a ``"diagnosis"``
+        field listing the conflicting constraint chains.
         """
-        from packaging.specifiers import InvalidSpecifier, SpecifierSet
-
-        from .constraint_normalizer import normalize_constraint
 
         result: dict[str, Any] = {
-            "status": "partial",
+            "status": "unsatisfiable",
             "packages": {},
+            "diagnosis": [],
             "warnings": [],
         }
 
-        # Build dependency constraint map: for each package name, store constraints
-        # that *other packages* place on it (e.g. reqA depends on libB >=1.0)
-        # dependencies are stored as {ecosystem: {dep_name: constraint_or_none}}
-        dep_constraints: dict[str, list[tuple[str, str]]] = {}
         pkg_map: dict[str, dict] = {}
         for pkg in packages:
             name = pkg["name"]
-            eco = pkg.get("ecosystem", "pypi")
             pkg_map[name] = pkg
-            raw_deps = pkg.get("dependencies") or {}
-            for eco_deps in raw_deps.values():
-                if isinstance(eco_deps, dict):
-                    for dep_name, dep_con in eco_deps.items():
-                        dep_constraints.setdefault(dep_name, []).append((dep_con or "*", eco))
 
-        # Pre-compute compatible versions for each package (system-compatible + own constraint)
-        candidate_versions: dict[str, list[str]] = {}
-        self._deprecation_warnings: list[str] = []
+        # Identify packages with NO compatible versions
         for pkg in packages:
+            name = pkg["name"]
             versions = self._find_compatible_versions(pkg, system_info)
-            if versions:
-                candidate_versions[pkg["name"]] = versions
-            else:
+            if not versions:
                 dep_warnings = getattr(self, "_deprecation_warnings", [])
-                dep_msgs = [w for w in dep_warnings if pkg["name"] in w]
+                dep_msgs = [w for w in dep_warnings if name in w]
                 if dep_msgs:
-                    result["warnings"].append(
-                        f"{pkg['name']}: all versions are yanked or deprecated"
-                    )
+                    result["diagnosis"].append(f"{name}: all versions are yanked or deprecated")
                 else:
-                    result["warnings"].append(f"No compatible version found for {pkg['name']}")
+                    result["diagnosis"].append(f"{name}: no version satisfies system constraints")
 
-        # Sort packages: those with most dependency constraints first, then fewest versions
-        def _sort_key(name: str) -> tuple[int, int]:
-            constraint_count = len(dep_constraints.get(name, []))
-            ver_count = len(candidate_versions.get(name, []))
-            return (-constraint_count, ver_count)
+        # Build candidate versions per package
+        candidate_versions: dict[str, list[str]] = {}
+        for pkg in packages:
+            name = pkg["name"]
+            compatible = self._find_compatible_versions(pkg, system_info)
+            candidate_versions[name] = compatible or []
 
-        sorted_names = sorted(candidate_versions, key=_sort_key)
+        # Build dependency constraints: for each pkg, store (dep_name, constraint, dep_eco)
+        dep_constraints: dict[str, list[tuple[str, str, str]]] = {}
+        for pkg in packages:
+            name = pkg["name"]
+            for eco_key, deps in pkg.get("dependencies", {}).items():
+                if isinstance(deps, dict):
+                    for dep_name, constraint in deps.items():
+                        dep_constraints.setdefault(dep_name, [])
+                        dep_constraints[dep_name].append((constraint, eco_key, name))
 
-        if not sorted_names:
-            result["status"] = "unsatisfiable"
-            return result
+        if not result["diagnosis"]:
+            for pkg in packages:
+                name = pkg["name"]
+                for eco_key, deps in pkg.get("dependencies", {}).items():
+                    if isinstance(deps, dict):
+                        for dep_name, constraint in deps.items():
+                            if dep_name == name:
+                                result["diagnosis"].append(
+                                    f"{name}: self-referential dependency {constraint}"
+                                )
+                            elif dep_name in candidate_versions:
+                                dep_versions = candidate_versions[dep_name]
+                                from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
-        # Backtracking DFS
-        assignment: dict[str, str] = {}
-        best_assignment: dict[str, str] = {}
-        best_count = 0
-        nodes_visited = 0
-        max_nodes = SOLVER_DFS_MAX_NODES
-        found_complete = False
+                                from .constraint_normalizer import normalize_constraint
 
-        def _check_dep_con(con_str: str, eco: str, version_str: str) -> bool:
-            """Check if version_str satisfies constraint con_str for ecosystem eco."""
-            normed = normalize_constraint(con_str, eco)
-            if normed is None or normed == "*":
-                return True
-            try:
-                spec = SpecifierSet(normed)
-                return version_str in spec
-            except (InvalidSpecifier, Exception):
-                logger.debug("SpecifierSet parse failed for normed=%r", normed, exc_info=True)
-            return True
+                                normed = normalize_constraint(constraint, eco_key)
+                                if normed and normed != "*":
+                                    try:
+                                        spec = SpecifierSet(normed)
+                                        matching = [v for v in dep_versions if v in spec]
+                                        if not matching:
+                                            result["diagnosis"].append(
+                                                f"{name} requires {dep_name} ({constraint}) "
+                                                f"but {dep_name} has no matching version"
+                                            )
+                                    except (InvalidSpecifier, Exception):
+                                        pass
 
-        def _check_constraints(name: str, version_str: str, assignment: dict[str, str]) -> bool:
-            """Check if version_str satisfies constraints from already-assigned packages."""
-            if name not in dep_constraints:
-                return True
-            for con_str, eco in dep_constraints[name]:
-                if not _check_dep_con(con_str, eco, version_str):
-                    return False
-            return True
-
-        def _check_assignments(assignment: dict[str, str]) -> bool:
-            """Verify all assigned packages satisfy each other's constraints."""
-            sys_py = system_info.get("runtime_versions", {}).get("python", {}).get("version", "")
-            for pkg_name, ver in assignment.items():
-                pkg = pkg_map.get(pkg_name)
-                if not pkg:
-                    continue
-                eco = pkg.get("ecosystem", "pypi")
-                # Check own version_constraint
-                pkg_constraint = pkg.get("version_constraint", "*")
-                if pkg_constraint != "*":
-                    normed = normalize_constraint(pkg_constraint, eco)
-                    if normed and normed != "*":
-                        try:
-                            spec = SpecifierSet(normed)
-                            if ver not in spec:
-                                return False
-                        except (InvalidSpecifier, Exception):
-                            logger.debug("SpecifierSet membership check failed", exc_info=True)
-                # Check per-version Python requirement
-                py_req = pkg.get("version_requires_python", {}).get(ver)
-                if py_req and sys_py:
-                    try:
-                        if sys_py not in SpecifierSet(py_req):
-                            return False
-                    except Exception:
-                        logger.debug("Python requirement check failed", exc_info=True)
-                # Wheel platform compatibility check
-                plat_list = pkg.get("version_platforms", {}).get(ver)
-                if plat_list:
-                    from backend.core.wheel_tags import check_platform_compatibility
-
-                    if not check_platform_compatibility(plat_list, system_info):
-                        return False
-                # Check GPU system requirements
-                sys_reqs = pkg.get("system_requirements", {})
-                cuda_req = sys_reqs.get("cuda") or sys_reqs.get("gpu")
-                if cuda_req and isinstance(cuda_req, dict):
-                    min_cuda = cuda_req.get("min_version", "")
-                    if min_cuda:
-                        sys_cuda = _get_gpu_version(system_info, "cuda")
-                        if not sys_cuda or compare_versions(sys_cuda, min_cuda) < 0:
-                            return False
-                rocm_req = sys_reqs.get("rocm")
-                if rocm_req and isinstance(rocm_req, dict):
-                    min_rocm = rocm_req.get("min_version", "")
-                    if min_rocm:
-                        sys_rocm = _get_gpu_version(system_info, "rocm")
-                        if not sys_rocm or compare_versions(sys_rocm, min_rocm) < 0:
-                            return False
-                intel_req = sys_reqs.get("intel_gpu")
-                if intel_req and isinstance(intel_req, dict):
-                    min_intel = intel_req.get("min_version", "")
-                    if min_intel:
-                        sys_intel = _get_gpu_version(system_info, "intel_gpu")
-                        if not sys_intel or compare_versions(sys_intel, min_intel) < 0:
-                            return False
-                metal_req = sys_reqs.get("metal")
-                if metal_req and isinstance(metal_req, dict):
-                    min_metal = metal_req.get("min_version", "")
-                    if min_metal:
-                        sys_metal = _get_gpu_version(system_info, "metal")
-                        if not sys_metal or compare_versions(sys_metal, min_metal) < 0:
-                            return False
-                # Check each dependency's constraint against assigned version
-                raw_deps = pkg.get("dependencies") or {}
-                for eco_deps in raw_deps.values():
-                    if not isinstance(eco_deps, dict):
-                        continue
-                    for dep_name, dep_con in eco_deps.items():
-                        dep_ver = assignment.get(dep_name)
-                        if dep_ver is None:
-                            # Dependency has no assignment — means no compatible
-                            # versions were found for it. Any parent assignment
-                            # that depends on it is invalid.
-                            return False
-                        if not _check_dep_con(dep_con or "*", eco, dep_ver):
-                            return False
-            return True
-
-        # Iterative DFS using explicit stack — avoids Python recursion limit
-        # Stack entries: (idx: int, version_index: int)
-        stack: list[tuple[int, int]] = []
-        if sorted_names:
-            stack.append((0, 0))
-
-        while stack:
-            if nodes_visited >= max_nodes:
-                break
-
-            idx, vi = stack[-1]
-            name = sorted_names[idx]
-            versions = candidate_versions[name]
-
-            if vi >= len(versions):
-                # No more versions to try at this level — backtrack
-                stack.pop()
-                assignment.pop(name, None)
-                continue
-
-            # Advance version index for next visit
-            stack[-1] = (idx, vi + 1)
-
-            ver = versions[vi]
-            nodes_visited += 1
-
-            # Forward checking: does this version satisfy constraints from already-assigned packages?
-            if not _check_constraints(name, ver, assignment):
-                continue
-
-            assignment[name] = ver
-
-            # Track best partial solution
-            if len(assignment) > best_count:
-                best_count = len(assignment)
-                best_assignment = dict(assignment)
-
-            if idx + 1 >= len(sorted_names):
-                if _check_assignments(assignment):
-                    best_assignment = dict(assignment)
-                    found_complete = True
-                    break
-                del assignment[name]
-            else:
-                stack.append((idx + 1, 0))
-
-        # Build result from best assignment found
-        if best_assignment:
-            for name, ver in best_assignment.items():
-                pkg = pkg_map.get(name, {})
-                result["packages"][name] = {
-                    "version": ver,
-                    "ecosystem": pkg.get("ecosystem", "unknown"),
-                }
-            if found_complete:
-                result["status"] = "satisfiable"
-            else:
-                result["warnings"].append(
-                    f"Partial resolution: {len(best_assignment)}/{len(sorted_names)} packages resolved "
-                    f"(nodes visited: {nodes_visited})"
-                )
-                result["status"] = "partial"
-
-        if not result["packages"]:
-            result["status"] = "unsatisfiable"
-            result["warnings"].append("No compatible version assignment found for any package")
-
-        dep_warnings = getattr(self, "_deprecation_warnings", [])
-        if dep_warnings:
-            result["warnings"].extend(dep_warnings)
+        if not result["diagnosis"]:
+            result["diagnosis"].append(
+                "Constraint conflict detected \u2014 run with --json for full dependency graph"
+            )
 
         return result
 
@@ -2637,6 +2749,16 @@ class ConflictResolver:
                     "type": "conflict",
                     "constraint": assertion_str,
                 }
+            elif "Not(" in assertion_str and "_no_compatible_version" not in assertion_str:
+                assertion_info[track_var] = {
+                    "type": "exclusion",
+                    "constraint": assertion_str,
+                }
+            elif "Or(" in assertion_str:
+                assertion_info[track_var] = {
+                    "type": "version_selection",
+                    "constraint": assertion_str,
+                }
             else:
                 assertion_info[track_var] = {
                     "type": "other",
@@ -2659,7 +2781,7 @@ class ConflictResolver:
                     packages_involved = []
 
                     # Extract package names from the constraint string
-                    package_pattern = r"(\w+)_(\d+\.\d+(?:\.\d+)?)"
+                    package_pattern = r"(.+?)_(\d[\w.]*(?:[-.]\w+)*)"
                     matches = re.findall(package_pattern, constraint_str)
 
                     for match in matches:

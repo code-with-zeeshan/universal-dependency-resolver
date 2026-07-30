@@ -2,6 +2,7 @@
 
 Used by both CLI (``udr sbom``) and API (``POST /sbom``).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,16 +11,14 @@ from typing import Any
 from backend.core.utils import make_purl
 
 
-def _build_spdx(
-    lock_data: dict, document_name: str = "udr-sbom"
-) -> dict[str, Any]:
+def _build_spdx(lock_data: dict, document_name: str = "udr-sbom") -> dict[str, Any]:
     """Build SPDX 2.3 document from lock data."""
     packages_raw = lock_data.get("packages", {})
     spdx_packages = []
     spdx_relationships = []
 
     for pkg_name, pkg_info in packages_raw.items():
-        ver = pkg_info.get("resolved_version", "")
+        ver = pkg_info.get("resolved_version") or pkg_info.get("version", "")
         lic = pkg_info.get("license") or "NOASSERTION"
         integrity = pkg_info.get("integrity")
 
@@ -73,7 +72,7 @@ def _build_cyclonedx(lock_data: dict) -> dict[str, Any]:
 
     for pkg_name, pkg_info in packages_raw.items():
         eco = pkg_info.get("ecosystem", "pypi")
-        ver = pkg_info.get("resolved_version", "")
+        ver = pkg_info.get("resolved_version") or pkg_info.get("version", "")
         lic = pkg_info.get("license")
         purl_str = make_purl(pkg_name, ver, eco)
         purl_cache[pkg_name] = purl_str
@@ -90,11 +89,7 @@ def _build_cyclonedx(lock_data: dict) -> dict[str, Any]:
 
     for pkg_name, pkg_info in packages_raw.items():
         dep_ref = purl_cache.get(pkg_name, "")
-        dep_on = [
-            purl_cache.get(d)
-            for d in pkg_info.get("depends_on", {})
-            if purl_cache.get(d)
-        ]
+        dep_on = [purl_cache.get(d) for d in pkg_info.get("depends_on", {}) if purl_cache.get(d)]
         if dep_on:
             dependencies.append({"ref": dep_ref, "dependsOn": dep_on})
 

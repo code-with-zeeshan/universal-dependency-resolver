@@ -195,6 +195,14 @@ def _parse_pip(constraint: str, ecosystem: str) -> VersSpec:
 def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
     """Npm / crates / pub / packagist: ``^1.2.0``, ``~1.2.0``, bare ``1.2``."""
     c = constraint.strip()
+    # Handle npm alias specs: "npm:react-is@^19.2.5" -> "^19.2.5"
+    if c.startswith("npm:"):
+        rest = c[4:]
+        at_idx = rest.rfind("@")
+        if at_idx > 0:
+            c = rest[at_idx + 1 :]
+        else:
+            c = rest
     if not c or c in ("*", "any", ""):
         return VersSpec(ecosystem, constraint, "*")
 
@@ -206,6 +214,25 @@ def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
         valid = [n for n in normalised if n != "*"]
         if valid:
             return VersSpec(ecosystem, constraint, ",".join(valid))
+
+    # x-ranges: "1.x", "1.x.x", "1.0.x" -> semver range
+    xr = re.match(r"^(\d+(?:\.\d+)*)(?:\.x)(?:\.x)*$", c)
+    if xr:
+        base = xr.group(1)
+        parts = base.split(".")
+        if len(parts) >= 2:
+            major, minor = int(parts[0]), int(parts[1])
+            low = _fmt((major, minor, 0))
+            high = _fmt((major, minor + 1, 0))
+            return VersSpec(ecosystem, constraint, f">={low},<{high}")
+        major = int(parts[0])
+        return VersSpec(
+            ecosystem, constraint, f">={_fmt((major, 0, 0))},<{_fmt((major + 1, 0, 0))}"
+        )
+
+    # Bare "x", "x.x", "x.x.x" -> any version
+    if re.fullmatch(r"x(?:\.x)*", c, re.IGNORECASE):
+        return VersSpec(ecosystem, constraint, "*")
 
     m = re.match(r"^\^?\s*(\d+)\.\*\s*$", c)
     if m:
@@ -232,18 +259,29 @@ def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
     m = re.match(r"^([\d.]+)$", c)
     if m:
         ver = m.group(1)
-        major, minor, patch = _parse_semver(ver)
-        if ecosystem == "crates":
+        if ecosystem in ("crates",):
+            major, minor, patch = _parse_semver(ver)
             if major > 0:
                 return VersSpec(ecosystem, constraint, f">={ver},<{major + 1}.0.0")
             if minor > 0:
                 return VersSpec(ecosystem, constraint, f">={ver},<0.{minor + 1}.0")
             return VersSpec(ecosystem, constraint, f">={ver},<0.0.{patch + 1}")
+        if ecosystem in ("npm", "node"):
+            return VersSpec(ecosystem, constraint, f"=={ver}")
         return VersSpec(ecosystem, constraint, f">={ver}")
 
-    m = re.match(r"^\s*(>=|<=|>|<|==|!=)\s*([\d.]+)$", c)
+    m = re.match(r"^\s*(>=|<=|>|<|==|!=)\s*([\dx.]+)$", c)
     if m:
-        return VersSpec(ecosystem, constraint, f"{m.group(1)}{m.group(2)}")
+        op = m.group(1)
+        ver = m.group(2)
+        # Handle operator with x-range: >=1.x, <2.x, etc.
+        if "x" in ver.lower():
+            xm = re.match(r"(\d+(?:\.\d+)*)", ver)
+            if xm:
+                b = xm.group(1)
+                major, minor, patch = _parse_semver(b)
+                return VersSpec(ecosystem, constraint, f"{op}{_fmt((major, minor, patch))}")
+        return VersSpec(ecosystem, constraint, f"{op}{ver}")
 
     return VersSpec(ecosystem, constraint, c)
 
@@ -261,6 +299,13 @@ def _parse_hex(constraint: str, ecosystem: str) -> VersSpec:
     """Hex / Elixir: ``~> 1.2`` (pessimistic, different from Ruby's)."""
     c = constraint.strip()
     if not c or c in ("*", "any", ""):
+        return VersSpec(ecosystem, constraint, "*")
+    # Handle "or" keyword (Elixir convention: "~> 1.0 or ~> 2.0")
+    if " or " in c:
+        parts = [_parse_hex(p.strip(), ecosystem).pep508 for p in c.split(" or ")]
+        valid = [n for n in parts if n != "*"]
+        if valid:
+            return VersSpec(ecosystem, constraint, "||".join(valid))
         return VersSpec(ecosystem, constraint, "*")
     m = re.match(r"^~>\s*([\d.]+)$", c)
     if m:

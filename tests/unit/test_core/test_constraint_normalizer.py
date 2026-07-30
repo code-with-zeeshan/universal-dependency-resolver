@@ -150,7 +150,7 @@ class TestNormalizeConstraint:
 
     def test_npm_bare_version(self):
         result = normalize_constraint("1.2.3", "npm")
-        assert result == ">=1.2.3"
+        assert result == "==1.2.3"
 
     def test_crates_bare_version(self):
         result = normalize_constraint("0.5.0", "crates")

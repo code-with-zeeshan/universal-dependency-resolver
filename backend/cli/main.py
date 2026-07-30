@@ -16,17 +16,21 @@ from .commands.check import cmd_check
 from .commands.completion import cmd_completion
 from .commands.details import cmd_details
 from .commands.diff import cmd_diff
+from .commands.export import cmd_export
 from .commands.graph import cmd_graph
 from .commands.index import cmd_index
+from .commands.init import add_init_parser, cmd_init
 from .commands.install import cmd_install
 from .commands.list_ecosystems import cmd_list_ecosystems
 from .commands.lock import cmd_lock
+from .commands.migrate import add_migrate_parser, cmd_migrate
 from .commands.outdated import cmd_outdated
 from .commands.resolve import cmd_resolve
 from .commands.sbom import cmd_sbom
 from .commands.scan import cmd_scan
 from .commands.search import cmd_search
 from .commands.serve import cmd_serve
+from .commands.system_info import cmd_system_info
 from .commands.tools import cmd_tools
 from .commands.update import cmd_update
 from .commands.verify import cmd_verify
@@ -51,7 +55,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     _eco_choices = [e for e in ECOSYSTEMS if e not in ("docs", "custom_db")]
 
-    serve_p = sub.add_parser("serve", help="Start the API server")
+    serve_p = sub.add_parser(
+        "serve",
+        help="Start the API server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr serve                 # start API server on default port
+  udr serve --port 9000     # custom port
+  udr serve --reload        # auto-reload on code changes
+""",
+    )
     serve_p.add_argument("--host", default="127.0.0.1", help="Bind address")
     serve_p.add_argument("--port", type=int, default=8000, help="Bind port")
     serve_p.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
@@ -131,7 +144,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to policy YAML file (default: ./udr-policy.yaml)",
     )
 
-    resolve_p = sub.add_parser("resolve", help="Resolve dependencies for one or more packages")
+    resolve_p = sub.add_parser(
+        "resolve",
+        help="Resolve dependencies for one or more packages",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr resolve flask express@npm
+  udr resolve numpy --cuda 12.1 --json
+""",
+    )
     resolve_p.add_argument(
         "packages",
         nargs="+",
@@ -233,7 +254,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     lock_p = sub.add_parser(
-        "lock", help="Auto-detect manifests, resolve all dependencies, write lock file"
+        "lock",
+        help="Auto-detect manifests, resolve all dependencies, write lock file",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr lock                          # auto-detect, resolve, write udr.lock
+  udr lock --dry-run --json         # preview without writing
+  udr lock --cuda 12.1 --device cuda  # CUDA-aware resolution
+  udr lock --check                  # CI mode: exit 1 if drift
+""",
     )
     lock_p.add_argument("--directory", "-d", default=".", help="Project directory to scan")
     lock_p.add_argument("--manifest", "-m", help="Only process a specific manifest file")
@@ -369,7 +398,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Exclude optional dependencies from resolution",
     )
 
-    graph_p = sub.add_parser("graph", help="Show dependency tree for one or more packages")
+    graph_p = sub.add_parser(
+        "graph",
+        help="Show dependency tree for one or more packages",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr graph              # dependency graph for all packages
+  udr graph --json       # JSON output
+  udr graph --ecosystem pypi
+""",
+    )
     graph_p.add_argument(
         "packages",
         nargs="+",
@@ -394,7 +432,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Target compute device: cpu, cuda (NVIDIA GPU), mps (Apple Silicon), or rocm (AMD GPU)",
     )
 
-    verify_p = sub.add_parser("verify", help="Validate lock file — check all versions still exist")
+    verify_p = sub.add_parser(
+        "verify",
+        help="Validate lock file — check all versions still exist",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr verify              # validate udr.lock
+  udr verify --json       # JSON output
+  udr verify --signature  # verify Ed25519 signature
+""",
+    )
     verify_p.add_argument(
         "lock_file",
         nargs="?",
@@ -416,10 +463,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Verify Ed25519 signature on the lock file",
     )
 
-    list_eco_p = sub.add_parser("list-ecosystems", help="List all supported ecosystems")
+    list_eco_p = sub.add_parser(
+        "list-ecosystems",
+        help="List all supported ecosystems",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr list-ecosystems --json
+""",
+    )
     list_eco_p.add_argument("--json", action="store_true", help="Output as JSON")
 
-    update_p = sub.add_parser("update", help="Re-resolve a package and update lock file")
+    update_p = sub.add_parser(
+        "update",
+        help="Re-resolve a package and update lock file",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr update requests      # update a single package
+  udr update --fix-cve     # fix all vulnerable packages
+  udr update --dry-run     # preview changes
+""",
+    )
     update_p.add_argument(
         "package",
         nargs="?",
@@ -494,7 +557,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Exclude optional dependencies from resolution",
     )
 
-    install_p = sub.add_parser("install", help="Install packages from udr.lock lock file")
+    install_p = sub.add_parser(
+        "install",
+        help="Install packages from udr.lock lock file",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr install              # install all packages from udr.lock
+  udr install --dry-run    # preview without installing
+""",
+    )
     install_p.add_argument(
         "--directory", "-d", default=".", help="Project directory with lock file"
     )
@@ -552,6 +623,11 @@ def _build_parser() -> argparse.ArgumentParser:
     completion_p = sub.add_parser(
         "completion",
         help="Generate shell completion script for bash, zsh, or fish",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr completion           # detect shell, print script
+  udr completion bash      # bash completions
+""",
     )
     completion_p.add_argument(
         "shell",
@@ -560,7 +636,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Shell to generate completions for (auto-detected if omitted)",
     )
 
-    scan_p = sub.add_parser("scan", help="Scan a GitHub repo or local path without manual clone/cd")
+    scan_p = sub.add_parser(
+        "scan",
+        help="Scan a GitHub repo or local path without manual clone/cd",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr scan --github https://github.com/user/repo
+  udr scan --directory .
+""",
+    )
     scan_p.add_argument(
         "--github", help="GitHub repository URL (e.g. https://github.com/user/repo)"
     )
@@ -594,6 +678,12 @@ def _build_parser() -> argparse.ArgumentParser:
     why_p = sub.add_parser(
         "why",
         help="Explain why a package version was selected — show dependency chain",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr why flask           # why is flask a dependency
+  udr why --all flask     # all transitive paths
+  udr why --json
+""",
     )
     why_p.add_argument("package", nargs="?", help="Package name to explain")
     why_p.add_argument("--all", "-a", action="store_true", help="Show info for all packages")
@@ -613,6 +703,11 @@ def _build_parser() -> argparse.ArgumentParser:
     outdated_p = sub.add_parser(
         "outdated",
         help="List packages with newer versions available in registries",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr outdated            # all outdated packages
+  udr outdated --json
+""",
     )
     outdated_p.add_argument(
         "--directory", "-d", default=".", help="Project directory with lock file"
@@ -638,6 +733,11 @@ def _build_parser() -> argparse.ArgumentParser:
     diff_p = sub.add_parser(
         "diff",
         help="Compare two lock files and show version differences",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr diff                # diff vs previous lock
+  udr diff --json         # JSON diff
+""",
     )
     diff_p.add_argument("lock_file_a", nargs="?", default=None, help="First lock file path")
     diff_p.add_argument("lock_file_b", nargs="?", default=None, help="Second lock file path")
@@ -652,6 +752,11 @@ def _build_parser() -> argparse.ArgumentParser:
     search_p = sub.add_parser(
         "search",
         help="Search for packages across ecosystems",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr search flask        # search all ecosystems
+  udr search --ecosystem pypi flask
+""",
     )
     search_p.add_argument("query", help="Search query")
     search_p.add_argument(
@@ -663,7 +768,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     search_p.add_argument("--json", action="store_true", help="Output as JSON")
 
-    sbom_p = sub.add_parser("sbom", help="Generate SPDX 2.3 or CycloneDX 1.5 SBOM from lock file")
+    sbom_p = sub.add_parser(
+        "sbom",
+        help="Generate SPDX 2.3 or CycloneDX 1.5 SBOM from lock file",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr sbom                # SPDX 2.3 JSON
+  udr sbom --format cyclonedx  # CycloneDX 1.5
+""",
+    )
     sbom_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     sbom_p.add_argument(
         "--workspace",
@@ -682,9 +795,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", "-o", default=None, help="Output file path (default: print to stdout)"
     )
 
+    export_p = sub.add_parser(
+        "export",
+        help="Export lock file to a specific format (requirements.txt, Dockerfile, etc.)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr export --format requirements.txt
+  udr export --format pip-compile
+""",
+    )
+    export_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
+    export_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    export_p.add_argument(
+        "--lock-file",
+        "-l",
+        help="Explicit lock file path (overrides directory/workspace)",
+    )
+    export_p.add_argument(
+        "--format",
+        "-f",
+        default="requirements.txt",
+        help="Export format (e.g. requirements.txt, Dockerfile)",
+    )
+    export_p.add_argument(
+        "--output", "-o", default=None, help="Output file path (default: print to stdout)"
+    )
+
     details_p = sub.add_parser(
         "details",
         help="Show detailed package info — versions, dependencies, metadata",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr details numpy
+  udr details express --ecosystem npm --json
+""",
     )
     details_p.add_argument("package", help="Package name")
     details_p.add_argument(
@@ -692,7 +840,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     details_p.add_argument("--json", action="store_true", help="Output as JSON")
 
-    auth_p = sub.add_parser("auth", help="Manage API keys for the API server")
+    sysinfo_p = sub.add_parser(
+        "system-info",
+        help="Show detailed system information — OS, CPU, GPU, Python, runtimes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr system-info --json
+""",
+    )
+    sysinfo_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    auth_p = sub.add_parser(
+        "auth",
+        help="Manage API keys for the API server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr auth create --name my-key    # create API key
+  udr auth list                    # list keys
+  udr auth revoke 1                # revoke key
+""",
+    )
     auth_sub = auth_p.add_subparsers(dest="auth_action", required=True)
 
     auth_create = auth_sub.add_parser("create", help="Create a new API key")
@@ -713,7 +880,19 @@ def _build_parser() -> argparse.ArgumentParser:
     auth_sub.add_parser("gen-key", help="Generate a new Ed25519 signing key for lock file signing")
     auth_sub.add_parser("show-key", help="Show the current Ed25519 public signing key")
 
-    index_p = sub.add_parser("index", help="Manage offline SQLite indexes")
+    add_init_parser(sub)
+    add_migrate_parser(sub)
+
+    index_p = sub.add_parser(
+        "index",
+        help="Manage offline SQLite indexes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr index pull <url>          # download pre-built indexes
+  udr index build                # build from udr.lock
+  udr index build --ecosystem pypi
+""",
+    )
     index_sub = index_p.add_subparsers(dest="index_action", required=True)
 
     index_pull_p = index_sub.add_parser("pull", help="Download pre-built indexes")
@@ -744,7 +923,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--all", "-a", action="store_true", help="Sync all supported ecosystems"
     )
 
-    tools_p = sub.add_parser("tools", help="Manage plugins and extensions")
+    tools_p = sub.add_parser(
+        "tools",
+        help="Manage plugins and extensions",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr tools register-plugin --path ./my-plugin
+  udr tools register-plugin --name my-plugin
+""",
+    )
     tools_sub = tools_p.add_subparsers(dest="tools_command", required=True)
 
     reg_parser = tools_sub.add_parser(
@@ -794,18 +981,37 @@ def main():
         "list-ecosystems": cmd_list_ecosystems,
         "update": cmd_update,
         "install": cmd_install,
+        "init": cmd_init,
+        "migrate": cmd_migrate,
         "completion": cmd_completion,
         "why": cmd_why,
         "outdated": cmd_outdated,
         "diff": cmd_diff,
         "search": cmd_search,
         "sbom": cmd_sbom,
+        "export": cmd_export,
         "details": cmd_details,
+        "system-info": cmd_system_info,
         "auth": cmd_auth,
         "index": cmd_index,
         "tools": cmd_tools,
     }
-    dispatch[args.command](args)
+    try:
+        dispatch[args.command](args)
+    except Exception as exc:
+        from backend.core.error_sanitizer import sanitize_for_user
+
+        user_msg = sanitize_for_user(str(exc))
+        is_json = getattr(args, "json", False) or getattr(args, "format", "") == "json"
+        if is_json:
+            import json as _json
+
+            _json.dump({"error": user_msg, "type": type(exc).__name__}, sys.stdout)
+            sys.stdout.write("\n")
+        else:
+            logger.error("Command failed: %s", exc, exc_info=True)
+            print(f"Error: {user_msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

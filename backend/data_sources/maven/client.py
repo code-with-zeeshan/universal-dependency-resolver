@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from typing import Any
 
+import aiohttp
 from packaging import version as packaging_version
 
 from ...core.utils import normalize_package_name, parse_version
@@ -69,7 +70,10 @@ class MavenClient(BaseDataSourceClient):
         for attempt in range(self.max_retries):
             try:
                 async with session.get(
-                    url, params=params, headers=self._auth_headers or None
+                    url,
+                    params=params,
+                    headers=self._auth_headers or None,
+                    timeout=aiohttp.ClientTimeout(total=self.timeout),
                 ) as response:
                     if response.status == 404:
                         return None
@@ -313,7 +317,11 @@ class MavenClient(BaseDataSourceClient):
         try:
             session = self._get_session()
             params = {"q": f"g:{group_id} AND a:{artifact_id}", "rows": 1, "wt": "json"}
-            async with session.get(self.base_url, params=params) as response:
+            async with session.get(
+                self.base_url,
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
                 if response.status != 200:
                     return None
                 data = await response.json()
@@ -400,7 +408,11 @@ class MavenClient(BaseDataSourceClient):
                 "rows": 100,
                 "wt": "json",
             }  # type: ignore[misc]
-            async with session.get(self.base_url, params=params) as response:  # type: ignore[arg-type]
+            async with session.get(
+                self.base_url,
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:  # type: ignore[arg-type]
                 if response.status != 200:
                     raise DataSourceError("Maven package versions not found", status_code=404)
                 data = await response.json()
@@ -554,7 +566,7 @@ class MavenClient(BaseDataSourceClient):
             return effective_pom.get("dependencies", [])
 
         except Exception as e:
-            print(f"Error fetching dependencies: {e!s}")
+            logger.error("Error fetching dependencies: %s", e)
             return []
 
     async def get_effective_pom(
@@ -588,7 +600,10 @@ class MavenClient(BaseDataSourceClient):
 
         try:
             session = self._get_session()
-            async with session.get(pom_url) as response:
+            async with session.get(
+                pom_url,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
                 if response.status == 200:
                     return await response.text()
                 return None
@@ -657,24 +672,31 @@ class MavenClient(BaseDataSourceClient):
         if not any(repo.get("id") == "central" for repo in all_repos):
             all_repos.append({"id": "central", "url": self.maven_repo_url})
 
-        for repo in all_repos:
+        async def _try_repo(repo: dict) -> str | None:
             repo_url = repo.get("url", self.maven_repo_url).rstrip("/")
             pom_url = f"{repo_url}/{pom_path}"
-
             try:
-                pom_content = await self._fetch_pom_content(pom_url)
-                if pom_content:
-                    return pom_content
+                return await self._fetch_pom_content(pom_url)
             except Exception:
-                logger.warning("Failed to fetch POM from %s", pom_url, exc_info=True)
-                continue
+                return None
 
+        # Try all repos in parallel; return first success.
+        results = await asyncio.gather(
+            *[_try_repo(repo) for repo in all_repos],
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, str):
+                return r
         return None
 
     async def _fetch_pom_content(self, url: str) -> str | None:
         session = self._get_session()
         try:
-            async with session.get(url) as response:
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
                 if response.status == 200:
                     return await response.text()
                 return None

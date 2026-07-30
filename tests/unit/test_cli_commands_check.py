@@ -43,6 +43,7 @@ class TestCheckCve:
     async def test_no_vulnerabilities_found(self, mock_lock_data):
         args = MagicMock()
         args.lock_path = "/tmp/udr.lock"
+        args.json = False
         with patch("pathlib.Path.is_file", return_value=True):
             with patch("backend.cli.commands.check._read_lock_file", return_value=mock_lock_data):
                 with patch("backend.core.data_aggregator.DataAggregator") as mock_agg_cls:
@@ -60,6 +61,7 @@ class TestCheckCve:
     async def test_vulnerabilities_found(self, mock_lock_data):
         args = MagicMock()
         args.lock_path = "/tmp/udr.lock"
+        args.json = False
         mock_vuln = {
             "id": "GHSA-xxxx-xxxx-xxxx",
             "summary": "Test vulnerability in requests",
@@ -88,6 +90,7 @@ class TestCheckCve:
     async def test_cve_with_severity_extraction(self, mock_lock_data):
         args = MagicMock()
         args.lock_path = "/tmp/udr.lock"
+        args.json = False
         vulns = [
             {
                 "id": "CVE-2024-0001",
@@ -116,6 +119,7 @@ class TestCheckCve:
     async def test_osv_api_error_returns_empty(self, mock_lock_data):
         args = MagicMock()
         args.lock_path = "/tmp/udr.lock"
+        args.json = False
         with patch("pathlib.Path.is_file", return_value=True):
             with patch("backend.cli.commands.check._read_lock_file", return_value=mock_lock_data):
                 with patch("backend.core.data_aggregator.DataAggregator") as mock_agg_cls:

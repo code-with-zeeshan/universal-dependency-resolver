@@ -806,9 +806,10 @@ class TestMavenClient:
         with patch.object(client, "_fetch_pom_content", side_effect=mock_fetch):
             result = await client._fetch_pom_from_repos("g", "a", "1.0", repos)
         assert result == "<project></project>"
-        assert len(urls_called) == 2
-        assert "first" in urls_called[0]
-        assert "second" in urls_called[1]
+        # Repos are probed in parallel; all 3 (2 test + central appended) are called
+        assert len(urls_called) == 3
+        assert any("first" in u for u in urls_called)
+        assert any("second" in u for u in urls_called)
 
     # === New test: _fetch_pom_from_repos all repos fail returns None
     @pytest.mark.asyncio

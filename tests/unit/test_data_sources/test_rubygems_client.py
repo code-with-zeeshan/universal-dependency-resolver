@@ -111,27 +111,20 @@ class TestRubyGemsClient:
 
     @pytest.mark.asyncio
     async def test_package_exists_returns_true(self, client):
-        session = client._get_session()
-        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_head.return_value = mock_response
+        with patch.object(client, "_try_api_name", new_callable=AsyncMock) as mock_fn:
+            mock_fn.return_value = {"name": "rails"}
             assert await client.package_exists("rails") is True
-            mock_head.assert_called_once()
+            mock_fn.assert_called_once_with("rails", "gems")
 
     @pytest.mark.asyncio
     async def test_package_exists_returns_false(self, client):
-        session = client._get_session()
-        with patch.object(session, "head", new_callable=AsyncMock) as mock_head:
-            mock_response = AsyncMock()
-            mock_response.status = 404
-            mock_head.return_value = mock_response
+        with patch.object(client, "_try_api_name", new_callable=AsyncMock) as mock_fn:
+            mock_fn.return_value = None
             assert await client.package_exists("nonexistent") is False
 
     @pytest.mark.asyncio
     async def test_package_exists_handles_exception(self, client):
-        session = client._get_session()
-        with patch.object(session, "head", side_effect=Exception("Network error")):
+        with patch.object(client, "_try_api_name", side_effect=Exception("Network error")):
             assert await client.package_exists("rails") is False
 
     @pytest.mark.asyncio

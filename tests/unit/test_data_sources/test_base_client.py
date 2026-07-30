@@ -81,13 +81,13 @@ class TestBaseDataSourceClient:
 
     @pytest.mark.asyncio
     async def test_rate_limiter_enforces_limit(self, client):
+        now = datetime.now()
+        client._request_timestamps = [now - timedelta(seconds=59), now - timedelta(seconds=58)]
         client.rate_limit = 2
-        await client._throttle()
-        await client._throttle()
         before = datetime.now()
         await client._throttle()
         elapsed = (datetime.now() - before).total_seconds()
-        assert elapsed >= 0
+        assert elapsed >= 0.5
 
     @pytest.mark.asyncio
     async def test_throttle_clears_old_timestamps(self, client):

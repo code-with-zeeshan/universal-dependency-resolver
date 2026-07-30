@@ -7,6 +7,8 @@ import re
 from io import BytesIO
 from typing import Any
 
+import aiohttp
+
 from backend.core.cache import cached
 from backend.core.utils import (
     normalize_package_name,
@@ -21,6 +23,62 @@ from backend.settings import (
 from .base_client import BaseDataSourceClient
 
 logger = logging.getLogger(__name__)
+
+# APT system packages that are NOT in the solver's universe.
+# These are low-level OS packages that only appear as dependencies of
+# real software packages.  They are not resolvable through the normal
+# resolver pipeline (no registry data, no per-version deps).
+_APT_SYSTEM_PACKAGES: frozenset[str] = frozenset(
+    {
+        "libc6",
+        "libc6-dev",
+        "libc-dev",
+        "libc-bin",
+        "zlib1g",
+        "zlib1g-dev",
+        "libssl3",
+        "libssl-dev",
+        "openssl",
+        "base-files",
+        "base-passwd",
+        "dpkg",
+        "dpkg-dev",
+        "libgcc-s1",
+        "libgcc1",
+        "libstdc++6",
+        "libstdc++-dev",
+        "libcrypt1",
+        "libcrypt-dev",
+        "gcc-12-base",
+        "gcc-13-base",
+        "gcc-14-base",
+        "adduser",
+        "coreutils",
+        "tzdata",
+        "debconf",
+        "passwd",
+        "login",
+        "init-system-helpers",
+        "hostname",
+        "findutils",
+        "grep",
+        "sed",
+        "gawk",
+        "diffutils",
+        "util-linux",
+        "mount",
+        "e2fsprogs",
+        "libblkid1",
+        "libmount1",
+        "libsmartcols1",
+        "libuuid1",
+        "libfdisk1",
+        "perl-base",
+        "mawk",
+        "debian-archive-keyring",
+        "apt",
+    }
+)
 
 
 class APTClient(BaseDataSourceClient):
@@ -104,12 +162,17 @@ class APTClient(BaseDataSourceClient):
                 packages = await self._get_packages_list(dist, component)
                 if packages and package_name in packages:
                     pkg_data = packages[package_name]
+
+                    # Build flat per-version deps from this dist/component
+                    per_ver_deps = self._flatten_depends(pkg_data)
+
                     versions_list.append(
                         {
                             "version": pkg_data.get("version", ""),
                             "distribution": dist,
                             "component": component,
                             "architecture": pkg_data.get("architecture", "all"),
+                            "dependencies": per_ver_deps,
                         }
                     )
 
@@ -119,7 +182,8 @@ class APTClient(BaseDataSourceClient):
         if not package_data:
             return None
 
-        dependencies = self._parse_dependencies(package_data)
+        # Top-level deps: flat {name: constraint} dict for runtime deps only
+        dependencies = self._flatten_depends(package_data)
         system_requirements = self._extract_system_requirements(package_data)
 
         info = {
@@ -134,7 +198,7 @@ class APTClient(BaseDataSourceClient):
             "architecture": package_data.get("architecture", "all"),
             "size": package_data.get("size", 0),
             "installed_size": package_data.get("installed-size", 0),
-            "dependencies": dependencies,
+            "dependencies": {"dependencies": dependencies},
             "system_requirements": system_requirements,
             "ecosystem": "apt",
         }
@@ -203,7 +267,7 @@ class APTClient(BaseDataSourceClient):
 
         try:
             session = self._get_session()
-            async with session.get(url) as response:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status != 200:
                     logger.error(f"Failed to fetch Packages from {url}: {response.status}")
                     return {}
@@ -282,6 +346,40 @@ class APTClient(BaseDataSourceClient):
                 dependencies[field] = parsed_deps
 
         return dependencies
+
+    @staticmethod
+    def _flatten_depends(package_data: dict) -> dict[str, str]:
+        """Extract Depends as flat {name: constraint} dict for the solver."""
+        deps: dict[str, str] = {}
+        deps_str = package_data.get("depends", "")
+        if not deps_str:
+            return deps
+        for dep_group in deps_str.split(","):
+            dep_group = dep_group.strip()
+            # Take the first alternative (OR deps not supported by solver)
+            first_alt = dep_group.split("|")[0].strip()
+            m = re.match(r"^([a-z0-9][a-z0-9+.-]+)(?:\s*\(([^)]+)\))?", first_alt)
+            if m:
+                name = m.group(1)
+                if name in _APT_SYSTEM_PACKAGES:
+                    continue
+                constraint = m.group(2) if m.group(2) else "*"
+                # Strip Debian epoch (1:) and revision (-3) for PEP 440 compat
+                constraint = re.sub(r"\d+:", "", constraint)
+                version_part = (
+                    constraint.split("-")[0].strip() if "-" in constraint else constraint.strip()
+                )
+                if version_part and version_part != constraint:
+                    # Reconstruct: keep operator, use version without revision
+                    op_match = re.match(r"([<>]?=?)\s*(.*)", constraint)
+                    if op_match:
+                        op = op_match.group(1).strip()
+                        # Convert << to < and >> to >
+                        op = op.replace("<<", "<").replace(">>", ">")
+                        version_part = op_match.group(2).split("-")[0].strip()
+                        constraint = f"{op} {version_part}" if op else version_part
+                deps[name] = constraint
+        return deps
 
     def _parse_dependency_string(self, deps_str: str) -> list[dict]:
         dependencies: list[dict] = []

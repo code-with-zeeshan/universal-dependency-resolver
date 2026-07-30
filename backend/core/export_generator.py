@@ -66,7 +66,7 @@ class PackageInfo:
 
         return cls(
             name=name,
-            version=info.get("version", ""),
+            version=info.get("version") or info.get("resolved_version", ""),
             ecosystem=ecosystem,
             extras=info.get("extras", {}) or {},
             license=info.get("license") or info.get("unified_data", {}).get("license"),

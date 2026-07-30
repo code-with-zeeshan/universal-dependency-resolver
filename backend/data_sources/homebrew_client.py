@@ -496,9 +496,9 @@ async def example_usage():
             {"macos_version": "13.0", "arch": "arm64"},
         )
 
-        print(f"Formula: {formula_info['name'] if formula_info else 'Not found'}")
-        print(f"Cask: {cask_info['name'] if cask_info else 'Not found'}")
-        print(f"Compatible: {compat['compatible']}")
+        logger.debug("Formula: %s", formula_info["name"] if formula_info else "Not found")
+        logger.debug("Cask: %s", cask_info["name"] if cask_info else "Not found")
+        logger.debug("Compatible: %s", compat["compatible"])
 
 
 if __name__ == "__main__":

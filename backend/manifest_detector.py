@@ -77,6 +77,7 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("Cargo.lock", "cargo", "cargo_lock"),
     ("go.mod", "go", "go_mod"),
     ("go.work", "go", "go_work"),
+    ("go.sum", "go", "go_sum"),
     ("environment.yml", "conda", "conda_env"),
     ("environment.yaml", "conda", "conda_env"),
     ("Gemfile", "rubygems", "gemfile"),
@@ -201,6 +202,7 @@ class ManifestDetector:
             raw = ws_path.read_text(encoding="utf-8")
             ws_config = yaml.safe_load(raw) or {}
         except Exception:
+            logger.warning("Failed to load workspace config from %s", ws_path, exc_info=True)
             return {}, {}, False
 
         workspace_version_map: dict[str, str] = {}
@@ -259,6 +261,7 @@ class ManifestDetector:
         try:
             data = loads(root_pkg.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Failed to parse root package.json %s", root_pkg, exc_info=True)
             return {}, {}, False
 
         workspaces = data.get("workspaces")
@@ -365,7 +368,7 @@ class ManifestDetector:
                         if non_empty > 0 and spec_like / non_empty < 0.2:
                             continue
                     except OSError:
-                        pass
+                        logger.debug("Failed to sniff file %s", str_path, exc_info=True)
                 ecosystem = sanitize_ecosystem_name(raw_eco)
                 seen_paths.add(str_path)
                 found.append(
@@ -393,6 +396,7 @@ class ManifestDetector:
                             if not _looks_like_json_manifest(raw.decode("utf-8", errors="replace")):
                                 continue
                         except OSError:
+                            logger.debug("Failed to read file for content sniffing", exc_info=True)
                             continue
                     suggested = suggest_parsers(content_type)
                     if suggested:
@@ -588,11 +592,14 @@ class ManifestDetector:
             # Only normalize names for case-insensitive ecosystems (PyPI, npm, crates)
             # All others preserve original case and separators
             if raw_eco in ("pypi", "pip", "npm", "node", "crates", "cargo", "rust"):
-                name = (
-                    normalize_package_name(raw_name)
-                    if normalize_package_name(raw_name)
-                    else raw_name
-                )
+                if raw_eco in ("npm", "node"):
+                    name = raw_name.lower().replace("_", "-")
+                else:
+                    name = (
+                        normalize_package_name(raw_name)
+                        if normalize_package_name(raw_name)
+                        else raw_name
+                    )
             else:
                 name = raw_name
             constraint = pkg.get("version", "*") or "*"
@@ -654,6 +661,7 @@ class ManifestDetector:
             "cargo_lock": self._parse_cargo_lock,
             "go_mod": self._parse_go_mod,
             "go_work": self._parse_go_work,
+            "go_sum": self._parse_go_sum,
             "conda_env": self._parse_conda_env,
             "gemfile": self._parse_gemfile,
             "composer_json": self._parse_composer_json,
@@ -1176,6 +1184,7 @@ class ManifestDetector:
                     {
                         "name": name,
                         "version": version,
+                        "_ecosystem": "npm",
                         "optional": section == "optionalDependencies",
                         "peer": section == "peerDependencies",
                     }
@@ -1213,6 +1222,7 @@ class ManifestDetector:
                                     {
                                         "name": name,
                                         "version": version,
+                                        "_ecosystem": "npm",
                                         "optional": section == "optionalDependencies",
                                         "peer": section == "peerDependencies",
                                     }
@@ -1347,6 +1357,35 @@ class ManifestDetector:
                         deps[dep_name] = dep_spec.get("version", "*")
                     else:
                         deps[dep_name] = "*"
+            tree[name] = {"version": version, "dependencies": deps}
+        return tree if tree else None
+
+    @staticmethod
+    def parse_uv_lock_tree(lock_path: str | Path) -> dict[str, dict] | None:
+        """Parse uv.lock and return full dependency tree.
+
+        Returns {package_name: {version, dependencies: {dep_name: constraint}}} or None.
+        """
+        try:
+            import tomllib
+
+            content = Path(lock_path).read_text(encoding="utf-8")
+            data = tomllib.loads(content)
+        except Exception:
+            logger.warning("Failed to parse uv.lock: %s", lock_path, exc_info=True)
+            return None
+        tree: dict[str, dict] = {}
+        for entry in data.get("package", []):
+            name = entry.get("name", "")
+            version = entry.get("version", "0.0.0")
+            deps: dict[str, str] = {}
+            deps_raw = entry.get("dependencies", [])
+            if isinstance(deps_raw, list):
+                for dep in deps_raw:
+                    if isinstance(dep, dict):
+                        dep_name = dep.get("name", "")
+                        if dep_name:
+                            deps[dep_name] = dep.get("version", "*")
             tree[name] = {"version": version, "dependencies": deps}
         return tree if tree else None
 
@@ -1635,6 +1674,32 @@ class ManifestDetector:
                 pkg["_go_replace"] = replace_map
         return packages
 
+    def _parse_go_sum(self, content: str) -> list[dict]:
+        packages: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for line in content.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                raw_version = parts[1]
+                if raw_version.endswith("/go.mod"):
+                    continue
+                pkg_name = parts[0]
+                version = raw_version.lstrip("v")
+                key = (pkg_name, version)
+                if key not in seen:
+                    seen.add(key)
+                    packages.append(
+                        {
+                            "name": pkg_name,
+                            "version": version,
+                            "ecosystem": "gomodules",
+                        }
+                    )
+        return packages
+
     def _parse_conda_env(self, content: str) -> list[dict]:
         """Parse conda env."""
         try:
@@ -1784,8 +1849,8 @@ class ManifestDetector:
         for entry in data.get("package", []):
             name = entry.get("name")
             source = entry.get("source", {})
-            version = (
-                source.get("version") if isinstance(source, dict) else entry.get("version", "*")
+            version = entry.get("version") or (
+                source.get("version") if isinstance(source, dict) else None
             )
             if name:
                 packages.append({"name": name, "version": version or "*"})

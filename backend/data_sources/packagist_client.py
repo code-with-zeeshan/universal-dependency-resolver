@@ -282,6 +282,14 @@ class PackagistClient(BaseDataSourceClient):
         if not version or not self._is_valid_version(version):
             return None
 
+        # Flatten per-version deps: extract "require" as flat name→constraint.
+        require_deps = {}
+        raw_require = version_data.get("require", {})
+        if isinstance(raw_require, dict):
+            for dn, dc in raw_require.items():
+                if isinstance(dc, str):
+                    require_deps[dn] = dc
+
         return {
             "version": version,
             "version_normalized": version_data.get("version_normalized"),
@@ -293,7 +301,7 @@ class PackagistClient(BaseDataSourceClient):
             "authors": version_data.get("authors", []),
             "support": version_data.get("support", {}),
             "funding": version_data.get("funding", []),
-            "dependencies": self._extract_dependencies(version_data),
+            "dependencies": require_deps,
             "system_requirements": self._extract_system_requirements(version_data),
             "autoload": version_data.get("autoload", {}),
             "bin": version_data.get("bin", []),
@@ -378,6 +386,8 @@ class PackagistClient(BaseDataSourceClient):
         return False
 
     def _parse_composer_version_requirement(self, spec: str) -> ComposerVersionRequirement:
+        if not isinstance(spec, str):
+            spec = str(spec)
         if spec in self._version_cache:
             return self._version_cache[spec]
 
@@ -439,6 +449,8 @@ class PackagistClient(BaseDataSourceClient):
         warnings = []
 
         php_requirement = pkg_data.get("system_requirements", {}).get("php")
+        if not isinstance(php_requirement, str):
+            php_requirement = str(php_requirement) if php_requirement else ""
         if (
             php_requirement
             and "php_version" in system_info
@@ -457,6 +469,8 @@ class PackagistClient(BaseDataSourceClient):
                 errors.append(f"Required PHP extension missing: {ext_name}")
 
         composer_requirement = pkg_data.get("system_requirements", {}).get("composer")
+        if not isinstance(composer_requirement, str):
+            composer_requirement = str(composer_requirement) if composer_requirement else ""
         if (
             composer_requirement
             and "composer_version" in system_info
@@ -540,9 +554,9 @@ async def example_usage():
             },
         )
 
-        print(f"Package: {info['name']}")
-        print(f"Latest version: {info['version']}")
-        print(f"Compatible: {compat['compatible']}")
+        logger.debug("Package: %s", info["name"])
+        logger.debug("Latest version: %s", info["version"])
+        logger.debug("Compatible: %s", compat["compatible"])
 
 
 if __name__ == "__main__":

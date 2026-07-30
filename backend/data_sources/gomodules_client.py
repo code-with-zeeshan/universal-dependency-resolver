@@ -92,16 +92,13 @@ class GoModulesClient(BaseDataSourceClient):
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(self, package_name: str) -> dict[str, Any] | None:
         """Async get package info async."""
-        """async get package info async."""
         package_name = self._normalize_go_module_path(package_name)
 
         versions_data = await self._get_versions_list(package_name)
         if not versions_data:
             return None
 
-        latest_version = await self._get_latest_version(package_name)
-        if not latest_version:
-            return None
+        latest_version = _strip_v(versions_data[-1])
 
         module_info = await self._get_module_info(package_name, latest_version)  # type: ignore[arg-type]
         if not module_info:
@@ -219,10 +216,10 @@ class GoModulesClient(BaseDataSourceClient):
 
     async def _get_module_info(self, package_name: str, version: str) -> dict[str, Any] | None:
         info_url = f"{self.base_url}/{package_name}/@v/{version}.info"
-        info_data = await self._make_request(info_url)
-
         mod_url = f"{self.base_url}/{package_name}/@v/{version}.mod"
-        mod_data = await self._make_request(mod_url)
+        info_task = asyncio.create_task(self._make_request(info_url))
+        mod_task = asyncio.create_task(self._make_request(mod_url))
+        info_data, mod_data = await asyncio.gather(info_task, mod_task)
 
         if info_data and mod_data:
             return {

@@ -1,5 +1,4 @@
 """Module docstring."""
-from packaging.version import parse as parse_version
 
 # backend/api/routes/lock.py
 import asyncio
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from packaging.version import parse as parse_version
 from pydantic import BaseModel, field_validator
 
 from backend.api.auth import get_current_user
@@ -240,7 +240,7 @@ async def dependency_graph(
             timeout=SOLVER_API_TIMEOUT,
         )
     except (TimeoutError, Exception):
-        resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+        resolved = {"status": "unsatisfiable", "resolved_packages": {}}
     resolved = _apply_cuda_variants(resolved, package_details, system_info)
     rp = resolved.get("resolved_packages", {})
 
@@ -334,7 +334,7 @@ async def update_package(
                 timeout=SOLVER_API_TIMEOUT,
             )
         except (TimeoutError, Exception):
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            resolved = {"status": "unsatisfiable", "resolved_packages": {}}
 
         resolved = _apply_cuda_variants(resolved, package_details, system_info)
         rp = resolved.get("resolved_packages", {})
@@ -452,7 +452,7 @@ async def _run_lock_pipeline(
                 timeout=SOLVER_API_TIMEOUT,
             )
         except (TimeoutError, Exception):
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            resolved = {"status": "unsatisfiable", "resolved_packages": {}}
 
         resolved = _apply_cuda_variants(resolved, package_details, system_info)
         resolved_pkgs = resolved.get("resolved_packages", {})
@@ -951,100 +951,60 @@ async def lock_check(
     req: LockCheckRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Check lock file for drift against current manifest contents."""
-    from backend.core.data_aggregator import DataAggregator
-    from backend.manifest_detector import ManifestDetector
+    """Check lock file for drift against current manifest contents.
 
+    Mirrors ``udr lock --check``.
+    """
     if not req.manifest_contents:
         raise HTTPException(status_code=400, detail="manifest_contents is required")
-    detector = ManifestDetector()
-    manifests = []
-    for filename, content in req.manifest_contents.items():
-        result = detector.parse_source(content, filename=filename)
-        if result:
-            manifests.append({"filename": filename, "dependencies": result})
-    if not manifests:
-        raise HTTPException(status_code=400, detail="Could not parse any manifests")
-    all_deps: dict[str, list] = {}
-    for m in manifests:
-        for dep in m["dependencies"]:
-            name = dep.get("name", "")
-            if name:
-                all_deps.setdefault(name, []).append(dep)
-    aggregator = DataAggregator()
-    resolver = create_solver()
-    system_scanner = SystemScanner()
-    system_info = await system_scanner.scan_all()
-    try:
-        resolved_packages = {}
-        for name, deps_list in all_deps.items():
-            eco = deps_list[0].get("ecosystem", "pypi")
-            constraint = deps_list[0].get("constraint", "")
-            info = await aggregator.get_package_info(name, ecosystem=eco)
-            if info:
-                versions = info.get("versions", {}).get(eco, [])
-                version_strings = [
-                    v.get("version", "") if isinstance(v, dict) else str(v) for v in versions
-                ]
-                resolved_packages[name] = {
+
+    result = await _run_lock_pipeline(
+        req.manifest_contents,
+        manifest_filter=None,
+        system_override=None,
+    )
+    if result["status"] != "success":
+        raise HTTPException(status_code=400, detail=f"Lock generation failed: {result['status']}")
+
+    new_pkgs = result["lock_data"].get("packages", {})
+    old_pkgs = (req.existing_lock_data or {}).get("packages", {})
+    all_names = sorted(set(list(new_pkgs.keys()) + list(old_pkgs.keys())))
+    added, removed, changed = [], [], []
+    for name in all_names:
+        old_info = old_pkgs.get(name)
+        new_info = new_pkgs.get(name)
+        if old_info is None:
+            added.append(
+                {
                     "name": name,
-                    "ecosystem": eco,
-                    "versions": version_strings,
-                    "constraint": constraint,
+                    "version": new_info.get("resolved_version", "?"),
+                    "direct": new_info.get("direct", False),
                 }
-        resolver_input = {
-            "packages": {
-                n: {"name": n, "ecosystem": p["ecosystem"], "versions": p["versions"]}
-                for n, p in resolved_packages.items()
-            },
-            "root_packages": list(resolved_packages.keys()),
-            "constraints": {
-                n: p["constraint"] for n, p in resolved_packages.items() if p["constraint"]
-            },
-            "system_info": system_info,
-        }
-        resolution = resolver.resolve_dependencies(**resolver_input)
-        new_pkgs = resolution.get("packages", {})
-        old_pkgs = (req.existing_lock_data or {}).get("packages", {})
-        all_names = sorted(set(list(new_pkgs.keys()) + list(old_pkgs.keys())))
-        added, removed, changed = [], [], []
-        for name in all_names:
-            old_info = old_pkgs.get(name)
-            new_info = new_pkgs.get(name)
-            if old_info is None:
-                added.append(
-                    {
-                        "name": name,
-                        "version": new_info.get("resolved_version", "?"),
-                        "direct": new_info.get("direct", False),
-                    }
-                )
-            elif new_info is None:
-                removed.append(
-                    {
-                        "name": name,
-                        "version": old_info.get("resolved_version", "?"),
-                        "direct": old_info.get("direct", False),
-                    }
-                )
-            elif old_info.get("resolved_version") != new_info.get("resolved_version"):
-                changed.append(
-                    {
-                        "name": name,
-                        "from": old_info.get("resolved_version", "?"),
-                        "to": new_info.get("resolved_version", "?"),
-                    }
-                )
-        return {
-            "status": "drift" if (added or removed or changed) else "ok",
-            "drift_detected": bool(added or removed or changed),
-            "added": added,
-            "removed": removed,
-            "changed": changed,
-            "unchanged_count": len(all_names) - len(added) - len(removed) - len(changed),
-        }
-    finally:
-        await aggregator.close()
+            )
+        elif new_info is None:
+            removed.append(
+                {
+                    "name": name,
+                    "version": old_info.get("resolved_version", "?"),
+                    "direct": old_info.get("direct", False),
+                }
+            )
+        elif old_info.get("resolved_version") != new_info.get("resolved_version"):
+            changed.append(
+                {
+                    "name": name,
+                    "from": old_info.get("resolved_version", "?"),
+                    "to": new_info.get("resolved_version", "?"),
+                }
+            )
+    return {
+        "status": "drift" if (added or removed or changed) else "ok",
+        "drift_detected": bool(added or removed or changed),
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "unchanged_count": len(all_names) - len(added) - len(removed) - len(changed),
+    }
 
 
 @router.post("/lock/sign")
@@ -1142,7 +1102,7 @@ async def lock_update_with_fix(
     await aggregator.close()
     if not vuln_map:
         return {
-            "status": "ok",
+            "status": "success",
             "message": "No vulnerabilities found with available fixes.",
             "lock_data": lock_data,
         }
@@ -1305,15 +1265,21 @@ async def lock_apply_pinning(
 
     pp = PinningPolicy(
         pinned=dict(p.split("==", 1) for p in (req.pin or []) if "==" in p),
-        blocked=set(req.block or []),
-        pin_mode=req.pin_mode or "major",
+        blocked=list(req.block or []),
+        pin_mode=req.pin_mode or "none",
         freeze=req.freeze,
     )
 
-    pp.apply(packages)
+    from backend.core.pinning import apply_pinning_policy, freeze_from_lock
+
+    pkgs_list = [{"name": k, **v} for k, v in packages.items()]
+    pkgs_list = apply_pinning_policy(pkgs_list, pp)
+    if req.freeze:
+        pkgs_list = freeze_from_lock(pkgs_list, lock_data)
+    result_pkgs = {p["name"]: {kk: vv for kk, vv in p.items() if kk != "name"} for p in pkgs_list}
 
     return {
         "status": "success",
-        "lock_data": lock_data,
+        "lock_data": {"packages": result_pkgs},
         "pinning_policy": {k: v for k, v in asdict(pp).items() if v},
     }

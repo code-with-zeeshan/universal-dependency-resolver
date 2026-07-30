@@ -1,6 +1,8 @@
 """Hex.pm (Elixir/Erlang) — EcosystemPlugin implementation."""
 
+import asyncio
 import logging
+import re
 from typing import Any
 
 from ..core.plugin import (
@@ -32,6 +34,22 @@ class HexPlugin(EcosystemPlugin):
     # Manifest parser (called by ManifestDetector via _get_parser)
     # ------------------------------------------------------------------
     @staticmethod
+    def _parse_hex_version(raw: str) -> str:
+        """Extract operator + version from a hex dependency string.
+
+        Handles ``~> 1.7.0``, ``>= 1.0.0``, ``\"1.7.0\"``, etc.
+        """
+        ver_raw = raw.strip().strip('"').strip("'")
+        if not ver_raw or ver_raw == "*":
+            return "*"
+        m = re.match(r"(~>\s*|>=\s*|>\s*|<=\s*|<\s*|==\s*)?(.+)", ver_raw)
+        if m:
+            op = m.group(1) or ""
+            ver = m.group(2).strip()
+            return f"{op}{ver}".strip()
+        return ver_raw
+
+    @staticmethod
     def parse_mix_exs(content: str) -> list[dict]:
         """Parse a mix.exs file for dependencies."""
         deps = []
@@ -51,11 +69,7 @@ class HexPlugin(EcosystemPlugin):
                     parts = stripped.strip().strip(",").split(",")
                     if len(parts) >= 1:
                         name = parts[0].strip("{:").strip()
-                        version = (
-                            parts[1].strip().strip('"').strip("~> ").strip(">= ").strip()
-                            if len(parts) > 1
-                            else "*"
-                        )
+                        version = HexPlugin._parse_hex_version(parts[1]) if len(parts) > 1 else "*"
                         deps.append({"name": name, "version": version})
                 elif ":" in stripped and not stripped.startswith("["):
                     for char in stripped:
@@ -68,7 +82,7 @@ class HexPlugin(EcosystemPlugin):
                         if eq_idx > 0:
                             name = stripped[:eq_idx].strip()
                             rest = stripped[eq_idx + 1 :].strip().strip(",")
-                            version = rest.strip('"').strip("~> ").strip(">= ").strip()
+                            version = HexPlugin._parse_hex_version(rest)
                             deps.append({"name": name, "version": version})
         return deps
 
@@ -159,11 +173,81 @@ class HexPlugin(EcosystemPlugin):
                 v = r.get("version", "") if isinstance(r, dict) else str(r)
                 versions.append({"version": v})
             latest = versions[0]["version"] if versions else "unknown"
+
+            # Fetch per-version deps from the release-level API.
+            # Each version's /releases/{version} endpoint includes a
+            # "requirements" dict with per-version dependency data.
+            deps: dict[str, dict[str, str]] = {"dependencies": {}, "optional_dependencies": {}}
+            if include_dependencies and versions:
+                _hex_sem = asyncio.Semaphore(5)
+
+                async def _fetch_version_deps(ver: str) -> tuple[str, dict, dict]:
+                    async with _hex_sem:
+                        try:
+                            rd = await self._get(f"{self.base_url}/packages/{pkg}/releases/{ver}")
+                            reqs = {}
+                            opt_flags = {}
+                            if rd and "requirements" in rd:
+                                for dn, di in rd["requirements"].items():
+                                    if isinstance(di, dict):
+                                        reqs[dn] = di.get("requirement", "*")
+                                        if di.get("optional"):
+                                            opt_flags[dn] = True
+                            return ver, reqs, opt_flags
+                        except Exception:
+                            return ver, {}, {}
+
+                # Fetch deps for latest N versions to bound API calls.
+                # The pipeline picks the newest constraint-matched version's
+                # deps, so covering the latest ~10 is sufficient.
+                targets = [v["version"] for v in versions[:10]]
+                version_deps_results = await asyncio.gather(
+                    *[_fetch_version_deps(v) for v in targets],
+                    return_exceptions=True,
+                )
+                ver_deps_map: dict[str, dict[str, str]] = {}
+                ver_opt_map: dict[str, dict[str, bool]] = {}
+                for vd in version_deps_results:
+                    if isinstance(vd, tuple) and len(vd) == 3:
+                        ver, reqs, opts = vd
+                        ver_deps_map[ver] = reqs
+                        if opts:
+                            ver_opt_map[ver] = opts
+
+                # Store per-version deps in each version entry,
+                # separating optional deps so the solver doesn't
+                # try to resolve them as required dependencies.
+                for v in versions:
+                    vstr = v["version"]
+                    if ver_deps_map.get(vstr):
+                        req_deps = {}
+                        all_deps = ver_deps_map[vstr]
+                        opt_set = set(ver_opt_map.get(vstr, {}))
+                        for dn, req in all_deps.items():
+                            if dn not in opt_set:
+                                req_deps[dn] = req
+                        if req_deps:
+                            v["dependencies"] = req_deps
+                        if opt_set:
+                            v["optional_dependencies"] = {
+                                dn: all_deps[dn] for dn in opt_set if dn in all_deps
+                            }
+
+                # Top-level deps — use the latest version's requirements,
+                # separating optional deps so the pipeline marks them correctly.
+                latest_opt = ver_opt_map.get(latest, {})
+                latest_deps = ver_deps_map.get(latest, {})
+                for dep_name, req in latest_deps.items():
+                    if latest_opt.get(dep_name):
+                        deps["optional_dependencies"][dep_name] = req
+                    else:
+                        deps["dependencies"][dep_name] = req
+
             return {
                 "name": pkg,
                 "version": latest,
                 "versions": versions,
-                "dependencies": {"dependencies": {}},
+                "dependencies": deps,
             }
         except Exception as e:
             logger.error(f"Hex error for {package_name}: {e}")

@@ -74,9 +74,8 @@ class RubyGemsClient(BaseDataSourceClient):
         """async package exists."""
         package_name = normalize_package_name(package_name)
         try:
-            session = self._get_session()
-            response = await session.head(f"{self.base_url}/gems/{package_name}.json")
-            return response.status == 200
+            data = await self._try_api_name(package_name, "gems")
+            return data is not None
         except Exception:
             return False
 
@@ -116,6 +115,18 @@ class RubyGemsClient(BaseDataSourceClient):
 
         return results
 
+    async def _try_api_name(self, name: str, endpoint: str) -> dict | list | None:
+        """Try the API name as-is, then with underscores as fallback."""
+        url = f"{self.base_url}/{endpoint}/{name}.json"
+        data = await self._get(url)
+        if data is not None:
+            return data
+        alt = name.replace("-", "_")
+        if alt != name:
+            url = f"{self.base_url}/{endpoint}/{alt}.json"
+            data = await self._get(url)
+        return data
+
     @cached(ttl=CACHE_TTL)
     async def get_package_info_async(
         self, package_name: str, include_versions: bool = True
@@ -123,8 +134,7 @@ class RubyGemsClient(BaseDataSourceClient):
         """Get package info async."""
         package_name = normalize_package_name(package_name)
 
-        url = f"{self.base_url}/gems/{package_name}.json"
-        data = await self._get(url)
+        data = await self._try_api_name(package_name, "gems")
         if not data:
             return None
 
@@ -136,6 +146,11 @@ class RubyGemsClient(BaseDataSourceClient):
         reverse_deps = await self._get_reverse_dependencies(package_name)
 
         downloads = await self._get_download_stats(package_name)
+
+        # /gems/{name}.json includes dependencies directly, use that instead of
+        # re-fetching from the versions endpoint (which omits dependency data).
+        raw_deps = data.get("dependencies", {})
+        deps = self._flatten_rubygems_deps(raw_deps)
 
         info = {
             "name": data.get("name"),
@@ -160,9 +175,7 @@ class RubyGemsClient(BaseDataSourceClient):
             "version_downloads": data.get("version_downloads"),
             "versions": versions_info,
             "reverse_dependencies": reverse_deps,
-            "dependencies": await self._get_dependencies(
-                package_name, str(data.get("version")) if data.get("version") else ""
-            ),
+            "dependencies": deps,
             "system_requirements": self._extract_system_requirements(data),
             "created_at": data.get("created_at"),
             "updated_at": data.get("updated_at"),
@@ -282,8 +295,7 @@ class RubyGemsClient(BaseDataSourceClient):
 
     async def _get_all_versions(self, package_name: str) -> list[dict]:
         package_name = normalize_package_name(package_name)
-        url = f"{self.base_url}/versions/{package_name}.json"
-        data: Any = await self._get(url)
+        data: Any = await self._try_api_name(package_name, "versions")
         if data is None:
             return []
         if isinstance(data, list):
@@ -320,6 +332,28 @@ class RubyGemsClient(BaseDataSourceClient):
 
         return {}
 
+    @staticmethod
+    def _flatten_rubygems_deps(deps: dict) -> dict[str, dict[str, str]]:
+        """Flatten Rubygems API dependency format into runtime/development categories.
+
+        API format:  {"runtime": [{"name":"foo","requirements":"=1.0"}], "development": [...]}
+        Return:      {"dependencies": {"foo": "=1.0"}, "dev_dependencies": {"bar": ">=0"}}
+        """
+        result: dict[str, dict[str, str]] = {"dependencies": {}, "dev_dependencies": {}}
+        for dep in deps.get("runtime", []):
+            if isinstance(dep, dict):
+                name = dep.get("name")
+                req = dep.get("requirements", "")
+                if name:
+                    result["dependencies"][name] = req
+        for dep in deps.get("development", []):
+            if isinstance(dep, dict):
+                name = dep.get("name")
+                req = dep.get("requirements", "")
+                if name:
+                    result["dev_dependencies"][name] = req
+        return result
+
     async def _parse_dependencies(self, dependencies: dict) -> dict:
         parsed: dict[str, dict] = {"runtime": {}, "development": {}}
 
@@ -343,6 +377,18 @@ class RubyGemsClient(BaseDataSourceClient):
             if not version_str or parse_version(version_str) is None:
                 continue
 
+            # Per-version dependency data IS available from the versions endpoint
+            # (each version entry has a "dependencies" list).  Flatten it into the
+            # same format used by get_package_info_async's merged deps.
+            raw_deps = v.get("dependencies", {})
+            if raw_deps:
+                flat = self._flatten_rubygems_deps(raw_deps)
+                deps = {}
+                deps.update(flat.get("dependencies", {}))
+                deps.update(flat.get("dev_dependencies", {}))
+            else:
+                deps = {}
+
             versions.append(
                 {
                     "version": version_str,
@@ -352,6 +398,7 @@ class RubyGemsClient(BaseDataSourceClient):
                     "created_at": v.get("created_at"),
                     "sha": v.get("sha"),
                     "downloads_count": v.get("downloads_count", 0),
+                    "dependencies": deps,
                 }
             )
 
@@ -541,9 +588,9 @@ async def example_usage():
             },
         )
 
-        print(f"Gem: {info['name']}")
-        print(f"Latest version: {info['version']}")
-        print(f"Compatible: {compat['compatible']}")
+        logger.debug("Gem: %s", info["name"])
+        logger.debug("Latest version: %s", info["version"])
+        logger.debug("Compatible: %s", compat["compatible"])
 
 
 if __name__ == "__main__":

@@ -159,7 +159,8 @@ class NPMClient(BaseDataSourceClient):
         include_extended: bool = True,
     ) -> dict[str, Any] | None:
         """Get package info."""
-        package_name = normalize_package_name(package_name)
+        # npm package names are case-insensitive but dots are literal separators
+        package_name = package_name.lower().replace("_", "-")
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
 

@@ -40,9 +40,17 @@ _BASH_COMPLETION = """_{prog}_completion() {{
             local serve_flags="--host --port --reload --mode --ssl-keyfile --ssl-certfile --workers --log-level"
             COMPREPLY=( $(compgen -W "${{serve_flags}}" -- "${{cur}}") )
             ;;
+        init)
+            local init_flags="--template --name --directory --force --with-config --gitignore --lock"
+            COMPREPLY=( $(compgen -W "${{init_flags}}" -- "${{cur}}") )
+            ;;
         lock)
             local lock_flags="--directory --manifest --export --yes --dry-run --interactive --cuda --device --json --report --include-dev --timeout --extras --pin --pin-mode --block --freeze --workspace --prefix --force --target --platform --auto-sync --sign --provenance --check --with-dev --without-optional"
             COMPREPLY=( $(compgen -W "${{lock_flags}}" -- "${{cur}}") )
+            ;;
+        migrate)
+            local migrate_flags="--directory --ecosystem --force --yes --display"
+            COMPREPLY=( $(compgen -W "${{migrate_flags}}" -- "${{cur}}") )
             ;;
         check)
             local check_flags="--verbose --deps --json --cuda --cve --license --deprecated --device --directory --workspace --lock-file --policy --peer"
@@ -59,6 +67,14 @@ _BASH_COMPLETION = """_{prog}_completion() {{
         sbom)
             local sbom_flags="--directory --workspace --lock-file --format --output"
             COMPREPLY=( $(compgen -W "${{sbom_flags}}" -- "${{cur}}") )
+            ;;
+        export)
+            local export_flags="--directory --workspace --lock-file --format --output"
+            COMPREPLY=( $(compgen -W "${{export_flags}}" -- "${{cur}}") )
+            ;;
+        system-info)
+            local sysinfo_flags="--json"
+            COMPREPLY=( $(compgen -W "${{sysinfo_flags}}" -- "${{cur}}") )
             ;;
         install)
             local install_flags="--directory --lock-file --workspace --ecosystem --dry-run --yes --restore --production --cuda --target --platform"
@@ -139,6 +155,16 @@ _{prog}() {{
                         "--reload[Enable hot-reload]" \\
                         "--mode=[Run mode]:mode:(local saas)"
                     ;;
+                init)
+                    _arguments \\
+                        "--template=[Project template]:tmpl:(python-requirements python-pyproject node go rust)" \\
+                        "--name=[Project name]" \\
+                        "--directory=[Project directory]" \\
+                        "--force[Overwrite existing files]" \\
+                        "--with-config[Create udr.json]" \\
+                        "--gitignore[Create .gitignore]" \\
+                        "--lock[Run initial lock]"
+                    ;;
                 check)
                     _arguments \\
                         "-v[Verbose]" \\
@@ -178,13 +204,32 @@ _{prog}() {{
                         "--provenance[Add SLSA provenance]" \\
                         "--check[Check if lock file is up to date (CI mode)]"
                     ;;
-                sbom)
+                migrate)
                     _arguments \\
                         "--directory=[Project directory]" \\
-                        "--workspace=[Workspace name]" \\
-                        "--lock-file=[Explicit lock file path]" \\
-                        "--format=[SBOM format]:fmt:(spdx cyclonedx)" \\
+                        "--ecosystem=[Override ecosystem]" \\
+                        "--force[Overwrite existing udr.lock]" \\
+                        "--yes[Skip confirmation]" \\
+                        "--display[Preview only]"
+                    ;;
+                export)
+                    _arguments \
+                        "--directory=[Project directory]" \
+                        "--workspace=[Workspace name]" \
+                        "--lock-file=[Explicit lock file path]" \
+                        "--format=[Export format]" \
                         "--output=[Output file path]"
+                    ;;
+                sbom)
+                    _arguments \
+                        "--directory=[Project directory]" \
+                        "--workspace=[Workspace name]" \
+                        "--lock-file=[Explicit lock file path]" \
+                        "--format=[SBOM format]:fmt:(spdx cyclonedx)" \
+                        "--output=[Output file path]"
+                    ;;
+                system-info)
+                    _arguments "--json[JSON output]"
                     ;;
                 verify)
                     _arguments \\
@@ -309,6 +354,13 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from serve" -l ssl-certfile -d 'SSL certificate file path'
     complete -c {prog} -n "__fish_seen_subcommand_from serve" -l workers -d 'Number of worker processes'
     complete -c {prog} -n "__fish_seen_subcommand_from serve" -l log-level -xa 'debug info warning error critical'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l template -xa 'python-requirements python-pyproject node go rust'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l name -d 'Project name'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l force -d 'Overwrite existing files'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l with-config -d 'Create udr.json'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l gitignore -d 'Create .gitignore'
+    complete -c {prog} -n "__fish_seen_subcommand_from init" -l lock -d 'Run initial lock'
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l verbose -d 'Verbose'
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l deps -d 'Show deps'
     complete -c {prog} -n "__fish_seen_subcommand_from check" -l json -d 'JSON output'
@@ -337,6 +389,11 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from lock" -l force -d 'Force full re-resolution'
     complete -c {prog} -n "__fish_seen_subcommand_from lock" -l target -xa 'linux windows darwin'
     complete -c {prog} -n "__fish_seen_subcommand_from lock" -l platform -xa 'x86_64 aarch64 arm64 i386 amd64'
+    complete -c {prog} -n "__fish_seen_subcommand_from migrate" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from migrate" -l ecosystem -d 'Override ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from migrate" -l force -d 'Overwrite existing udr.lock'
+    complete -c {prog} -n "__fish_seen_subcommand_from migrate" -l yes -d 'Skip confirmation'
+    complete -c {prog} -n "__fish_seen_subcommand_from migrate" -l display -d 'Preview only'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve" -l target -xa 'linux windows darwin'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve" -l platform -xa 'x86_64 aarch64 arm64 i386 amd64'
     complete -c {prog} -n "__fish_seen_subcommand_from resolve" -l timeout -d 'Resolution timeout'
@@ -361,6 +418,12 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l format -xa 'spdx cyclonedx'
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l output -d 'Output file path'
     complete -c {prog} -n "__fish_seen_subcommand_from completion" -xa 'bash zsh fish'
+    complete -c {prog} -n "__fish_seen_subcommand_from export" -l directory -d 'Project directory'
+    complete -c {prog} -n "__fish_seen_subcommand_from export" -l workspace -d 'Workspace name'
+    complete -c {prog} -n "__fish_seen_subcommand_from export" -l lock-file -d 'Explicit lock file path'
+    complete -c {prog} -n "__fish_seen_subcommand_from export" -l format -d 'Export format'
+    complete -c {prog} -n "__fish_seen_subcommand_from export" -l output -d 'Output file path'
+    complete -c {prog} -n "__fish_seen_subcommand_from system-info" -l json -d 'JSON output'
     complete -c {prog} -n "__fish_seen_subcommand_from graph" -l ecosystem -d 'Ecosystem'
     complete -c {prog} -n "__fish_seen_subcommand_from graph" -l json -d 'JSON output'
     complete -c {prog} -n "__fish_seen_subcommand_from graph" -l cuda -d 'CUDA version'

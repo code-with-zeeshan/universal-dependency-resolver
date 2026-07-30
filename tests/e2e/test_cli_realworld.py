@@ -116,3 +116,46 @@ class TestCLIRealWorld:
             r2 = _run("install", "-d", str(proj), "--dry-run", "-y", timeout=60)
             assert r1.returncode == 0, f"export failed: {r1.stderr}"
             assert r2.returncode == 0, f"install failed: {r2.stderr}"
+
+    def test_11_npm_lock_from_manifest(self):
+        """Lock from npm package.json (express)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj = Path(tmpdir) / "project"
+            proj.mkdir()
+            (proj / "package.json").write_text(
+                '{"name":"test","dependencies":{"express":"^4.18.2"}}\n'
+            )
+            result = _run("lock", "-d", str(proj), "-y", timeout=300)
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            assert (proj / "udr.lock").is_file()
+            lock = json.loads((proj / "udr.lock").read_text())
+            pkgs = lock.get("packages", {})
+            assert "express" in pkgs, f"express not in {list(pkgs)[:10]}"
+
+    def test_12_lock_dry_run_json_validation(self):
+        """Validate lock --dry-run --json output structure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj = Path(tmpdir) / "project"
+            proj.mkdir()
+            (proj / "requirements.txt").write_text("flask>=2.0\nnumpy>=1.20\n")
+            result = _run("lock", "-d", str(proj), "--dry-run", "--json", timeout=300)
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            data = json.loads(result.stdout)
+            assert "packages" in data or "resolved_packages" in data
+            rp = data.get("resolved_packages") or data.get("packages", {})
+            assert "flask" in rp, f"flask not in {list(rp)[:10]}"
+            assert "numpy" in rp, f"numpy not in {list(rp)[:10]}"
+
+    def test_13_lock_dry_run_npm_json(self):
+        """Validate lock --dry-run --json for npm express project."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj = Path(tmpdir) / "project"
+            proj.mkdir()
+            (proj / "package.json").write_text(
+                '{"name":"test","dependencies":{"express":"^4.18.2"}}\n'
+            )
+            result = _run("lock", "-d", str(proj), "--dry-run", "--json", timeout=300)
+            assert result.returncode == 0, f"stderr: {result.stderr}"
+            data = json.loads(result.stdout)
+            rp = data.get("resolved_packages") or data.get("packages", {})
+            assert "express" in rp, f"express not in {list(rp)[:10]}"

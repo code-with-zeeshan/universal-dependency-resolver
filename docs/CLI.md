@@ -913,6 +913,166 @@ udr details serde -e crates --json      # JSON output
 
 ---
 
+## `export`
+
+Export a lock file to a specific format (requirements.txt, Dockerfile, etc.).
+
+**Usage:**
+
+```bash
+udr export                                          # default: requirements.txt
+udr export --format requirements.txt                # pip freeze style
+udr export --format Dockerfile                      # Dockerfile with pip install
+udr export --output /tmp/deps.txt                   # write to file
+udr export --workspace backend                      # export from workspace lock
+udr export -l /path/to/lock.json                    # explicit lock file
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-d, --directory` | `.` | Project directory with lock file |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
+| `-f, --format` | `requirements.txt` | Export format (e.g. `requirements.txt`, `Dockerfile`, `pip-compile`) |
+| `-o, --output` | `None` | Output file path (default: print to stdout) |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Export generated successfully |
+| `1` | Lock file not found or export failed |
+
+---
+
+## `init`
+
+Initialize a new project with UDR configuration files.
+
+**Usage:**
+
+```bash
+udr init                                        # auto-detect project type
+udr init -t python-requirements                 # Python requirements project
+udr init -t python-pyproject                    # Python pyproject.toml project
+udr init -t node                                # Node.js project
+udr init -t go                                  # Go project
+udr init -t rust                                # Rust project
+udr init --with-config                          # also create udr.json config
+udr init --gitignore                            # also create .gitignore
+udr init --lock                                 # run initial lock after init
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-t, --template` | `auto` | Project template: `python-requirements`, `python-pyproject`, `node`, `go`, `rust` |
+| `-n, --name` | `None` | Project name (default: directory name) |
+| `-d, --directory` | `.` | Project directory |
+| `-f, --force` | `False` | Overwrite existing files |
+| `--with-config` | `False` | Create `udr.json` configuration file |
+| `--gitignore` | `False` | Create `.gitignore` with UDR entries |
+| `--lock` | `False` | Run initial resolution after initialization |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Project initialized successfully |
+| `1` | Initialization failed |
+
+---
+
+## `migrate`
+
+Migrate existing lock files (package-lock.json, Cargo.lock, poetry.lock, etc.) to `udr.lock`.
+
+**Supported source formats:** `package-lock.json`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `go.sum`, `Gemfile.lock`, `composer.lock`, `mix.lock`, `Package.resolved`, `yarn.lock`, `pnpm-lock.yaml`, `Brewfile.lock.json`, `Podfile.lock`, `Pipfile.lock`.
+
+**Usage:**
+
+```bash
+udr migrate                                     # auto-detect and migrate
+udr migrate --display                           # preview only (no write)
+udr migrate --force                             # overwrite existing udr.lock
+udr migrate -d /path/to/project                 # specific project
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-d, --directory` | `.` | Project directory |
+| `-e, --ecosystem` | `None` | Override detected ecosystem for all packages |
+| `-f, --force` | `False` | Overwrite existing `udr.lock` |
+| `-y, --yes` | `False` | Skip confirmation prompt |
+| `--display` | `False` | Preview only — don't write lock file |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Migration successful |
+| `1` | Migration failed |
+
+---
+
+## `system-info`
+
+Show detailed system information — OS, CPU, GPU, Python, runtimes.
+
+**Usage:**
+
+```bash
+udr system-info                             # rich table output
+udr system-info --json                      # JSON output
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--json` | `False` | Output as JSON |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Success |
+| `1` | System scan failed |
+
+---
+
+## `tools`
+
+Manage plugins and extensions.
+
+**Usage:**
+
+```bash
+udr tools register-plugin --path ./my-plugin     # register a local plugin
+udr tools register-plugin --path ./my-plugin --name my-plugin   # with name tag
+```
+
+**Flags (register-plugin subcommand):**
+
+| Flag | Required | Default | Description |
+|---|---|---|---|
+| `--path` | Yes | — | Directory path containing plugin Python files |
+| `--name` | No | `None` | Optional name tag for the plugin group |
+
+**Exit codes:**
+
+| Code | Condition |
+|---|---|
+| `0` | Plugin registered successfully |
+| `1` | Plugin registration failed |
+
+---
+
 ## Package Spec Syntax
 
 Use `name@ecosystem` to specify which ecosystem a package belongs to:
@@ -1054,6 +1214,11 @@ These features require local filesystem access, a terminal TTY, or start the API
 | CLI Command | Reason |
 |---|---|
 | `udr serve` | Starts the API server — no API to call it from |
+| `udr export` | Local filesystem read/write |
+| `udr init` | Creates files on local filesystem |
+| `udr migrate` | Reads/writes local lock files |
+| `udr system-info` | Local system scan — no network endpoint |
+| `udr tools` | Local plugin filesystem registration |
 | `udr lock -m/--manifest` | Filters which manifest files to scan — local filesystem operation |
 | `udr lock --dry-run` | Preview without writing — local filesystem operation |
 | `udr lock -i/--interactive` | Interactive TUI resolver — requires terminal |

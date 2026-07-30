@@ -229,11 +229,35 @@ async def _check_cve(args: argparse.Namespace) -> bool:
         )
 
     if not vuln_results:
+        if args.json:
+            _output_json({"vulnerabilities": [], "summary": {"total": 0, "critical_high": 0}}, args)
         console.print("[green]✅ No known vulnerabilities found in lock file.[/green]")
         return True
 
     critical_high = [v for v in vuln_results if _extract_severity(v[2]) in ("CRITICAL", "HIGH")]
     others = len(vuln_results) - len(critical_high)
+
+    if args.json:
+        vuln_list = [
+            {
+                "package": p,
+                "version": v,
+                "cve_id": c.get("id"),
+                "severity": _extract_severity(c),
+                "summary": c.get("summary", "")[:80],
+            }
+            for p, v, c in vuln_results
+        ]
+        _output_json(
+            {
+                "vulnerabilities": vuln_list,
+                "summary": {
+                    "total": len(vuln_results),
+                    "critical_high": len(critical_high),
+                },
+            },
+            args,
+        )
 
     title = f"[red]{len(vuln_results)} known vulnerabilities"
     if critical_high:
@@ -317,6 +341,8 @@ async def _check_license(args: argparse.Namespace) -> bool:
         await aggregator.close()
 
     if not package_licenses:
+        if args.json:
+            _output_json({"status": "ok", "total_checked": 0, "results": {}}, args)
         console.print("[yellow]No license information found in lock file or registries.[/yellow]")
         console.print(
             "Some registries (e.g., PyPI) include license data; others may require manual entry."
@@ -324,6 +350,20 @@ async def _check_license(args: argparse.Namespace) -> bool:
         return True
 
     results = check_license_compatibility(package_licenses)
+
+    if args.json:
+        denied = {n for n, r in results.items() if r["status"] == "denied"}
+        warnings = {n for n, r in results.items() if r["status"] == "warning"}
+        _output_json(
+            {
+                "status": "violation" if denied else ("warning" if warnings else "ok"),
+                "total_checked": len(results),
+                "denied": sorted(denied),
+                "warnings": sorted(warnings),
+                "results": results,
+            },
+            args,
+        )
 
     denied = {n for n, r in results.items() if r["status"] == "denied"}
     warnings = {n for n, r in results.items() if r["status"] == "warning"}
@@ -416,8 +456,20 @@ async def _check_deprecated(args: argparse.Namespace) -> bool:
             deprecated.append((pname, ver, "deprecated"))
 
     if not deprecated:
+        if args.json:
+            _output_json({"status": "ok", "total_deprecated": 0, "results": []}, args)
         console.print("[green]✅ No deprecated or yanked packages found.[/green]")
         return True
+
+    if args.json:
+        _output_json(
+            {
+                "status": "issues_found",
+                "total_deprecated": len(deprecated),
+                "results": [{"package": p, "version": v, "status": s} for p, v, s in deprecated],
+            },
+            args,
+        )
 
     table = Table(
         title=f"[yellow]{len(deprecated)} deprecated/yanked package(s)[/yellow]",

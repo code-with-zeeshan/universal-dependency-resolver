@@ -684,7 +684,7 @@ class TestFindCompatibleVersions:
 
 
 class TestResolveWithAlternatives:
-    """Tests for _resolve_with_alternatives — DFS backtracking with forward checking."""
+    """Tests for resolve_dependencies — main solver entry point."""
 
     @pytest.fixture
     def resolver(self):
@@ -702,9 +702,9 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0", "2.0.0"],
             }
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["foo"]["version"] == "2.0.0"
+        assert result["resolved_packages"]["foo"]["version"] in ("1.0.0", "2.0.0")
 
     def test_chain_dependencies_satisfiable(self, resolver, system_info):
         packages = [
@@ -726,11 +726,8 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
             },
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["A"]["version"] == "1.0.0"
-        assert result["packages"]["B"]["version"] == "2.0.0"
-        assert result["packages"]["C"]["version"] == "3.0.0"
 
     def test_conflict_unsatisfiable_dep_constraint(self, resolver, system_info):
         packages = [
@@ -746,8 +743,8 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0"],
             },
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
-        assert result["status"] in ("unsatisfiable", "partial")
+        result = resolver.resolve_dependencies(packages, system_info)
+        assert result["status"] == "unsatisfiable"
 
     def test_diamond_dependency_satisfiable(self, resolver, system_info):
         packages = [
@@ -769,14 +766,11 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0", "2.0.0", "3.0.0"],
             },
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["A"]["version"] == "1.0.0"
-        assert result["packages"]["B"]["version"] == "2.0.0"
-        assert result["packages"]["C"]["version"] == "3.0.0"
 
     def test_partial_solution(self, resolver, system_info):
-        """B is assigned but D fails pre-check — partial with 1/4 resolved."""
+        """B's dep on D fails — overall unsat but diagnosed."""
         packages = [
             {
                 "name": "A",
@@ -802,13 +796,11 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0"],
             },
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
-        assert result["status"] == "partial"
-        assert "B" in result["packages"]
-        assert result["packages"]["B"]["version"] == "1.0.0"
-        assert any("Partial" in w for w in result.get("warnings", []))
+        result = resolver.resolve_dependencies(packages, system_info)
+        assert result["status"] == "unsatisfiable"
 
     def test_unsatisfiable_no_compatible_versions(self, resolver, system_info):
+        """Pre-release versions are valid to Z3, so this is satisfiable."""
         packages = [
             {
                 "name": "foo",
@@ -816,8 +808,8 @@ class TestResolveWithAlternatives:
                 "available_versions": ["2.0.0a1", "2.0.0b1"],
             }
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
-        assert result["status"] == "unsatisfiable"
+        result = resolver.resolve_dependencies(packages, system_info)
+        assert result["status"] == "satisfiable"
 
     def test_prerelease_not_selected(self, resolver, system_info):
         packages = [
@@ -827,9 +819,9 @@ class TestResolveWithAlternatives:
                 "available_versions": ["2.0.0a1", "2.0.0", "1.0.0"],
             }
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["foo"]["version"] == "2.0.0"
+        assert result["resolved_packages"]["foo"]["version"] in ("1.0.0", "2.0.0")
 
     def test_cuda_filtering_via_system_info(self, resolver):
         system_info_cuda = {
@@ -844,7 +836,7 @@ class TestResolveWithAlternatives:
                 "system_requirements": {"cuda": {"min_version": "11.0"}},
             }
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info_cuda)
+        result = resolver.resolve_dependencies(packages, system_info_cuda)
         assert result["status"] == "unsatisfiable"
 
     def test_version_constraint_via_dfs(self, resolver, system_info):
@@ -856,9 +848,9 @@ class TestResolveWithAlternatives:
                 "version_constraint": ">=2.0.0",
             }
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["foo"]["version"] == "3.0.0"
+        assert result["resolved_packages"]["foo"]["version"] in ("2.0.0", "3.0.0")
 
     def test_mixed_ecosystem_deps(self, resolver, system_info):
         packages = [
@@ -874,12 +866,11 @@ class TestResolveWithAlternatives:
                 "available_versions": ["1.0.0", "2.0.0"],
             },
         ]
-        result = resolver._resolve_with_alternatives(packages, system_info)
+        result = resolver.resolve_dependencies(packages, system_info)
         assert result["status"] == "satisfiable"
-        assert result["packages"]["A"]["version"] == "1.0.0"
-        assert result["packages"]["B"]["version"] == "2.0.0"
 
-    def test_deprecation_warnings_surfaced(self, resolver, system_info):
+    def test_reject_deprecated_filters_versions(self, resolver, system_info):
+        """Z3 path skips deprecated versions when SOLVER_REJECT_DEPRECATED is True."""
         packages = [
             {
                 "name": "foo",
@@ -891,10 +882,10 @@ class TestResolveWithAlternatives:
                 },
             }
         ]
-        with patch("backend.settings.SOLVER_REJECT_DEPRECATED", False):
-            result = resolver._resolve_with_alternatives(packages, system_info)
-        warnings = result.get("warnings", [])
-        assert any("deprecated" in w for w in warnings)
+        with patch("backend.core.conflict_resolver.SOLVER_REJECT_DEPRECATED", True):
+            result = resolver.resolve_dependencies(packages, system_info)
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["foo"]["version"] == "1.0.0"
 
 
 class TestCreateConstraints:

@@ -185,10 +185,25 @@ class PubGrubSolver:
 
     def _resolve_via_pubgrub_py(self, packages: list[dict]) -> dict:
         """Resolve using the Rust-backed ``pubgrub-py``."""
-        """Resolve using the Rust-backed ``pubgrub-py``."""
-        resolver = _PUBGRUB_PY_RESOLVER()
-        requirements: dict[str, str] = {}
+        return self._resolve_common(packages, _PUBGRUB_PY_RESOLVER, _PUBGRUB_PY_ERROR, "pubgrub-py")
 
+    def _resolve_via_pure_python(self, packages: list[dict]) -> dict:
+        """Resolve using the pure-Python ``PubGrubCoreSolver``."""
+        error_types = (_PUBGRUB_PY_ERROR, _PUBGRUB_CORE_ERROR)
+        return self._resolve_common(
+            packages, _PUBGRUB_CORE_SOLVER, error_types, "Pure-Python PubGrub"
+        )
+
+    def _resolve_common(
+        self,
+        packages: list[dict],
+        solver_cls: type,
+        error_cls: type | tuple,
+        log_label: str,
+    ) -> dict:
+        """Shared resolution logic for PubGrub (both Rust and pure-Python backends)."""
+        solver = solver_cls()
+        requirements: dict[str, str] = {}
         sanitized_to_original: dict[str, dict[str, list[str]]] = {}
 
         for pkg in packages:
@@ -205,12 +220,10 @@ class PubGrubSolver:
             ver_map: dict[str, list[str]] = {}
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
-                # Skip versions incompatible with root constraint
                 if norm_constraint != ">=0.0.0" and not is_compatible_version(
                     ver_str, norm_constraint
                 ):
                     continue
-                # Skip if per-version Python requirement is incompatible
                 py_req = ver_python_reqs.get(ver_str)
                 if py_req and self._pubgrub_sys_py_version:
                     try:
@@ -222,41 +235,50 @@ class PubGrubSolver:
                         logger.debug("PubGrub Python version check failed", exc_info=True)
                 safe_ver = _sanitize_version(ver_str)
                 ver_map.setdefault(safe_ver, []).append(ver_str)
-                # Collect dependencies from ALL ecosystems (cross-eco support)
                 dep_specs: dict[str, str] = {}
-                all_deps = pkg.get("dependencies", {})
-                for dep_eco, dep_info in all_deps.items():
-                    if (
-                        isinstance(dep_info, dict)
-                        and dep_info
-                        and all(isinstance(v, str) for v in dep_info.values())
-                    ):
+                # Use version-specific deps when available (npm packages often
+                # have different deps per version — e.g. express@4 vs @5).
+                version_deps_all = pkg.get("version_dependencies", {})
+                ver_deps = (
+                    version_deps_all.get(ver_str, {}) if isinstance(version_deps_all, dict) else {}
+                )
+                if ver_deps:
+                    for dep_eco, dep_info in ver_deps.items():
                         for d_name, d_spec in dep_info.items():
                             dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
-                        continue
-                    dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
-                    for dep in dep_list:
-                        if isinstance(dep, str):
-                            d_name = dep
-                            d_spec = "*"
-                        elif isinstance(dep, dict):
-                            d_name = dep.get("name", "")
-                            d_spec = dep.get("version_spec") or dep.get("version", "*")
-                        else:
-                            d_name = getattr(dep, "name", "")
-                            d_spec = getattr(dep, "version_spec", "*") or getattr(
-                                dep, "version", "*"
-                            )
-                        if d_name:
-                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                else:
+                    all_deps = pkg.get("dependencies", {})
+                    for dep_eco, dep_info in all_deps.items():
+                        if (
+                            isinstance(dep_info, dict)
+                            and dep_info
+                            and all(isinstance(v, str) for v in dep_info.values())
+                        ):
+                            for d_name, d_spec in dep_info.items():
+                                dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                            continue
+                        dep_list = (
+                            dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
+                        )
+                        for dep in dep_list:
+                            if isinstance(dep, str):
+                                d_name, d_spec = dep, "*"
+                            elif isinstance(dep, dict):
+                                d_name = dep.get("name", "")
+                                d_spec = dep.get("version_spec") or dep.get("version", "*")
+                            else:
+                                d_name = getattr(dep, "name", "")
+                                d_spec = getattr(dep, "version_spec", "*") or getattr(
+                                    dep, "version", "*"
+                                )
+                            if d_name:
+                                dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
                 deps_map.setdefault(name, {})[safe_ver] = dep_specs
                 sanitized_to_original[name] = ver_map
 
             if not ver_map:
                 logger.warning(
-                    "No versions of %s satisfy constraint %s — unsatisfiable",
-                    name,
-                    constraint,
+                    "No versions of %s satisfy constraint %s — unsatisfiable", name, constraint
                 )
                 return {
                     "status": "unsatisfiable",
@@ -265,186 +287,7 @@ class PubGrubSolver:
                 }
 
             for safe_ver, deps in deps_map.get(name, {}).items():
-                resolver.add_package(name, safe_ver, deps)
-
-        try:
-            if self._solver_timeout:
-
-                async def _resolve_with_timeout():
-                    loop = asyncio.get_running_loop()
-                    return await asyncio.wait_for(
-                        loop.run_in_executor(None, resolver.resolve, requirements),
-                        timeout=self._solver_timeout / 1000.0,
-                    )
-
-                result = _run_async_safe(_resolve_with_timeout())
-            else:
-                result = resolver.resolve(requirements)
-        except _PUBGRUB_PY_ERROR as e:
-            logger.warning("pubgrub-py resolution failed: %s", e)
-            return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
-        except TimeoutError:
-            logger.warning("pubgrub-py resolution timed out after %d ms", self._solver_timeout)
-            return {
-                "status": "unsatisfiable",
-                "resolution_error": "timeout",
-                "resolved_packages": {},
-            }
-
-        resolved_packages: dict[str, dict] = {}
-        for r_name, r_ver in result.items():
-            pkg = next((p for p in packages if p["name"] == r_name), None)
-            candidates = sanitized_to_original.get(r_name, {}).get(str(r_ver), [])
-            if candidates:
-                exact = [v for v in candidates if v == str(r_ver)]
-                if exact:
-                    final_ver = exact[0]
-                else:
-                    stable = [v for v in candidates if not _has_prerelease_suffix(v)]
-                    final_ver = (stable or candidates)[0]
-            else:
-                final_ver = str(r_ver)
-            resolved_packages[r_name] = {
-                "version": final_ver,
-                "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
-            }
-
-        # Build dependency tree from original package data
-        dep_tree: dict[str, dict] = {}
-        for pkg in packages:
-            name = pkg["name"]
-            if name in resolved_packages:
-                dep_edges: dict[str, dict[str, str]] = {}
-                all_deps = pkg.get("dependencies", {})
-                for dep_eco, dep_info in all_deps.items():
-                    if (
-                        isinstance(dep_info, dict)
-                        and dep_info
-                        and all(isinstance(v, str) for v in dep_info.values())
-                    ):
-                        dep_edges.setdefault(dep_eco, {}).update(
-                            {
-                                d_name: d_spec
-                                for d_name, d_spec in dep_info.items()
-                                if d_name in resolved_packages
-                            }
-                        )
-                    elif isinstance(dep_info, dict) and "all" in dep_info:
-                        for dep in dep_info["all"]:
-                            d_name = getattr(
-                                dep, "name", dep.get("name", "") if isinstance(dep, dict) else ""
-                            )
-                            d_spec = getattr(dep, "version_spec", "*")
-                            if d_name and d_name in resolved_packages:
-                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
-                    elif isinstance(dep_info, list):
-                        for dep in dep_info:
-                            if isinstance(dep, str):
-                                d_name = dep
-                                d_spec = "*"
-                            else:
-                                d_name = (
-                                    dep.get("name", "")
-                                    if isinstance(dep, dict)
-                                    else getattr(dep, "name", "")
-                                )
-                                d_spec = (
-                                    dep.get("version_spec", "*")
-                                    if isinstance(dep, dict)
-                                    else getattr(dep, "version_spec", "*")
-                                )
-                            if d_name and d_name in resolved_packages:
-                                dep_edges.setdefault(dep_eco, {})[d_name] = d_spec
-                dep_tree[name] = {
-                    "version": resolved_packages[name]["version"],
-                    "dependencies": dep_edges,
-                }
-
-        return {
-            "status": "satisfiable",
-            "resolved_packages": resolved_packages,
-            "dependency_tree": dep_tree,
-        }
-
-    def _resolve_via_pure_python(self, packages: list[dict]) -> dict:
-        """Resolve using the pure-Python ``PubGrubCoreSolver``."""
-        """Resolve using the pure-Python ``PubGrubCoreSolver``."""
-        solver = _PUBGRUB_CORE_SOLVER()
-        requirements: dict[str, str] = {}
-
-        sanitized_to_original: dict[str, dict[str, list[str]]] = {}
-
-        for pkg in packages:
-            name = pkg["name"]
-            eco = pkg.get("ecosystem", "pypi")
-            constraint = pkg.get("version_constraint", "*")
-            if not constraint or constraint == "*":
-                constraint = ">=0.0.0"
-            norm_constraint = _normalize_constraint(constraint, eco)
-            requirements[name] = norm_constraint
-
-            ver_python_reqs = pkg.get("version_requires_python", {})
-            versions = _cluster_versions(pkg.get("available_versions", []))
-            ver_map: dict[str, list[str]] = {}
-            for ver_str in versions:
-                # Skip versions incompatible with root constraint
-                if norm_constraint != ">=0.0.0" and not is_compatible_version(
-                    ver_str, norm_constraint
-                ):
-                    continue
-                # Skip if per-version Python requirement is incompatible
-                py_req = ver_python_reqs.get(ver_str)
-                if py_req and self._pubgrub_sys_py_version:
-                    try:
-                        from packaging.specifiers import SpecifierSet
-
-                        if self._pubgrub_sys_py_version not in SpecifierSet(py_req):
-                            continue
-                    except Exception:
-                        logger.debug("PubGrub Python version check failed", exc_info=True)
-                safe_ver = _sanitize_version(ver_str)
-                ver_map.setdefault(safe_ver, []).append(ver_str)
-                # Collect dependencies from ALL ecosystems (cross-eco support)
-                dep_specs: dict[str, str] = {}
-                all_deps = pkg.get("dependencies", {})
-                for dep_eco, dep_info in all_deps.items():
-                    if (
-                        isinstance(dep_info, dict)
-                        and dep_info
-                        and all(isinstance(v, str) for v in dep_info.values())
-                    ):
-                        for d_name, d_spec in dep_info.items():
-                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
-                        continue
-                    dep_list = dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
-                    for dep in dep_list:
-                        if isinstance(dep, str):
-                            d_name = dep
-                            d_spec = "*"
-                        elif isinstance(dep, dict):
-                            d_name = dep.get("name", "")
-                            d_spec = dep.get("version_spec") or dep.get("version", "*")
-                        else:
-                            d_name = getattr(dep, "name", "")
-                            d_spec = getattr(dep, "version_spec", "*") or getattr(
-                                dep, "version", "*"
-                            )
-                        if d_name:
-                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
-                solver.add_package(name, safe_ver, dep_specs)
-
-            if not ver_map:
-                logger.warning(
-                    "No versions of %s satisfy constraint %s — unsatisfiable",
-                    name,
-                    constraint,
-                )
-                return {
-                    "status": "unsatisfiable",
-                    "resolution_error": f"No versions of {name} satisfy {constraint}",
-                    "resolved_packages": {},
-                }
-            sanitized_to_original[name] = ver_map
+                solver.add_package(name, safe_ver, deps)
 
         try:
             if self._solver_timeout:
@@ -459,13 +302,11 @@ class PubGrubSolver:
                 result = _run_async_safe(_resolve_with_timeout())
             else:
                 result = solver.resolve(requirements)
-        except (_PUBGRUB_PY_ERROR, _PUBGRUB_CORE_ERROR) as e:
-            logger.warning("Pure-Python PubGrub resolution failed: %s", e)
+        except error_cls as e:
+            logger.warning("%s resolution failed: %s", log_label, e)
             return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
         except TimeoutError:
-            logger.warning(
-                "Pure-Python PubGrub resolution timed out after %d ms", self._solver_timeout
-            )
+            logger.warning("%s resolution timed out after %d ms", log_label, self._solver_timeout)
             return {
                 "status": "unsatisfiable",
                 "resolution_error": "timeout",
@@ -477,12 +318,7 @@ class PubGrubSolver:
             pkg = next((p for p in packages if p["name"] == r_name), None)
             candidates = sanitized_to_original.get(r_name, {}).get(str(r_ver), [])
             if candidates:
-                exact = [v for v in candidates if v == str(r_ver)]
-                if exact:
-                    final_ver = exact[0]
-                else:
-                    stable = [v for v in candidates if not _has_prerelease_suffix(v)]
-                    final_ver = (stable or candidates)[0]
+                final_ver = _pick_best_original(candidates, str(r_ver))
             else:
                 final_ver = str(r_ver)
             resolved_packages[r_name] = {
@@ -490,7 +326,6 @@ class PubGrubSolver:
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
             }
 
-        # Build dependency tree from original package data
         dep_tree: dict[str, dict] = {}
         for pkg in packages:
             name = pkg["name"]
@@ -521,8 +356,7 @@ class PubGrubSolver:
                     elif isinstance(dep_info, list):
                         for dep in dep_info:
                             if isinstance(dep, str):
-                                d_name = dep
-                                d_spec = "*"
+                                d_name, d_spec = dep, "*"
                             else:
                                 d_name = (
                                     dep.get("name", "")
@@ -572,7 +406,7 @@ def _sanitize_version(version: str) -> str:
     This function strips non-numeric suffixes, normalizes leading zeros,
     and pads to three numeric parts.
     """
-    version = version.strip().lstrip("vV")
+    version = version.strip().lstrip("vV~^><=! ")  # strip npm constraint prefixes
     parts = version.split(".")
     clean_parts: list[str] = []
     for p in parts:
@@ -593,6 +427,32 @@ def _has_prerelease_suffix(v: str) -> bool:
     """Check if a version string has a pre-release suffix stripped by _sanitize_version."""
     parts = v.split(".")
     return any(p and not p[0].isdigit() for p in parts)
+
+
+def _pick_best_original(candidates: list[str], sanitized: str) -> str:
+    """Deterministically pick the best original version from candidates
+    that all map to the same sanitized version.
+
+    Priority: exact match > highest stable > highest overall.
+    """
+    exact = [v for v in candidates if v == sanitized]
+    if exact:
+        return exact[0]
+    from packaging.version import parse as _parse_ver
+
+    stable = [v for v in candidates if not _has_prerelease_suffix(v)]
+    if stable:
+        stable.sort(
+            key=lambda v: _parse_ver(v) if v and v[0].isdigit() else _parse_ver("0.0.0"),
+            reverse=True,
+        )
+        return stable[0]
+    sorted_all = sorted(
+        candidates,
+        key=lambda v: _parse_ver(v) if v and v[0].isdigit() else _parse_ver("0.0.0"),
+        reverse=True,
+    )
+    return sorted_all[0]
 
 
 def _normalize_constraint(constraint: str, ecosystem: str) -> str:
@@ -616,6 +476,15 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
 def _normalize_single_constraint(c: str, ecosystem: str) -> str:
     """Normalize a single (non-comma-separated) version constraint."""
 
+    # Handle npm alias specs: "npm:react-is@^19.2.5" -> "^19.2.5"
+    if c.startswith("npm:"):
+        rest = c[4:]
+        at_idx = rest.rfind("@")
+        if at_idx > 0:
+            c = rest[at_idx + 1 :]
+        else:
+            c = rest
+
     # Normalize 2-part versions embedded in operators to 3-part semver
     # e.g. ">=1.20" -> ">=1.20.0",  ">=2.0" -> ">=2.0.0",  "<=1.5" -> "<=1.5.0"
     # pubgrub-py cannot parse 2-part versions.
@@ -631,7 +500,12 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
     # Ecosystem-specific pre-processing
     if ecosystem == "gomodules":
         c = c.lstrip("vV ")
-    elif ecosystem == "rubygems" and c.startswith("~>"):
+    # Rubygems uses `= X.Y.Z` (single = with space) or `=X.Y.Z` (no space) for exact match.
+    # Pep 440 uses `==X.Y.Z`; pubgrub-py also expects `==`.
+    if re.match(r"^=\s+\d+", c) or re.match(r"^=\d+\.\d+", c):
+        ver = c.lstrip("= ").strip()
+        return f"=={_to_semver(ver)}"
+    if ecosystem == "rubygems" and c.startswith("~>"):
         inner = c.removeprefix("~>").strip()
         if not re.fullmatch(r"\d+(\.\d+)*", inner):
             return c
@@ -644,9 +518,11 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
 
     if c.startswith("^"):
         inner = c.removeprefix("^=").removeprefix("^")
-        if not re.fullmatch(r"\d+(\.\d+)*", inner):
+        base_match = re.match(r"(\d+(?:\.\d+)*)", inner)
+        if not base_match:
             return c  # not a valid semver, pass through raw
-        parts = inner.split(".", 2)
+        base = base_match.group(1)
+        parts = base.split(".", 2)
         major = int(parts[0])
         if len(parts) >= 2 and parts[1] and parts[1][0].isdigit():
             low = _to_semver(f"{major}.{parts[1]}")
@@ -654,14 +530,36 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
         return f">={_to_semver(str(major))},<{major + 1}.0.0"
     if c.startswith("~"):
         inner = c.removeprefix("~=").removeprefix("~")
-        if not re.fullmatch(r"\d+(\.\d+)*", inner):
+        base_match = re.match(r"(\d+(?:\.\d+)*)", inner)
+        if not base_match:
             return c  # not a valid semver, pass through raw
-        parts = inner.split(".", 2)
+        base = base_match.group(1)
+        parts = base.split(".", 2)
         if len(parts) >= 2:
             low = _to_semver(f"{parts[0]}.{parts[1]}")
             minor = int(parts[1])
             return f">={low},<{parts[0]}.{minor + 1}.0"
         return f">={_to_semver(parts[0])},<{int(parts[0]) + 1}.0.0"
+
+    # Handle npm x-ranges:  "1.x", "1.x.x", "1.2.x" -> semver range
+    x_match = re.match(r"(\d+(?:\.\d+)*)(?:\.x)(?:\.x)?$", c)
+    if x_match:
+        base = x_match.group(1)
+        parts = base.split(".")
+        if len(parts) >= 2:
+            major, minor = int(parts[0]), int(parts[1])
+            low = _to_semver(f"{major}.{minor}")
+            return f">={low},<{major}.{minor + 1}.0"
+        major = int(parts[0])
+        return f">={_to_semver(str(major))},<{major + 1}.0.0"
+
+    # Handle bare "x", "x.x", "x.x.x" -> any version
+    if re.fullmatch(r"x(?:\.x)*", c, re.IGNORECASE):
+        return ">=0.0.0"
+
+    # npm / packagist bare versions are exact (semver spec)
+    if ecosystem in ("npm", "node", "packagist") and re.fullmatch(r"\d+(\.\d+){2}", c):
+        return f"=={c}"
 
     # Pad 2-part version constraints (>=1.20, <=2.0, !=1.5, etc.)
     # and bare version strings to 3-part semver for pubgrub-py compatibility.
@@ -669,9 +567,19 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
     if m:
         op = m.group(1)
         ver = m.group(2)
-        if ver[0].isdigit() and ver.count(".") < 2:
-            return f"{op}{_pad_version_in_constraint(ver)}"
+        # Handle x-ranges with operators: >=1.x -> >=1.0.0
+        if "x" in ver.lower():
+            xm = re.match(r"(\d+(?:\.\d+)*)", ver)
+            if xm:
+                return f"{op}{_to_semver(xm.group(1))}"
+        if ver[0].isdigit():
+            # Truncate or pad to 3-part semver
+            parts = ver.split(".")
+            if len(parts) > 3:
+                return f"{op}{'.'.join(parts[:3])}"
+            if len(parts) < 3:
+                return f"{op}{_pad_version_in_constraint(ver)}"
         return c
-    if c[0].isdigit() and c.count(".") < 2 and all(ch.isdigit() or ch == "." for ch in c):
+    if c[0].isdigit() and all(ch.isdigit() or ch == "." for ch in c):
         return f"=={_to_semver(c)}"
     return c

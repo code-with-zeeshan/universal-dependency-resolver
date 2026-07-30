@@ -31,11 +31,13 @@ which is deliberately compatible with :class:`~backend.core.cache.DictCache`::
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import logging
 import shutil
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -54,18 +56,77 @@ _DEFAULT_TTL = 3600  # 1 hour
 _UNSET = object()
 
 # ---------------------------------------------------------------------------
-# Serialisation helpers
+# Serialisation helpers — handles dataclasses, enums, and sets
 # ---------------------------------------------------------------------------
 
-_JSON_OPTS = {"sort_keys": True, "default": str, "ensure_ascii": False}
+_CAC_MARKER = "__cac_type__"
+
+# Cache of known dataclass types for reconstruction
+_CAC_DATACLASS_REGISTRY: dict[str, type] = {}
+
+
+def _register_cac_type(t: type) -> None:
+    """Register a dataclass type for round-trip serialisation."""
+    _CAC_DATACLASS_REGISTRY[t.__qualname__] = t
+
+
+def _cac_object_hook(d: dict) -> Any:
+    """Reconstruct dataclass instances from serialised form."""
+    if _CAC_MARKER not in d:
+        return d
+    type_name = d.pop(_CAC_MARKER)
+    cls = _CAC_DATACLASS_REGISTRY.get(type_name)
+    if cls is None:
+        logger.warning("Content cache: unknown type '%s', returning raw dict", type_name)
+        d[_CAC_MARKER] = type_name
+        return d
+    # Restore enum fields
+    if hasattr(cls, "__annotations__"):
+        for field_name, field_type in cls.__annotations__.items():
+            if field_name in d and isinstance(field_type, type) and issubclass(field_type, Enum):
+                try:
+                    d[field_name] = field_type(d[field_name])
+                except (ValueError, TypeError):
+                    pass
+    try:
+        return cls(**d)
+    except Exception as exc:
+        logger.debug("Content cache: failed to reconstruct %s: %s", type_name, exc)
+        d[_CAC_MARKER] = type_name
+        return d
+
+
+class _CacEncoder(json.JSONEncoder):
+    """JSON encoder that serialises dataclasses, enums, and sets."""
+
+    def default(self, o: Any) -> Any:
+        if dataclasses.is_dataclass(o):
+            out = {}
+            for f in dataclasses.fields(o):
+                val = getattr(o, f.name)
+                if isinstance(val, Enum):
+                    out[f.name] = val.value
+                else:
+                    out[f.name] = val
+            return {_CAC_MARKER: type(o).__qualname__, **out}
+        if isinstance(o, Enum):
+            return o.value
+        if isinstance(o, set):
+            return list(o)
+        if isinstance(o, bytes):
+            return o.decode("utf-8", errors="replace")
+        return super().default(o)
+
+
+_JSON_OPTS = {"sort_keys": True, "ensure_ascii": False}
 
 
 def _to_json_bytes(value: Any) -> bytes:
-    return json.dumps(value, **_JSON_OPTS).encode("utf-8")
+    return json.dumps(value, cls=_CacEncoder, **_JSON_OPTS).encode("utf-8")
 
 
 def _from_json_bytes(raw: bytes) -> Any:
-    return json.loads(raw.decode("utf-8"))
+    return json.loads(raw.decode("utf-8"), object_hook=_cac_object_hook)
 
 
 def _content_hash(data: bytes) -> str:

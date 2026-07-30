@@ -1189,6 +1189,8 @@ class SystemScanner:
         """Detect .NET installation."""
         try:
             output = self._check_output(["dotnet", "--info"])
+            if output is None:
+                return None
 
             # Extract version
             version_match = re.search(r"Version:\s*(\d+\.\d+\.\d+)", output)
@@ -1247,6 +1249,8 @@ class SystemScanner:
         """Detect Ruby installation."""
         try:
             ruby_version = self._check_output(["ruby", "--version"])
+            if ruby_version is None:
+                return None
             version_match = re.search(r"ruby (\d+\.\d+\.\d+)", ruby_version)
 
             if version_match:
@@ -1268,6 +1272,8 @@ class SystemScanner:
         """Detect Go installation."""
         try:
             go_version = self._check_output(["go", "version"])
+            if go_version is None:
+                return None
             version_match = re.search(r"go(\d+\.\d+(?:\.\d+)?)", go_version)
 
             if version_match:
@@ -1289,12 +1295,16 @@ class SystemScanner:
         """Detect Rust installation."""
         try:
             rustc_version = self._check_output(["rustc", "--version"])
+            if rustc_version is None:
+                return None
             version_match = re.search(r"rustc (\d+\.\d+\.\d+)", rustc_version)
 
             if version_match:
                 cargo_version = None
                 try:
                     cargo_output = self._check_output(["cargo", "--version"])
+                    if cargo_output is None:
+                        cargo_output = ""
                     cargo_match = re.search(r"cargo (\d+\.\d+\.\d+)", cargo_output)
                     if cargo_match:
                         cargo_version = cargo_match.group(1)
@@ -1321,6 +1331,8 @@ class SystemScanner:
         """Detect PHP installation."""
         try:
             output = self._check_output(["php", "--version"])
+            if output is None:
+                return None
             m = re.search(r"PHP (\d+\.\d+\.\d+)", output)
             if m:
                 return RuntimeInfo(
@@ -1340,6 +1352,8 @@ class SystemScanner:
         """Detect Swift installation."""
         try:
             output = self._check_output(["swift", "--version"])
+            if output is None:
+                return None
             m = re.search(r"Swift version (\d+\.\d+(?:\.\d+)?)", output)
             if m:
                 return RuntimeInfo(
@@ -1359,7 +1373,7 @@ class SystemScanner:
             m = re.search(r"(\d+\.\d+\.\d+)", output or "")
             if not m:
                 output = self._check_output(["kotlinc", "-version"], merge_stderr=True)
-                m = re.search(r"(\d+\.\d+\.\d+)", output)
+                m = re.search(r"(\d+\.\d+\.\d+)", output or "")
             if m:
                 return RuntimeInfo(
                     name="Kotlin",
@@ -1375,6 +1389,8 @@ class SystemScanner:
         """Detect Dart installation."""
         try:
             output = self._check_output(["dart", "--version"])
+            if output is None:
+                return None
             m = re.search(r"(\d+\.\d+\.\d+)", output)
             if m:
                 return RuntimeInfo(
@@ -1394,6 +1410,8 @@ class SystemScanner:
         """Detect Elixir installation."""
         try:
             output = self._check_output(["elixir", "--version"])
+            if output is None:
+                return None
             m = re.search(r"Elixir (\d+\.\d+(?:\.\d+)?)", output)
             if m:
                 otp_m = re.search(r"OTP (\d+\.\d+(?:\.\d+)?)", output)
@@ -1414,6 +1432,8 @@ class SystemScanner:
         """Detect Haskell (GHC) installation."""
         try:
             output = self._check_output(["ghc", "--version"])
+            if output is None:
+                return None
             m = re.search(r"(\d+\.\d+(?:\.\d+)?)", output)
             if m:
                 return RuntimeInfo(
@@ -1434,6 +1454,8 @@ class SystemScanner:
         """Detect GCC installation."""
         try:
             gcc_output = self._check_output(["gcc", "--version"])
+            if gcc_output is None:
+                return None
             version_match = re.search(r"gcc.*?(\d+\.\d+\.\d+)", gcc_output, re.IGNORECASE)
 
             if version_match:
@@ -1464,6 +1486,8 @@ class SystemScanner:
         """Detect Clang installation."""
         try:
             clang_output = self._check_output(["clang", "--version"])
+            if clang_output is None:
+                return None
             version_match = re.search(r"clang version (\d+\.\d+\.\d+)", clang_output)
 
             if version_match:

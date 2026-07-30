@@ -420,6 +420,9 @@ analysis_backend.md
 analysis_*.md
 finding.md
 report.md
+gap.md
+fixes.md
+Readiness.md
 .opencodeignore
 
 # =============================================================================

@@ -63,3 +63,26 @@ class TestPipeline:
         # 5. Run udr verify
         verify_result = self._run("verify", "-d", str(proj), cwd=str(proj))
         assert verify_result.returncode == 0, f"verify failed: {verify_result.stderr}"
+
+    def test_cross_ecosystem_pipeline(self, tmp_path: Path) -> None:
+        proj = tmp_path / "cross_eco"
+        proj.mkdir()
+        wf = proj / "workspace"
+        wf.mkdir()
+
+        (wf / "requirements.txt").write_text("requests>=2.28\n")
+        (wf / "package.json").write_text('{"dependencies": {"lodash": "^4.17.21"}}')
+
+        lock_result = self._run("lock", "-d", str(wf), "-y", "--json", cwd=str(proj), timeout=300)
+        assert lock_result.returncode == 0, f"lock failed: {lock_result.stderr}"
+
+        lock_file = wf / "udr.lock"
+        assert lock_file.is_file(), f"lock file not found at {lock_file}"
+        lock_data = json.loads(lock_file.read_text())
+        lock_packages = lock_data.get("packages", {})
+        pkg_names = {v["name"].lower() for v in lock_packages.values()}
+        assert "requests" in pkg_names, f"requests not in lock packages: {pkg_names}"
+        assert "lodash" in pkg_names, f"lodash not in lock packages: {pkg_names}"
+
+        verify_result = self._run("verify", "-d", str(wf), cwd=str(proj))
+        assert verify_result.returncode == 0, f"verify failed: {verify_result.stderr}"

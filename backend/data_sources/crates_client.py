@@ -640,7 +640,7 @@ class CratesClient(BaseDataSourceClient):
         return True
 
     def _extract_msrv(self, crate_data: dict) -> str | None:
-        keywords = crate_data.get("keywords", [])
+        keywords = crate_data.get("keywords") or []
         for keyword in keywords:
             if keyword.startswith("rust-"):
                 match = re.match(r"rust-(\d+\.\d+)", keyword)

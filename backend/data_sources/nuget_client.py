@@ -353,6 +353,21 @@ class NuGetClient(BaseDataSourceClient):
         """Get dependencies."""
         package_name = package_name.lower()
 
+        if target_framework and version:
+            # Fetch raw version data and filter by TFM before flattening
+            if not self.registration_base_url:
+                await self._initialize_service_endpoints()
+            url = f"{self.registration_base_url}/{package_name}/{version.lower()}.json"
+            data = await self._get(url)
+            if not data:
+                return {}
+            catalog_entry = data.get("catalogEntry", {})
+            if isinstance(catalog_entry, str):
+                catalog_entry = await self._get(catalog_entry) or {}
+            dep_groups = catalog_entry.get("dependencyGroups", [])
+            filtered = [g for g in dep_groups if g.get("targetFramework") == target_framework]
+            return self._extract_dependencies(filtered)
+
         if version:
             pkg_data = await self.get_package_version(package_name, version)
         else:
@@ -361,12 +376,7 @@ class NuGetClient(BaseDataSourceClient):
         if not pkg_data:
             return {}
 
-        dependencies = pkg_data.get("dependencies", {})
-
-        if target_framework and target_framework in dependencies:
-            return {target_framework: dependencies[target_framework]}
-
-        return dependencies
+        return pkg_data.get("dependencies", {})
 
     def _process_catalog_entry(self, entry: dict) -> dict | None:
         if not entry:
@@ -418,26 +428,58 @@ class NuGetClient(BaseDataSourceClient):
 
         return version_info
 
-    def _extract_dependencies(self, dependency_groups: list[dict]) -> dict[str, dict]:
-        dependencies: dict[str, Any] = {}
-        for group in dependency_groups:
-            target_framework = group.get("targetFramework", "any")
-            deps: dict[str, Any] = {}
+    @staticmethod
+    def _tfm_sort_key(group: dict) -> tuple[int, int]:
+        """Sort key: newer TFMs first.  Falls back to (0, 0) for unknown."""
+        tf = group.get("targetFramework", "")
+        m = re.search(r"(\d+)\.?(\d*)", tf)
+        if m:
+            major = int(m.group(1))
+            minor = int(m.group(2)) if m.group(2) else 0
+            return (-major, -minor)
+        return (0, 0)
+
+    def _extract_dependencies(self, dependency_groups: list[dict]) -> dict[str, str]:
+        dependencies: dict[str, str] = {}
+        # Sort TFMs by version descending so the highest TFM's deps win
+        sorted_groups = sorted(dependency_groups, key=self._tfm_sort_key)
+        for group in sorted_groups:
             for dep in group.get("dependencies", []):
                 name = dep.get("id")
                 version_range = dep.get("range", "")
-
                 if name:
-                    deps[name] = {
-                        "version_range": version_range,
-                        "exclude": dep.get("exclude", []),
-                        "include": dep.get("include", []),
-                    }
-
-            if deps:
-                dependencies[target_framework] = deps
-
+                    flattened = self._flatten_nuget_range(version_range)
+                    if name not in dependencies:
+                        dependencies[name] = flattened
         return dependencies
+
+    @staticmethod
+    def _flatten_nuget_range(range_str: str) -> str:
+        range_str = range_str.strip()
+        if not range_str:
+            return "*"
+
+        lower_char = range_str[0] if range_str else ""
+        upper_char = range_str[-1] if range_str else ""
+        if lower_char not in ("[", "(") or upper_char not in ("]", ")"):
+            return range_str
+
+        lower_inclusive = lower_char == "["
+        upper_inclusive = upper_char == "]"
+
+        inner = range_str[1:-1].strip()
+        raw_parts = inner.split(",")
+        parts = [p.strip() for p in raw_parts]
+
+        lower = parts[0] if len(parts) >= 1 and parts[0] and parts[0] != ")" else ""
+        upper = parts[1] if len(parts) >= 2 and parts[1] and parts[1] != ")" else ""
+
+        constraints = []
+        if lower:
+            constraints.append(f"{'>=' if lower_inclusive else '>'}{lower}")
+        if upper:
+            constraints.append(f"{'<=' if upper_inclusive else '<'}{upper}")
+        return ",".join(constraints) if constraints else "*"
 
     def _extract_system_requirements(self, entry: dict) -> dict[str, Any]:
         requirements: dict[str, Any] = {
@@ -649,9 +691,9 @@ async def example_usage():
             },
         )
 
-        print(f"Package: {info['name']}")
-        print(f"Latest version: {info['version']}")
-        print(f"Compatible: {compat['compatible']}")
+        logger.debug("Package: %s", info["name"])
+        logger.debug("Latest version: %s", info["version"])
+        logger.debug("Compatible: %s", compat["compatible"])
 
 
 if __name__ == "__main__":

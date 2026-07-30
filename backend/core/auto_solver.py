@@ -4,14 +4,20 @@ Decision matrix
 ---------------
 | Profile                          | Solver       | Rationale                          |
 |----------------------------------|--------------|------------------------------------|
-| ≤ SMALL pkgs                     | PubGrub      | Fastest — CDCL in microseconds     |
-| Single eco, no CUDA              | PubGrub      | Intra-eco CDCL ideal               |
+| ↓ Small, no CUDA                 | PubGrub      | CDCL in microseconds               |
 | Single eco, with CUDA            | Z3           | CUDA conflict rules need Bool vars |
 | Multi eco, CUDA / cross-deps     | HybridSolver | PubGrub per-eco + Z3 cross-eco     |
 | Multi eco, no CUDA, no cross     | PubGrub      | Ecosystems independent             |
 | > LARGE pkgs, no CUDA            | PubGrub      | Avoid Z3 O(V²) encoding explosion  |
 | > LARGE pkgs, with CUDA          | Z3           | CUDA requires Bool encoding        |
-| Any solver fails                 | Try next     | PubGrub → Hybrid → Z3 chain        |
+| Any solver fails                 | Try next     | PubGrub ↔ Hybrid ↔ Z3 chain        |
+
+Notes
+-----
+- ``_resolve_with_alternatives`` (hand-written DFS below Z3) is
+  **disabled by default** — Z3 is a CDCL SAT solver, and if it
+  returns unsat, a naive DFS won't find a solution it missed.
+- ForkingResolver is disabled by default (``USE_FORKING_SOLVER=false``).
 """
 
 from __future__ import annotations
@@ -99,7 +105,7 @@ class AutoSolver:
 
     def _select_solver(self, profile: dict) -> tuple[Any, str]:
         """Select solver based on profile and env-var overrides."""
-        # Respect explicit overrides
+        # Respect explicit env-var overrides first
         if USE_Z3_SOLVER:
             solver = self._z3_solver()
             if solver is not None:
@@ -113,32 +119,51 @@ class AutoSolver:
         if USE_PUBGRUB_SOLVER:
             return self._pubgrub_solver(), "pubgrub-override"
 
-        # Decision tree
-        if profile["is_small"]:
-            return self._pubgrub_solver(), "pubgrub-small"
+        # GPU constraint detection — Z3 is required for GPU conflict rules
+        if profile["has_gpu_constraint"]:
+            if profile["multi_eco"] and profile["has_cross_eco_deps"]:
+                solver = self._hybrid_solver()
+                if solver is not None:
+                    return solver, "hybrid-gpu-multi"
+                logger.warning(
+                    "z3-solver not installed for hybrid-gpu-multi; falling to Z3 single-pass"
+                )
+                z3_s = self._z3_solver()
+                if z3_s is not None:
+                    return z3_s, "z3-gpu-multi-fallback"
+            else:
+                solver = self._z3_solver()
+                if solver is not None:
+                    return solver, "z3-gpu"
+                logger.warning(
+                    "GPU constraints detected but z3-solver not installed; "
+                    "GPU conflict rules will be skipped"
+                )
 
-        if profile["is_large"] and not profile["has_cuda"] and not profile["has_cross_eco_deps"]:
-            return self._pubgrub_solver(), "pubgrub-large"
-
-        if profile["multi_eco"] and (profile["has_cuda"] or profile["has_cross_eco_deps"]):
+        # Decision tree — CUDA already handled above, rest is profile-based
+        if profile["multi_eco"] and profile["has_cross_eco_deps"]:
             solver = self._hybrid_solver()
             if solver is not None:
                 return solver, "hybrid-multi-eco"
-            logger.warning("z3-solver not installed for hybrid-multi-eco; falling to PubGrub")
-
-        if profile["has_cuda"]:
-            solver = self._z3_solver()
-            if solver is not None:
-                return solver, "z3-cuda"
             logger.warning(
-                "z3-solver not installed for CUDA constraints; CUDA rules will be skipped"
+                "z3-solver not installed for hybrid-multi-eco; falling back to Z3 single-pass"
             )
+            z3_s = self._z3_solver()
+            if z3_s is not None:
+                return z3_s, "z3-multi-eco-fallback"
+            logger.warning("z3 not available either; cross-eco rules will be skipped")
 
-        if profile["multi_eco"] and profile["has_cross_eco_deps"]:
+        if profile["has_cross_eco_deps"]:
             solver = self._hybrid_solver()
             if solver is not None:
                 return solver, "hybrid-cross-eco"
             logger.warning("z3-solver not installed for hybrid-cross-eco; falling to PubGrub")
+
+        if profile["is_small"]:
+            return self._pubgrub_solver(), "pubgrub-small"
+
+        if profile["is_large"] and not profile["has_cross_eco_deps"]:
+            return self._pubgrub_solver(), "pubgrub-large"
 
         return self._pubgrub_solver(), "pubgrub-default"
 
@@ -146,7 +171,7 @@ class AutoSolver:
         """Build fallback chain: next-best solvers after the initial choice."""
         chain: list[tuple[str, Any]] = []
 
-        prefer_pubgrub = not profile["has_cuda"] and not profile["multi_eco"]
+        prefer_pubgrub = not profile["has_gpu_constraint"] and not profile["multi_eco"]
         if prefer_pubgrub:
             z3_s = self._z3_solver()
             if z3_s is not None:
@@ -200,7 +225,7 @@ def _fmt_profile(profile: dict) -> str:
     """Format profile dict as a concise log string."""
     return (
         f"{profile['pkg_count']} pkgs, {profile['eco_count']} ecosystems, "
-        f"CUDA={profile['has_cuda']}, cross={profile['has_cross_eco_deps']}, "
+        f"GPU={profile['has_gpu_constraint']}, cross={profile['has_cross_eco_deps']}, "
         f"{profile['total_versions']} total versions, "
         f"{'small' if profile['is_small'] else 'large' if profile['is_large'] else 'medium'}"
     )
@@ -216,7 +241,7 @@ def _profile_packages(
     ``system_info`` dict (which carries ``--cuda`` CLI flag) for CUDA presence.
     """
     ecosystems: set[str] = set()
-    has_cuda = False
+    has_gpu_constraint = False
     total_versions = 0
     max_versions = 0
     has_cross_eco_deps = False
@@ -232,15 +257,25 @@ def _profile_packages(
         max_versions = max(max_versions, len(versions))
 
         sr = pkg.get("system_requirements", {})
-        if sr:
-            has_cuda = has_cuda or "cuda" in str(sr).lower()
+        if isinstance(sr, dict):
+            for gpu_type in ("cuda", "rocm", "intel_gpu", "metal", "gpu"):
+                if sr.get(gpu_type):
+                    has_gpu_constraint = True
+                    break
 
-    # Also check system_info for CUDA (set via --cuda CLI flag)
+    # Also check system_info for GPU constraints (set via CLI flags)
+    gpu_types = ("cuda", "rocm", "intel_gpu", "metal")
     if system_info:
         gpu = system_info.get("gpu", {})
-        cuda_ver = gpu.get("cuda") if isinstance(gpu, dict) else None
-        if cuda_ver:
-            has_cuda = True
+        if isinstance(gpu, dict):
+            for gpu_type in gpu_types:
+                if gpu.get(gpu_type):
+                    has_gpu_constraint = True
+                    break
+        for gpu_type in gpu_types:
+            if system_info.get(gpu_type):
+                has_gpu_constraint = True
+                break
 
     # Detect cross-ecosystem dependencies
     for pkg in packages:
@@ -256,7 +291,7 @@ def _profile_packages(
         "pkg_count": len(packages),
         "eco_count": len(ecosystems),
         "multi_eco": len(ecosystems) > 1,
-        "has_cuda": has_cuda,
+        "has_gpu_constraint": has_gpu_constraint,
         "has_cross_eco_deps": has_cross_eco_deps,
         "total_versions": total_versions,
         "max_versions_per_pkg": max_versions,

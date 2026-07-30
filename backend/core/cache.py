@@ -293,6 +293,18 @@ class CacheManager:
             logger.error(f"Cache clear pattern error: {e}")
             return 0
 
+    async def clear_all(self) -> bool:
+        """Clear all entries from the cache."""
+        if not self._cache:
+            return False
+        try:
+            await self._cache.clear()
+            self._cache_stats = {"hits": 0, "misses": 0, "errors": 0}
+            return True
+        except Exception as e:
+            logger.error(f"Cache clear error: {e}")
+            return False
+
     async def get_many(self, keys: list[str]) -> dict[str, Any]:
         """Get multiple values from cache."""
         result: dict[str, Any] = {}

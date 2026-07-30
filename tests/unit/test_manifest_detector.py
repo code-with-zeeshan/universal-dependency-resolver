@@ -235,9 +235,27 @@ class TestParsePackageJson:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "package_json"})
         assert len(result) == 4
-        assert {"name": "express", "version": "^4.0", "optional": False, "peer": False} in result
-        assert {"name": "mocha", "version": "^9.0", "optional": False, "peer": False} in result
-        assert {"name": "react", "version": "^17.0", "optional": False, "peer": True} in result
+        assert {
+            "name": "express",
+            "version": "^4.0",
+            "optional": False,
+            "peer": False,
+            "_ecosystem": "npm",
+        } in result
+        assert {
+            "name": "mocha",
+            "version": "^9.0",
+            "optional": False,
+            "peer": False,
+            "_ecosystem": "npm",
+        } in result
+        assert {
+            "name": "react",
+            "version": "^17.0",
+            "optional": False,
+            "peer": True,
+            "_ecosystem": "npm",
+        } in result
 
     def test_malformed_json_returns_empty(self, tmp_path):
         p = tmp_path / "package.json"
@@ -290,6 +308,44 @@ class TestParseGoMod:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "go_mod"})
         assert result == []  # "go 1.18" has no dot in first token
+
+
+class TestParseGoSum:
+    def test_basic(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text(
+            "github.com/pkg/errors v0.9.1 h1:hASHzDpLQ==\n"
+            "github.com/pkg/errors v0.9.1/go.mod h1:INDGpQ==\n"
+            "golang.org/x/text v0.15.0 h1:abcdef==\n"
+        )
+        from backend.manifest_detector import ManifestDetector
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert "github.com/pkg/errors" in names
+        assert "golang.org/x/text" in names
+        for r in result:
+            assert "v" not in r.get("version", "")
+
+    def test_empty(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text("")
+        from backend.manifest_detector import ManifestDetector
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert result == []
+
+    def test_skips_invalid_lines(self, tmp_path):
+        p = tmp_path / "go.sum"
+        p.write_text("invalid\n")
+        from backend.manifest_detector import ManifestDetector
+
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "go_sum"})
+        assert result == []
 
 
 class TestParseGemfile:

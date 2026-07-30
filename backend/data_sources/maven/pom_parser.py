@@ -449,7 +449,7 @@ class PomParser:
                     "packaging": dep_type,
                 }
         except Exception as e:
-            print(f"Error extracting dependency: {e!s}")
+            logger.warning("Error extracting dependency: %s", e)
         return None
 
     def _extract_dependency_info_with_exclusions(
@@ -588,7 +588,7 @@ class PomParser:
                 return plugin_info
 
         except Exception as e:
-            print(f"Error extracting plugin: {e!s}")
+            logger.warning("Error extracting plugin: %s", e)
         return None
 
     def _parse_configuration(self, config_elem: Any, properties: dict[str, str]) -> dict:
@@ -714,7 +714,7 @@ class PomParser:
             return pom_data
 
         except ET.ParseError as e:
-            print(f"XML Parse error: {e!s}")
+            logger.warning("XML Parse error: %s", e)
             return {"dependencies": []}
 
     def _apply_profiles(self, pom_data: dict, active_profiles: list[str]) -> dict:

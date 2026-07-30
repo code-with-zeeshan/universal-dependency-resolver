@@ -21,17 +21,21 @@ CLI_COMMANDS = (
     "completion",
     "details",
     "diff",
+    "export",
     "graph",
     "index",
+    "init",
     "install",
     "list-ecosystems",
     "lock",
+    "migrate",
     "outdated",
     "resolve",
     "sbom",
     "scan",
     "search",
     "serve",
+    "system-info",
     "tools",
     "update",
     "verify",
@@ -123,6 +127,8 @@ def parse_version_key(version_str: str) -> Version:
 
 def is_compatible_version(version_str: str, spec: str) -> bool:
     """Check if a version satisfies a version specification."""
+    if not spec or spec == "*":
+        return True
     try:
         from packaging.specifiers import SpecifierSet
 

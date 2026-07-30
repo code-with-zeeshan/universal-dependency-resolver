@@ -118,11 +118,15 @@ async def _run_resolution_pipeline(project_dir: Path, export_format: str | None 
                 timeout=SOLVER_API_TIMEOUT,
             )
         except TimeoutError:
-            logger.warning("Solver timed out — falling back to _resolve_with_alternatives")
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            logger.warning("Solver timed out — diagnostic mode")
+            resolved = {
+                "status": "unsatisfiable",
+                "resolved_packages": {},
+                "resolution_error": "Solver timed out",
+            }
         except Exception:
-            logger.exception("Unexpected solver error — falling back to _resolve_with_alternatives")
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            logger.exception("Unexpected solver error")
+            resolved = {"status": "unsatisfiable", "resolved_packages": {}}
 
         resolved = _apply_cuda_variants(resolved, package_details, system_info)
 

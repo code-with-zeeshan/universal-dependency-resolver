@@ -144,7 +144,8 @@ import backend.settings as s
 importlib.reload(s)
 importlib.reload(m)
 solver = m.create_solver()
-print(type(solver).__module__ + '.' + type(solver).__qualname__)
+inner = solver._primary if hasattr(solver, '_primary') else solver
+print(type(inner).__module__ + '.' + type(inner).__qualname__)
 """
         result = subprocess.run(
             [sys.executable, "-c", code],
@@ -193,7 +194,9 @@ import backend.settings as s
 importlib.reload(s)
 importlib.reload(m)
 solver = m.create_solver()
-t = type(solver).__module__ + '.' + type(solver).__qualname__
+# ForkingResolver wraps the underlying solver; unwrap for type checking
+inner = solver._primary if hasattr(solver, '_primary') else solver
+t = type(inner).__module__ + '.' + type(inner).__qualname__
 # Accept either PubGrubSolver (when pubgrub-py is installed) or
 # ConflictResolver (fallback when pubgrub-py is unavailable)
 assert t in (

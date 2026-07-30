@@ -149,14 +149,17 @@ def get_package_info(ecosystem: str, package_name: str) -> dict[str, Any] | None
         latest = sorted_rows[0]["version"]
 
         for vr in sorted_rows:
-            versions.append({"version": vr["version"]})
-            if vr["version"] == latest and vr["dependencies"]:
+            entry: dict[str, Any] = {"version": vr["version"]}
+            if vr["dependencies"]:
                 try:
                     parsed = json.loads(vr["dependencies"])
                     if isinstance(parsed, dict):
-                        deps.update(parsed)
+                        entry["dependencies"] = parsed
+                        if vr["version"] == latest:
+                            deps.update(parsed)
                 except (json.JSONDecodeError, TypeError):
                     pass
+            versions.append(entry)
 
         return {
             "name": package_name,

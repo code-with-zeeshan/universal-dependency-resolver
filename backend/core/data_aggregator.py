@@ -120,6 +120,16 @@ class CompatibilityIssue:
     resolution: str | None = None
 
 
+# Register dataclass types with content cache for round-trip serialisation
+try:
+    from backend.core.content_cache import _register_cac_type
+
+    _register_cac_type(Dependency)
+    _register_cac_type(SystemRequirement)
+except Exception:
+    logger.debug("Content-addressed cache type registration failed", exc_info=True)
+
+
 _CLIENT_BUILDERS: dict[Ecosystem, Any] = {}
 
 
@@ -274,7 +284,16 @@ class DataAggregator:
         # Only normalize for PyPI-style ecosystems where dots/underscores
         # are equivalent to hyphens.  gomodules, nuget, maven, cocoapods, gradle,
         # homebrew use dots as semantic separators.
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle", "homebrew"}
+        _dot_sensitive = {
+            "gomodules",
+            "nuget",
+            "maven",
+            "cocoapods",
+            "gradle",
+            "homebrew",
+            "npm",
+            "node",
+        }
         if eco_str not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
@@ -507,6 +526,9 @@ class DataAggregator:
                     )
                 return info is not None
             except Exception:
+                logger.debug(
+                    "Error checking %s in %s", package_name, ecosystem.value, exc_info=True
+                )
                 return False
 
         except Exception as e:
@@ -523,7 +545,16 @@ class DataAggregator:
         include_extended: bool = True,
     ) -> dict:
         """Fetch package data from a specific ecosystem."""
-        _dot_sensitive = {"gomodules", "nuget", "maven", "cocoapods", "gradle", "homebrew"}
+        _dot_sensitive = {
+            "gomodules",
+            "nuget",
+            "maven",
+            "cocoapods",
+            "gradle",
+            "homebrew",
+            "npm",
+            "node",
+        }
         if ecosystem.value not in _dot_sensitive:
             package_name = normalize_package_name(package_name)
 
@@ -774,9 +805,20 @@ class DataAggregator:
                 peer=peer or entry.get("peer", False),
                 marker=marker,
             )
+        vs = str(entry) if entry else "*"
+        actual_name = name
+        # Handle npm aliases: "npm:package-name@^1.0.0" -> extract package name and constraint
+        if vs.startswith("npm:"):
+            rest = vs[4:]  # strip "npm:"
+            at_idx = rest.rfind("@")
+            if at_idx > 0:
+                actual_name = rest[:at_idx]
+                vs = rest[at_idx + 1 :]
+            else:
+                vs = rest
         return Dependency(
-            name=name,
-            version_spec=str(entry) if entry else "*",
+            name=actual_name,
+            version_spec=vs,
             ecosystem=ecosystem,
             dev_only=dev_only,
             optional=optional,
@@ -798,8 +840,8 @@ class DataAggregator:
                 "devDependencies": True,
                 "test_dependencies": True,
                 "build_dependencies": True,
-                "optional_dependencies": True,
-                "optionalDependencies": True,
+                "optional_dependencies": False,
+                "optionalDependencies": False,
                 "peer_dependencies": False,
                 "peerDependencies": False,
                 # PyPI categories (from _extract_dependencies_enhanced)
@@ -807,10 +849,19 @@ class DataAggregator:
                 "dev": True,
                 "test": True,
                 "docs": True,
+                # Packagist/Composer categories
+                "require": False,
+                "require-dev": True,
+                # Conda categories (from _extract_deps_from_files)
+                "run": False,
+                "host": False,
+                "build": False,
             }
 
+            any_cat_matched = False
             for category, is_dev in categories.items():
                 if category in deps:
+                    any_cat_matched = True
                     cat_deps = deps[category]
                     if isinstance(cat_deps, dict):
                         for name, entry in cat_deps.items():
@@ -839,6 +890,21 @@ class DataAggregator:
                                         marker=dep.get("marker") or None,
                                     )
                                 )
+
+            # Fallback: if no category key matched, treat dict as flat name→version mapping
+            if not any_cat_matched:
+                for name, version_spec in deps.items():
+                    if isinstance(name, str) and isinstance(version_spec, (str, bytes)):
+                        vs = (
+                            str(version_spec) if not isinstance(version_spec, str) else version_spec
+                        )
+                        normalized["all"].append(
+                            self._parse_dep_entry(
+                                name=name,
+                                entry=vs,
+                                ecosystem=ecosystem,
+                            )
+                        )
 
         elif isinstance(deps, list):
             # Simple list of dependencies

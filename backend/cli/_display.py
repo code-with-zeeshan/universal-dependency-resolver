@@ -6,6 +6,7 @@ from typing import Any
 
 from rich import box
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from backend.orchestrator.install import (
@@ -14,6 +15,17 @@ from backend.orchestrator.install import (
 
 console = Console()
 err_console = Console(stderr=True)
+
+
+def _create_progress(
+    determinate: bool = False, description: str = "Working...", total: int | None = None
+) -> Progress:
+    """Create a Rich progress bar — determinate (with counter) or indeterminate (spinner-only)."""
+    columns = [SpinnerColumn(), TextColumn("[progress.description]{task.description}")]
+    if determinate:
+        columns.extend([BarColumn(), TextColumn("[green]{task.completed}/{task.total}[/green]")])
+    columns.append(TimeElapsedColumn())
+    return Progress(*columns, console=err_console, transient=not determinate)
 
 
 def _build_resolved_table(

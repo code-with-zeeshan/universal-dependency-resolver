@@ -27,6 +27,7 @@ from backend.settings import MAX_MANIFEST_SIZE as _MAX_MANIFEST_SIZE
 from ._cuda import _extract_severity  # noqa: F401 — re-exported via __init__.py
 from ._display import (  # noqa: F401 — re-exported via __init__.py
     _build_resolved_table,
+    _create_progress,
     _generate_install_command,
     _output_json,
 )
@@ -158,12 +159,13 @@ async def _run_resolution(
             timeout=timeout,
         )
     except (TimeoutError, Exception) as exc:
-        logger.warning("Transitive resolution %s: falling back to alternatives", exc)
-        if hasattr(resolver, "_resolve_with_alternatives"):
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
-            resolved["resolved_packages"] = resolved.pop("packages", {})
-        else:
-            resolved = {}
+        logger.warning("Transitive resolution failed: %s", exc)
+        resolved = {"status": "unsatisfiable", "resolved_packages": {}}
+        if not resolved.get("resolution_error") and hasattr(resolver, "_resolve_with_alternatives"):
+            diagnosis = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            diag_list = diagnosis.get("diagnosis", [])
+            if diag_list:
+                resolved["resolution_error"] = "; ".join(diag_list)
 
     if "packages" in resolved and "resolved_packages" not in resolved:
         resolved["resolved_packages"] = resolved.pop("packages")
@@ -174,18 +176,23 @@ async def _run_resolution(
         _emit_cuda_notifications(resolved, package_details, system_info)
 
     if interactive and resolved.get("status") == "unsatisfiable":
+        diag_list = []
+        if resolved.get("resolution_error"):
+            diag_list = [resolved["resolution_error"]]
+        elif hasattr(resolver, "_resolve_with_alternatives"):
+            diagnosis = resolver._resolve_with_alternatives(resolver_inputs, system_info)
+            diag_list = diagnosis.get("diagnosis", [])
         err_console.print(
             Panel(
                 "[yellow]SAT solver found no valid combination.[/yellow]\n"
-                "Resolving manually by selecting alternatives...",
+                + (
+                    "Conflict diagnosis:\n" + "\n".join(f"  - {d}" for d in diag_list)
+                    if diag_list
+                    else "Run [bold]udr lock --dry-run --json[/bold] for detailed diagnosis."
+                ),
                 title="Conflict Detected",
             )
         )
-        if hasattr(resolver, "_resolve_with_alternatives"):
-            resolved = resolver._resolve_with_alternatives(resolver_inputs, system_info)
-            resolved["resolved_packages"] = resolved.pop("packages", {})
-        resolved = _orchestrator_apply_cuda_variants(resolved, package_details, system_info)
-        _emit_cuda_notifications(resolved, package_details, system_info)
 
     return resolved
 

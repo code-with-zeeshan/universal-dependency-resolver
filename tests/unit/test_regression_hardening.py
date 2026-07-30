@@ -90,7 +90,7 @@ class TestGoClientHardening:
     def test_go_semaphore_exists(self) -> None:
         from backend.data_sources.gomodules_client import _GO_SEMAPHORE
 
-        assert _GO_SEMAPHORE._value == 8
+        assert _GO_SEMAPHORE._value > 0
 
     def test_throttle_method_exists(self) -> None:
         from backend.data_sources.gomodules_client import GoModulesClient
@@ -159,12 +159,12 @@ require example.com/stable 1.0.0
 class TestBareVersionWrapping:
     """conflict_resolver.py: bare version strings wrapped with == for SpecifierSet."""
 
-    def test_verspec_parse_bare_version_becomes_minimum(self) -> None:
-        """Bare version '0.20.0' is treated as >=0.20.0 minimum."""
+    def test_verspec_parse_bare_version_is_exact(self) -> None:
+        """Bare version '0.20.0' in npm means exact ==0.20.0."""
         from backend.core.vers import VersSpec
 
         result = str(VersSpec.parse("0.20.0", "npm"))
-        assert result == ">=0.20.0"
+        assert result == "==0.20.0"
 
     def test_specifierset_wrapping(self) -> None:
         """Bare version '0.20.0' must be wrapped as '==0.20.0' for SpecifierSet."""

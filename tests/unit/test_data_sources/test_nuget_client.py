@@ -598,8 +598,8 @@ class TestNuGetClient:
                 deps = await client.get_dependencies(
                     "Newtonsoft.Json", "13.0.3", target_framework="net6.0"
                 )
-        assert "net6.0" in deps
-        assert ".NETStandard2.0" not in deps
+        assert "Some.Package" in deps
+        assert "Newtonsoft.Json.Bson" not in deps
 
     # ─── _process_catalog_entry ────────────────────────────────────────────────
 

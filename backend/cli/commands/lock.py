@@ -15,11 +15,10 @@ logger = logging.getLogger(__name__)
 
 from rich import box
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Confirm
 from rich.table import Table
 
-from backend.core.concurrency import get_semaphore
 from backend.core.conflict_resolver import ConflictResolver
 from backend.core.export_generator import ExportGenerator
 from backend.core.utils import make_purl
@@ -62,6 +61,16 @@ def _extract_integrity(pkg_detail: dict, version: str, ecosystem: str) -> dict |
     return None
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write *content* to *path* atomically via temp file + rename.
+
+    Prevents partial/corrupt files if the process is interrupted mid-write.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.rename(path)
+
+
 # Mapping from lock filename to ManifestDetector static method name.
 # The auto-generated convention (parse_{fname.replace('.','_').replace('-','_')}_tree)
 # would produce wrong names for most files (e.g. "parse_package_lock_json_tree" vs
@@ -73,6 +82,7 @@ _LOCK_TREE_PARSER_NAMES: dict[str, str] = {
     "Gemfile.lock": "parse_gemfile_lock_tree",
     "poetry.lock": "parse_poetry_lock_tree",
     "pnpm-lock.yaml": "parse_pnpm_lock_tree",
+    "uv.lock": "parse_uv_lock_tree",
 }
 
 
@@ -90,6 +100,7 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
         "Gemfile.lock": ["rubygems"],
         "poetry.lock": ["pypi"],
         "pnpm-lock.yaml": ["npm"],
+        "uv.lock": ["pypi"],
     }
 
     # Extend with plugin-defined lock files
@@ -136,6 +147,22 @@ def _build_lock_tree(manifests: list[dict], directory: Path) -> dict[str, dict[s
         parsed = parser(str(mpath))
         if parsed:
             tree[eco] = parsed
+
+    # Also add go.sum entries — pinned versions for ALL Go deps (direct + transitive)
+    # so BFS _fetch_one can skip API calls for them.
+    go_sum_manifests = [m for m in manifests if m["filename"] == "go.sum"]
+    for m in go_sum_manifests:
+        mpath = directory / m["path"] if m["path"].startswith(str(directory)) else Path(m["path"])
+        if not mpath.is_file():
+            continue
+        go_sum_pkgs = ManifestDetector(directory)._parse_go_sum(mpath.read_text(encoding="utf-8"))
+        go_entries: dict[str, dict] = {}
+        for pkg in go_sum_pkgs:
+            ver = pkg.get("version", "")
+            if ver:
+                go_entries[pkg["name"]] = {"version": ver, "dependencies": {}}
+        if go_entries:
+            tree.setdefault("gomodules", {}).update(go_entries)
     return tree
 
 
@@ -376,7 +403,10 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
         manifests = _select_manifests_interactive(manifests)
 
     if not args.json:
-        manifest_table = Table(title=f"Selected {len(manifests)} manifest(s)", box=box.SIMPLE)
+        manifest_table = Table(
+            title=f"Selected {len(manifests)} manifest(s) in {directory.name}/",
+            box=box.SIMPLE,
+        )
         manifest_table.add_column("Ecosystem", style="cyan")
         manifest_table.add_column("Filename")
         for m in manifests:
@@ -387,6 +417,9 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
     if not packages:
         console.print("[red]No packages found in manifests[/red]")
         return [], []
+
+    # Sort: go.mod entries before go.sum entries so API-call deps take priority
+    packages.sort(key=lambda p: (p.get("source", "") == "go.sum", p.get("name", "")))
 
     if not args.json:
         pkg_table = Table(title=f"Found {len(packages)} package(s)", box=box.SIMPLE)
@@ -401,7 +434,32 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
     return manifests, packages
 
 
-async def _fetch_package_data(aggregator, packages, fetch_semaphore, args: argparse.Namespace):
+# Ecosystem concurrency defaults used when no env var is set
+_ECO_FETCH_CONCURRENCY: dict[str, int] = {
+    "pypi": 10,
+    "npm": 10,
+    "crates": 5,
+    "gomodules": 8,
+    "maven": 4,
+    "conda": 3,
+    "nuget": 5,
+    "packagist": 5,
+    "rubygems": 5,
+    "pub": 3,
+    "gradle": 3,
+    "swift": 3,
+    "hex": 5,
+    "haskell": 3,
+    "homebrew": 3,
+    "cocoapods": 3,
+    "apt": 5,
+    "apk": 5,
+}
+
+_BATCH_SIZE = 20
+
+
+async def _fetch_package_data(aggregator, packages, args: argparse.Namespace):
     """Fetch package metadata from registries and build resolver inputs."""
     seen = set()
     resolver_inputs = []
@@ -418,10 +476,19 @@ async def _fetch_package_data(aggregator, packages, fetch_semaphore, args: argpa
         "uv.lock",
         "mix.lock",
         "Brewfile.lock.json",
+        "go.sum",
     )
 
     def _is_lock_source(source: str) -> bool:
         return any(source.endswith(p) for p in lock_source_patterns)
+
+    # Per-ecosystem semaphores — fast ecosystems (pypi) not starved by slow ones (npm)
+    eco_semaphores: dict[str, asyncio.Semaphore] = {}
+    for pkg in packages:
+        eco = pkg.get("ecosystem", "unknown")
+        if eco not in eco_semaphores:
+            conc = _ECO_FETCH_CONCURRENCY.get(eco, 5)
+            eco_semaphores[eco] = asyncio.Semaphore(conc)
 
     with Progress(
         SpinnerColumn(),
@@ -433,12 +500,13 @@ async def _fetch_package_data(aggregator, packages, fetch_semaphore, args: argpa
         fetch_task = progress.add_task("Fetching package metadata...", total=len(packages))
 
         async def fetch_one(pkg):
-            async with fetch_semaphore:
-                key = (pkg["name"], pkg["ecosystem"])
+            eco = pkg["ecosystem"]
+            sem = eco_semaphores.get(eco, eco_semaphores.get("unknown", asyncio.Semaphore(5)))
+            async with sem:
+                key = (pkg["name"], eco)
                 if key in seen:
                     return None
                 seen.add(key)
-                eco = pkg["ecosystem"]
                 constraint = pkg.get("constraint")
                 source = pkg.get("source", "")
 
@@ -469,45 +537,51 @@ async def _fetch_package_data(aggregator, packages, fetch_semaphore, args: argpa
                     err_console.print(f"  [red]Error fetching {pkg['name']}:[/red] {exc}")
                 return None
 
-        results = await asyncio.gather(*[fetch_one(p) for p in packages], return_exceptions=True)
-
-        for pkg, result in zip(packages, results):
-            if isinstance(result, tuple) and result[0]:
-                _, data = result
-                package_details[pkg["name"]] = data
-                eco = pkg["ecosystem"]
-                constraint = pkg.get("constraint")
-                source = pkg.get("source", "")
-                is_pinned = eco in pinned_ecosystems or _is_lock_source(source)
-                if is_pinned and constraint and constraint != "*":
-                    rinput = {
-                        "name": pkg["name"],
-                        "ecosystem": eco,
-                        "version_constraint": constraint,
-                        "dependencies": data.get("dependencies", {}),
-                        "cross_ecosystem_deps": data.get("cross_ecosystem_deps", []),
-                        "pinned_version": constraint,
-                    }
-                else:
-                    pkg_extras = pkg.get("extras")
-                    if args.extras and pkg_extras is not None:
-                        combined = list(set(pkg_extras + args.extras))
-                    elif args.extras:
-                        combined = args.extras
-                    elif pkg_extras is not None:
-                        combined = pkg_extras
+        # Batch-level parallelism — process packages in chunks
+        for i in range(0, len(packages), _BATCH_SIZE):
+            chunk = packages[i : i + _BATCH_SIZE]
+            chunk_results = await asyncio.gather(
+                *[fetch_one(p) for p in chunk], return_exceptions=True
+            )
+            for pkg, result in zip(chunk, chunk_results):
+                if isinstance(result, tuple) and result[0]:
+                    _, data = result
+                    package_details[pkg["name"]] = data
+                    eco = pkg["ecosystem"]
+                    constraint = pkg.get("constraint")
+                    source = pkg.get("source", "")
+                    is_pinned = eco in pinned_ecosystems or _is_lock_source(source)
+                    if is_pinned and constraint and constraint != "*":
+                        rinput = {
+                            "name": pkg["name"],
+                            "ecosystem": eco,
+                            "version_constraint": constraint,
+                            "dependencies": data.get("dependencies", {}),
+                            "cross_ecosystem_deps": data.get("cross_ecosystem_deps", []),
+                            "pinned_version": constraint,
+                        }
                     else:
-                        combined = None
-                    include_optional = bool(args.with_dev) if args.with_dev is not None else False
-                    rinput = _aggregator_to_resolver_input(
-                        data,
-                        eco,
-                        constraint=constraint,
-                        extras=combined,
-                        include_optional=include_optional,
-                    )
-                resolver_inputs.append(rinput)
-            progress.advance(fetch_task)
+                        pkg_extras = pkg.get("extras")
+                        if args.extras and pkg_extras is not None:
+                            combined = list(set(pkg_extras + args.extras))
+                        elif args.extras:
+                            combined = args.extras
+                        elif pkg_extras is not None:
+                            combined = pkg_extras
+                        else:
+                            combined = None
+                        include_optional = (
+                            bool(args.with_dev) if args.with_dev is not None else False
+                        )
+                        rinput = _aggregator_to_resolver_input(
+                            data,
+                            eco,
+                            constraint=constraint,
+                            extras=combined,
+                            include_optional=include_optional,
+                        )
+                    resolver_inputs.append(rinput)
+                progress.advance(fetch_task)
 
     return resolver_inputs, package_details
 
@@ -868,7 +942,7 @@ def _handle_output(
                 vuln_str = f" ({vuln_count} CVE)" if vuln_count else ""
                 report_lines.append(f"  {pname:40s} {ver:20s} {ptype}{vuln_str}")
             report_path = lock_path.with_suffix(".report.txt")
-            report_path.write_text("\n".join(report_lines) + "\n")
+            _atomic_write_text(report_path, "\n".join(report_lines) + "\n")
             console.print(f"[green]Report saved:[/green] {report_path}")
         except Exception as exc:
             console.print(f"[yellow]Warning: could not write report:[/yellow] {exc}")
@@ -897,7 +971,7 @@ def _handle_output(
                     system_info=system_info,
                 )
                 export_path = directory / f"udr-output.{export_format.replace('.', '-')}"
-                export_path.write_text(export_content)
+                _atomic_write_text(export_path, export_content)
                 console.print(f"[green]Exported:[/green] {export_path}")
             except Exception as e:
                 console.print(f"[red]Export failed:[/red] {e}")
@@ -928,7 +1002,7 @@ def _do_manifest_updates(lock_data, packages, directory, args: argparse.Namespac
         if updater:
             new_content = updater(content, pkg["name"], resolved_ver)
             if new_content and new_content != content:
-                manifest_path.write_text(new_content)
+                _atomic_write_text(manifest_path, new_content)
                 updated_count += 1
                 updated_manifests.setdefault(str(manifest_path), []).append(
                     f"{pkg['name']} → {resolved_ver}"
@@ -944,7 +1018,7 @@ def _do_manifest_updates(lock_data, packages, directory, args: argparse.Namespac
                 else:
                     new_lines.append(line)
             if replaced:
-                manifest_path.write_text("\n".join(new_lines) + "\n")
+                _atomic_write_text(manifest_path, "\n".join(new_lines) + "\n")
                 updated_count += 1
                 updated_manifests.setdefault(str(manifest_path), []).append(
                     f"{pkg['name']} → {resolved_ver}"
@@ -1009,11 +1083,9 @@ def cmd_lock(args: argparse.Namespace):
         if not manifests or not packages:
             return 1
 
-        fetch_semaphore = get_semaphore("cli_fetch", concurrency=10)
         resolver_inputs, package_details = await _fetch_package_data(
             aggregator,
             packages,
-            fetch_semaphore,
             args,
         )
         if not resolver_inputs:
@@ -1048,11 +1120,12 @@ def cmd_lock(args: argparse.Namespace):
         else:
             with Progress(
                 SpinnerColumn(),
-                TextColumn("Resolving dependencies..."),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
                 transient=True,
                 console=err_console,
             ) as p:
-                p.add_task("SAT solver", total=None)
+                p.add_task("Resolving dependencies...", total=None)
                 lock_tree = _build_lock_tree(manifests, directory)
                 include_optional = bool(args.with_dev) if args.with_dev is not None else False
                 resolved = await _run_resolution(
@@ -1072,6 +1145,18 @@ def cmd_lock(args: argparse.Namespace):
                 )
 
             sat_pkgs = resolved.get("resolved_packages", {})
+            res_status = resolved.get("status", "satisfiable")
+            res_error = resolved.get("resolution_error", "")
+            if res_status == "unsatisfiable":
+                err_console.print(
+                    "[red]Resolution failed: the dependency graph is unsatisfiable[/red]"
+                )
+                if res_error:
+                    err_console.print(f"[yellow]  Reason: {res_error}[/yellow]")
+            elif res_status == "partial":
+                err_console.print(
+                    f"[yellow]Resolution partially failed: {res_error or 'some ecosystem groups could not be fully resolved'}[/yellow]"
+                )
             for name, info in sat_pkgs.items():
                 if name not in resolved_pkgs:
                     resolved_pkgs[name] = info
@@ -1118,27 +1203,31 @@ def cmd_lock(args: argparse.Namespace):
             ret = _run_lock_check(lock_data, lock_path)
             sys.exit(ret)
 
-        _handle_output(lock_data, lock_path, system_info, manifests, resolved, directory, args)
-
         if args.dry_run:
             if args.json:
                 _output_json(lock_data, args)
             console.print("[yellow]── dry run — no files modified ──[/yellow]")
+            await aggregator.close()
             return 0
+
+        _handle_output(lock_data, lock_path, system_info, manifests, resolved, directory, args)
 
         if not args.yes and sys.stdin.isatty():
             proceed = Confirm.ask(
                 "\nUpdate manifests in-place with pinned versions?", default=False
             )
-            if not proceed:
-                return 0
-        elif not args.yes and not args.json:
+            if proceed:
+                _do_manifest_updates(lock_data, packages, directory, args)
+            return 0
+        if args.yes:
+            _do_manifest_updates(lock_data, packages, directory, args)
+        elif args.json:
+            pass  # JSON output users don't want manifest changes
+        else:
             err_console.print(
                 "[yellow]Non-interactive mode detected — skipping manifest update.[/yellow]"
             )
             err_console.print("[yellow]Use --yes to update manifests without prompting.[/yellow]")
-
-        _do_manifest_updates(lock_data, packages, directory, args)
 
         if args.json:
             _output_json(lock_data, args)

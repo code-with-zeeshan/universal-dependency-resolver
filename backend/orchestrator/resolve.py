@@ -12,7 +12,9 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
+from backend.core.data_aggregator import Dependency, Ecosystem
 from backend.core.markers import evaluate_marker_string
+from backend.core.utils import is_compatible_version
 from backend.settings import (
     BFS_BATCH_SIZE,
     INCREMENTAL_RESOLUTION,
@@ -27,118 +29,88 @@ _VALID_ECOSYSTEMS = {e for e in _SETTINGS_ECOSYSTEMS if e not in ("docs", "custo
 logger = logging.getLogger(__name__)
 
 
-def _maybe_wrap_forking(solver: Any) -> Any:
-    """Wrap *solver* with ``ForkingResolver`` when ``USE_FORKING_SOLVER=true``."""
+def _create_plain_solver(
+    use_optimization: bool = True,
+    solver_timeout: int | None = None,
+) -> Any:
+    """Create a solver WITHOUT forking wrapper (internal helper)."""
     import backend.settings as _s
 
-    if not _s.USE_FORKING_SOLVER:
-        return solver
+    if _s.USE_Z3_SOLVER:
+        try:
+            from backend.core.conflict_resolver import ConflictResolver
 
+            return ConflictResolver(use_optimization=use_optimization)
+        except ImportError:
+            pass
+    if _s.USE_HYBRID_SOLVER:
+        try:
+            from backend.core.hybrid_solver import HybridSolver
+
+            return HybridSolver(use_optimization=use_optimization, solver_timeout=solver_timeout)
+        except ImportError:
+            pass
+    if _s.USE_PUBGRUB_SOLVER:
+        try:
+            from backend.core.pubgrub_solver import PubGrubSolver
+
+            return PubGrubSolver(use_optimization=use_optimization, solver_timeout=solver_timeout)
+        except ImportError:
+            pass
+    from backend.core.auto_solver import AutoSolver
+
+    return AutoSolver(use_optimization=use_optimization, solver_timeout=solver_timeout)
+
+
+def _make_alternate_solver(primary: Any) -> Any:
+    """Create the opposite solver type from *primary* for cross-validation."""
+    from backend.core.conflict_resolver import ConflictResolver
+    from backend.core.pubgrub_solver import PubGrubSolver
+
+    if isinstance(primary, ConflictResolver):
+        try:
+            return PubGrubSolver(use_optimization=primary._use_optimization)
+        except ImportError:
+            pass
+    if isinstance(primary, (PubGrubSolver,)):
+        try:
+            return ConflictResolver(use_optimization=primary._use_optimization)
+        except ImportError:
+            pass
+    return _create_plain_solver(use_optimization=True)
+
+
+def _maybe_wrap_forking(solver: Any) -> Any:
+    """Wrap *solver* with cross-solver ``ForkingResolver`` for automatic cross-validation."""
     try:
         from backend.core.forking_resolver import ForkingResolver
 
-        logger.info("Wrapping solver with ForkingResolver (USE_FORKING_SOLVER=true)")
+        logger.debug("Wrapping solver with ForkingResolver cross-validator")
         return ForkingResolver(
-            base_solver=solver,
-            max_forks=_s.FORKING_MAX_FORKS,
-            fork_timeout_ratio=_s.FORKING_TIMEOUT_RATIO,
+            primary_solver=solver,
+            alternate_solver_factory=lambda: _make_alternate_solver(solver),
         )
     except ImportError:
-        logger.warning("ForkingResolver module not available; using unwrapped solver")
+        logger.debug("ForkingResolver module not available; using unwrapped solver")
         return solver
 
 
 def create_solver(*, use_optimization: bool = True, solver_timeout: int | None = None) -> Any:
     """Create a solver instance.
 
-    Default: AutoSolver — profiles the dependency graph and selects the
-    fastest solver backend automatically.
+    Architecture (lean): one SAT solver selected by env var or AutoSolver.
+    No DFS fallback. No hand-written backtracking below a proper CDCL solver.
 
     Override via env vars (in priority order):
       1. USE_Z3_SOLVER=true        → ConflictResolver (Z3)
-      2. USE_HYBRID_SOLVER=true    → HybridSolver (PubGrub + Z3)
+      2. USE_HYBRID_SOLVER=true    → HybridSolver (PubGrub per-eco + Z3 cross-eco)
       3. USE_PUBGRUB_SOLVER=true   → PubGrubSolver
-      4. Default                   → AutoSolver
+      4. Default                   → AutoSolver (profiles graph, picks fastest)
 
-    When ``USE_FORKING_SOLVER=true``, the selected solver is wrapped in
-    a :class:`ForkingResolver` that forks parallel alternatives on failure.
+    The selected solver is automatically wrapped in a :class:`ForkingResolver`
+    that cross-validates results with the opposite solver on failure.
     """
-    import backend.settings as _s
-
-    solver: Any = None
-
-    if _s.USE_Z3_SOLVER:
-        try:
-            from backend.core.conflict_resolver import ConflictResolver
-
-            logger.info("Using Z3 ConflictResolver (USE_Z3_SOLVER=true)")
-            solver = ConflictResolver(use_optimization=use_optimization)
-            return _maybe_wrap_forking(solver)
-        except ImportError:
-            logger.warning(
-                "USE_Z3_SOLVER is true but z3-solver is not installed; falling back to AutoSolver"
-            )
-
-    if _s.USE_HYBRID_SOLVER:
-        try:
-            from backend.core.hybrid_solver import HybridSolver
-
-            logger.info("Using HybridSolver (USE_HYBRID_SOLVER=true)")
-            solver = HybridSolver(
-                use_optimization=use_optimization,
-                solver_timeout=solver_timeout,
-            )
-            return _maybe_wrap_forking(solver)
-        except ImportError:
-            logger.warning(
-                "USE_HYBRID_SOLVER is true but hybrid_solver module not available; "
-                "falling back to AutoSolver"
-            )
-
-    if _s.USE_PUBGRUB_SOLVER:
-        try:
-            from backend.core.pubgrub_solver import PubGrubSolver
-
-            logger.info("Using PubGrubSolver (USE_PUBGRUB_SOLVER=true)")
-            solver = PubGrubSolver(
-                use_optimization=use_optimization,
-                solver_timeout=solver_timeout,
-            )
-            return _maybe_wrap_forking(solver)
-        except ImportError:
-            logger.warning(
-                "USE_PUBGRUB_SOLVER is true but pubgrub_solver module not available; "
-                "falling back to AutoSolver"
-            )
-
-    # Default: AutoSolver — profiles and delegates automatically
-    try:
-        from backend.core.auto_solver import AutoSolver
-
-        logger.info("Using AutoSolver (profiles graph and selects best backend)")
-        solver = AutoSolver(
-            use_optimization=use_optimization,
-            solver_timeout=solver_timeout,
-        )
-        return _maybe_wrap_forking(solver)
-    except ImportError:
-        logger.info("AutoSolver not available; falling back to PubGrub")
-
-    try:
-        from backend.core.pubgrub_solver import PubGrubSolver
-
-        logger.info("Using PubGrub solver (fallback)")
-        solver = PubGrubSolver(
-            use_optimization=use_optimization,
-            solver_timeout=solver_timeout,
-        )
-        return _maybe_wrap_forking(solver)
-    except ImportError:
-        logger.info("PubGrubSolver not available; falling back to Z3")
-
-    from backend.core.conflict_resolver import ConflictResolver
-
-    solver = ConflictResolver(use_optimization=use_optimization)
+    solver = _create_plain_solver(use_optimization=use_optimization, solver_timeout=solver_timeout)
     return _maybe_wrap_forking(solver)
 
 
@@ -243,6 +215,41 @@ def _aggregator_to_resolver_input(
                         list(platforms) if isinstance(platforms, (list, set)) else []
                     )
     deps = {}
+    norm_constraint = normalize_constraint(constraint or "*", ecosystem)
+    # Prefer per-version deps from ecosystem raw data over merged "all" set.
+    # The "all" set uses the latest version's deps regardless of constraint,
+    # causing false UNSATs when npm major versions have different deps.
+    eco_versions_raw = agg_data.get("ecosystems", {}).get(ecosystem, {}).get("versions", [])
+    per_version_deps: dict[str, dict[str, str]] = {}
+    if isinstance(eco_versions_raw, list):
+        for v_entry in eco_versions_raw:
+            if isinstance(v_entry, dict):
+                v_str = v_entry.get("version", "")
+                if isinstance(v_str, dict):
+                    v_str = v_str.get("name", "") if isinstance(v_str, dict) else str(v_str)
+                raw_deps = v_entry.get("dependencies", {})
+                if isinstance(v_str, str) and raw_deps and isinstance(raw_deps, dict):
+                    per_version_deps[v_str] = raw_deps
+    if per_version_deps and norm_constraint != "*":
+        dep_version_source = available_versions or list(per_version_deps.keys())
+        sorted_avail = sorted(
+            set(dep_version_source),
+            key=lambda v: _safe_version_key(v, ecosystem),
+            reverse=True,
+        )
+        best_ver = next(
+            (
+                v
+                for v in sorted_avail
+                if v in per_version_deps and is_compatible_version(v, norm_constraint)
+            ),
+            None,
+        )
+        if best_ver:
+            raw = per_version_deps[best_ver]
+            deps = {name: normalize_constraint(spec, ecosystem) for name, spec in raw.items()}
+    # Always compute merged (wide) deps from the normalized list for fallback
+    merged_deps: dict[str, str] = {}
     eco_deps = agg_data.get("dependencies", {})
     eco_deps = {} if isinstance(eco_deps, list) else eco_deps.get(ecosystem, {})
     for dep in eco_deps.get("all", []):
@@ -256,15 +263,47 @@ def _aggregator_to_resolver_input(
         marker = getattr(dep, "marker", None)
         if marker and not evaluate_marker_string(marker, system_info):
             continue
-        deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
-    if extras:
-        extra_map = eco_deps.get("extras", {})
-        for extra_name in extras:
-            for pkg_name, version_spec in extra_map.get(extra_name, {}).items():
-                if pkg_name not in deps:
-                    deps[pkg_name] = normalize_constraint(version_spec, ecosystem)
+        merged_deps[dep.name] = normalize_constraint(dep.version_spec, ecosystem)
+
+    if not deps:
+        deps = dict(merged_deps)
+
+        # Heuristic: relax exact pins when constraint excludes data source version.
+        # Some ecosystems (rubygems, hex) don't expose per-version deps via their
+        # APIs, so the solver always gets the latest version's deps.  When the
+        # constraint filters the latest version out, exact pins (``= X.Y.Z``) may
+        # refer to a version that doesn't satisfy the parent constraint — causing
+        # false UNSATs.  Relax ``= X.Y.Z`` → ``>= X.Y.Z`` as a best-effort when
+        # the constraint is not a catch-all.
+        if norm_constraint not in ("*", "") and deps:
+            ds_version = agg_data.get("version") or agg_data.get("latest_version")
+            if ds_version and not is_compatible_version(ds_version, norm_constraint):
+                for dep_name in list(deps):
+                    spec = deps[dep_name]
+                    m = re.match(r"^==?\s*([\d.]+)$", spec)
+                    if m:
+                        deps[dep_name] = f">={m.group(1)}"
+                        logger.debug(
+                            "Relaxed exact pin %s=%s → >=%s for %s "
+                            "(data source v%s excluded by constraint %s)",
+                            dep_name,
+                            spec,
+                            m.group(1),
+                            agg_data.get("name"),
+                            ds_version,
+                            norm_constraint,
+                        )
+
+        if extras:
+            extra_map = eco_deps.get("extras", {})
+            for extra_name in extras:
+                for pkg_name, version_spec in extra_map.get(extra_name, {}).items():
+                    if pkg_name not in deps:
+                        deps[pkg_name] = normalize_constraint(version_spec, ecosystem)
+
+    # Capture merged deps for later storage in result dict
+    _captured_fallback = merged_deps if merged_deps and merged_deps != deps else None
     sys_reqs = _extract_system_requirements(agg_data, ecosystem)
-    norm_constraint = normalize_constraint(constraint or "*", ecosystem)
     sorted_versions = sorted(
         set(available_versions),
         key=lambda v: _safe_version_key(v, ecosystem),
@@ -282,8 +321,23 @@ def _aggregator_to_resolver_input(
         "system_requirements": sys_reqs,
         "cross_ecosystem_deps": agg_data.get("cross_ecosystem_deps", []),
     }
+    if _captured_fallback:
+        result["_fallback_dependencies"] = {ecosystem: _captured_fallback}
     if go_replace:
         result["_go_replace"] = go_replace
+    # Store per-version deps so the solver can use version-specific dependency constraints
+    if per_version_deps:
+        normalized_ver_deps: dict[str, dict[str, dict[str, str]]] = {}
+        for ver_str, raw_deps in per_version_deps.items():
+            if raw_deps:
+                normalized_ver_deps[ver_str] = {
+                    ecosystem: {
+                        dep_name: normalize_constraint(spec, ecosystem)
+                        for dep_name, spec in raw_deps.items()
+                    }
+                }
+        if normalized_ver_deps:
+            result["version_dependencies"] = normalized_ver_deps
     return result
 
 
@@ -292,6 +346,7 @@ async def _fetch_dep_info(
     name: str,
     ecosystem: str,
     include_extended: bool = True,
+    skipped_packages: list[dict] | None = None,
 ) -> dict | None:
     try:
         return await aggregator.get_package_info(
@@ -303,6 +358,14 @@ async def _fetch_dep_info(
         )
     except Exception as exc:
         logger.warning("Failed to fetch transitive dep %s/%s: %s", name, ecosystem, exc)
+        if skipped_packages is not None:
+            skipped_packages.append(
+                {
+                    "name": name,
+                    "ecosystem": ecosystem,
+                    "reason": f"fetch failed: {exc}",
+                }
+            )
         return None
 
 
@@ -323,24 +386,100 @@ def _build_dep_pkg(
     dep_info: dict,
     system_info: dict | None = None,
     include_optional: bool = False,
+    skipped_packages: list[dict] | None = None,
 ) -> dict | None:
+    dep_name = getattr(dep, "name", None) or (dep_info or {}).get("name", "?")
+    dep_constraint = getattr(dep, "version_spec", None)
     dep_resolver_input = _aggregator_to_resolver_input(
-        dep_info, dep_ecosystem_val, system_info=system_info, include_optional=include_optional
+        dep_info,
+        dep_ecosystem_val,
+        constraint=dep_constraint,
+        system_info=system_info,
+        include_optional=include_optional,
     )
     dep_avail = dep_resolver_input.get("available_versions", [])
     if not dep_avail:
+        if skipped_packages is not None:
+            skipped_packages.append(
+                {
+                    "name": dep_name,
+                    "ecosystem": dep_ecosystem_val,
+                    "reason": "no available versions",
+                }
+            )
         return None
+    # For solver input, include ALL available versions (not filtered by dep constraint).
+    # The dependency constraint per edge (now version-aware via version_dependencies)
+    # is what actually gates compatibility, not the package's own version_constraint.
+    all_avail = dep_resolver_input.get("all_versions", dep_avail)
     dep_pkg: dict = {
         "name": dep.name,
         "ecosystem": dep_ecosystem_val,
-        "available_versions": dep_avail,
+        "available_versions": all_avail,
+        "version_constraint": "*",
         "version_requires_python": dep_resolver_input.get("version_requires_python", {}),
         "version_platforms": dep_resolver_input.get("version_platforms", {}),
         "dependencies": {},
         "system_requirements": {},
         "cross_ecosystem_deps": dep_resolver_input.get("cross_ecosystem_deps", []),
     }
-    dep_deps_all = dep_info.get("dependencies", {})
+    # Prefer per-version deps from ecosystem raw data over merged "all" set.
+    # The "all" set uses the latest version's deps regardless of constraint,
+    # causing false UNSATs when trailing-edge major versions have different deps.
+    eco_versions = dep_info.get("ecosystems", {}).get(dep_ecosystem_val, {}).get("versions", [])
+    per_version_deps: dict[str, dict[str, str]] = {}
+    if isinstance(eco_versions, list):
+        for v_entry in eco_versions:
+            if isinstance(v_entry, dict):
+                v_str = v_entry.get("version", "")
+                raw_deps = v_entry.get("dependencies", {})
+                if v_str and isinstance(raw_deps, dict):
+                    per_version_deps[v_str] = raw_deps
+    dep_deps_all = {}
+    # Compute merged (wide) deps from normalized list for relaxation fallback
+    _merged_deps: dict[str, dict[str, str]] = {}
+    for d_eco, d_data in dep_info.get("dependencies", {}).items():
+        _merged_deps[d_eco] = {}
+        for d in d_data.get("all", []):
+            if not include_optional:
+                if getattr(d, "dev_only", False):
+                    continue
+                if getattr(d, "optional", False):
+                    continue
+            if PEER_DEP_MODE == "advisory" and getattr(d, "peer", False):
+                continue
+            marker = getattr(d, "marker", None)
+            if marker and not evaluate_marker_string(marker, system_info):
+                continue
+            _merged_deps[d_eco][d.name] = normalize_constraint(d.version_spec, d_eco)
+
+    if per_version_deps:
+        version_constraint = dep_resolver_input.get("version_constraint", "*")
+        if version_constraint and version_constraint not in ("*", ">=0.0.0"):
+            best_ver = next(
+                (
+                    v
+                    for v in dep_avail
+                    if v in per_version_deps and is_compatible_version(v, version_constraint)
+                ),
+                None,
+            )
+        else:
+            best_ver = next((v for v in dep_avail if v in per_version_deps), None)
+        if best_ver:
+            raw = per_version_deps[best_ver]
+            dep_deps_all[dep_ecosystem_val] = {
+                "all": [
+                    Dependency(
+                        name=n,
+                        version_spec=s,
+                        ecosystem=Ecosystem(dep_ecosystem_val),
+                    )
+                    for n, s in raw.items()
+                ]
+            }
+    if not dep_deps_all:
+        dep_deps_all = dep_info.get("dependencies", {})
     for d_eco, d_data in dep_deps_all.items():
         filtered = []
         for d in d_data.get("all", []):
@@ -358,6 +497,22 @@ def _build_dep_pkg(
         dep_pkg["dependencies"][d_eco] = {
             d.name: normalize_constraint(d.version_spec, d_eco) for d in filtered
         }
+    # Store merged deps as fallback for constraint relaxation when different from narrow deps
+    if _merged_deps and _merged_deps != dep_pkg["dependencies"]:
+        dep_pkg["_fallback_dependencies"] = dict(_merged_deps)
+    # Store per-version deps for the solver to use version-specific constraints
+    if per_version_deps and isinstance(per_version_deps, dict):
+        normalized_ver_deps: dict[str, dict[str, dict[str, str]]] = {}
+        for ver_str, raw_deps in per_version_deps.items():
+            if raw_deps and isinstance(raw_deps, dict):
+                normalized_ver_deps[ver_str] = {
+                    dep_ecosystem_val: {
+                        dep_name: normalize_constraint(spec, dep_ecosystem_val)
+                        for dep_name, spec in raw_deps.items()
+                    }
+                }
+        if normalized_ver_deps:
+            dep_pkg["version_dependencies"] = normalized_ver_deps
     dep_reqs_all = dep_info.get("system_requirements", {})
     for req_list in dep_reqs_all.values():
         for req in req_list:
@@ -512,33 +667,40 @@ def _group_by_ecosystem(packages: list[dict]) -> dict[str, list[dict]]:
     """Group packages by ecosystem for per-ecosystem solver isolation.
 
     Packages whose dependency graph is entirely within a single ecosystem
-    are grouped by ecosystem for independent resolution.  Packages that
-    participate in cross-ecosystem dependencies — along with ALL packages
-    from their ecosystem (to keep the dependency graph consistent) — go
-    into a special ``"__cross__"`` group resolved by the original single-solver
+    are grouped by ecosystem for independent resolution.  Only packages
+    that actually participate in cross-ecosystem dependencies — along with
+    any packages they directly depend on across ecosystems — go into a
+    special ``"__cross__"`` group resolved by the original single-solver
     code path.
 
-    This prevents a conflict in one ecosystem from blocking resolution in
-    another, while ensuring cross-ecosystem packages still have access to
-    all same-ecosystem dependencies they need.
+    This prevents a single cross-eco edge from collapsing ALL packages
+    into the slow single-solver path.
     """
-    # First pass: identify ecosystems with any cross-eco package
-    eco_has_cross: dict[str, bool] = {}
+    cross_pkgs: set[str] = set()
     for pkg in packages:
         eco = pkg.get("ecosystem", "unknown")
         deps = pkg.get("dependencies", {})
         cross_deps = pkg.get("cross_ecosystem_deps", [])
-        has_cross = bool(cross_deps) or any(k != eco for k in deps)
-        if has_cross:
-            eco_has_cross[eco] = True
+        if bool(cross_deps) or any(k != eco for k in deps):
+            cross_pkgs.add(pkg.get("name"))
 
-    # Second pass: group packages
+    # Also include any package that is a cross-dependency target
+    for pkg in packages:
+        name = pkg.get("name")
+        eco = pkg.get("ecosystem", "unknown")
+        deps = pkg.get("dependencies", {})
+        if name in cross_pkgs:
+            for dep_name in deps:
+                for p2 in packages:
+                    if p2.get("name") == dep_name and p2.get("ecosystem") != eco:
+                        cross_pkgs.add(p2.get("name"))
+
     groups: dict[str, list[dict]] = {}
     for pkg in packages:
-        eco = pkg.get("ecosystem", "unknown")
-        if eco_has_cross.get(eco):
+        if pkg.get("name") in cross_pkgs:
             groups.setdefault("__cross__", []).append(pkg)
         else:
+            eco = pkg.get("ecosystem", "unknown")
             groups.setdefault(eco, []).append(pkg)
     return groups
 
@@ -548,20 +710,27 @@ def _merge_solver_results(results: list[dict]) -> dict:
 
     Handles ``resolved_packages`` merging, status propagation
     (order: unsatisfiable > partial > satisfiable), and best-effort
-    collection of other metadata keys.
+    collection of other metadata keys. Each result may carry an
+    ``_ecosystem`` key (stripped before return) for diagnostic messages.
     """
     merged: dict = {"status": "satisfiable", "resolved_packages": {}}
     for res in results:
+        eco = res.pop("_ecosystem", "unknown")
         status = res.get("status", "satisfiable")
         if status == "unsatisfiable":
             merged["status"] = "unsatisfiable"
-            merged["resolution_error"] = res.get(
-                "resolution_error", "One or more ecosystem groups are unsatisfiable"
+            merged["resolution_error"] = "Ecosystem '{}' is unsatisfiable: {}".format(
+                eco,
+                res.get("resolution_error", "no error details provided"),
             )
         elif status == "partial" and merged["status"] != "unsatisfiable":
             merged["status"] = "partial"
             merged.setdefault(
-                "resolution_error", "One or more ecosystem groups are partially resolved"
+                "resolution_error",
+                "Ecosystem '{}' is partially resolved: {}".format(
+                    eco,
+                    res.get("resolution_error", "no error details provided"),
+                ),
             )
         for key, val in res.items():
             if key == "resolved_packages":
@@ -682,11 +851,13 @@ async def _resolve_transitive(
 
     if not changed_packages:
         # Everything is unchanged — return lock data as-is
-        return (
+        result = (
             _lock_data_to_result(lock_data)
             if lock_data
             else {"status": "satisfiable", "resolved_packages": {}}
         )
+        result["skipped_packages"] = []
+        return result
 
     def _collect_current_deps(
         pkg: dict,
@@ -720,6 +891,8 @@ async def _resolve_transitive(
             for dep in deps_iter:
                 if not include_optional and getattr(dep, "optional", False):
                     continue
+                if getattr(dep, "dev_only", False):
+                    continue
                 if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
                     continue
                 dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg_eco)
@@ -733,6 +906,7 @@ async def _resolve_transitive(
     # Phase 2: level-by-level: collect deps → batch-fetch → recurse.
     visited: set = set()
     all_packages: dict = {}
+    skipped_packages: list[dict] = []
 
     async def _fetch_one(item: tuple) -> tuple:
         name, eco = item[0], item[1]
@@ -758,7 +932,9 @@ async def _resolve_transitive(
                     "_version_metadata": {},
                 },
             )
-        info = await _fetch_dep_info(aggregator, name, eco, include_extended=False)
+        info = await _fetch_dep_info(
+            aggregator, name, eco, include_extended=False, skipped_packages=skipped_packages
+        )
         return (name, eco, info)
 
     async def _batch_fetch(
@@ -781,6 +957,14 @@ async def _resolve_transitive(
                         results.append(r)
                     elif isinstance(r, BaseException):
                         logger.warning("Batch fetch failed: %s", r)
+                        if r is not None:
+                            skipped_packages.append(
+                                {
+                                    "name": getattr(r, "name", "?"),
+                                    "ecosystem": getattr(r, "ecosystem", "?"),
+                                    "reason": f"batch fetch exception: {r}",
+                                }
+                            )
             _span.set_attribute("fetched_count", len(results))
             return results
 
@@ -966,6 +1150,7 @@ async def _resolve_transitive(
                 info,
                 system_info=system_info,
                 include_optional=include_optional,
+                skipped_packages=skipped_packages,
             )
             if dep_pkg and key not in all_packages:
                 all_packages[key] = dep_pkg
@@ -1025,6 +1210,7 @@ async def _resolve_transitive(
                     f"Too many versions ({total_versions}) — "
                     f"exceeds SOLVER_MAX_VARIABLES ({SOLVER_MAX_VARIABLES})"
                 )
+            result["skipped_packages"] = skipped_packages
             return result
 
     # Resolve with SAT solver — per-ecosystem isolation
@@ -1067,10 +1253,13 @@ async def _resolve_transitive(
                 )
                 if "packages" in eco_result and "resolved_packages" not in eco_result:
                     eco_result["resolved_packages"] = eco_result.pop("packages")
+                eco_result["_ecosystem"] = eco
                 results.append(eco_result)
 
                 if eco_result.get("status") == "unsatisfiable":
                     logger.warning("Ecosystem '%s' is unsatisfiable — skipping remaining", eco)
+                    resolution_error = eco_result.get("resolution_error") or "no details"
+                    logger.warning("  Reason: %s", resolution_error)
                     continue
 
             result = _merge_solver_results(results)
@@ -1086,6 +1275,7 @@ async def _resolve_transitive(
                     "ecosystem": eco,
                 }
 
+    result["skipped_packages"] = skipped_packages
     return result
 
 

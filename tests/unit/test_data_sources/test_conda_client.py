@@ -84,8 +84,11 @@ class TestCondaClient:
             ),
         ):
             await client.get_package_info_async("numpy")
-        mock_fetch.assert_called_once()
-        pkg_name, _channel = mock_fetch.call_args[0]
+        # All channels are probed in parallel; at least one call per channel
+        assert mock_fetch.call_count >= 1
+        call_args = mock_fetch.call_args
+        assert call_args is not None
+        pkg_name, _channel = call_args[0]
         assert "numpy" in pkg_name
 
     @pytest.mark.asyncio

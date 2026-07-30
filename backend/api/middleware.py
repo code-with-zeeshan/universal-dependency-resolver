@@ -519,6 +519,9 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         from backend.settings import FEATURES
 
         csrf_enabled = FEATURES.get("ENABLE_CSRF", True)
+        auth_enabled = FEATURES.get("ENABLE_AUTH", True)
+        if not auth_enabled:
+            csrf_enabled = False
 
         # Set CSRF cookie on every response (if not already present)
         response = await call_next(request)

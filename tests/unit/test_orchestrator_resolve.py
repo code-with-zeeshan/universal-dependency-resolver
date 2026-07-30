@@ -1023,7 +1023,9 @@ class TestGroupByEcosystem:
         }
         groups = _group_by_ecosystem([pkg_a, pkg_b, pkg_c])
         assert "__cross__" in groups
-        assert len(groups["__cross__"]) == 2  # only pypi packages go to cross
+        assert len(groups["__cross__"]) == 1  # only the cross-eco package goes to cross
+        assert "pypi" in groups  # non-cross pypi package stays in its ecosystem
+        assert len(groups["pypi"]) == 1
         assert "npm" in groups  # npm has no cross-eco deps, stays separate
 
     def test_cross_dep_via_dependency_key(self):

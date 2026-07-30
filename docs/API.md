@@ -63,7 +63,7 @@ Most endpoints return `{"status": "success", ...}`. Error responses use the erro
 
 ## Endpoint Summary
 
-The API exposes **54 endpoints** organized into the following categories:
+The API exposes **54 endpoints** organized into the following categories (24 CLI commands, 18 resolvable ecosystems):
 
 | # | Method | Path | Auth | Rate Limit |
 |---|---|---|---|---|
@@ -2425,7 +2425,7 @@ Generate a Software Bill of Materials from lock data in SPDX 2.3 or CycloneDX 1.
 }
 ```
 
-With `"format": "cyclonedx"`, the `sbom` object follows the CycloneDX 1.5 JSON schema instead.
+With `"format": "cyclonedx"`, the `sbom` object follows the CycloneDX 1.5 JSON schema instead. **Note**: CycloneDX uses `"components"` (not `"packages"`) as the top-level key for its component list — this is per spec, not a bug.
 
 **Status codes:**
 
