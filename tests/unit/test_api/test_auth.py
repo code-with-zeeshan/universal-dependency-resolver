@@ -541,6 +541,7 @@ class TestSigningKey:
         mock_private_key.public_key.return_value = mock_public_key
         with (
             patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=b"fake-key-data"),
             patch(
                 "cryptography.hazmat.primitives.serialization.load_pem_private_key",
                 return_value=mock_private_key,
