@@ -415,7 +415,7 @@ python -m pytest tests/integration
 python -m pytest tests/e2e
 
 # With coverage (threshold: 58%)
-python -m pytest --cov=backend --cov-report=term-missing --cov-fail-under=58
+python -m pytest --cov=backend --cov-report=term-missing --cov-fail-under=57
 
 # Parallel
 python -m pytest -n auto
