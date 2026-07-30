@@ -325,3 +325,21 @@ def safe_read_file(path: str | Path) -> str | None:
     except Exception as e:
         logger.warning("Failed to read file %s: %s", path, e)
         return None
+
+
+def resolve_safe_path(base_dir: str | Path, user_path: str | Path) -> Path:
+    """Resolve a user-supplied path safely within a base directory, preventing path traversal."""
+    base = Path(base_dir).resolve()
+    target = (base / user_path).resolve()
+    if not str(target).startswith(str(base)):
+        raise ValueError(f"Path traversal detected: {user_path}")
+    return target
+
+
+def is_safe_path(path: str | Path, allowed_base: str | Path | None = None) -> bool:
+    """Check that a path doesn't escape an allowed base directory."""
+    resolved = Path(path).resolve()
+    if allowed_base:
+        base = Path(allowed_base).resolve()
+        return str(resolved).startswith(str(base))
+    return True

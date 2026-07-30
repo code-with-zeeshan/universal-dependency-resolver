@@ -15,6 +15,7 @@ from backend.api.auth import get_current_user
 from backend.core.data_aggregator import DataAggregator
 from backend.core.export_generator import ExportGenerator
 from backend.core.system_scanner import SystemScanner
+from backend.core.utils import is_safe_path
 from backend.manifest_detector import ManifestDetector
 from backend.orchestrator import (
     _aggregator_to_resolver_input,
@@ -259,6 +260,8 @@ async def scan_local(
     project_dir = Path(req.directory_path).resolve()
     if not project_dir.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {req.directory_path}")
+    if not is_safe_path(project_dir):
+        raise HTTPException(status_code=400, detail="Invalid directory path")
     result = await _run_resolution_pipeline(project_dir, export_format=export)
     result["source"] = "local"
     result["directory_path"] = str(project_dir)

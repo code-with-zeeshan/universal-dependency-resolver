@@ -1,0 +1,97 @@
+site_name: Universal Dependency Resolver
+site_description: Resolve any package, from any ecosystem, all at once.
+site_author: Mohammad Zeeshan
+site_url: https://code-with-zeeshan.github.io/universal-dependency-resolver/
+repo_url: https://github.com/code-with-zeeshan/universal-dependency-resolver
+repo_name: code-with-zeeshan/universal-dependency-resolver
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/code-with-zeeshan/universal-dependency-resolver
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ud-resolver/
+  generator: false
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - User Guide:
+    - Quick Start: USER_GUIDE.md
+    - CLI Reference: CLI.md
+    - API Reference: API.md
+    - API Integration: API_INTEGRATION.md
+  - Architecture:
+    - Overview: ARCHITECTURE.md
+    - Components: COMPONENTS.md
+    - Performance: PERFORMANCE.md
+  - Deployment:
+    - Production Guide: DEPLOYMENT.md
+    - Desktop App: DESKTOP.md
+  - Development:
+    - Setup: DEVELOPMENT.md
+    - Troubleshooting: TROUBLESHOOTING.md
+    - FAQ: FAQ.md
+  - Roadmap:
+    - Project Roadmap: ROADMAP.md
+    - SDK Roadmap: SDK_ROADMAP.md
+
+copyright: Copyright &copy; 2024 Mohammad Zeeshan

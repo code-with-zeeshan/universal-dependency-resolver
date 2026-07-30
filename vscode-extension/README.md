@@ -2,6 +2,9 @@
 
 VSCode extension for the Universal Dependency Resolver (`udr`).
 
+⚠️ **Note:** This extension is not yet published on the VS Code Marketplace.  
+Install manually: `code --install-extension udr-vscode-0.1.0.vsix`
+
 ## Features
 
 - **Lock File Viewer** — Tree view of `udr.lock` grouped by ecosystem with version, license, and CVE count

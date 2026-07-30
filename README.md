@@ -112,12 +112,12 @@ udr lock --manifest requirements.txt --dry-run    # preview only
 # System check with CVE scanning
 udr check --cve
 # ┌────────────────────┬──────────┬──────────┬──────────────────────────────┐
-# │ Package             │ Severity │ Version  │ CVE                          │
-# ├──────────────────────┼──────────┼──────────┼──────────────────────────────┤
-# │ numpy                │ CRITICAL │ 1.21.0   │ CVE-2021-41495               │
-# │ django               │ HIGH     │ 3.2.0    │ CVE-2022-36359               │
-# │ lodash               │ MODERATE │ 4.17.20  │ CVE-2021-23337               │
-# └──────────────────────┴──────────┴──────────┴──────────────────────────────┘
+# │ Package            │ Severity │ Version  │ CVE                          │
+# ├────────────────────┼──────────┼──────────┼──────────────────────────────┤
+# │ numpy              │ CRITICAL │ 1.21.0   │ CVE-2021-41495               │
+# │ django             │ HIGH     │ 3.2.0    │ CVE-2022-36359               │
+# │ lodash             │ MODERATE │ 4.17.20  │ CVE-2021-23337               │
+# └────────────────────┴──────────┴──────────┴──────────────────────────────┘
 
 # Validate & inspect
 udr verify                                        # lock file valid?
@@ -239,7 +239,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
 | 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
 | 🌍 **Web UI** | Browser-based SPA (lock viewer, CVE browser, dep graph) | Open `frontend/index.html` or `udr serve` hosts it | Lightweight browser access |
-| 📘 **VS Code Extension** | Lock tree viewer, CVE diagnostics, manifest editing | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=udr.udr-vscode) | In-editor dependency management |
+| 📘 **VS Code Extension** | Lock tree viewer, CVE diagnostics, manifest editing | [GitHub Source](https://github.com/code-with-zeeshan/universal-dependency-resolver/tree/main/vscode-extension) or `code --install-extension udr-vscode-0.1.0.vsix` | In-editor dependency management |
 
 See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
 

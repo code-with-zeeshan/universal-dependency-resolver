@@ -1957,6 +1957,6 @@ Generate shell completion scripts for bash, zsh, or fish.
 
 ## CLI ↔ API Mapping Reference
 
-See the [CLI Reference](CLI.md#cli--api-mapping) for the complete mapping table.
+See the [CLI Reference](CLI.md#cli-api-mapping) for the complete mapping table.
 
 **Quick summary:** All 24 CLI commands are available through the API. 7 CLI-only features require local filesystem access or a terminal. 9 API-only endpoints expose additional functionality (health checks, auth, per-version queries, compatibility data).
