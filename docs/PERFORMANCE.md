@@ -1,120 +1,113 @@
 # Performance
 
-## SAT solver internals
+## Solver Pipeline
 
-```mermaid
-flowchart TB
-    subgraph Input["📥 Input"]
-        PACKAGES["Package list<br/>with versions & deps"]
-        SYSINFO["System info<br/>OS · GPU · CUDA · Python"]
-    end
+The core resolution engine performs SAT solving (Z3 by default, PubGrub as opt-in) with the following pipeline:
 
-    subgraph Normalize["1️⃣ Normalize"]
-        NORM["Normalize package names<br/>Validate inputs"]
-        GRAPH["Build dependency graph<br/>(NetworkX DiGraph)"]
-    end
-
-    subgraph Variables["2️⃣ Create Z3 Variables"]
-        VARS["Create Bool vars per version<br/><code>z3.Bool('torch_2.1.2')</code>"]
-        CLUSTER["Cluster versions<br/>(major.minor, latest patch)"]
-        WEIGHTS["Assign optimization weights<br/>newer = lower weight"]
-    end
-
-    subgraph Constraints["3️⃣ Add Constraints"]
-        ONEVER["Exactly one version per pkg<br/><code>z3.Or() + z3.AtMost(1)</code>"]
-        SYSREQ["System requirements<br/>CUDA ≥ min_version<br/>Python ≥ min_version"]
-        DEP["Dependency constraints<br/><code>z3.Implies(pkg, valid_deps)</code>"]
-        CONFLICT["Conflict rules<br/>CUDA 11 vs 12 XOR<br/>tensorflow + numpy upper bound"]
-    end
-
-    subgraph Solve["4️⃣ Solve (Z3 path — also has PubGrub/Hybrid paths)"]
-        OPT["<code>z3.Solver()</code> (default)<br/>or <code>z3.Optimize()</code> if USE_Z3_OPTIMIZE"]
-        CHECK["<code>solver.check()</code>"]
-        RESULT{"Result?"}
-        SAT["SAT ✅<br/>Extract model<br/><code>solver.model()</code>"]
-        UNSAT["UNSAT ❌<br/>Analyze conflicts"]
-        TIMEOUT["TIMEOUT ⏰<br/>Fallback: backtracking"]
-    end
-
-    subgraph Output["5️⃣ Output"]
-        SOLUTION["Formatted solution<br/>version · ecosystem · tree"]
-        PARTIAL["Partial solution<br/>per-package alternatives"]
-        ERROR["Error payload<br/>with correlation ID"]
-    end
-
-    Input --> Normalize
-    NORM --> GRAPH
-    GRAPH --> Variables
-    CLUSTER --> VARS
-    VARS --> WEIGHTS
-    WEIGHTS --> Constraints
-    ONEVER --> SYSREQ
-    SYSREQ --> DEP
-    DEP --> CONFLICT
-    CONFLICT --> Solve
-    OPT --> CHECK
-    CHECK --> RESULT
-    RESULT -->|"sat"| SAT
-    RESULT -->|"unsat"| UNSAT
-    RESULT -->|"unknown"| TIMEOUT
-    SAT --> SOLUTION
-    UNSAT --> PARTIAL
-    TIMEOUT --> PARTIAL
-    PARTIAL --> ERROR
-
-    style SAT fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-    style UNSAT fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style TIMEOUT fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
+```
+Package inputs (name + version constraint)
+        │
+        ▼
+┌─────────────────────────┐
+│  1. Normalize           │
+│  - Cross-eco constraint │  npm ^ → >=, <=, ~ → PEP 440
+│    normalization         │  Go pseudo-version → semver
+│  - NPM alias stripping   │  Bare versions → ==bound
+│  - Version padding       │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│  2. Create variables    │  SAT variable per (pkg, version) pair
+│  - Version clustering   │  Group by major.minor, keep latest patch
+│  - Prerelease filtering │  max 50 vars/pkg, 50000 total
+│  - Limit enforcement    │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│  3. Add constraints     │
+│  - Singleton: one ver   │  Exactly one version per package
+│  - Dep: if A=v1→B=v2    │  If version A selected, deps satisfied
+│  - Conflict: ¬(A=v1∧B=v2)│  CUDA/numpy/version conflicts
+│  - Platform markers     │  PEP 508 marker filtering (PEP 508)
+│  - CUDA variant select  │  GPU variant selection by CUDA version
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│  4. Solve (Z3 CDCL)     │
+│  - Try optimize first   │  z3.Optimize() when USE_Z3_OPTIMIZE=true
+│  - Fallback to solver   │  z3.Solver() when optimization disabled
+│  - upgrade_to_latest    │  Post-process: upgrade each pkg to newest
+│  - Timeout handling     │  Parallel cross-solver (PubGrub) fallback
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│  5. Output              │
+│  - Version assignments  │  {pkg: version} dict
+│  - Deprecation warnings │  yanked/deprecated flags
+│  - Resolution hash      │  SHA256 of (packages + system + constraints)
+│  - Cross-validation     │  Alternate solver verification on failure
+└─────────────────────────┘
 ```
 
-**Key implementation details (Z3 path):**
-- Z3 boolean variables are created per package version (`z3.Bool(f"{name}_{version}")`)
-- Exactly-one constraint enforced via `z3.Or()` + `z3.AtMost(1)` per package
-- Dependency constraints use `z3.Implies(pkg_var, Or(valid_dep_vars))`
-- CUDA 11 vs 12 conflict: `z3.Not(And(var11, var12))` for each pair
-- `z3.Solver()` is the default; `z3.Optimize()` (enabled via `USE_Z3_OPTIMIZE=true`) minimizes weighted sum for newer versions
-- `z3-solver` is optional — install via `pip install ud-resolver[z3]`. AutoSolver falls back to PubGrub when Z3 is missing.
-- `SOLVER_MAX_VARIABLES` env var (default 50000) prevents memory blowup
-- Version clustering caps at 50 versions per package via `SOLVER_MAX_VERSIONS_PER_PKG`
-- When UNSAT/timeout, falls back to DFS backtracking in `_resolve_with_alternatives()`
+## Startup Time
 
-## Startup time
+- **Cold start** (from pip install): ~0.85s to `udr --help`
+- **Lazy imports**: Heavy dependencies (Z3, aiohttp, cryptography) imported only when the specific command needs them
+- **Warm cache**: System scanner results cached for 5 minutes
 
-The CLI starts in ~0.85s on a modern machine. This is achieved through:
+## Resolution Performance
 
-- **Lazy `import z3`**: Z3 is imported inside the `create_solver()` factory (AutoSolver), not at module level. Commands that don't need resolution (e.g. `udr check`, `udr list-ecosystems`) skip Z3 entirely.
-- **Lazy ecosystem plugins**: All 26 ecosystem plugins are registered via `_register_builtin()` in `plugin.py`. They are only imported when first accessed.
-- **Lazy aggregator**: `DataAggregator` creates clients on demand.
+| Scenario | Packages | Time | Solver |
+|---|---|---|---|
+| Small (flask + deps) | 15-25 | ~15s | Z3 |
+| Medium (express + deps) | 60-80 | ~45s | Z3 |
+| Large (sentry: npm + pypi) | 1,567 | ~144s | Z3 |
+| Large (cilium: gomodules) | 490 | ~225s | Z3 |
+| Workspace (rust-lang/regex) | 21 | ~59s | Z3 |
 
-## Resolution performance
-
-- Simple resolutions (1-3 packages, single ecosystem): <1s (after metadata fetch)
-- Complex resolutions (multi-ecosystem, many constraints): depends on Z3 solver time
+**Key factors:**
+- Registry API latency dominates (50-80% of total time)
+- BFS dependency discovery scales with graph size, not solver time
+- Z3 SAT solving is typically <5s for most real-world graphs
+- Go proxy latency is the main bottleneck for gomodules (~2s per .mod fetch × 320 modules / 20 concurrent ≈ 32s minimum)
 
 ## Caching
 
-| Layer | Type | Default TTL |
+| Layer | Location | TTL | Purpose |
+|---|---|---|---|
+| DictCache | In-memory | 3600s | Registry API responses (JSON) |
+| DictCache (short) | In-memory | 300s | Rate-limited endpoints |
+| DictCache (versions) | In-memory | 600s | Package version listings |
+| ContentAddressedCache | `~/.cache/udr/cac/` | configurable | SHA256-verified blob store |
+| SQLite Indexes | `~/.cache/udr/indexes/` | permanent | Offline package metadata |
+| Redis (optional) | External | 3600s | Worker-shared cache + rate limiting |
+
+## Network Concurrency
+
+| Setting | Default | Description |
 |---|---|---|
-| Package metadata | DictCache (in-memory) or Redis | 1 hour |
-| Resolution results | DictCache or Redis | 1 hour |
-| System info | DictCache (5-min TTL) | 5 minutes |
-| System scan results | In-memory, refreshed per resolve | Per request |
+| `NPM_CONCURRENCY` | 10 | Concurrent npm registry requests |
+| `GOMODULES_CONCURRENCY` | 20 | Concurrent Go proxy requests |
+| `BFS_BATCH_SIZE` | 20 | Batch size for BFS dependency discovery |
+| `SCANNER_MAX_WORKERS` | 10 | Thread pool for system scanning |
 
-## Network
+## Bottlenecks (Known)
 
-- All registry API calls use `aiohttp` with connection pooling
-- Concurrent fetching via `asyncio.gather` for package metadata
-- 10-second timeout on individual registry requests
-- Configurable rate limits per ecosystem (default: 60-600 req/min)
+| Bottleneck | Impact | Mitigation |
+|---|---|---|
+| Go proxy latency | ~2s per `.mod` fetch | Increase `GOMODULES_CONCURRENCY`, use `go.sum` as lock source |
+| Conda multi-arch metadata | Slow for large env files | Use offline indexes |
+| APT BFS explosion | Many system-level transitive deps | Limit depth with `--timeout` |
+| Fresh cold cache | First run fetches all registry data | Pre-populate with `udr index build` |
+| PubGrub pure-Python fallback | ~10× slower than Rust backend | Install `pubgrub-py` (Rust) |
 
-## Desktop app
+## Desktop App
 
-- Backend runs as a subprocess on a local port
-- GUI communicates via localhost REST API (no network overhead)
-- No Python install needed — compiled to standalone binary via PyInstaller
-
-## Bottlenecks
-
-- **First-ever resolution** for a package requires remote API calls. Subsequent resolutions hit cache.
-- **Z3 solver** time scales with constraint complexity. Simple version ranges are fast; complex cross-ecosystem constraints take longer.
-- **System scanning** GPU detection via `pynvml` is fast (<100ms). Full system scan <500ms.
+- Backend bundled via PyInstaller (single executable, ~110-120 MB)
+- Communicates with local backend via HTTP on `127.0.0.1:8000`
+- No rendering latency — plain HTML/CSS/JS with async fetch patterns
+- Same performance profile as CLI for all resolution tasks

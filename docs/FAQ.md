@@ -1,151 +1,110 @@
-## FAQ — Frequently Asked Questions about Universal Dependency Resolver
+# Frequently Asked Questions
 
-**Last updated:** 2026-07-21 (all features implemented, doc refreshed)
+## 1. How does UDR handle multi-ecosystem conflicts?
 
----
+UDR uses a SAT solver (Z3 by default, PubGrub as opt-in) that understands dependency constraints across ecosystem boundaries. When package A from PyPI depends on package B from npm, the solver creates cross-ecosystem variables and solves them in a single SAT model. If the graph is too large, packages are grouped into single-ecosystem sub-graphs that resolve independently, with only cross-ecosystem edges going through the unified path.
 
-Here are the answers, grounded in the codebase:
+## 2. What happens when resolution fails?
 
-## 1. Scaling & Performance (The Z3 Bottleneck)
+The solver first runs cross-validation (tries the alternate solver — Z3 ↔ PubGrub). If both agree on unsat, it returns diagnostic info:
+- Packages with no compatible versions
+- Cyclic impossible constraints
+- Mismatched version requirements
 
-> *"Z3 is a generalized, heavy SMT solver, whereas specialized tools like PubGrub use hyper-optimized CDCL heuristics specifically tuned for version strings. When handling massive enterprise monorepos with thousands of transitive dependencies, how do you prevent Z3 from hitting a combinatorial explosion or hanging indefinitely on complex constraint paths?"*
+The `--interactive` flag opens a manual resolution mode where you can adjust constraints and re-run.
 
-UDR uses a multi-layered defense, not a single fix:
+## 3. Can I take a lock file from one machine and use it on another?
 
-- **Version clustering** (`conflict_resolver.py:1055-1094`): Groups versions by `major.minor`, keeps 1 rep per cluster. Dynamic scaling: `sqrt(version_count)`, capped at 3–20 clusters via `SOLVER_MAX_CLUSTERS_MIN/MAX` env vars. A package with 500 versions becomes ≤20 Z3 boolean variables.
-- **SCC batch solving** (`conflict_resolver.py:204-405`): For graphs >20 packages with multiple SCCs, decomposes into independent components via `nx.strongly_connected_components`. Each SCC gets its own Z3 instance with resolved deps pinned. Actively reduces the problem space — components that share no dependency path never interact.
-- **Total Z3 variable cap**: `SOLVER_MAX_VARS=50000` — if exceeded, resolution fails gracefully rather than thrashing.
-- **Optimization threshold** (`conflict_resolver.py:788-800`): Above 100 packages, disables `z3.Optimize()` (minimization overhead) and uses plain `z3.Solver()`.
-- **Z3 timeout** (`conflict_resolver.py:802-805`): Set programmatically in ms (derived from `SOLVER_TIMEOUT`, default 120s). Z3 returns `unknown` → falls back to DFS backtracking (`_resolve_with_alternatives`) bounded by `max_nodes=50000`.
-- **AutoSolver** (`orchestrator/resolve.py:23-50`): Profiles the graph and delegates to PubGrub (default), Z3, or Hybrid solver. Set `USE_PUBGRUB_SOLVER=true` for PubGrub, `USE_Z3_SOLVER=true` for Z3, `USE_HYBRID_SOLVER=true` for per-ecosystem PubGrub + cross-ecosystem Z3. Pure-Python implementation at `core/pubgrub_core.py` (661 lines) as fallback if Rust `pubgrub-py` isn't installed.
+Yes. The lock file (`udr.lock`) stores resolved versions independent of the host machine. GPU-aware packages store CUDA variant info in the lock file. Running `udr verify` on a different machine checks that all pinned versions still exist in their registries. To re-resolve for a different environment, use `udr update --cuda <version>`.
 
-> *"Have you benchmarked UDR's resolution speeds against next-gen single-language package managers like Rust-based uv? If so, what strategies are you using to minimize Z3's memory footprint during massive multi-ecosystem resolutions?"*
+## 4. How does UDR handle network latency or registry downtime?
 
-Not directly benchmarked against `uv`, but internal measurements show SCC batch resolution handles 5,455 packages from 6 real-world repos at 0 errors. Cross-ecosystem BFS is the dominant bottleneck (~75% of budget), not SAT solving. The continuous `asyncio.Queue` worker pool (`orchestrator/resolve.py:325-410`) changed BFS from `sum(max(depth_times))` to `max(depth_times)`, which helped more than solver optimizations for the typical case.
+- **Caching**: DictCache (in-memory, TTL 1h) + ContentAddressedCache (SHA256 blob store on disk)
+- **Offline indexes**: Pre-built SQLite indexes can be downloaded for environments without registry access
+- **Retry**: Base HTTP client retries with exponential backoff (max delay 10s)
+- **Timeouts**: Configurable via `SOLVER_TIMEOUT` (default 120s) and `SOLVER_API_TIMEOUT` (default 300s)
+- **Fallback**: If a registry is unreachable, the resolver uses cached data or offline indexes
 
----
+## 5. What's the roadmap for UDR?
 
-## 2. Multi-Ecosystem Failures (The State Splitting Problem)
+The project is ready for production use. Current focus:
 
-> *"Right now, UDR resolves multiple distinct ecosystems (like PyPI and npm) simultaneously in a global Z3 optimization matrix. If a developer has an unresolvable version conflict in their frontend JavaScript setup, it will mathematically fail the entire global resolution, blocking their completely independent backend Python setup. Have you considered isolating or segmenting the evaluation spaces using sequential Z3 contexts (s.push() / s.pop()) unless an explicit cross-ecosystem bridge is declared?"*
+| Area | Status |
+|---|---|
+| CLI (24 commands) | ✅ Complete |
+| REST API (59 endpoints) | ✅ Complete |
+| SAT Solver (Z3 + PubGrub) | ✅ Complete |
+| 25 ecosystems supported | ✅ Complete |
+| CVE scanning | ✅ Complete |
+| SBOM (SPDX/CycloneDX) | ✅ Complete |
+| Desktop app (Electron) | ✅ Complete |
+| VS Code extension | ✅ Complete |
+| Supply chain signing | ✅ Complete |
+| License / policy engine | ✅ Complete |
+| Cross-compilation | ✅ Complete |
+| JS/TS and Go SDKs | 🔮 Planned (community-driven) |
 
-UDR resolves per-ecosystem groups independently (via `_group_by_ecosystem()`), with a unified cross-ecosystem path for packages that span boundaries.
+## 6. How is this different from `pip-compile` / `poetry` / `npm` / `cargo`?
 
-The partial mitigation is **SCC decomposition**: if the dependency graph has no path connecting the PyPI and npm subgraphs, they fall into separate SCCs and resolve independently. In a monorepo where a Python script calls a Node microservice, those subgraphs are typically disconnected at the dependency level, so a conflict in one won't block the other. But if there's any shared transitive dep (e.g. both use `requests`/`express` or have a cross-ecosystem CUDA constraint collision), they merge into the same SCC and a conflict in one does block the other.
+| Tool | Focus | Limitation |
+|---|---|---|
+| pip-compile | Python only | Single ecosystem |
+| Poetry | Python only | Single ecosystem |
+| npm/yarn/pnpm | JavaScript only | Single ecosystem |
+| Cargo | Rust only | Single ecosystem |
+| Bundler | Ruby only | Single ecosystem |
+| **UDR** | **All ecosystems** | **Cross-ecosystem SAT solving, unified lock file** |
 
-The project has no explicit per-ecosystem `s.push()/s.pop()` isolation, and no "declare cross-ecosystem bridge" mechanism. This is a recognized gap — the only current escape is bypassing the solver entirely for pinned/lock-source packages (`lock.py:141,281-282` for Go modules).
+UDR is not a replacement for these tools — it's a meta-resolver that coordinates them. It produces a `udr.lock` that captures the full dependency graph across all ecosystems, then delegates actual package installation to the native package managers.
 
----
+## 7. Does UDR support CUDA/GPU-aware resolution?
 
-## 3. Lockfile Portability & The CI/CD Trap
+Yes. For PyPI packages with CUDA-tagged variants (e.g. `torch 2.1.2+cu121`), UDR:
 
-> *"Because the SystemScanner dynamically probes ambient hardware (like local NVIDIA GPUs via pynvml), the generated udr.lock file is strictly tied to the machine that ran the command. If a developer runs udr lock on a local MacBook (M-series chip), the lockfile will strip out CUDA paths. How should teams handle deployments where the lockfile is generated on a standard laptop but needs to run on a heavy GPU-accelerated cloud instance? Is there an architectural plan to support explicit target overrides (e.g., --target-cuda=12.1) to bypass local hardware scanning?"*
+1. Auto-detects the system CUDA version via `nvidia-smi`, `nvcc`, or `pynvml`
+2. Selects the best-matching CUDA variant (exact match preferred, closest lower as fallback)
+3. On CPU-only machines, use `--cuda 12.1` to force GPU-aware resolution
+4. Stores CUVA variant info in the lock file for portability
 
-The lock file stores `system` metadata (os, python, cpu, gpu, cuda) for **informational purposes only** — it is never read back to reconstruct `system_info` during re-resolution. The lock file pins exact versions (including CUDA variants like `torch==2.1.0+cu121`), so a `udr.lock` generated on a CUDA 12.1 machine IS portable to a CPU-only machine for **install/deploy** use cases — the pinned versions are used directly.
+Also supports `--device` flag for explicit selection: `cpu`, `cuda`, `mps` (Apple Silicon), or `rocm` (AMD).
 
-For **re-resolution** (updating the lock file), the hardware override exists via `--cuda` and `--device` flags on `lock`, `resolve`, `graph`, `update`, `scan`, and `check` commands:
+## 8. Can I use UDR in CI/CD?
+
+Yes. UDR is designed for CI pipelines:
+
+```yaml
+# GitHub Actions — check for drift on every PR
+- name: Check lock file freshness
+  run: |
+    pip install ud-resolver[z3]
+    udr lock --check
 ```
-udr lock --cuda 12.1                    # Force CUDA 12.1 target
-udr lock --device cpu                    # CPU-only resolution
-udr lock --device cuda --cuda 11.8       # CUDA 11.8 target
+
+The `--check` flag runs full resolution and diffs against the existing lock file. Exits with code 1 if drift is detected (fails the build). Use `udr lock --check` in pre-commit hooks, GitHub Actions, GitLab CI, or any CI system.
+
+## 9. What data does UDR send to external services?
+
+UDR queries public package registries (PyPI, npmjs.com, crates.io, etc.) for version and dependency metadata. No telemetry, no usage tracking, no data sent to any UDR-controlled server. The offline index mode (`udr index pull`) downloads pre-built SQLite databases from a URL you specify.
+
+## 10. How do I migrate from an existing lock file?
+
+```bash
+# Auto-detect and migrate (supports 25 formats)
+udr migrate
+
+# Preview first
+udr migrate --display
+
+# Force overwrite existing udr.lock
+udr migrate --force
 ```
-These override `system_info["gpu"]` before it reaches the SAT solver. The API counterpart is the `GenerateLockRequest.system` field in the POST body.
 
-**`--target`/`--platform` flags are available** (`TARGET_OS`, `TARGET_ARCH` env vars) for cross-compilation — override OS, architecture (arm64 vs amd64), or Python version. For proper cross-compilation targeting (e.g., lock file generated on macOS ARM for Linux CUDA deployment), use `--target linux --platform x86_64` together with `--cuda 12.1`.
+Supported source formats: `package-lock.json`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `go.sum`, `Gemfile.lock`, `composer.lock`, `mix.lock`, `Package.resolved`, `yarn.lock`, `pnpm-lock.yaml`, `Brewfile.lock.json`, `Podfile.lock`, `Pipfile.lock`.
 
----
+## 11. What Python versions are supported?
 
-## 4. Network Latency & External API Dependency
+Python 3.11, 3.12, and 3.13.
 
-> *"The DataAggregator queries live public APIs across 20 different registries at runtime. Large dependency trees require a massive number of lookups, which heavily risks hitting network latency bottlenecks or public API rate limits (HTTP 429 Too Many Requests). Beyond the local SQLite cache, do you plan to support consuming compressed global indexes or utilizing private registry mirrors to make lookups offline-first?"*
+## 12. Do I need a database or Redis?
 
-Current caching architecture:
-
-| Layer | Mechanism | Persistence |
-|-------|-----------|-------------|
-| ETag HTTP cache | `cached_get()` with `If-None-Match` | Disk-backed DictCache (`~/.cache/udr/{eco}/cache.json`) |
-| SQLite offline index | Per-ecosystem `~/.cache/udr/indexes/{eco}.db` | Built via `udr index build` |
-| Rate limiting | Sliding-window 60s per ecosystem | Circuit breaker (5 failures → 30s open) |
-| Offline mode | `--offline` flag → `UDR_OFFLINE=true` | Bypasses network, queries SQLite index |
-
-The `udr index pull` command can fetch pre-built SQLite indexes from remote URLs, and `udr index build` populates them from the lock file. This enables CI workflows where indexes are built once and distributed.
-
-**What's missing for true offline-first**: The SQLite index is not populated automatically during online use — you must explicitly `udr index build` or `udr index pull`. There is no compressed global index format (like Debian's Packages.gz or crates.io-index's Git-based index). Private registry mirrors (e.g., npm's `registry.npmjs.org` → internal proxy) work insofar as the `registry_url` per-client can be reconfigured, but there's no centralized mirror abstraction layer.
-
----
-
-## 5. Project Roadmap & Future Evolution
-
-> *"UDR is incredibly comprehensive, launching with a CLI, an Electron desktop app, and a FastAPI server all at once. Maintaining 20 distinct registry schemas alongside four separate application components is a massive undertaking. What is your primary focus for the core architecture moving forward, and what area of the codebase is currently the highest priority for open-source contributors?"*
-
-See [ROADMAP.md](ROADMAP.md) for the full prioritized roadmap. All prior high-priority gaps (manifest updaters, cross-compilation, offline-first mode, per-ecosystem solver isolation) are now implemented.
-
----
-
-## 6. Practical & Adoption Questions
-
-> *"How is UDR different from pip, poetry, npm, or cargo? Why would I use it instead of my existing package manager?"*
-
-Single-language tools resolve one ecosystem at a time. UDR resolves **across** them simultaneously — a Python package (`torch`) that depends on an npm package (`react`) or a CUDA library (`nvidia-cublas`) gets solved in one pass, not two. It also detects existing manifests for 25 ecosystems (18 resolvable + 7 query-only), reads their lock files (`package-lock.json`, `Cargo.lock`, `Gemfile.lock`, etc.) as pinned sources, and produces a single `udr.lock` that covers every dependency in your project.
-
-> *"Can I adopt UDR incrementally in an existing project, or do I need to rewrite everything?"*
-
-Incremental. Point `udr lock` at your project directory — it detects existing manifests (`pyproject.toml`, `package.json`, `go.mod`, etc.) and existing lock files as pinned sources (`lock.py:142-180`). Packages from lock files bypass the solver entirely. You get a `udr.lock` alongside your existing tooling. No manifest format change required.
-
-> *"What happens if a package registry is down or returns 429?"*
-
-Three-layer defense. First, ETag-based `cached_get()` (`base_client.py:248-327`) reuses cached data when the registry returns 304. Second, the sliding-window rate limiter per ecosystem (`base_client.py:112-121`) + circuit breaker (5 failures → 30s open, `base_client.py:169-217`) prevents cascading failures. Third, `--offline` mode queries the SQLite offline index (`~/.cache/udr/indexes/{eco}.db`) with zero network requests — as long as you've run `udr index build` or fetched previously while online.
-
-> *"Does UDR actually install packages, or just resolve them?"*
-
-It generates install commands per ecosystem (`install.py:1-14`). `udr install` outputs the correct shell commands (`pip install`, `npm install`, `cargo add`, `go get`, `gem install`, etc.) and can optionally execute them with `--run`. It does not replace your native installer — it orchestrates it.
-
-> *"How do I trust that the lock file hasn't drifted from what's actually on the registry?"*
-
-`udr verify` reads your `udr.lock`, re-queries each pinned package's latest version and checksum, and reports any mismatch. The `resolution_hash` (`lock.py:424`) captures the full resolution state including `system_info` — if anything changes (hardware, dependency tree), the hash won't match, and `udr lock` re-resolves only the affected subtrees.
-
-> *"What exit codes does the CLI use? I need this for CI scripts."*
-
-Consistent across all commands: **0** = success/resolved, **1** = error/failure (unresolvable conflict, missing manifest, network error), **130** = cancelled by user (SIGINT / Ctrl+C). Every command handler wraps its entry point in the same `try/except` pattern (`resolve.py:184-191`, `lock.py:627-636`, `verify.py:139-148`, etc.).
-
-> *"Can I use UDR as a Python library, not just a CLI?"*
-
-Yes. Import the factory: `from backend.orchestrator import create_solver`. Returns an `AutoSolver` (default) which profiles the graph and delegates to Z3, PubGrub, or Hybrid solver. The `DataAggregator` and `SystemScanner` are also importable directly. See [COMPONENTS.md](COMPONENTS.md) for a code sample.
-
-> *"Does UDR support private registries and authentication?"*
-
-Yes, with three-tier priority: constructor arg > environment variable > `.netrc`. 18 per-ecosystem env vars follow the pattern `{ECO}_AUTH_TOKEN` (e.g. `NPM_AUTH_TOKEN`, `PYPI_AUTH_TOKEN`). Supports bearer, basic, and header auth types. Wired through all 18+ data source clients via `base_client.py.__init__()` and `registry_auth.py`. Private registry mirrors work by setting `registry_url` per client — there's no centralized mirror abstraction layer yet.
-
----
-
-## 7. System-Aware Architecture & CUDA Matching (the companion question)
-
-UDR's system-aware CUDA resolution uses a **tiered detection + post-resolution enrichment** architecture:
-
-1. **Detection** (`detectors/gpu.py`): 5-tier fallback — `pynvml` → `GPUtil` → `nvidia-smi` CSV → `nvcc` → `nvidia-smi` header. Also detects AMD (ROCm/OpenCL), Intel (i915), Apple Metal, TPU, NPU, Apple Neural Engine.
-
-2. **SAT filtering** (`conflict_resolver.py:1220-1255`): `_add_system_constraints()` creates Z3 `Not()` constraints excluding versions whose `system_requirements.cuda.min_version` exceeds the detected/locally-available CUDA version. This is data-driven — each package version declares its CUDA requirement in metadata, and the solver automatically excludes incompatible options.
-
-3. **CUDA variant enrichment** (`orchestrator/resolve.py:560-602`): Post-resolution step. The SAT solver first picks a base version (e.g., `torch==2.1.0`), then `_apply_cuda_variants()` pattern-matches `+cu<digits>` variants and selects the best fit — exact CUDA match preferred, else highest variant ≤ system CUDA version, else first variant (CPU-compatible). Selection logic at lines 541-557.
-
-4. **Conflict rules** (`conflict_resolver.py:53-71`): Data-driven `CONFLICT_RULES` make CUDA 11.x and CUDA 12.x packages mutually exclusive via cross-product Z3 constraints. The same mechanism handles `tensorflow`/`numpy` version pinning and can be extended for any ecosystem pair.
-
-5. **Hardware override**: `--cuda <ver>` and `--device <cpu/cuda/mps>` flags on 7 CLI commands override `system_info["gpu"]` before it reaches any of the above. The API accepts `system` in the request body.
-
-The result is that a MacBook developer (no CUDA) generates a CPU-only lock file by default, but can `udr lock --cuda 12.1` to generate a GPU-deployable lock file for the same package set, with the solver correctly selecting `torch==2.1.0+cu121` variants.
-
-## 7. System Detection & GPU Handling
-
-> *"Does UDR detect GPU/OS/CPU without installing the [system] extra? And how does PubGrub handle GPU constraints if it doesn't support CUDA boolean encoding?"*
-
-**System detection without extras**: Yes. The base `ud-resolver` detects GPU, OS, CPU, and memory via subprocess commands (`nvidia-smi`, `nvcc`, `rocm-smi`, `lspci`, `/proc/cpuinfo`, `platform`) — no extra dependencies needed. The `[system]` extra only adds richer data via Python libraries (`pynvml` → GPU temperature/utilization, `psutil` → per-process memory, `cpuinfo` → detailed CPU model string).
-
-**GPU filtering with PubGrub**: GPU-incompatible versions are filtered **before** the solver sees them. `_aggregator_to_resolver_input()` in `orchestrator/resolve.py` compares each package version's `system_requirements.cuda` against `system_info["gpu"]["cuda"]`. Versions requiring CUDA 12.1 when the system has CUDA 11.8 are excluded from the version list. By the time PubGrub resolves dependencies, only compatible candidates remain — PubGrub never needs to encode CUDA constraints.
-
-The only case that requires Z3 is CUDA 11 vs 12 XOR conflict rules (e.g. `torch==2.1.2+cu121` and `tensorflow==2.12.0` requiring different CUDA toolkits that can't coexist). Without Z3, those rules are skipped (AutoSolver logs a warning). This is rare — most users have one CUDA version.
-
----
-
-**UDR's architecture addresses all of Q2-Q4 concerns**: per-ecosystem solver isolation (Q2, `_group_by_ecosystem`), cross-compilation with `--target`/`--platform` (Q3), and automatic offline index population (Q4, `_auto_index_package`). Known limitations are documented in [ROADMAP.md](ROADMAP.md).
-
-UDR's architecture addresses all of Q2-Q4 concerns: per-ecosystem solver isolation (Q2, `_group_by_ecosystem`), cross-compilation with `--target`/`--platform` (Q3), and automatic offline index population (Q4, `_auto_index_package`). Known limitations are documented in [ROADMAP.md](ROADMAP.md).
+No. SQLite is the default (zero configuration). PostgreSQL and Redis are optional for production multi-worker deployments.

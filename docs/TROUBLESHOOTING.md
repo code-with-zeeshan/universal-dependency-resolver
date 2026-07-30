@@ -1,599 +1,432 @@
-# Troubleshooting Guide
-
-Common errors and solutions when working with the Universal Dependency Resolver.
+# Troubleshooting
 
 ## Installation
 
 ### `z3-solver` fails to install
 
-```
-ERROR: Could not find a version that satisfies the requirement z3-solver
-```
+**Error:** `pip install z3-solver` fails with compilation errors.
 
-**Cause**: Z3 is a native library that requires a C++ compiler on some platforms.
-
-**Solution**:
-
+**Solutions:**
 ```bash
-# Ubuntu/Debian
-sudo apt-get install build-essential
+# Install pre-built wheel (Linux x86_64)
+pip install z3-solver
 
-# macOS
-xcode-select --install
+# If that fails, install from conda
+conda install -c conda-forge z3-solver
 
-# Windows — install Microsoft C++ Build Tools
+# Or use the PubGrub solver instead (no C++ dependency)
+pip install ud-resolver[pubgrub]
+export USE_PUBGRUB_SOLVER=true
 ```
 
-Or use a pre-built wheel from a third-party index:
+### `pubgrub-py` fails with Rust linker error
 
+**Error:** `pip install pubgrub-py` fails on Rust compilation, typically `error: linking with `cc` failed`.
+
+**Solutions:**
 ```bash
-pip install z3-solver --only-binary=:all:
+# Ensure gcc is available (not just rust-lld)
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc
+pip install pubgrub-py
+
+# On NixOS:
+apt install gcc  # or your distro equivalent
+
+# Fall back to pure-Python PubGrub (slower but works)
+# The solver auto-detects if pubgrub-py is installed
 ```
 
-### `pkg-config` not found
+### `ModuleNotFoundError: No module named 'some_dependency'`
 
-```
-Package 'python3' requires pkg-config
-```
+**Cause:** The package was installed without optional extras.
 
-**Cause**: Some Python packages need `pkg-config` at build time.
-
-**Solution**:
-
+**Solution:**
 ```bash
-# Ubuntu/Debian
-sudo apt-get install pkg-config
-
-# macOS
-brew install pkg-config
-
-# Fedora
-sudo dnf install pkgconf-pkg-config
+pip install --upgrade ud-resolver[all]
 ```
 
-### `pip install ud-resolver` fails
-
-- Make sure you have Python 3.11 – 3.13 installed
-- On Linux, you may need `python3-dev` or `python3.12-dev` for compiling native extensions
-- Try `pip install --upgrade pip` first
-- If Z3 fails to install, try `pip install z3-solver` first, then `pip install ud-resolver`
-
-### `pubgrub-py` fails to install / Rust linker error
-
-```
-error: linker `rust-lld` not found
-  or
-error: failed to run custom build command for `pubgrub-py v1.1.0`
-```
-
-**Cause**: `pubgrub-py` ships pre-compiled wheels for Linux x86\_64, macOS (x86\_64 + arm64), and Windows amd64. If your platform/arch/Python version isn't covered (e.g. Linux aarch64, musl-based Alpine, Python 3.13t), pip falls back to `cargo build --from-source` which requires a full Rust toolchain.
-
-On **Nix/NixOS**, the default linker wrapper (`rust-lld`) can't find `-lgcc`. Workaround:
-
-```bash
-CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc pip install 'ud-resolver[pubgrub]'
-```
-
-**On any platform**, if you don't have Rust installed and no wheel is available, the solver falls back automatically to pure-Python `PubGrubCoreSolver` (no install required). The pure-Python solver handles most dependency graphs under 100 packages within a second. You don't need `pubgrub-py` for UDR to work.
-
-To check if `pubgrub-py` is installed:
-
-```bash
-python -c "import pubgrub_py; print('Rust-backed solver available')"
-```
-
-If that fails, the pure-Python fallback is used automatically.
-
-## Runtime Errors
-
-### `ModuleNotFoundError: No module named 'backend'`
-
-```text
-ModuleNotFoundError: No module named 'backend'
-```
-
-**Cause**: The package is not installed in the current Python environment.
-
-**Solution**:
-
-```bash
-pip install -e ".[dev,system,postgres]"
-```
-
-### `z3` import error
-
-```text
-ImportError: libz3.so: cannot open shared object file
-```
-
-**Cause**: The Z3 shared library is not on the library path.
-
-**Solution**:
-
-```bash
-# Linux
-export LD_LIBRARY_PATH=$(python3 -c "import z3; import os; print(os.path.dirname(z3.__file__))")/lib:$LD_LIBRARY_PATH
-
-# macOS
-export DYLD_LIBRARY_PATH=$(python3 -c "import z3; import os; print(os.path.dirname(z3.__file__))")/lib:$DYLD_LIBRARY_PATH
-```
-
-### Lock file signing key not found
-
-```text
-Error: No Ed25519 signing key found. Run 'udr auth gen-key' first.
-```
-
-**Cause**: `udr lock --sign` requires a signing key that doesn't exist yet.
-
-**Solution**:
-
-```bash
-udr auth gen-key                          # generate a new key pair
-udr auth show-key                         # show the public key
-```
-
-### `SECRET_KEY` not set
-
-```text
-ValueError: SECRET_KEY environment variable is required when ENABLE_AUTH=true
-```
-
-**Cause**: Authentication is enabled but no secret key was provided.
-
-**Solution**:
-
-```bash
-export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(48))")
-udr serve
-```
+---
 
 ## CLI
 
-### `udr` command not found
+### `udr: command not found`
 
-- Make sure your Python Scripts/bin directory is on PATH:
-  - Linux/macOS: `$(python3 -m site --user-base)/bin`
-  - Windows: `%APPDATA%\Python\Scripts`
-- Or run as module: `python -m backend.cli resolve ...`
+```bash
+# The venv is not activated
+source venv/bin/activate
+# Or install globally
+pip install ud-resolver[z3,system]
+```
 
 ### Resolution is slow
 
-- First resolution fetches data from remote registries — this is normal
-- Subsequent resolutions are cached (DictCache by default, TTL configurable)
-- Consider using `[system]` extra for local system scanning
+**Common causes:**
+- First run (cold cache) — all registry data fetched fresh
+- Go modules hit proxy latency (~2s per `.mod` fetch)
+- Large BFS graph with many transitive deps
 
-### `lock` command finds no manifests
+**Solutions:**
+```bash
+# Increase timeout
+udr lock --timeout 300
 
-- `udr lock` scans the current directory for manifest files
-- Supported: requirements.txt, requirements.in, requirements-dev.txt, Pipfile, Pipfile.lock, pyproject.toml, poetry.lock, uv.lock, package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.toml, Cargo.lock, go.mod, go.sum, environment.yml, environment.yaml, Gemfile, Gemfile.lock, composer.json, composer.lock, pubspec.yaml, build.gradle, build.gradle.kts, Package.swift, Package.resolved, mix.exs, mix.lock, *.cabal, pom.xml, Podfile, Podfile.lock, packages.config, Brewfile, Brewfile.lock.json, apt-packages.txt, apk-packages.txt, default.nix, shell.nix, flake.nix, flake.lock, guix.scm, manifest.scm, udr.lock
-- Use `--manifest path/to/file` to specify explicitly
+# Pre-warm indexes
+udr index build
+
+# Increase concurrency (Go modules)
+export GOMODULES_CONCURRENCY=30
+
+# Reduce BFS batch size
+export BFS_BATCH_SIZE=10
+
+# Use existing lock files as version sources
+# (go.sum, package-lock.json act as pre-resolved sources)
+```
+
+### `No manifests found`
+
+UDR did not find any recognized dependency files in the target directory.
+
+**Check:**
+- Are you in the right directory?
+- Does the directory contain a recognized manifest? See the full list in [CLI.md](CLI.md#lock).
+- Use `udr lock -m requirements.txt` to specify a manifest explicitly.
+
+### `No packages found in manifests`
+
+Manifest files exist but are empty or could not be parsed.
+
+**Check:**
+- Manifest file has content (not blank)
+- Content is in a parseable format (e.g. valid JSON for `package.json`)
+- Use `udr lock --json` to see the raw parse output
+
+### `Lock file not found`
+
+The command requires a `udr.lock` file. Generate one with `udr lock`.
+
+```bash
+udr lock                    # generate lock file
+udr verify                  # then verify it
+```
+
+### `Package '{name}' not found in lock file`
+
+The package does not exist in the lock file.
+
+**Check:**
+- Spelling (case-sensitive for some ecosystems)
+- Run `udr why --all` to list all packages in the lock file
+- If it's a transitive dependency, it will still appear in the lock file
+
+### `Resolution failed: the dependency graph is unsatisfiable`
+
+No combination of versions satisfies all constraints. This is a genuine conflict.
+
+**Diagnose:**
+```bash
+# See what went wrong
+udr lock --json | grep resolution_error
+
+# Use why to understand the chain
+udr why <package>
+
+# Try resolving with different constraints
+udr resolve conflicting-pkg --json
+
+# Interactive mode to explore the conflict space
+udr lock --interactive
+```
+
+**Common causes:**
+- Two packages require incompatible versions of the same transitive dependency
+- A transitive dependency has no versions matching its own dependency constraints
+- CUDA variant mismatch (e.g. `torch` with CUDA 12 but `nvidia-*` needs CUDA 11)
+
+### `solver capacity exceeded`
+
+The SAT variable count exceeded `SOLVER_MAX_VARIABLES` (default 50000). Common with packages that have very many versions.
+
+**Solutions:**
+```bash
+# Increase the limit
+export SOLVER_MAX_VARIABLES=100000
+
+# Or reduce version count per package
+export SOLVER_MAX_VERSIONS_PER_PKG=20
+```
+
+### `No compatible versions` for a package
+
+The package exists in the registry but no version satisfies the constraint + system requirements.
+
+**Causes:**
+- Constraint is too tight (e.g. `flask==1.0.0` when only 2.x is available)
+- System requirements filter out all versions (e.g. `requires_python>=3.12` but Python is 3.11)
+- CUDA variant not available for the requested version
+
+### `CUDA mismatch` warning
+
+The resolver found CUDA variants but no GPU was detected and `--cuda` was not provided.
+
+```bash
+# Explicitly set CUDA version
+udr lock --cuda 12.1
+
+# Or accept CPU-only resolution (the warning is informational)
+```
+
+---
 
 ## API / Server
 
-### Backend won't start in Desktop app
-
-```text
-Backend server could not be started.
-```
-
-**Cause**: The `udr-backend` binary is missing or incompatible.
-
-**Solution**:
-
-1. Check `~/.udr/backend-bin/` exists and contains `udr-backend`
-2. Run `udr serve` directly to verify the Python backend works
-3. On Linux, run `chmod +x ~/.udr/backend-bin/udr-backend`
-4. On Windows, add the directory to Windows Defender exclusions
-5. Reinstall the desktop app
-
-### Port already in use
-
-```text
-Address already in use
-```
-
-**Cause**: Another process is already using port 8000 (or the configured port).
-
-**Solution**:
+### Backend won't start
 
 ```bash
-# Find the process
+# Port already in use
 lsof -i :8000
+kill <pid>
 
-# Kill it
-kill -9 <PID>
+# Missing dependencies
+pip install ud-resolver[all]
 
-# Or use a different port
+# SECRET_KEY still default (saas mode)
+export SECRET_KEY="$(openssl rand -hex 32)"
+```
+
+### `Address already in use`
+
+```
+Error: [Errno 98] Address already in use
+```
+
+```bash
+# Use a different port
 udr serve --port 8001
+
+# Or kill the existing process
+fuser -k 8000/tcp
 ```
 
-### Redis connection refused
+### `429 Too Many Requests` (Rate limited)
 
-```text
-Error connecting to Redis: Connection refused
-```
-
-**Cause**: Redis is not running or the URL is misconfigured.
-
-**Solution**:
+The endpoint has a per-minute or per-hour rate limit. See [API.md](API.md) for endpoint-specific limits.
 
 ```bash
-# Start Redis via Docker
-docker compose up -d redis
-
-# Or check the URL
-echo $UDR_REDIS_URL  # Should be redis://localhost:6379/0
+# Wait for the rate limit window to reset
+# Rate limiter uses Redis (if configured) or in-memory fallback
 ```
 
-### Rate limiter falls back to in-memory store
-
-```text
-WARNING: Redis connection failed. Falling back to in-memory rate limiter.
-```
-
-**Cause**: Redis is not available and the rate limiter falls back to an in-memory store (`slowapi.Limiter` with no `storage_uri`).
-
-**Impact**: In-memory rate limiting does **not** work across multiple workers or processes. Each worker maintains its own counter, so a client can exceed the intended global limit by distributing requests across workers.
-
-**Solution**:
-- Ensure Redis is running and `REDIS_URL` is correctly configured
-- If running behind a load balancer, add **sticky sessions** (session affinity) so each client hits the same worker
-- For single-worker deployments (default `udr serve` or desktop mode), the in-memory store is acceptable
-- To disable rate limiting entirely:
-  ```bash
-  udr serve --rate-limit-enabled=false
-  ```
-
-### Rate limiting too aggressive / 429 Too Many Requests
-
-```text
-Rate limit exceeded: 30 requests per 60 seconds
-```
-
-Rate limits are per-endpoint:
-
-- Search: 60/min
-- Resolve: 10/min
-- Export: 20/min
-
-**Solution**:
+If you hit rate limits frequently, set up Redis:
 
 ```bash
-# Disable rate limiting
-udr serve --rate-limit-enabled=false
-
-# Or increase limits
-export UDR_RATE_LIMIT="100/minute"
+export REDIS_URL=redis://localhost:6379
 udr serve
 ```
 
-### Database errors
+### `401 Unauthorized`
+
+**Causes:**
+- Missing `Authorization: Bearer <token>` header
+- Missing `X-API-Key` header
+- Expired JWT token (tokens expire — use `/auth/refresh`)
+- `ENABLE_AUTH=true` and no credentials provided
+
+**Solutions:**
+```bash
+# Check current auth mode
+# If running locally without auth:
+export ENABLE_AUTH=false
+udr serve
+
+# If using API key:
+export API_KEY=my-key
+curl -H "X-API-Key: my-key" http://localhost:8000/api/v1/system/info
+```
+
+### `SECRET_KEY` warning
+
+```
+SECRET_KEY is still the default value — set a strong random secret in production
+```
 
 ```bash
-# SQLite: delete the database file to reset
-rm udr.db
-
-# Check DATABASE_URL in environment
-echo $DATABASE_URL   # default: sqlite:///./udr.db
+export SECRET_KEY="$(openssl rand -hex 32)"
 ```
 
-Integration tests default to SQLite. Set `DATABASE_URL=postgresql://...` to test against PostgreSQL.
-
-### Auth errors
-
-Auth is **enabled by default** (`ENABLE_AUTH=true`). To disable: set `ENABLE_AUTH=false`. Requires `SECRET_KEY` in `.env` when enabled.
-
-## Resolution Issues
-
-### "SAT solver timed out"
-
-```text
-Solver did not find a solution within timeout
-```
-
-**Cause**: The dependency graph is too complex to resolve within the time limit.
-
-**Solution**:
-
-```bash
-# Increase the timeout
-export SOLVER_API_TIMEOUT=120
-udr resolve requests numpy torch
-
-# Or reduce the number of packages
-udr resolve requests numpy
-```
-
-### "Solver capacity exceeded"
-
-```text
-Solver variables exceed SOLVER_MAX_VARIABLES (50000). Try reducing the dependency graph.
-```
-
-**Cause**: The dependency graph is too large for the solver's variable cap.
-
-**Solution**:
-
-```bash
-# Increase the cap
-export SOLVER_MAX_VARIABLES=100000
-udr lock
-
-# Or reduce scope by resolving fewer packages at once
-```
-
-### "No versions found" for a package
-
-```text
-No versions found for package 'my-package'
-```
-
-**Cause**: The package doesn't exist in the specified ecosystem, or the registry is unreachable.
-
-**Solution**:
-
-1. Check the package name and ecosystem spelling
-2. Verify the registry is accessible:
-   ```bash
-   # e.g., for PyPI
-   curl https://pypi.org/pypi/my-package/json
-   ```
-3. Set HTTP proxy if behind a firewall:
-   ```bash
-   export HTTP_PROXY=http://proxy:8080
-   export HTTPS_PROXY=http://proxy:8080
-   ```
-
-### Policy check fails
-
-```text
-╭────────────────────────────────── Error ──────────────────────────────────╮
-│ Blocked package 'example' found in resolution                            │
-╰───────────────────────────────────────────────────────────────────────────╯
-```
-
-**Cause**: The `udr-policy.yaml` policy file has rules that blocked a package or exceeded a threshold.
-
-**Solution**:
-
-1. Check `udr-policy.yaml` in the project root
-2. View policy rules: `udr check --policy` shows a compliance table with per-rule results
-3. Temporarily disable: move `udr-policy.yaml` aside
-4. Adjust thresholds: `max-vulnerabilities: 20` instead of `0`
-
-### Lock file signature verification fails
-
-```text
-╭────────────────────────────────── Error ──────────────────────────────────╮
-│ Signature verification failed: key mismatch or file tampered              │
-╰───────────────────────────────────────────────────────────────────────────╯
-```
-
-**Cause**: The lock file was modified after signing, or the wrong signing key is being used.
-
-**Solution**:
-
-1. Regenerate the lock file: `udr lock --sign`
-2. Check the correct public key: `udr auth show-key`
-3. Distribute the public key to verifiers
-
-### SBOM generation fails
-
-```text
-Error: Lock file not found. Run 'udr lock' first.
-```
-
-**Cause**: No `udr.lock` exists in the target directory.
-
-**Solution**: Run `udr lock` first, or specify an explicit lock file path with `--lock-file`.
-
-### CI drift check reports drift
-
-```text
-╭────────────────────────────────── Drift ──────────────────────────────────╮
-│ Package numpy: locked 1.24.0 vs resolved 1.26.0                          │
-╰───────────────────────────────────────────────────────────────────────────╯
-```
-
-**Cause**: The lock file doesn't match a fresh resolution — packages have newer versions, or the lock file is stale.
-
-**Solution**: Run `udr lock` to regenerate. In CI, this is expected to happen when dependencies change.
-
-### CUDA version mismatch
-
-```text
-Warning: Requested CUDA 12.1 but resolved CUDA 13.0 packages
-```
-
-**Cause**: The SAT solver found CUDA 13 packages which are backward-compatible with CUDA 12.x drivers, but the exact minor version was not available.
-
-**Solution**: This is typically safe — CUDA 13 packages work with CUDA 12.x drivers. To force a specific version:
-
-```bash
-udr lock --cuda 12.1 --force-exact-cuda
-```
+---
 
 ## Desktop App
 
-### Backend fails to start
+### Blank screen on launch
 
-- Check the error dialog for details
-- Ensure Python 3.11+ is on PATH (if not using PyInstaller binary)
-- On Windows, antivirus may block the PyInstaller binary — add an exclusion
+**Causes:**
+- Backend failed to start (port conflict, missing dependencies)
+- Browser security blocking localhost requests
 
-### Electron window shows blank/white screen
+**Solutions:**
+```bash
+# Check if the backend is running
+curl http://127.0.0.1:8000/api/v1/system/info
 
-**Cause**: The preload script failed or an unhandled error occurred in the renderer.
+# Kill any existing udr process and restart
+pkill -f udr
+# Then relaunch the desktop app
 
-**Solution**:
-
-1. Open Developer Tools (`Ctrl+Shift+I`) and check the Console tab
-2. Check `~/.udr/udr-desktop.log` for errors
-3. Restart the desktop app
-4. Reinstall if the problem persists
-
-### Tray icon not appearing
-
-**Cause**: Missing tray icon asset or Linux desktop environment quirk.
-
-**Solution**:
-
-- On GNOME, install `gnome-shell-extension-appindicator`:
-  ```bash
-  sudo apt-get install gnome-shell-extension-appindicator
-  ```
-- Restart GNOME Shell (`Alt+F2`, type `r`, Enter)
-- The app still works — the tray is cosmetic
-
-### Auto-update fails
-
-```text
-Error: Cannot find latest version
+# On Linux, check AppImage extraction
+./udr-desktop-*.AppImage --appimage-extract
+./squashfs-root/AppRun
 ```
 
-**Cause**: `electron-updater` cannot reach the GitHub releases page, or the app is not signed.
+### macOS "app is damaged" warning
 
-**Solution**:
+```bash
+xattr -c /Applications/udr-desktop.app
+```
 
-1. Check internet connectivity
-2. Verify the app was installed from the official release (not built from source)
-3. On macOS, ensure the app is not quarantined:
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/UDR.app
-   ```
-
-### macOS: "app is damaged" or Gatekeeper blocks it
-
-- Right-click → Open, or
-- System Settings → Privacy & Security → "Open Anyway"
-
-### Linux: AppImage doesn't run
+### Linux AppImage: "FUSE not available"
 
 ```bash
 # Install FUSE
-sudo apt install fuse  # Debian/Ubuntu
+sudo apt install fuse       # Debian/Ubuntu
+sudo pacman -S fuse2        # Arch
 
 # Or extract and run directly
-./UDR-*.AppImage --appimage-extract
+./udr-desktop-*.AppImage --appimage-extract
 ./squashfs-root/AppRun
 ```
+
+### GPU not detected in System Info
+
+The desktop app bundles `nvidia-ml-py` but it may not detect GPUs on all systems.
+
+```bash
+# Verify GPU detection independently
+nvidia-smi
+
+# If nvidia-smi works but desktop doesn't show GPU:
+# Install nvidia-ml-py manually in the environment
+```
+
+---
 
 ## Docker
 
 ### Container exits immediately
 
-```text
-udr exited with code 0
-```
-
-**Cause**: The default command is `udr --help`. Use `serve` explicitly.
-
-**Solution**:
 ```bash
-docker run ud-resolver:latest serve --host 0.0.0.0 --port 8000
+# Check logs
+docker logs udr-server
+
+# Common causes:
+# 1. Port already in use on host — use a different host port
+docker run -p 8001:8000 udr-server
+
+# 2. Volume permissions — ensure the mounted directory exists
+mkdir -p ~/.cache/udr
+docker run -v ~/.cache/udr:/home/user/.cache/udr udr-server
 ```
 
-### Permission denied writing to volume
+### Permission denied on cache volume
 
-```text
-PermissionError: [Errno 13] Permission denied: '/home/udr/data'
-```
-
-**Cause**: The container runs as `udr` user (UID 1000) but the host directory is owned by root.
-
-**Solution**:
 ```bash
-# On the host
-mkdir -p ./data
-chown -R 1000:1000 ./data
+# The container runs as non-root user 1000:1000
+chown -R 1000:1000 ~/.cache/udr
 ```
+
+---
 
 ## Development
 
 ### Pre-commit hooks fail
 
-```text
-ruff.....................................................................Failed
+```bash
+# Reinstall hooks
+pre-commit uninstall && pre-commit install
+
+# Run on all files to verify
+pre-commit run --all-files
+
+# Skip hooks for a specific commit (emergency only)
+git commit -m "..." --no-verify
 ```
 
-**Cause**: The linter found issues in staged files.
-
-**Solution**:
+### `ruff check` violations
 
 ```bash
 # Auto-fix what ruff can fix
-ruff check --fix
+ruff check backend/ --fix
 
-# Re-stage and retry
-git add -A
-git commit -m "message"
+# Check what remains
+ruff check backend/
 ```
 
-### Tests fail with asyncio error
-
-```text
-RuntimeError: asyncio.run() cannot be called from a running event loop
-```
-
-**Cause**: Test is not properly configured for async testing.
-
-**Solution**: Install with dev dependencies and use pytest-asyncio:
+### `mypy` type errors
 
 ```bash
-pip install -e ".[dev]"
-python -m pytest tests/ -v
+# Run mypy on the backend
+mypy backend/
+
+# Common fixes:
+# - Add type annotations to function signatures
+# - Use `# type: ignore[<code>]` for third-party library calls
+# - Add `assert isinstance(x, ...)` for narrowed types
 ```
 
-### Mypy reports errors that seem wrong
-
-**Cause**: Mypy strict mode catches many valid issues that are safe to ignore in practice.
-
-**Solution**: Add `# type: ignore[error-code]` to suppress specific errors. Common codes:
-
-| Code | Meaning |
-|------|---------|
-| `arg-type` | Argument type mismatch |
-| `return-value` | Return type mismatch |
-| `union-attr` | Attribute not on all union members |
-| `type-arg` | Missing generic type parameter |
-| `assignment` | Type mismatch in assignment |
-| `call-overload` | Call doesn't match any overload |
-
-### Ruff auto-fix changes too much
-
-**Cause**: Ruff's `--fix` applies safe fixes automatically, which may change formatting preferences.
-
-**Solution**: Review changes before committing:
+### asyncio errors (`TimeoutError`, `Event loop closed`)
 
 ```bash
-ruff check --diff   # Preview changes
-ruff format --check --diff   # Preview formatting
+# Increase solver timeout
+export SOLVER_TIMEOUT=300
+udr lock
+
+# If you see "Event loop is closed" in tests:
+# Make sure pytest-asyncio is configured for async fixtures
 ```
 
-## Tests
+### Test failures
+
+```bash
+# Run a single test to isolate
+python -m pytest tests/unit/test_cli.py::test_name -v
+
+# Re-run with full output
+python -m pytest -x -v --tb=long
+
+# Check if it's a network-dependent test
+python -m pytest tests/unit/ -x --ignore=tests/e2e
+```
+
+---
+
+## Test Commands
 
 ```bash
 # Run all tests
-python -m pytest tests/ -q
+python -m pytest
 
-# Run with output
-python -m pytest tests/ -v
+# Unit tests (3681)
+python -m pytest tests/unit
+
+# Integration tests (96)
+python -m pytest tests/integration
+
+# End-to-end tests (383)
+python -m pytest tests/e2e
+
+# With coverage (threshold: 58%)
+python -m pytest --cov=backend --cov-report=term-missing --cov-fail-under=58
+
+# Parallel
+python -m pytest -n auto
+
+# Specific ecosystem tests
+python -m pytest tests/e2e/test_all_ecosystems.py -v
+python -m pytest tests/e2e/test_api_all_ecosystems.py -v
+
+# Cross-ecosystem tests
+python -m pytest tests/unit/test_cross_eco_coverage.py -v
+
+# Fuzz tests
+python -m pytest tests/unit/test_constraint_fuzz.py -v
 ```
-
-Redis is optional — tests without it will skip Redis-dependent tests automatically.
-
-## Getting help
-
-If none of these solutions help, please open an issue at:
-
-https://github.com/code-with-zeeshan/universal-dependency-resolver/issues
-
-Include:
-- The full error message
-- Your OS and Python version (`python --version`)
-- The command you ran
-- Output of `udr --version`
-- Whether you're using the CLI, API, or Desktop app
-
-Also check the Swagger UI at `http://localhost:8000/api/v1/docs`.

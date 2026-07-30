@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Data source fixes (Q39)**: Resolved edge cases in data source client registries, improved error handling for registry timeouts, enhanced rate-limit compliance across all 18 ecosystem clients.
 - **Utilities cleanup (Q40)**: Dead code removal in `core/utils.py`, consolidated version normalization helpers, unified constraint parsing patterns across solver backends.
-- **Documentation audit (Q41)**: Test counts refreshed across all docs (3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco), milestone table updated, endpoint count corrected to 58, ecosystem count corrected to 27.
+- **Documentation audit (Q41)**: Test counts refreshed across all docs (3681 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco), milestone table updated, endpoint count corrected to 59, ecosystem count corrected to 27.
 - **AutoSolver (default solver)**: `create_solver()` factory profiles the dependency graph and delegates to Z3, PubGrub, or Hybrid solver based on workload characteristics. Replaces hardcoded `ConflictResolver()` at 11 call sites. Backward-compatible — `ConflictResolver` still importable directly.
 - **PubGrub solver support**: `USE_PUBGRUB_SOLVER=true` env var toggles CDCL-based PubGrub (Rust-backed via `pubgrub-py` 1.1.0, or pure-Python fallback). Pure-Python PubGrub core (`backend/core/pubgrub_core.py`) with 101 unit tests, 3 documented xfails.
 - **Hybrid solver**: `USE_HYBRID_SOLVER=true` — per-ecosystem PubGrub groups + cross-ecosystem Z3 for optimal isolation.
@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-commit hook**: `.pre-commit-config.yaml` with `udr-lock-check` hook runs `udr lock --check` before commits.
 - **Fuzz tests**: Hypothesis-based property tests for version parsing, constraint normalization, and conflict detection.
 - **Architecture import checker**: `scripts/check_arch_imports.py` enforces layer rules (no `api/`→`cli/`, no `cli/`→`api/`, etc.).
-- **Coverage threshold**: Raised from 46% → 60% in CI and Makefile.
+- **Coverage threshold**: Raised from 46% → 58% in CI and pyproject.toml.
 - **Client contract tests**: Standardized test suite across all 18 data source clients verifying response shape, error handling, and cache behavior.
 - **Frontend tests**: Inline HTML/JS desktop tests for resolution, install, restore, and settings panels.
 - **VS Code extension tests**: Activation, command registration, and tree data provider tests.
@@ -109,13 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **diff**: Both lock file args optional — `--workspace` auto-resolves `udr.lock` vs `udr-{workspace}.lock`.
 - **test_02**: `express` (44 deps) → `lodash` (0 deps) to avoid npm CI timeout. Min assertion 25→20.
 - **`py.typed` marker**: Added for PEP 561 compliance.
-- **Coverage threshold**: 46% → 60% (both CI and Makefile).
+- **Coverage threshold**: 46% → 58% (both CI and pyproject.toml).
 - **`.gitignore`**: Added `vscode-extension/out/` and `vscode-extension/.vscode-test/` for compiled TypeScript and test runner downloads.
 
 ### CI
 
 - `COVERAGE_CORE=sysmon` — single `--cov` on Python 3.13 to avoid segfault.
-- Coverage threshold: `--cov-fail-under=60`.
+- Coverage threshold: `--cov-fail-under=58`.
 - Dependabot bumps: `actions/github-script` 7→9, `actions/setup-node` 4→6, `ossf/scorecard-action` 2.4.1→2.4.3, `actions/setup-python` 5→6.
 - Shell e2e tests migrated to pytest (`tests/e2e/test_problem_statement.py`, `tests/e2e/test_cli_realworld.py`, `tests/e2e/test_json_compliance.py`).
 - Arch import checker: `scripts/check_arch_imports.py` runs in CI.
@@ -140,7 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - **ROADMAP.md rewritten from scratch**: Historical evolution documented with file:line references; all 36 phase gaps verified against actual source; milestone table corrected (v1.x, not v4.x).
-- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 3242 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco; CLI 19 commands; API 58 endpoints; 27 ecosystems (22 active + 5 plugin-only); AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
+- **Comprehensive doc refresh (15 files)**: All stale stats updated — tests 3681 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco; CLI 24 commands; API 59 endpoints; 25 ecosystems (18 resolvable + 7 query-only); AutoSolver default. Files: README.md, README_PYPI.md, CLI.md, API.md, ARCHITECTURE.md, USER_GUIDE.md, ROADMAP.md, FAQ.md, COMPONENTS.md, DEVELOPMENT.md, PERFORMANCE.md, TROUBLESHOOTING.md, DEPLOYMENT.md, API_INTEGRATION.md, CHANGELOG.md.
 - **Solver architecture documented**: AutoSolver (default), Z3, PubGrub, Hybrid, ForkingResolver — all 5 code paths explained with `create_solver()` factory.
 - **ROADMAP.md corrected**: Version v4.0.0→v1.3.3, ecosystems 27→20 active+plugins, milestone table made realistic.
 - **API_INTEGRATION.md**: Removed fictional MFA/recover endpoints; corrected auth paths; endpoint count 33→59.
@@ -151,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Man page**: `docs/man/udr.1` updated — version `v4.0.0`→`v1.4.0`, solver description corrected from "PubGrub (default)" to "AutoSolver".
 - **README, README_PYPI, USER_GUIDE — audience-first rewrite**: Replaced generic taglines with 3 audience profiles (monorepo teams, ML/deploy teams, compliance teams). Each profile states a concrete problem and what UDR does about it.
 - **USER_GUIDE.md restructured**: New section 1 "Who This Is For"; Quick Start moved to section 3 (before Installation); Prerequisites moved to section 5 (after Installation) — evaluation flow now leads with audience and quick-start, not technical prerequisites.
-- **Accuracy fixes across README, README_PYPI**: CLI commands corrected 19→20 (added `tools`); API endpoints corrected 54→56; unit test count 3242→3334; export formats in mermaid diagram 12→15.
+- **Accuracy fixes across README, README_PYPI**: CLI commands corrected 20→24; API endpoints corrected 56→59; unit test count 3334→3681; export formats in mermaid diagram 12→15.
 - **COMPONENTS.md extras table**: Added `[z3]` and `[pubgrub]` extras; added recommended install line; `[all]` now says "All extras above" instead of "Everything".
 
 ## [1.3.3] - 2026-07-05

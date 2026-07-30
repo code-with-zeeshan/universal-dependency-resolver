@@ -12,9 +12,10 @@ Maven, NuGet, RubyGems, Conda, Packagist, Homebrew, CocoaPods, Pub, Gradle,
 Swift, Hex, Haskell, Nix, Guix, Vcpkg, Conan, Docker, Helm, Terraform,
 APT, APK, and more).
 .P
-UDR uses a multi-strategy solver architecture (PubGrub, Z3 SAT solver, DFS
-backtracking with forward checking, or hybrid AutoSolver) to produce
-consistent, reproducible lock files. It features CUDA-aware conflict
+UDR uses a SAT solver architecture (Z3 by default, PubGrub as opt-in via
+\fBUSE_PUBGRUB_SOLVER=true\fR) to produce consistent, reproducible lock
+files. When the primary solver fails, cross-solver validation runs the
+alternate solver to confirm the conflict. It features CUDA-aware conflict
 resolution, platform marker filtering (PEP 508), cross-compilation targeting,
 offline-first indexed caches, per-ecosystem solver isolation, and a content-
 addressed integrity cache.
@@ -162,6 +163,25 @@ worker process configuration, and hot-reload for development.
 .B completion
 Generate shell completion scripts for bash, zsh, or fish. If no shell is
 specified, the shell is auto-detected.
+.TP
+.B init
+Initialize a new UDR project: create a sample `udr-policy.yaml`, detect
+manifest files, and optionally run an initial lock. Supports dry-run.
+.TP
+.B migrate
+Migrate existing lock files (package-lock.json, Cargo.lock, poetry.lock,
+Gemfile.lock, composer.lock, go.sum, etc.) to \fBudr.lock\fR format.
+Supports \fB\-\-display\fR (preview) and \fB\-\-force\fR (overwrite).
+.TP
+.B export
+Export a lock file to one of 15 output formats (requirements.txt,
+Dockerfile, pyproject.toml, environment.yml, Cargo.toml, etc.).
+Supports \fB\-\-format\fR, \fB\-\-output\fR, \fB\-\-workspace\fR.
+.TP
+.B system-info
+Display detailed system information: OS, CPU, GPU, CUDA, memory,
+runtimes (Python, Node.js, Java, Go, Rust), and accelerators (TPU,
+NPU, Apple Neural Engine). Supports \fB\-\-json\fR output.
 .SH OPTIONS
 .TP
 .B \-\-version
@@ -376,9 +396,6 @@ plain SAT search with post-resolution upgrade.
 .B SOLVER_PRERELEASE_PENALTY
 Prerelease version penalty weight for optimization (default: 100000).
 .TP
-.B SOLVER_DFS_MAX_NODES
-Maximum nodes visited in DFS backtracking fallback (default: 200000).
-.TP
 .B USE_PUBGRUB_SOLVER
 Set to "true" to use the PubGrub solver (requires pubgrub-py).
 Default: false.
@@ -389,16 +406,9 @@ Set to "true" to force the Z3 SAT solver. Default: false (auto-detected).
 .B USE_Z3_OPTIMIZE
 Set to "true" to use z3.Optimize() for version preference. Default: false.
 .TP
-.B USE_FORKING_SOLVER
-Set to "true" to enable the ForkingResolver meta-solver, which forks
-parallel alternative resolution scenarios when the primary solver fails.
+.B USE_HYBRID_SOLVER
+Set to "true" for PubGrub per-ecosystem + Z3 cross-ecosystem.
 Default: false.
-.TP
-.B FORKING_MAX_FORKS
-Maximum number of parallel fork attempts (default: 4).
-.TP
-.B FORKING_TIMEOUT_RATIO
-Fraction of remaining timeout allocated to each fork (default: 0.5).
 .TP
 .B SOLVER_API_TIMEOUT
 API endpoint resolution timeout in seconds (default: 60).
@@ -417,11 +427,11 @@ during lock and verify operations. Default: false.
 .TP
 .B USE_CONTENT_CACHE
 Set to "true" to enable the content-addressed cache (SHA256-addressed
-blob store). Default: false.
+blob store). Default: true.
 .TP
 .B INDEX_AUTO_SYNC
 Set to "true" to automatically sync stale local indexes before resolution.
-Default: false.
+Default: true.
 .TP
 .B LOCAL_INDEX_UPDATE_INTERVAL
 Seconds between automatic local index refresh attempts (default: 3600).

@@ -1,116 +1,101 @@
-# Desktop App
+# Desktop Application
 
-The Universal Dependency Resolver ships as a standalone Electron desktop application — no Python, Node.js, or any runtime required.
+## Overview
 
-## Getting Started
+The UDR Desktop app is an Electron-based GUI bundling the backend (compiled via PyInstaller) with the same HTML/CSS/JS interface used by the web frontend. No Python, Node.js, or package managers required.
 
-### Download
-
-Download the latest release from [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases):
-
-| Platform | File |
-|---|---|
-| Windows 10+ | `UDR-Setup-x.y.z.exe` (NSIS installer) |
-| macOS 11+ (Intel) | `UDR-x.y.z-x64.dmg` |
-| macOS 11+ (Apple Silicon) | `UDR-x.y.z-arm64.dmg` |
-| Linux (x86_64) | `UDR-x.y.z-x86_64.AppImage` |
-| Linux (ARM64) | `UDR-x.y.z-arm64.AppImage` |
-
-### Launch
-
-- **Windows**: Run the installer, then launch from Start Menu or desktop shortcut
-- **macOS**: Mount the `.dmg`, drag to Applications, then right-click → Open (first launch only, due to unsigned binary)
-- **Linux**: `chmod +x UDR-*.AppImage && ./UDR-*.AppImage` (requires FUSE; if unavailable, use `--appimage-extract`)
-
-The app starts the backend automatically on a free port (`127.0.0.1:8199` by default). The status indicator in the top-right corner turns **green** when ready.
+**Relationship to the web frontend:** The Desktop app wraps the standalone web frontend (`frontend/`) inside Electron, adding native features (system tray, auto-update, keyboard shortcuts). The same hash-routed pages (`#dashboard`, `#search`, `#graph`, etc.) work identically in both the browser and the Desktop app. The web frontend can also be used standalone with `udr serve` — no Electron needed.
 
 ---
 
-## Interface Overview
+## Downloads
 
-The UI is a single-page application with a collapsible icon sidebar on the left. Hover over the sidebar to reveal section labels.
+| Platform | Architecture | File | Size |
+|---|---|---|---|
+| Windows | x86_64 | `udr-desktop-win32-x64-{version}.exe` | ~120 MB |
+| macOS | Intel (x86_64) | `udr-desktop-darwin-x64-{version}.dmg` | ~120 MB |
+| macOS | Apple Silicon (ARM64) | `udr-desktop-darwin-arm64-{version}.dmg` | ~110 MB |
+| Linux | x86_64 | `udr-desktop-linux-x64-{version}.AppImage` | ~110 MB |
+| Linux | ARM64 | `udr-desktop-linux-arm64-{version}.AppImage` | ~105 MB |
 
-### Sidebar Sections
-
-| Section | Tabs |
-|---|---|
-| **Overview** | Dashboard |
-| **Packages** | Resolve, Search, Details, Versions, Dependencies, Compatibility |
-| **System** | System |
-| **Project** | Scan, Graph, Verify Lock, Install, Restore, Update |
+Available on the [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) page.
 
 ---
 
-## Tab Reference
+## Launch
 
-### Dashboard
-Shows API status, tool version, running mode, and ecosystem count. Quick-action buttons jump to the most common tasks.
+### Windows
 
-### Resolve
-Enter one or more package names (space-separated), select a default ecosystem, and click **Resolve**. The resolution result shows compatible versions, CUDA variants, and per-package details.
+```cmd
+udr-desktop.exe
+# Or double-click in File Explorer
+```
 
-- Use `name@ecosystem` to override the ecosystem per package (e.g. `torch@pypi express@npm`)
-- After resolving, click **Export** to generate output in any supported format (requirements.txt, Dockerfile, etc.)
-- Keyboard shortcut: `Ctrl+K` to jump to this tab
+Windows Defender may flag the unsigned binary. Click "More info" → "Run anyway".
 
-### Search
-Search for packages across all ecosystems. Results show package name, ecosystem, description, and latest version.
+### macOS
 
-### Details
-View full metadata for a single package — description, homepage, license, author, and repository URL.
+```bash
+# Drag to Applications folder from the mounted .dmg
+open /Applications/udr-desktop.app
 
-### Versions
-List all available versions for a package, with release dates.
+# If Gatekeeper blocks it:
+xattr -d com.apple.quarantine /Applications/udr-desktop.app
+```
 
-### Dependencies
-View direct and transitive dependencies for any package, grouped by ecosystem.
+### Linux
 
-### Compatibility
-Check system compatibility requirements for a package — supported OS, Python version, CUDA version, and architecture.
+```bash
+chmod +x udr-desktop-*.AppImage
+./udr-desktop-*.AppImage
+```
+
+### All Platforms
+
+The app starts an embedded backend server on `http://127.0.0.1:8000` and opens the GUI in the default browser.
+
+---
+
+## Interface
+
+The GUI is organized into 17 tabs across 4 sections.
+
+### Overview
+
+| Tab | Function |
+|---|---|
+| **Dashboard** | Summary cards: system info, recent scans, lock file status |
+
+### Packages
+
+| Tab | Function |
+|---|---|
+| **Resolve** | Enter package specs, run resolution, view results table |
+| **Search** | Search packages across ecosystems, click to see details |
+| **Details** | Package description, latest version, license, home page |
+| **Versions** | Full version history with Python/OS requirements |
+| **Dependencies** | Dependency tree for a specific package version |
+| **Compatibility** | Known compatibility information and conflict data |
 
 ### System
-Displays comprehensive system information: OS, CPU, memory, GPU, CUDA version, Python version, Node.js version, GCC version, Java version.
 
-- Click **Refresh** to re-scan system info
-- Click **Check Compatibility** to run a system compatibility check against common package requirements
+| Tab | Function |
+|---|---|
+| **System Info** | OS, CPU, GPU, CUDA, memory, runtimes table |
 
-### Scan
-Detect dependency manifests (requirements.txt, package.json, Cargo.toml, pyproject.toml, go.mod, environment.yml, Gemfile, pom.xml, and more) in a project directory, GitHub repository, or uploaded ZIP file. After scanning, the tool resolves all detected packages and displays the results.
+### Project
 
-**Three input modes:**
-- **Local Path** — browse or type a directory path on this machine
-- **GitHub URL** — paste a GitHub repository URL (no cloning needed; downloads zipball)
-- **Upload ZIP** — upload a `.zip` file
-
-After a successful scan, click **Generate Lock File** to download a `udr.lock` with the resolved packages and system snapshot.
-
-### Graph
-Display a dependency tree for one or more packages. Shows direct and transitive dependencies in a hierarchical tree view.
-
-### Verify Lock
-Paste a `udr.lock` file (or load from disk) to verify that every pinned version still exists in its respective package registry.
-
-### Install
-Paste a `udr.lock` file (or load from disk) to generate native install commands for all **direct** dependencies, grouped by ecosystem. Each command includes a **Copy** button.
-
-Commands run sequentially by ecosystem when executed:
-- PyPI → `pip install`
-- npm → `npm install`
-- Crates → `cargo add`
-- Go Modules → `go get`
-- Conda → `conda install`
-- RubyGems → `gem install`
-- Packagist → `composer require`
-- Pub/Dart → `dart pub add`
-- NuGet → `dotnet add package`
-- CocoaPods → `pod install`
-- Maven → `mvn dependency:copy-dependencies`
-
-### Restore
-Same as Install but generates commands for **all** packages in the lock file (direct + transitive). Useful for full project restoration after cloning.
-
-### Update
-Re-resolve a single package in a lock file. Paste the lock file JSON, enter the package name, and click **Update**. Returns the updated lock data with the new resolved version.
+| Tab | Function |
+|---|---|
+| **Scan** | Scan a GitHub repo or local directory (full lock pipeline) |
+| **Graph** | Visual dependency tree for one or more packages |
+| **SBOM** | Generate SPDX 2.3 or CycloneDX 1.5 Bill of Materials |
+| **Lock** | Run full resolution pipeline, view/write lock file |
+| **Check** | CVE, license, deprecated, and policy checks on lock data |
+| **Verify** | Validate that all pinned versions still exist in registries |
+| **Install** | Generate and execute native package manager install commands |
+| **Restore** | Generate commands for all packages (direct + transitive) |
+| **Update** | Re-resolve a specific package or auto-fix CVEs |
 
 ---
 
@@ -118,31 +103,25 @@ Re-resolve a single package in a lock file. Paste the lock file JSON, enter the 
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+K` | Jump to Resolve tab |
-| `Ctrl+R` | Reload frontend |
-| `Ctrl+Shift+R` | Restart backend |
-| `Ctrl+Shift+I` | Toggle DevTools |
-
----
-
-## Menu
-
-- **File → Reload Frontend** (`Cmd/Ctrl+R`)
-- **File → Restart Backend** (`Cmd/Ctrl+Shift+R`)
-- **File → Quit** (`Cmd/Ctrl+Q`)
-- **Help → About UDR**
-- **Help → Toggle DevTools** (`Ctrl+Shift+I`)
+| `Ctrl+1` | Dashboard |
+| `Ctrl+2` | Resolve |
+| `Ctrl+3` | Search |
+| `Ctrl+4` | Details |
+| `Ctrl+5` | Lock |
+| `Ctrl+6` | Scan |
+| `Ctrl+R` | Re-run current operation |
+| `Ctrl+Shift+R` | Clear cache and re-run |
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Cause & Fix |
-|---|---|
-| Status indicator stays **yellow** | Backend starting up — wait a few seconds. If it stays yellow, restart the app. |
-| Status indicator turns **red** | Backend failed to start. Click **Restart Backend** from the menu. If that fails, try running `udr serve` from the terminal to see the error. |
-| **Blank white window** | Frontend loaded but backend not responding. Wait for the status to turn green, or restart. |
-| **Windows antivirus warning** | PyInstaller binaries are sometimes flagged by Windows Defender. Add an exclusion for the installation directory. |
-| **macOS "cannot be opened"** | The app is not signed. Right-click → Open, or go to System Settings → Privacy & Security → "Open Anyway". |
-| **Linux AppImage not running** | Install FUSE: `sudo apt install fuse` (Ubuntu/Debian) or equivalent. Alternatively, extract: `./UDR-*.AppImage --appimage-extract && ./squashfs-root/AppRun`. |
-| **"Backend binary not found"** | The bundled binary failed to extract. The app falls back to system Python — ensure `ud-resolver` is installed: `pip install ud-resolver`. |
+| Symptom | Cause | Fix |
+|---|---|---|
+| App won't start | Port 8000 in use | Kill existing `udr` process or change port via `UDR_DESKTOP_PORT` env var |
+| "Backend not responding" | PyInstaller bundle damaged | Re-download from Releases |
+| GPU not detected | Missing nvidia-ml-py in bundle | Check System Info tab — if GPU section missing, install `nvidia-smi` |
+| Slow resolution on large projects | Default settings | Use `--timeout 300` or reduce `BFS_BATCH_SIZE` |
+| "No manifests found" | Wrong directory | Use the Scan tab with explicit path |
+| macOS "damaged" warning | Extended attributes | Run `xattr -c /Applications/udr-desktop.app` |
+| Linux AppImage not launching | FUSE missing | Install `fuse` or use `--appimage-extract && ./squashfs-root/AppRun` |

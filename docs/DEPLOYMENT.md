@@ -1,165 +1,274 @@
-# Deployment
+# Deployment Guide
 
 ## Topology
 
 ```mermaid
-graph TB
-    subgraph Users["👤 Users"]
-        DEV["💻 Developer<br/><code>udr resolve</code>"]
-        CI["🤖 CI/CD<br/><code>udr lock</code>"]
-        APP["🌐 Web App<br/><code>HTTP API</code>"]
-        DESKTOP["🖥️ Desktop App<br/><code>Electron GUI</code>"]
+flowchart TD
+    LB["Load Balancer<br/>nginx / haproxy"] --> W1
+    LB --> W2
+    LB --> WN["API Worker N"]
+
+    subgraph WORKERS["API Workers"]
+        W1["API Worker 1<br/>uvicorn"]
+        W2["API Worker 2<br/>uvicorn"]
+        WN["API Worker N<br/>uvicorn"]
     end
 
-    subgraph LB["⚖️ Load Balancer"]
-        NGINX["nginx / haproxy"]
-    end
+    W1 --> DB
+    W2 --> DB
+    WN --> DB
+    W1 --> REDIS
+    W2 --> REDIS
+    WN --> REDIS
 
-    subgraph API["🌐 API Servers"]
-        S1["udr serve<br/>Worker 1"]
-        S2["udr serve<br/>Worker 2"]
-        S3["udr serve<br/>Worker N"]
-    end
+    DB[("PostgreSQL<br/>packages · users · reports<br/>Alembic migrations")]
+    REDIS[("Redis<br/>cache · rate limiting<br/>session store")]
 
-    subgraph Cache["⚡ Cache Layer"]
-        REDIS["Redis<br/>Rate limiting · Caching"]
-        DICTCACHE["DictCache<br/>(in-memory, single worker)"]
-    end
-
-    subgraph DB["🗄️ Database"]
-        PG["PostgreSQL<br/>Primary"]
-        PG_REPLICA["PostgreSQL<br/>Read replica"]
-        SQLITE["SQLite<br/>(single-user default)"]
-    end
-
-    subgraph External["🌍 External Registries"]
-        PYPI_REG["PyPI"]
-        NPM_REG["npm"]
-        CRATES_REG["Crates.io"]
-        MORE_REG["+ 17 more registries"]
-    end
-
-    DEV -->|"direct CLI"| API
-    CI -->|"direct CLI"| API
-    DESKTOP -->|"localhost:PORT"| S1
-    APP --> NGINX
-    NGINX --> S1
-    NGINX --> S2
-    NGINX --> S3
-    S1 --> REDIS
-    S2 --> REDIS
-    S3 --> REDIS
-    S1 --> PG
-    S2 --> PG
-    S3 --> PG
-    PG -.->|"replication"| PG_REPLICA
-    S1 -.->|"fallback"| DICTCACHE
-    S2 -.->|"fallback"| DICTCACHE
-    S3 -.->|"fallback"| DICTCACHE
-    S1 -.->|"single-user"| SQLITE
-    API -.->|"async HTTP"| External
-
-    style DEV fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-    style CI fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-    style APP fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style DESKTOP fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:2px
-    style PG fill:#00695c,color:#fff,stroke:#004d40,stroke-width:2px
-    style REDIS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style SQLITE fill:#424242,color:#fff,stroke:#212121,stroke-width:2px
+    style LB fill:#1a237e,color:#fff
+    style WORKERS fill:#004d40,color:#fff
+    style DB fill:#e65100,color:#fff
+    style REDIS fill:#c62828,color:#fff
 ```
 
-**Key deployment paths:**
+---
 
-| Scenario | Path | Database | Cache |
-|---|---|---|---|
-| **Single dev** | `udr resolve flask` (direct CLI) | None needed | DictCache |
-| **Single-user server** | `udr serve` | SQLite (`udr.db`) | DictCache |
-| **Production multi-worker** | nginx → 2+ workers → PostgreSQL | PostgreSQL | Redis |
-| **Desktop app** | Electron → localhost backend | SQLite (`~/.udr/`) | DictCache |
-| **CI/CD pipeline** | `udr lock`, `udr verify` | None (lock file only) | DictCache |
+## Deployment Scenarios
 
-This is a CLI tool and Python library, not a server application. However, you can run the API server for programmatic access.
-
-## Quick start
+### 1. Single Developer (Local)
 
 ```bash
-pip install ud-resolver
-udr serve --host 0.0.0.0 --port 8000
+pip install ud-resolver[z3,system]
+udr serve
+# → http://127.0.0.1:8000, SQLite, in-memory cache
 ```
 
-## Production considerations
+No external services. SQLite at `~/.cache/udr/udr.db`.
 
-### Database
-
-By default the server uses SQLite (`./udr.db`). For multi-user or higher-throughput scenarios, configure PostgreSQL:
+### 2. Single-User Server
 
 ```bash
+# Start in background
+udr serve --host 0.0.0.0 --port 8000 --log-level warning &
+```
+
+PostgreSQL for better concurrency (optional):
+
+```bash
+export DATABASE_URL=postgresql://user:pass@localhost/udr
+pip install ud-resolver[postgres]
+udr serve --host 0.0.0.0
+```
+
+### 3. Production Multi-Worker
+
+```bash
+# Install all extras
+pip install ud-resolver[all]
+
+# Set up PostgreSQL
+createdb udr
+export DATABASE_URL=postgresql://user:pass@localhost/udr
+
+# Set up Redis
+export REDIS_URL=redis://localhost:6379
+
+# Start multiple workers
+udr serve --workers 4 --mode saas --log-level warning
+```
+
+Place behind nginx reverse proxy:
+
+```nginx
+server {
+    listen 80;
+    server_name udr.example.com;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### 4. Desktop App
+
+```bash
+# Download the .AppImage/.dmg/.exe from Releases
+# The backend is bundled via PyInstaller — no Python needed.
+./udr-desktop.AppImage
+```
+
+The desktop app starts an embedded backend server on `127.0.0.1:8000`.
+
+### 5. CI/CD
+
+```yaml
+# GitHub Actions — install and check
+- name: Install UDR
+  run: pip install ud-resolver[z3]
+- name: Check lock drift
+  run: udr lock --check
+```
+
+```yaml
+# GitLab CI
+udr-lock-check:
+  image: python:3.13
+  script:
+    - pip install ud-resolver[z3]
+    - udr lock --check
+  only:
+    - merge_requests
+```
+
+---
+
+## Database Configuration
+
+### SQLite (Default)
+
+```bash
+# Location: ~/.cache/udr/udr.db
+# No configuration needed
+```
+
+### PostgreSQL
+
+```bash
+# Install
+pip install ud-resolver[postgres]
+
+# Set connection string
 export DATABASE_URL=postgresql://user:password@host:5432/udr
+
+# Optional: connection pool
+export DATABASE_POOL_SIZE=20
+export DATABASE_MAX_OVERFLOW=40
 ```
 
-### Authentication
+Alembic migrations run automatically on first start.
 
-Auth is enabled by default (ENABLE_AUTH=true). To disable: set ENABLE_AUTH=false.
+---
+
+## Authentication
+
+Auth is **enabled by default** (`ENABLE_AUTH=true`). In local mode, auth endpoints are not mounted but the API key middleware is still active.
+
+### Disable auth (local-only)
 
 ```bash
-export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+export ENABLE_AUTH=false
+udr serve
 ```
 
-### Caching
-
-By default the server uses `DictCache` (in-memory, cleared on restart). For persistent caching across restarts, configure Redis:
+### API key authentication
 
 ```bash
-export REDIS_URL=redis://host:6379
+# Set a shared API key
+export API_KEY=my-secret-key
+udr serve
+
+# Clients pass it as header
+curl -H "X-API-Key: my-secret-key" http://localhost:8000/api/v1/system/info
 ```
 
-### Running as a service
+### Full auth stack (SaaS)
 
 ```bash
-# systemd service example
+udr serve --mode saas
+# JWT tokens from /auth/login
+# API keys from /auth/api-keys
+# Rate limiting via Redis (or in-memory fallback)
+```
+
+---
+
+## Caching
+
+| Cache | Default | Production | Purpose |
+|---|---|---|---|
+| DictCache | In-memory | In-memory | Registry API response cache (TTL: 1h) |
+| ContentAddressedCache | `~/.cache/udr/cac/` | Same | SHA256-verified blob store |
+| Offline indexes | `~/.cache/udr/indexes/` | Same | SQLite per-ecosystem indexes |
+| Redis | Disabled | Required for multi-worker | Rate limiting, cross-worker cache |
+
+---
+
+## Environment Variables
+
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_AUTH` | `true` | Enable authentication stack |
+| `API_KEY` | `None` | Shared API key for header auth |
+| `DATABASE_URL` | `None` (SQLite) | PostgreSQL connection string |
+| `REDIS_URL` | `None` | Redis connection string |
+| `SOLVER_TIMEOUT` | `120` | Resolution timeout (seconds) |
+| `SOLVER_API_TIMEOUT` | `60` | API endpoint resolution timeout |
+| `SOLVER_MAX_VARIABLES` | `50000` | Max SAT variables before abort |
+
+### Solver
+
+| Variable | Default | Description |
+|---|---|---|
+| `USE_PUBGRUB_SOLVER` | `false` | Use PubGrub instead of Z3 |
+| `USE_Z3_OPTIMIZE` | `false` | Enable Z3 optimization (prefers latest) |
+| `SOLVER_REJECT_DEPRECATED` | `false` | Reject deprecated/yanked packages |
+| `SOLVER_PRERELEASE_PENALTY` | `100000` | Prerelease version penalty weight |
+| `SOLVER_MAX_CLUSTERS` | `auto` | Max version clusters per package |
+| `SOLVER_MAX_VERSIONS_PER_PKG` | `50` | Max versions to feed to SAT solver |
+
+### Performance
+
+| Variable | Default | Description |
+|---|---|---|
+| `NPM_CONCURRENCY` | `10` | Concurrent npm API requests |
+| `GOMODULES_CONCURRENCY` | `20` | Concurrent Go module proxy requests |
+| `BFS_BATCH_SIZE` | `20` | Batch size for BFS dep discovery |
+| `SCANNER_MAX_WORKERS` | `10` | System scanner thread pool |
+| `CACHE_TTL` | `3600` | Default cache TTL (seconds) |
+| `CACHE_TTL_SHORT` | `300` | Rate-limited endpoint cache TTL |
+| `CACHE_TTL_VERSIONS` | `600` | Version listing cache TTL |
+| `DETECT_ECOSYSTEMS_TIMEOUT` | `15` | Ecosystem detection timeout |
+
+---
+
+## Systemd Service
+
+```ini
 [Unit]
-Description=UDR API Server
+Description=Universal Dependency Resolver API
 After=network.target
 
 [Service]
 Type=simple
 User=udr
-ExecStart=/usr/local/bin/udr serve --host 0.0.0.0 --port 8000
-Environment=DATABASE_URL=postgresql://...
-Environment=REDIS_URL=redis://...
+WorkingDirectory=/opt/udr
+Environment=ENABLE_AUTH=true
+Environment=API_KEY=change-me
+Environment=DATABASE_URL=postgresql://udr:pass@localhost/udr
+Environment=SOLVER_TIMEOUT=120
+ExecStart=/usr/local/bin/udr serve --host 0.0.0.0 --port 8000 --workers 4
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-### Environment variables
-
-See `.env.example` in the repository root.
-
-#### Solver & resolution
-
-| Variable | Default | Description |
-|---|---|---|
-| `SOLVER_TIMEOUT` | `120` | Total seconds for BFS+SAT resolution |
-| `SOLVER_REJECT_DEPRECATED` | `false` | Reject deprecated/yanked packages (default: warn only) |
-| `SOLVER_MAX_VARIABLES` | `50000` | Cap on solver variables to prevent runaway on large graphs |
-| `BFS_BATCH_SIZE` | `20` | Batch size for parallel BFS dependency discovery |
-| `INDEX_AUTO_SYNC` | `false` | Auto-sync stale local indexes before resolution |
-| `TARGET_OS` | `` | Default target OS for cross-compilation |
-| `TARGET_ARCH` | `` | Default target arch for cross-compilation |
-| `TARGET_CUDA` | `` | Default target CUDA version for cross-compilation |
+---
 
 ## Backup
 
-For SQLite:
-
 ```bash
-cp udr.db udr.db.backup
-```
+# SQLite
+cp ~/.cache/udr/udr.db /backup/udr-$(date +%Y%m%d).db
+cp -r ~/.cache/udr/indexes /backup/indexes-$(date +%Y%m%d)
 
-For PostgreSQL:
-
-```bash
-pg_dump -h $DB_HOST -U $DB_USER -d udr | gzip > udr_backup.sql.gz
+# PostgreSQL
+pg_dump -U udr udr > /backup/udr-$(date +%Y%m%d).sql
 ```

@@ -7,10 +7,11 @@
 [![License](https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
-[![Tests](https://img.shields.io/badge/3242%20unit%2B96%20integration%2B77%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue?logo=visualstudiocode&label=%F0%9F%93%98%20VS%20Code)](https://github.com/code-with-zeeshan/universal-dependency-resolver/tree/main/vscode-extension)
+[![Tests](https://img.shields.io/badge/3681%20unit+96%20integration+77%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Coverage](https://img.shields.io/badge/coverage-58%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
-[![Coverage](https://img.shields.io/badge/coverage-55%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![GitHub issues](https://img.shields.io/github/issues/code-with-zeeshan/universal-dependency-resolver?color=red&label=%F0%9F%90%9B%20Issues)](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues)
 [![Last commit](https://img.shields.io/github/last-commit/code-with-zeeshan/universal-dependency-resolver?color=blue&label=%F0%9F%93%85%20Last%20commit)](https://github.com/code-with-zeeshan/universal-dependency-resolver/commits/main)
 
@@ -41,25 +42,21 @@ udr resolve torch@pypi express@npm serde@crates
 # 1️⃣ Install
 pip install ud-resolver
 
+# For full capacity, install extras:
+pip install "ud-resolver[z3,pubgrub,system]"
+
 # 2️⃣ Resolve packages from any ecosystem
 udr resolve flask>=2.0 react@^18
 
 # 3️⃣ Lock your entire project
 udr lock
 
-# 4️⃣ Check system compatibility
-udr check
+# 4️⃣ Check system compatibility + CVEs
+udr check --cve
 
 # 5️⃣ Start the API server
 udr serve --port 8000
 ```
-
-> 🎯 **For full capacity**, install extras:
-> - `[z3]` — Z3 SAT solver for CUDA XOR conflict rules + heavy cross-eco graphs. Without it, GPU version filtering still works (pre-filtered), but CUDA 11-vs-12 conflict detection is skipped.
-> - `[pubgrub]` — Rust-backed PubGrub (faster on 100+ package graphs). Without it, pure-Python fallback handles most graphs fine.
-> - `[system]` — Richer system data via Python libs (GPU temp/util, per-process memory, detailed CPU model). Without it, GPU/OS/CPU detection still works via `nvidia-smi`/`lspci`/`platform`.
->
-> Recommended: `pip install "ud-resolver[z3,pubgrub,system]"`
 
 ---
 
@@ -85,28 +82,17 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 
 | Feature | What it does |
 |---|---|
-| 🧠 **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, SCC batch partitioning, CUDA-aware conflict resolution, and DFS backtracking fallback |
-| 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — adapts resolution |
-| 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
+| 🧠 **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, SCC batch partitioning, and CUDA-aware conflict resolution. |
+| 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — resolution adapts to your environment. |
+| 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal backends. |
 | 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | 🎛️ **24 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools |
-| 🌐 **54 REST API endpoints** | Full programmatic API with auto-generated Swagger docs |
-| 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required |
-| 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot |
-| 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required |
-
----
-
-## 🧩 Components
-
-| Component | What it is | How to get | Best for |
-|---|---|---|---|
-| 🖥️ **CLI** | Terminal tool with 24 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
-| 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
-| 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
-| 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
-
-See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
+| 🌐 **59 REST API endpoints** | Full programmatic API with auto-generated Swagger docs. |
+| 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required. |
+| 🌍 **Web UI** | Browser-based single-page app — lock viewer, CVE browser, dependency graph. |
+| 📘 **VS Code Extension** | 13 commands — lock tree viewer, CVE diagnostics, manifest editing, udr CLI integration. |
+| 🔒 **Lock file** | Reproducible `udr.lock` with full system snapshot, per-package integrity hashes, and dependency provenance. |
+| 🚀 **Zero config** | SQLite by default, in-memory cache, no Docker required. |
 
 ---
 
@@ -123,6 +109,16 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 udr lock
 udr lock --manifest requirements.txt --dry-run    # preview only
 
+# System check with CVE scanning
+udr check --cve
+# ┌────────────────────┬──────────┬──────────┬──────────────────────────────┐
+# │ Package             │ Severity │ Version  │ CVE                          │
+# ├──────────────────────┼──────────┼──────────┼──────────────────────────────┤
+# │ numpy                │ CRITICAL │ 1.21.0   │ CVE-2021-41495               │
+# │ django               │ HIGH     │ 3.2.0    │ CVE-2022-36359               │
+# │ lodash               │ MODERATE │ 4.17.20  │ CVE-2021-23337               │
+# └──────────────────────┴──────────┴──────────┴──────────────────────────────┘
+
 # Validate & inspect
 udr verify                                        # lock file valid?
 udr graph flask django                            # dependency tree
@@ -131,27 +127,22 @@ udr why flask                                     # why this version?
 # Scan remote repos without cloning
 udr scan --github https://github.com/user/repo
 
-# CUDA override on CPU-only machines
-udr lock --cuda 12.1
+# SBOM generation
+udr sbom --format spdx --output sbom.json
 
-# System info
-udr check
-udr list-ecosystems
-
-# Update & search
+# Update & fix CVEs
 udr update flask
 udr update --fix-cve                          # auto-fix known CVEs
 
-# Generate SBOM
-udr sbom --format spdx --output sbom.json
-
 # Policy check & CI drift
 udr check --policy                            # policy compliance
-udr lock --check                              # CI drift detection
+udr lock --check                              # CI drift detection (exit 1)
 
 # Supply chain attestation
-udr lock --sign                               # sign lock file
+udr lock --sign                               # sign lock file (Ed25519)
 udr verify --signature                        # verify signature
+
+# Search & details
 udr search numpy --limit 50
 udr details react -e npm
 ```
@@ -206,11 +197,11 @@ flowchart LR
     A["👤 Your Request<br/><code>udr resolve flask react</code>"] --> B
     B["🌐 Fetch metadata<br/>from registry APIs"] --> C
     C["🔍 Scan system<br/>OS · GPU · CUDA · Python"] --> D
-    D["🧠 AutoSolver + SAT backends<br/>Per-eco isolation · CUDA-aware<br/>Backtracking · SCC batching"] --> E
+    D["🧠 AutoSolver + SAT backends<br/>Per-eco isolation · CUDA-aware<br/>Version clustering"] --> E
     E["📤 Export / Lock<br/>15 formats · udr.lock"]
 
     B -->|"aiohttp"| F["📦 PyPI · npm · Crates · Maven<br/>+ 14 more registries"]
-    C -->|"pynvml"| G["🖥️ NVIDIA · AMD · Apple Silicon<br/>TPU · NPU · ANE"]
+    C -->|"nvidia-smi"| G["🖥️ NVIDIA · AMD · Apple Silicon"]
     D -->|"AutoSolver → Z3 / PubGrub / Hybrid"| H["⚡ Prefer newer versions<br/>Resolve CUDA variants<br/>Detect cross-eco conflicts"]
 
     style A fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
@@ -229,13 +220,28 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **25** (18 resolvable + 7 query-only) |
-| 🧪 Unit tests passing | **3334** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| 🧪 Unit tests passing | **3681** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
 | 🎛️ CLI commands | **24** |
-| 🌐 API endpoints | **54** |
+| 🌐 API endpoints | **59** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
 | 📄 Code | [![Repo size](https://img.shields.io/github/repo-size/code-with-zeeshan/universal-dependency-resolver?color=success)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
 | ⭐ Stars | [![Stars](https://img.shields.io/github/stars/code-with-zeeshan/universal-dependency-resolver?style=social)](https://github.com/code-with-zeeshan/universal-dependency-resolver) |
+
+---
+
+## 🧩 Components
+
+| Component | What it is | How to get | Best for |
+|---|---|---|---|
+| 🖥️ **CLI** | Terminal tool with 24 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
+| 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
+| 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
+| 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
+| 🌍 **Web UI** | Browser-based SPA (lock viewer, CVE browser, dep graph) | Open `frontend/index.html` or `udr serve` hosts it | Lightweight browser access |
+| 📘 **VS Code Extension** | Lock tree viewer, CVE diagnostics, manifest editing | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=udr.udr-vscode) | In-editor dependency management |
+
+See [docs/COMPONENTS.md](docs/COMPONENTS.md) for a detailed comparison.
 
 ---
 
@@ -272,7 +278,7 @@ cd desktop && node --test tests/
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
 | 🎮 [CLI Reference](docs/CLI.md) | All 24 commands, flags, examples, exit codes |
-| 🌐 [API Reference](docs/API.md) | 54 REST endpoints, request/response schemas |
+| 🌐 [API Reference](docs/API.md) | 59 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |
 | 🧩 [Components](docs/COMPONENTS.md) | CLI vs Desktop vs Library — which one for you |

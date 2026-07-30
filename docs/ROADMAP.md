@@ -5,11 +5,11 @@
 | Metric | Value |
 |--------|-------|
 | Resolution ecosystems | **25** (18 resolvable + 7 query-only + 2 internal) |
-| Solver | PubGrub (Rust-backed, default) → Z3 fallback (`USE_Z3_SOLVER=true`) |
+| Solver | Z3 SAT solver (default) → PubGrub opt-in (`USE_PUBGRUB_SOLVER=true`) |
 | ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
 | CLI commands | 24 |
 | Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
-| Tests | **3610** (3334 unit + 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| Tests | **4243** (3681 unit + 96 integration + 383 e2e + 83 others) |
 | Coverage threshold | **58%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **7** in `backend/` (4 fixable) |
@@ -24,7 +24,7 @@
 | Item | Status | Details |
 |------|--------|---------|
 | Z3 SAT solver (`ConflictResolver`) | ✅ | 2660-line SAT encoding with SCC partitioning, DFS backtracking, CUDA conflict rules |
-| PubGrub solver (Rust-backed) | ✅ | Default solver via `pubgrub-py`; pure-Python fallback |
+| PubGrub solver (Rust-backed) | ✅ | Opt-in via `USE_PUBGRUB_SOLVER=true`; pure-Python fallback |
 | ForkingResolver | ✅ | 4 fork strategies (skip-latest, skip-first-two, major-pin, constraint-relax) run in parallel via ThreadPoolExecutor |
 | Platform markers (PEP 508) | ✅ | 3-layer pipeline: PyPI client → Aggregator → BFS filtering |
 | Content-addressed cache | ✅ | SHA256 blob store with git-like sharding, GC, corruption detection |
@@ -171,7 +171,7 @@
 | 5.1 | Batch/sharded SAT solver | ✅ SCC graph partitioning, topological resolution |
 | 5.2-5.11 | Manifest updaters (all 18 ecosystems) | ✅ go.mod, cabal, mix.exs, build.gradle, Package.swift, pubspec.yaml, Brewfile, pom.xml, apt/apk |
 | 5.12 | Incremental resolution | ✅ resolution_hash per package |
-| 5.13 | PubGrub solver integration | ✅ Rust-backed default |
+| 5.13 | PubGrub solver integration | ✅ Opt-in via `USE_PUBGRUB_SOLVER=true` |
 
 ### Phase 6 — Cross-Compilation & Offline
 
@@ -185,7 +185,7 @@
 
 | # | Item | Status |
 |---|------|--------|
-| 7.1 | WASM frontend | 🔧 Deferred (no clear user need) |
+| 7.1 | Web frontend (vanilla JS SPA) | ✅ 8 pages, D3.js graph, OSV CVE scanning, Jest tests |
 | 7.2 | Desktop app (Electron→Tauri) | ✅ Electron works (43 tests, 82.88% coverage on testable modules), Tauri deferred |
 | 7.3 | VSCode extension | ✅ 13 commands, CI wired, tsconfig fixed |
 | 7.4 | GitHub Actions | ✅ lock-check.yml |
@@ -240,7 +240,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 | **Single lighter-weight SAT backend (PySAT/resolvo)** | Evaluate + integrate + maintain | Z3 works. PubGrub is the strategic path. ForkingResolver already wraps both. Adding a third backend increases maintenance burden. |
 | **CLI consolidation (18→9 commands)** | Breaking change, doc rewrite, deprecation cycle | Users learn 3-5 commands anyway. Breaking muscle memory hurts more than 18 commands. |
 | **Plugin marketplace** | Infrastructure, registry, discovery | Zero community plugins exist. Build the API first, marketplace follows. |
-| **WASM frontend** | Compile entire resolver to WASM | No clear user need. Current frontend works via REST API. |
+| **WASM frontend (browser-side resolver)** | Compile entire resolver to WASM | No clear user need. Current web frontend works via REST API. |
 | **Desktop Tauri rewrite** | Full rewrite of Electron app | Electron works (43 tests pass). Desktop adoption is niche. |
 | **Benchmark regression suite** | pytest-benchmark + historical tracking | Existing `scripts/benchmark.py` + weekly CI benchmark workflow provide basic coverage. No direct user benefit. |
 | **Coverage 55%→65%** | Hardest 10% takes 90% effort | Current 55% is green. Focus on high-risk paths rather than line count. |
@@ -267,17 +267,16 @@ These items were evaluated and deliberately skipped because the effort does not 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
-| v1.4 | PubGrub default, ForkingResolver, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | 🔜 Current | 2026-07-23 |
-| v1.5 | Remaining deferred items, WASM frontend (if demand), community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
+| v1.4 | PubGrub opt-in, ForkingResolver, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | 🔜 Current | 2026-07-23 |
+| v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
 | v2.0 | Source repo URL + commit hash enrichment, ruff docstrings (all D violations → 0), type stubs (.pyi), desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 
 ---
 
 ## Key Strategic Decisions
 
-1. **PubGrub is the long-term solver** — Z3 becomes optional `udr[z3]`. PubGrub is smaller (no 30MB z3-solver), simpler (~650 lines vs ~2089), and production-proven (Dart, Swift, Cargo).
-2. **Plugin-first for ecosystem coverage** — Not more bespoke clients. Define the plugin interface first, let the community fill in ecosystems.
-3. **Library API surface = `orchestrator/` + `core/`** — Everything else (`data_sources/`, `manifest_detector.py`, `database/`) is internal with no stability guarantees.
-4. **Client contract tests as gate** — No new client lands without passing the standard suite (`test_client_contract.py`).
-5. **Desktop bundles offline indexes + local API** — Not a separate codebase. Electron shell wraps `udr serve` as subprocess.
-6. **API mirrors CLI** — Every CLI command should have a corresponding API endpoint.
+1. **Plugin-first for ecosystem coverage** — Not more bespoke clients. Define the plugin interface first, let the community fill in ecosystems.
+2. **Library API surface = `orchestrator/` + `core/`** — Everything else (`data_sources/`, `manifest_detector.py`, `database/`) is internal with no stability guarantees.
+3. **Client contract tests as gate** — No new client lands without passing the standard suite (`test_client_contract.py`).
+4. **Desktop bundles offline indexes + local API** — Not a separate codebase. Electron shell wraps `udr serve` as subprocess.
+5. **API mirrors CLI** — Every CLI command should have a corresponding API endpoint.

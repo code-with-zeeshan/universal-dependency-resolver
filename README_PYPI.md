@@ -49,15 +49,15 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 | Capability | Detail |
 |---|---|
 | **25 ecosystems** (18 resolvable + 7 query-only) | **Resolvable:** PyPI, Conda, npm, Crates.io, Maven, Go Modules, APT, APK, CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub, Gradle, Swift, Hex, Haskell — **Query-only** (version info, manifest parsing, no SAT traversal): Nix, GNU Guix, Docker, Helm, Terraform, Vcpkg, Conan — **Internal:** Docs DB, Custom DB |
-| **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection, and DFS backtracking fallback |
-| **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment |
-| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected |
+| **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection. |
+| **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment. |
+| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal. |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | **24 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools |
-| **54 REST API endpoints** | Full programmatic API with OpenAPI docs |
-| **Desktop GUI** | Standalone Electron app — no Python or Node.js needed |
-| **Zero config** | SQLite by default, in-memory cache, no Docker required |
-| **Lock file** | Reproducible `udr.lock` with full system snapshot |
+| **59 REST API endpoints** | Full programmatic API with auto-generated Swagger docs. |
+| **Desktop GUI** | Standalone Electron app — no Python or Node.js needed. |
+| **Zero config** | SQLite by default, in-memory cache, no Docker required. |
+| **Lock file** | Reproducible `udr.lock` with full system snapshot, integrity hashes, and dependency provenance. |
 
 ---
 
@@ -92,16 +92,13 @@ udr graph flask django
 # Scan a GitHub repo without cloning
 udr scan --github https://github.com/user/repo
 
-# System info
-udr check
-
 # List all supported ecosystems
 udr list-ecosystems
 ```
 
 ---
 
-## Use as a Python Library
+## 🐍 Use as a Python Library
 
 ```python
 import asyncio
@@ -130,7 +127,7 @@ asyncio.run(main())
 
 ---
 
-## How It Works
+## 🔄 How It Works
 
 ```
 Your request ──► Fetch metadata from registry APIs
@@ -142,7 +139,7 @@ Your request ──► Fetch metadata from registry APIs
                Resolve conflicts with AutoSolver (Z3 / PubGrub / Hybrid)
                       │
                       ▼
-              Export to 15 formats or write lock file
+               Export to 15 formats or write lock file
 ```
 
 ---

@@ -1,35 +1,71 @@
-# SDK Status
+# SDK Roadmap
 
-## CLI — Done
+## Current Status
 
-The CLI is built into the `ud-resolver` package:
+| SDK | Status | Package | Notes |
+|---|---|---|---|
+| **CLI** | ✅ Complete | `ud-resolver` on PyPI | 24 commands, full resolution pipeline |
+| **Python Library** | ✅ Complete | `backend.core`, `backend.orchestrator` | Fully importable as a library |
+| **REST API** | ✅ Complete | Bundled in `udr serve` | 59 endpoints, OpenAPI docs at `/api/v1/docs` |
+| **Desktop App** | ✅ Complete | Electron + PyInstaller | Cross-platform standalone binary |
+| **VS Code Extension** | ✅ Complete | `vscode-extension/` | 13 commands, lock tree view, CVE diagnostics, manifest editing. Extension marketplace publishing pending. |
+| **JavaScript/TypeScript** | 🔮 Planned | Community interest | Wraps REST API |
+| **Go** | 🔮 Planned | Community interest | Wraps REST API |
 
-```bash
-udr resolve flask>=2.0.0
-udr lock
-udr check
-```
+## Python SDK
 
-## Python SDK — Done
-
-The entire backend is importable:
+The entire backend is importable as a Python SDK:
 
 ```python
+# Resolution
+from backend.orchestrator.resolve import create_solver, ResolutionResult
 from backend.core.data_aggregator import DataAggregator
-from backend.orchestrator import create_solver
+from backend.core.system_scanner import SystemScanner
 
 aggregator = DataAggregator()
-resolver = create_solver()
-info = await aggregator.get_package_info("flask", "pypi")
+scanner = SystemScanner()
+system_info = scanner.scan_all()
+
+# Fetch package data
+package_data = aggregator.get_package_info("numpy", "pypi")
+
+# Resolve
+solver = create_solver(use_optimization=True, solver_timeout=30000)
+result = solver.resolve_dependencies(
+    packages=[{"name": "numpy", "ecosystem": "pypi", "version": ">=1.20"}],
+    system_info=system_info,
+)
+print(result)
 ```
 
-## Planned
+```python
+# Vulnerability checking
+from backend.core.data_aggregator import DataAggregator
 
-- **JavaScript/TypeScript SDK** — wraps the REST API (community interest driven)
-- **Go client** — stretch goal
+aggregator = DataAggregator()
+vulns = aggregator.check_vulnerabilities("numpy", "1.24.0", "pypi")
+for v in vulns:
+    print(f"{v['id']}: {v['severity']} - {v['summary']}")
+```
 
-The REST API at `http://localhost:8000/api/v1/` is fully documented via OpenAPI at `/api/v1/docs`.
+```python
+# License checking
+from backend.core.license_checker import check_license_compatibility
 
-## Contribute
+result = check_license_compatibility("MIT")
+print(result)
+```
 
-PRs welcome for JS/TS and Go SDKs. Open an issue or upvote existing ones to signal demand.
+## REST API
+
+All functionality is available via the REST API. See [API Reference](API.md) for full documentation.
+
+The OpenAPI schema is auto-generated and available at:
+
+- **Swagger UI:** `http://localhost:8000/api/v1/docs`
+- **Redoc:** `http://localhost:8000/api/v1/redoc`
+- **Raw schema:** `http://localhost:8000/api/v1/openapi.json`
+
+## Planned SDKs
+
+**JavaScript/TypeScript** and **Go** SDKs will be created based on community interest. Both would wrap the REST API rather than reimplementing the solver logic. Track progress on the [GitHub issues](https://github.com/code-with-zeeshan/universal-dependency-resolver/issues).
