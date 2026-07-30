@@ -168,10 +168,7 @@ def _looks_like_json_manifest(content: str) -> bool:
     stripped = content[:8192].lstrip()
     if not stripped.startswith("{"):
         return False
-    for indicator in _JSON_MANIFEST_INDICATORS:
-        if indicator in stripped:
-            return True
-    return False
+    return any(indicator in stripped for indicator in _JSON_MANIFEST_INDICATORS)
 
 
 class ManifestDetector:
@@ -507,10 +504,7 @@ class ManifestDetector:
 
         parser = self._get_parser(parser_key)
         try:
-            if parser_key in ("requirements",):
-                packages = parser(content)
-            else:
-                packages = parser(content)
+            packages = parser(content)
             return packages
         except Exception:
             logger.warning("Failed to parse in-memory content for %s", filename, exc_info=True)

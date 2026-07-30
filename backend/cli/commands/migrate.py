@@ -71,7 +71,7 @@ def cmd_migrate(args: argparse.Namespace) -> None:
 
     for fname, fp in detected:
         content = fp.read_text(encoding="utf-8", errors="replace")
-        parser_key = SUPPORTED_SOURCES[fname]
+        SUPPORTED_SOURCES[fname]
         try:
             parsed = detector.parse_source(content, filename=fname)
         except Exception:

@@ -199,10 +199,7 @@ def _parse_npm_like(constraint: str, ecosystem: str) -> VersSpec:
     if c.startswith("npm:"):
         rest = c[4:]
         at_idx = rest.rfind("@")
-        if at_idx > 0:
-            c = rest[at_idx + 1 :]
-        else:
-            c = rest
+        c = rest[at_idx + 1 :] if at_idx > 0 else rest
     if not c or c in ("*", "any", ""):
         return VersSpec(ecosystem, constraint, "*")
 

@@ -11,13 +11,16 @@ Supports all 28 ecosystems:
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from backend import settings as _settings
-from backend.core.local_index import LocalIndexManager
 from backend.core.local_index_crates import CratesIndexManager
 from backend.core.local_index_npm import NpmIndexManager
 from backend.core.local_index_pypi import PyPIIndexManager
 from backend.core.registry_index_manager import NullIndexManager, SearchApiIndexManager
+
+if TYPE_CHECKING:
+    from backend.core.local_index import LocalIndexManager
 
 logger = logging.getLogger(__name__)
 

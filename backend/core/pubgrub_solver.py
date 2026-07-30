@@ -317,10 +317,7 @@ class PubGrubSolver:
         for r_name, r_ver in result.items():
             pkg = next((p for p in packages if p["name"] == r_name), None)
             candidates = sanitized_to_original.get(r_name, {}).get(str(r_ver), [])
-            if candidates:
-                final_ver = _pick_best_original(candidates, str(r_ver))
-            else:
-                final_ver = str(r_ver)
+            final_ver = _pick_best_original(candidates, str(r_ver)) if candidates else str(r_ver)
             resolved_packages[r_name] = {
                 "version": final_ver,
                 "ecosystem": pkg.get("ecosystem", "pypi") if pkg else "pypi",
@@ -480,10 +477,7 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
     if c.startswith("npm:"):
         rest = c[4:]
         at_idx = rest.rfind("@")
-        if at_idx > 0:
-            c = rest[at_idx + 1 :]
-        else:
-            c = rest
+        c = rest[at_idx + 1 :] if at_idx > 0 else rest
 
     # Normalize 2-part versions embedded in operators to 3-part semver
     # e.g. ">=1.20" -> ">=1.20.0",  ">=2.0" -> ">=2.0.0",  "<=1.5" -> "<=1.5.0"

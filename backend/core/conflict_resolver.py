@@ -1346,7 +1346,7 @@ class ConflictResolver:
         correlation_id = str(uuid.uuid4())
         resolution_context["correlation_id"] = correlation_id
 
-        logger.exception("Unexpected error during dependency resolution", extra=resolution_context)
+        logger.error("Unexpected error during dependency resolution", extra=resolution_context)
 
         resolver_error = ResolverError(
             message="An unexpected error occurred during dependency resolution.",
@@ -1729,7 +1729,7 @@ class ConflictResolver:
                     self.version_vars[var_name] = var
                     self._var_to_version[str(var)] = v
                     sorted_idx = self.version_to_int.get(var_name, 0)
-                    total_vers = len(ver_list)
+                    len(ver_list)
                     weight = sorted_idx + 1
                     if self._is_prerelease(v):
                         weight += SOLVER_PRERELEASE_PENALTY

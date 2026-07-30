@@ -175,6 +175,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["ALL"]
+
 ignore = [
     # ── Type annotations — covered by mypy strict mode ──
     "ANN",
@@ -197,6 +198,8 @@ ignore = [
     "D",
     # ── Complexity — refactoring target, not blocker ──
     "C901",
+    # ── Positional args — massive refactor, not blocker ──
+    "PLR0917",
     # ── FastAPI patterns — Annotated deps, response model overrides ──
     "FAST001", "FAST002",
     # ── Line length — project max is 100 ──
@@ -228,6 +231,7 @@ ignore = [
     "FURB",
     # ── Pre-existing patterns — need larger refactors, unblocks CI ──
     "S110", "S608",
+    "CPY001",
     "SIM102", "SIM105", "SIM113", "SIM117",
     "PT012",
     "E402", "RUF001", "RUF012",

@@ -46,7 +46,7 @@ class HaskellClient(BaseDataSourceClient):
                 for ver_str in data:
                     versions.append({"version": ver_str})
                     # Parse dependencies from the first (latest) version only
-                    if include_dependencies and ver_str == list(data.keys())[0]:
+                    if include_dependencies and ver_str == next(iter(data.keys())):
                         ver_data = data[ver_str]
                         if isinstance(ver_data, dict):
                             raw_deps = ver_data.get("dependencies", [])

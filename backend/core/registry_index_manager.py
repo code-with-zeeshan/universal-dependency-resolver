@@ -12,7 +12,6 @@ NullIndexManager
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from datetime import UTC, datetime
@@ -160,7 +159,7 @@ class SearchApiIndexManager:
                         logger.warning("%s listing API returned %d", self.ecosystem, resp.status)
                         return 0
                     data = await resp.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+        except (TimeoutError, aiohttp.ClientError, ValueError) as exc:
             logger.warning("Failed to sync %s: %s", self.ecosystem, exc)
             return 0
 
@@ -189,10 +188,12 @@ class SearchApiIndexManager:
                 async with aiohttp.ClientSession(headers={"User-Agent": _USER_AGENT}) as session:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                         if resp.status != 200:
-                            logger.warning("%s API returned %d at page %d", self.ecosystem, resp.status, page)
+                            logger.warning(
+                                "%s API returned %d at page %d", self.ecosystem, resp.status, page
+                            )
                             break
                         data = await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            except (TimeoutError, aiohttp.ClientError, ValueError) as exc:
                 logger.warning("Failed to sync %s page %d: %s", self.ecosystem, page, exc)
                 break
 
@@ -229,14 +230,18 @@ class SearchApiIndexManager:
         seen = set()
 
         for prefix in self._alpha_prefixes:
-            url = self._url.replace("a", prefix, 1) if "q=a" in self._url else f"{self._url}&q={prefix}"
+            url = (
+                self._url.replace("a", prefix, 1)
+                if "q=a" in self._url
+                else f"{self._url}&q={prefix}"
+            )
             try:
                 async with aiohttp.ClientSession(headers={"User-Agent": _USER_AGENT}) as session:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                         if resp.status != 200:
                             continue
                         data = await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+            except (TimeoutError, aiohttp.ClientError, ValueError):
                 continue
 
             packages = self._parser(data)
@@ -255,7 +260,7 @@ class SearchApiIndexManager:
     def _build_page_url(self, page_value: int) -> str:
         """Insert the page parameter into the URL."""
         if self._page_param:
-            from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+            from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
             parsed = urlparse(self._url)
             qs = parse_qs(parsed.query, keep_blank_values=True)
