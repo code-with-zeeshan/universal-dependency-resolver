@@ -46,7 +46,7 @@ classifiers = [
 
 dependencies = [
     # Core Framework
-    "fastapi>=0.115.0,<0.140",
+    "fastapi>=0.115.0,<0.142",
     "uvicorn>=0.24,<0.52",
     "pydantic>=2.5.0,<3",
     # HTTP & Web Scraping
