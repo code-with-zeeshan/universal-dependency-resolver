@@ -124,7 +124,7 @@ class ForkingResolver:
             except Exception as exc:
                 logger.debug("ForkingResolver: alternate solver also failed: %s", exc)
                 cross["alternate_status"] = "error"
-                cross["alternate_error"] = str(exc)
+                cross["alternate_error"] = "alternate solver failed"
                 alt_status = "error"
 
             cross["alternate_status"] = alt_status
@@ -153,7 +153,7 @@ class ForkingResolver:
         except Exception as exc:
             logger.debug("ForkingResolver: constraint relaxation also failed: %s", exc)
             cross["relaxation_status"] = "error"
-            cross["relaxation_error"] = str(exc)
+            cross["relaxation_error"] = "constraint relaxation failed"
             result["cross_validation"] = cross
             return result
 

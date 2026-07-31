@@ -304,7 +304,11 @@ class PubGrubSolver:
                 result = solver.resolve(requirements)
         except error_cls as e:
             logger.warning("%s resolution failed: %s", log_label, e)
-            return {"status": "unsatisfiable", "resolution_error": str(e), "resolved_packages": {}}
+            return {
+                "status": "unsatisfiable",
+                "resolution_error": "resolution failed",
+                "resolved_packages": {},
+            }
         except TimeoutError:
             logger.warning("%s resolution timed out after %d ms", log_label, self._solver_timeout)
             return {

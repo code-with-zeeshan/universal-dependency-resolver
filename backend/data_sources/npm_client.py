@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from ..core.concurrency import get_semaphore
 from ..core.constraint_normalizer import is_prerelease_version
@@ -1051,9 +1051,11 @@ class NPMClient(BaseDataSourceClient):
         if repo:
             return repo
 
+        allowed_hosts = ("github.com", "gitlab.com", "bitbucket.org")
         for key in ["homepage", "bugs"]:
             url = links.get(key, "")
-            if "github.com" in url or "gitlab.com" in url or "bitbucket.org" in url:
+            hostname = urlparse(url).hostname or ""
+            if hostname in allowed_hosts or any(hostname.endswith(f".{h}") for h in allowed_hosts):
                 match = re.match(r"(https?://[^/]+/[^/]+/[^/]+)", url)
                 if match:
                     return match.group(1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import copy
 import hashlib
 import logging
@@ -474,9 +475,9 @@ class ConflictResolver:
                 logger.error("Constraint creation failed: %s", e)
                 return {
                     "status": "unsatisfiable",
-                    "error": str(e),
+                    "error": "constraint creation failed",
                     "packages": {},
-                    "warnings": [str(e)],
+                    "warnings": ["constraint creation failed"],
                 }
             logger.debug(
                 "Constraints prepared",
@@ -1751,14 +1752,12 @@ class ConflictResolver:
             from packaging.version import InvalidVersion
             from packaging.version import Version as PkgVersion
 
-            try:
+            with contextlib.suppress(InvalidVersion, Exception):
                 candidate_list = sorted(
                     candidate_list,
                     key=lambda v: PkgVersion(v) if v.count(".") >= 2 else PkgVersion(v + ".0"),
                     reverse=True,
                 )
-            except (InvalidVersion, Exception):
-                pass
             self._candidate_lists[pkg_name] = candidate_list
 
             version_vars = _build_vars(clustered)
