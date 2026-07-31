@@ -1,18 +1,18 @@
 # UDR Roadmap
 
-## Project Status (2026-07-22)
+## Project Status (2026-07-31)
 
 | Metric | Value |
 |--------|-------|
-| Resolution ecosystems | **25** (18 resolvable + 7 query-only + 2 internal) |
-| Solver | Z3 SAT solver (default) → PubGrub opt-in (`USE_PUBGRUB_SOLVER=true`) |
-| ForkingResolver | 4-strategy parallel portfolio meta-solver (gated) |
+| Resolution ecosystems | **27 total** (18 resolvable + 7 query-only + 2 internal; 25 active) |
+| Solver | AutoSolver (default) — profiles the graph and picks Z3 / PubGrub / Hybrid per workload; per-ecosystem isolation |
+| ForkingResolver | Cross-solver validator — on failure, runs the alternate solver (Z3 ↔ PubGrub) and confirms conflicts |
 | CLI commands | 24 |
-| Lock file | `udr.lock` v2.x with workspace, cross-eco, target sections |
-| Tests | **4243** (3681 unit + 96 integration + 383 e2e + 83 others) |
-| Coverage threshold | **58%** (enforced CI + pre-commit) |
+| Lock file | `udr.lock` v2.1 with workspace, cross-eco, target sections |
+| Tests | **4243** (3681 unit + 96 integration + 383 e2e + 83 others); 3,674 verified passing |
+| Coverage threshold | **57%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
-| Ruff violations | **7** in `backend/` (4 fixable) |
+| Ruff violations | **0** in `backend/` |
 | Missing docstrings | **0** — all D categories resolved (D102, D205, D401, D107, D413, D400, D417). |
 
 ---
@@ -23,9 +23,9 @@
 
 | Item | Status | Details |
 |------|--------|---------|
-| Z3 SAT solver (`ConflictResolver`) | ✅ | 2660-line SAT encoding with SCC partitioning, DFS backtracking, CUDA conflict rules |
+| Z3 SAT solver (`ConflictResolver`) | ✅ | 2660-line SAT encoding with SCC partitioning, cross-solver validation, CUDA conflict rules |
 | PubGrub solver (Rust-backed) | ✅ | Opt-in via `USE_PUBGRUB_SOLVER=true`; pure-Python fallback |
-| ForkingResolver | ✅ | 4 fork strategies (skip-latest, skip-first-two, major-pin, constraint-relax) run in parallel via ThreadPoolExecutor |
+| ForkingResolver | ✅ | Repurposed as cross-solver validator — runs the alternate solver (Z3 ↔ PubGrub) on failure and confirms conflicts |
 | Platform markers (PEP 508) | ✅ | 3-layer pipeline: PyPI client → Aggregator → BFS filtering |
 | Content-addressed cache | ✅ | SHA256 blob store with git-like sharding, GC, corruption detection |
 | 20 ecosystem layer sync | ✅ | All ecosystems wired through enum → manifest → client → settings → aliases |
@@ -34,7 +34,7 @@
 
 **Clients with real registry API calls**: PyPI, npm, Crates, Maven, GoModules, RubyGems, Packagist, Conda, APT, APK, NuGet, CocoaPods, Homebrew, Pub, Gradle, Swift, Hex, Haskell
 
-**Plugin-only (stub)**: Docker, Vcpkg, Terraform, Conan, Nix, Guix, Helm
+**Query-only (real registry API, no SAT traversal)**: Docker, Vcpkg, Terraform, Conan, Nix, Guix, Helm
 
 | Ecosystem | Manifest | Lock Tree | Resolver | Updater | Notes |
 |-----------|----------|-----------|----------|---------|-------|
@@ -44,7 +44,7 @@
 | packagist | ✅ composer.json | ✅ composer.lock | ✅ | ✅ | |
 | pypi | ✅ pyproject.toml, requirements.txt, Pipfile | ✅ poetry.lock, uv.lock | ✅ | ✅ | Wheel tag awareness, marker eval |
 | hex | ✅ mix.exs | ✅ mix.lock | ✅ | ✅ | |
-| gomodules | ✅ go.mod | ✅ go.sum (dead code) | ✅ | ✅ | Replace, workspace, GOPROXY auth |
+| gomodules | ✅ go.mod | ✅ go.sum (lock source) | ✅ | ✅ | Replace, workspace, GOPROXY auth |
 | gradle | ✅ build.gradle / .kts | — | ✅ | ✅ | 11 configurations |
 | swift | ✅ Package.swift | ✅ Package.resolved | ✅ | ✅ | GitHub API rate-limited |
 | haskell | ✅ *.cabal, stack.yaml, cabal.project | — | ✅ | ✅ | |
@@ -56,13 +56,13 @@
 | cocoapods | ✅ Podfile | ✅ Podfile.lock | ✅ | ✅ | |
 | maven | ✅ pom.xml | — | ✅ | ✅ | XML updater, no SNAPSHOT |
 | nuget | ✅ packages.config | — | ✅ | — | |
-| nix | ✅ default.nix, shell.nix, flake.nix | ✅ flake.lock | ✅ | — | |
-| guix | ✅ guix.scm, manifest.scm | — | ✅ | — | |
-| helm | ✅ Chart.yaml | ✅ Chart.lock | ✅ | — | Chart.lock reacheable |
-| docker | ✅ Dockerfile | — | ✅ | — | Docker Hub API v2 |
-| terraform | ✅ *.tf, .terraform.lock.hcl | — | ✅ | — | Registry API |
-| vcpkg | ✅ vcpkg.json | — | ✅ | — | |
-| conan | ✅ conanfile.py | — | ✅ | — | ConanCenter API |
+| nix | ✅ default.nix, shell.nix, flake.nix | ✅ flake.lock | — | — | Query-only |
+| guix | ✅ guix.scm, manifest.scm | — | — | — | Query-only |
+| helm | ✅ Chart.yaml | ✅ Chart.lock | — | — | Query-only |
+| docker | ✅ Dockerfile | — | — | — | Query-only |
+| terraform | ✅ *.tf, .terraform.lock.hcl | — | — | — | Query-only |
+| vcpkg | ✅ vcpkg.json | — | — | — | Query-only |
+| conan | ✅ conanfile.py | — | — | — | Query-only |
 
 ### Phase 2 — P0/P1/P2/P3 Gap Closure (36 items, all closed, 2026-07-14)
 
@@ -238,12 +238,12 @@ These items were evaluated and deliberately skipped because the effort does not 
 | **Concurrent version support (Cargo-style)** | 4-8 week architectural rework across SAT encoding, PubGrub API, BFS dedup, lock file format | Only 1/20 ecosystems (Cargo) needs it. Cargo's existing resolution already works. |
 | **Virtual package/Provides resolution** | Solver changes for 2/20 ecosystems | APT/APK parse `provides` data but APT/APK are flat-resolved (no cross-eco). Rare even in Debian. |
 | **Single lighter-weight SAT backend (PySAT/resolvo)** | Evaluate + integrate + maintain | Z3 works. PubGrub is the strategic path. ForkingResolver already wraps both. Adding a third backend increases maintenance burden. |
-| **CLI consolidation (18→9 commands)** | Breaking change, doc rewrite, deprecation cycle | Users learn 3-5 commands anyway. Breaking muscle memory hurts more than 18 commands. |
+| **CLI consolidation (24→9 commands)** | Breaking change, doc rewrite, deprecation cycle | Users learn 3-5 commands anyway. Breaking muscle memory hurts more than 24 commands. |
 | **Plugin marketplace** | Infrastructure, registry, discovery | Zero community plugins exist. Build the API first, marketplace follows. |
 | **WASM frontend (browser-side resolver)** | Compile entire resolver to WASM | No clear user need. Current web frontend works via REST API. |
 | **Desktop Tauri rewrite** | Full rewrite of Electron app | Electron works (43 tests pass). Desktop adoption is niche. |
 | **Benchmark regression suite** | pytest-benchmark + historical tracking | Existing `scripts/benchmark.py` + weekly CI benchmark workflow provide basic coverage. No direct user benefit. |
-| **Coverage 55%→65%** | Hardest 10% takes 90% effort | Current 55% is green. Focus on high-risk paths rather than line count. |
+| **Coverage 57%→65%** | Hardest 10% takes 90% effort | Current 57% is green. Focus on high-risk paths rather than line count. |
 | **Full incremental re-resolution (skip BFS)** | Rewrite BFS to track subgraph changes | Resolution hash caching already skips SAT for unchanged subtrees. BFS walk is not the bottleneck. |
 | **Man page** | Writing + packaging | `udr --help` + CLI.md serve the same purpose. |
 
@@ -267,9 +267,9 @@ These items were evaluated and deliberately skipped because the effort does not 
 | Version | Focus | Status | Target |
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
-| v1.4 | PubGrub opt-in, ForkingResolver, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | 🔜 Current | 2026-07-23 |
+| v1.4 | AutoSolver, cross-solver validation, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | ✅ Released | 2026-07-23 |
 | v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
-| v2.0 | Source repo URL + commit hash enrichment, ruff docstrings (all D violations → 0), type stubs (.pyi), desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
+| v2.0 | Source repo URL + commit hash enrichment, desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 
 ---
 

@@ -4,54 +4,59 @@
 
 The core resolution engine performs SAT solving (Z3 by default, PubGrub as opt-in) with the following pipeline:
 
+```mermaid
+flowchart TD
+    IN["Package inputs<br/>name + version constraint"] --> N
+
+    subgraph N["1. Normalize"]
+        A1["Cross-eco constraint<br/>normalization"]
+        A2["NPM alias stripping"]
+        A3["Version padding"]
+    end
+
+    N --> V
+
+    subgraph V["2. Create variables"]
+        B1["SAT variable per<br/>(pkg, version) pair"]
+        B2["Version clustering<br/>major.minor, latest patch"]
+        B3["Prerelease filtering<br/>max 50 vars/pkg, 50000 total"]
+    end
+
+    V --> C
+
+    subgraph C["3. Add constraints"]
+        C1["Singleton: one version<br/>per package"]
+        C2["Dependency: if A=v1<br/>then B=v2"]
+        C3["Conflict: not(A=v1 and B=v2)<br/>CUDA / numpy / version"]
+        C4["Platform markers<br/>PEP 508 filtering"]
+    end
+
+    C --> S
+
+    subgraph S["4. Solve (Z3 CDCL)"]
+        D1["z3.Optimize() when<br/>USE_Z3_OPTIMIZE=true"]
+        D2["z3.Solver() fallback<br/>when optimization disabled"]
+        D3["_upgrade_to_latest()<br/>post-process"]
+        D4["Timeout handling<br/>cross-solver fallback"]
+    end
+
+    S --> O
+
+    subgraph O["5. Output"]
+        E1["{pkg: version} dict"]
+        E2["Deprecation / yanked<br/>warnings"]
+        E3["Resolution hash<br/>SHA256"]
+        E4["Cross-validation<br/>alternate solver on failure"]
+    end
 ```
-Package inputs (name + version constraint)
-        │
-        ▼
-┌─────────────────────────┐
-│  1. Normalize           │
-│  - Cross-eco constraint │  npm ^ → >=, <=, ~ → PEP 440
-│    normalization         │  Go pseudo-version → semver
-│  - NPM alias stripping   │  Bare versions → ==bound
-│  - Version padding       │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  2. Create variables    │  SAT variable per (pkg, version) pair
-│  - Version clustering   │  Group by major.minor, keep latest patch
-│  - Prerelease filtering │  max 50 vars/pkg, 50000 total
-│  - Limit enforcement    │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  3. Add constraints     │
-│  - Singleton: one ver   │  Exactly one version per package
-│  - Dep: if A=v1→B=v2    │  If version A selected, deps satisfied
-│  - Conflict: ¬(A=v1∧B=v2)│  CUDA/numpy/version conflicts
-│  - Platform markers     │  PEP 508 marker filtering (PEP 508)
-│  - CUDA variant select  │  GPU variant selection by CUDA version
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  4. Solve (Z3 CDCL)     │
-│  - Try optimize first   │  z3.Optimize() when USE_Z3_OPTIMIZE=true
-│  - Fallback to solver   │  z3.Solver() when optimization disabled
-│  - upgrade_to_latest    │  Post-process: upgrade each pkg to newest
-│  - Timeout handling     │  Parallel cross-solver (PubGrub) fallback
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│  5. Output              │
-│  - Version assignments  │  {pkg: version} dict
-│  - Deprecation warnings │  yanked/deprecated flags
-│  - Resolution hash      │  SHA256 of (packages + system + constraints)
-│  - Cross-validation     │  Alternate solver verification on failure
-└─────────────────────────┘
-```
+
+Notes on the pipeline:
+
+- **1. Normalize** — npm `^` → `>=`, `<=`, `~` → PEP 440; Go pseudo-versions → semver; bare versions → `==` bound.
+- **2. Create variables** — one SAT boolean variable per (package, version) pair, clustered by `major.minor`.
+- **3. Add constraints** — exactly one version per package, dependency implications, conflict exclusions, and PEP 508 platform markers.
+- **4. Solve** — `z3.Optimize()` when `USE_Z3_OPTIMIZE=true`, otherwise plain `z3.Solver()` followed by `_upgrade_to_latest()` to prefer newest versions; timeouts fall back to a parallel cross-solver (PubGrub) validation.
+- **5. Output** — version assignments plus deprecation warnings, a SHA256 resolution hash, and alternate-solver cross-validation on failure.
 
 ## Startup Time
 

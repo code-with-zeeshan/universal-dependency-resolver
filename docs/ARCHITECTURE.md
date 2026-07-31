@@ -211,46 +211,142 @@ flowchart TD
 
 ## Database Schema (9 tables)
 
-```
-┌──────────────┐     ┌──────────────────┐     ┌───────────────────┐
-│   Package    │───▶│  PackageVersion  │────▶│ CompatibilityReport│
-│ id (PK)      │     │ id (PK)          │     │ id (PK)           │
-│ name         │     │ package_id (FK)  │     │ package_id (FK)   │
-│ ecosystem    │     │ version          │     │ version_a         │
-│ created_at   │     │ requires_python  │     │ version_b         │
-└──────────────┘     │ upload_time      │     │ compatible        │
-                     │ yanked           │     │ tested_platforms  │
-┌──────────────┐     │ deprecated       │     │ created_at        │
-│  ConflictRule│     │ integrity        │     └───────────────────┘
-│ id (PK)      │     └──────────────────┘
-│ package_a    │                         ┌───────────────────────┐
-│ package_b    │     ┌──────────────────┐│  VerifiedCombination  │
-│ constraint_a │     │ SystemBenchmark  ││ id (PK)              │
-│ constraint_b │     │ id (PK)          ││ package_a_id (FK)    │
-│ created_at   │     │ os               ││ package_b_id (FK)    │
-└──────────────┘     │ cpu              ││ version_a            │
-                     │ gpu              ││ version_b            │
-┌──────────────┐     │ cuda             ││ compatible           │
-│   User       │     │ score            ││ notes                │
-│ id (PK)      │     │ created_at       │└──────────────────────┘
-│ username     │     └──────────────────┘
-│ email        │
-│ password_hash│     ┌──────────────────┐
-│ is_active    │     │ ResolutionCache  │
-│ scopes       │     │ id (PK)          │
-└──────────────┘     │ resolution_hash  │
-                     │ ecosystem        │
-┌──────────────┐     │ packages_json    │
-│   APIKey     │     │ created_at       │
-│ id (PK)      │     │ ttl              │
-│ user_id (FK) │     └──────────────────┘
-│ key_hash     │
-│ name         │
-│ scopes       │
-│ is_active    │
-│ created_at   │
-│ expires_at   │
-│ last_used_at │
-│ usage_count  │
-└──────────────┘
+```mermaid
+erDiagram
+    packages ||--o{ package_versions : "has versions"
+    packages ||--o{ compatibility_reports : "reported on"
+    packages ||--o{ conflict_rules : "conflicts as package1"
+    packages ||--o{ conflict_rules : "conflicts as package2"
+    users ||--o{ api_keys : "owns"
+
+    packages {
+        int id PK
+        string name
+        string ecosystem
+        string latest_version
+        text description
+        string homepage
+        string repository
+        string license
+        datetime created_at
+        datetime updated_at
+    }
+
+    package_versions {
+        int id PK
+        int package_id FK
+        string version
+        datetime release_date
+        string python_requires
+        bigint size_bytes
+        bigint download_count
+        json system_requirements
+        json dependencies
+        json metadata_json
+        datetime created_at
+    }
+
+    compatibility_reports {
+        int id PK
+        int package_id FK
+        string version
+        string os_name
+        string os_version
+        string cpu_architecture
+        string gpu_name
+        string cuda_version
+        string cudnn_version
+        string python_version
+        json system_info
+        bool works
+        text notes
+        datetime created_at
+    }
+
+    conflict_rules {
+        int id PK
+        int package1_id FK
+        string package1_version_spec
+        int package2_id FK
+        string package2_version_spec
+        string conflict_type
+        text description
+        string severity
+        text resolution
+        datetime created_at
+        bool verified
+    }
+
+    verified_combinations {
+        int id PK
+        string name
+        text description
+        json packages
+        json system_requirements
+        string verified_by
+        datetime verification_date
+        json test_results
+        bigint usage_count
+        float success_rate
+        datetime created_at
+        datetime updated_at
+    }
+
+    system_benchmarks {
+        int id PK
+        string system_hash
+        string os_name
+        string os_version
+        string cpu_model
+        int cpu_cores
+        float ram_gb
+        string gpu_model
+        float gpu_memory_gb
+        json system_info
+        json benchmarks
+        datetime created_at
+    }
+
+    resolution_cache {
+        int id PK
+        string request_hash
+        json packages
+        json system_info
+        json constraints
+        json resolution
+        int resolution_time_ms
+        bool success
+        int hit_count
+        datetime created_at
+        datetime expires_at
+    }
+
+    users {
+        int id PK
+        string username
+        string email
+        string hashed_password
+        string full_name
+        bool is_active
+        bool is_superuser
+        json scopes
+        datetime created_at
+        datetime updated_at
+        datetime last_login
+    }
+
+    api_keys {
+        int id PK
+        string key
+        string name
+        text description
+        int user_id FK
+        json scopes
+        bool is_active
+        datetime expires_at
+        datetime last_used_at
+        bigint usage_count
+        datetime created_at
+        datetime revoked_at
+    }
 ```
