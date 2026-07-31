@@ -14,8 +14,10 @@ fail() { FAIL=$((FAIL+1)); echo "  ✗ FAIL: $1"; }
 
 # Cap every command so a hung network call cannot stall the whole CI runner.
 # Timeout in seconds (overridable via UDR_CMD_TIMEOUT).
+# -k 10: escalate SIGTERM -> SIGKILL 10s later (python ignores SIGTERM while
+# blocked in aiohttp/C-level calls, and GNU timeout otherwise waits forever).
 CMD_TIMEOUT="${UDR_CMD_TIMEOUT:-300}"
-cmd() { timeout "$CMD_TIMEOUT" "$@" 2>&1; }
+cmd() { timeout -k 10 "$CMD_TIMEOUT" "$@" 2>&1; }
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║  Universal Dependency Resolver — 10 Real-World  ║"
@@ -55,7 +57,7 @@ fi
 
 # ─── Scenario 4: JSON output ───
 echo "─── [4/10] Structured JSON output ───"
-JSON=$(timeout "$CMD_TIMEOUT" udr resolve requests --format json 2>/dev/null)
+JSON=$(timeout -k 10 "$CMD_TIMEOUT" udr resolve requests --format json 2>/dev/null)
 RC=$?
 if [ $RC -eq 0 ]; then
     echo "$JSON" | python3 -c "
