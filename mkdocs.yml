@@ -65,12 +65,17 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - admonition
+  - attr_list
   - footnotes
+  - md_in_html
   - toc:
       permalink: true
 
 plugins:
   - search
+
+extra_javascript:
+  - assets/javascripts/mermaid-fix.js
 
 nav:
   - Home: index.md

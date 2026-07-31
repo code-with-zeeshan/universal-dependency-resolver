@@ -1,6 +1,6 @@
 # 🚀 Universal Dependency Resolver
 
-**Resolve any package, from any ecosystem, all at once.**
+**Resolve, Lock and audit dependencies across 18+ ecosystems (PyPI, npm, Cargo, Conda, Go, Maven, NuGet..) In one pass. CUDA-aware resolution, CVE scanning, SBOM generation, and a single cross-ecosystem lock file - with CLI, REST API, desktop app, and VS Code extension.**
 
 [![PyPI version](https://img.shields.io/pypi/v/ud-resolver?color=blue&label=%F0%9F%93%A6%20PyPI)](https://pypi.org/project/ud-resolver/)
 [![Python versions](https://img.shields.io/pypi/pyversions/ud-resolver?color=important&label=%F0%9F%90%8D%20Python)](https://pypi.org/project/ud-resolver/)

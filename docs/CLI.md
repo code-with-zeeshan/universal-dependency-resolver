@@ -1113,8 +1113,8 @@ All commands display errors in a formatted red panel:
 
 ```
 ╭──────────────────────── Error ────────────────────────╮
-│ Resolution failed: <message>                           │
-╰────────────────────────────────────────────────────────╯
+│ Resolution failed: <message>                          │
+╰───────────────────────────────────────────────────────╯
 ```
 
 Common error messages and causes:

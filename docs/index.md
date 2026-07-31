@@ -1,7 +1,7 @@
 # Universal Dependency Resolver
 
 <p align="center">
-  <strong>Resolve any package, from any ecosystem, all at once.</strong>
+  <strong>Resolve, Lock and audit dependencies across 18+ ecosystems (PyPI, npm, Cargo, Conda, Go, Maven, NuGet..) In one pass. CUDA-aware resolution, CVE scanning, SBOM generation, and a single cross-ecosystem lock file - with CLI, REST API, desktop app, and VS Code extension.</strong>
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
     Resolve dependencies across **PyPI, npm, Crates.io, Go Modules, Maven, RubyGems, NuGet, Conda, APT, APK, and 17 more** — all in one lock file.
 
-    [:octicons-arrow-right-24: See the full list](USER_GUIDE.md#supported-ecosystems)
+    [:octicons-arrow-right-24: See the full list](USER_GUIDE.md#cross-ecosystem-resolution)
 
 -   :material-chip:{ .lg .middle } **System-Aware**
 
@@ -35,7 +35,7 @@
 
     Auto-detects **OS, CPU, GPU, CUDA version**. Selects the right `torch+cu121` variant. ROCm and Metal supported too.
 
-    [:octicons-arrow-right-24: Learn more](USER_GUIDE.md#system-aware-resolution)
+    [:octicons-arrow-right-24: Learn more](USER_GUIDE.md#gpu-aware-resolution)
 
 -   :material-shield-check:{ .lg .middle } **Supply Chain Security**
 
@@ -43,7 +43,7 @@
 
     Scan **CVEs across 18 ecosystems** at once. Generate SPDX/CycloneDX SBOMs. Sign lock files with Ed25519.
 
-    [:octicons-arrow-right-24: Check features](USER_GUIDE.md#supply-chain-security)
+    [:octicons-arrow-right-24: Check features](USER_GUIDE.md#supply-chain-features)
 
 -   :material-speedometer:{ .lg .middle } **SAT-Powered Solver**
 
