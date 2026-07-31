@@ -20,6 +20,25 @@ async function waitForElement(win, js, label, timeoutMs = 20000) {
   throw lastErr || new Error(`Timed out waiting for ${label}`)
 }
 
+// capturePage can transiently throw "UnknownVizError" (a Chromium compositor
+// race under xvfb/GPU-less CI). Retry like Electron itself does internally.
+async function capturePageWithRetry(win, attempts = 5, delayMs = 500) {
+  let lastErr
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await win.capturePage()
+    } catch (err) {
+      lastErr = err
+      if (String(err && err.message).includes('UnknownVizError')) {
+        await new Promise(r => setTimeout(r, delayMs))
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastErr || new Error('capturePage failed after retries')
+}
+
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
     width: 1280,
@@ -42,7 +61,7 @@ app.whenReady().then(async () => {
     // Give page JS a moment to render
     await new Promise(r => setTimeout(r, 1000))
 
-    const image = await win.capturePage()
+    const image = await capturePageWithRetry(win)
     const screenshotPath = '/tmp/udr-render-test.png'
     fs.writeFileSync(screenshotPath, image.toPNG())
 

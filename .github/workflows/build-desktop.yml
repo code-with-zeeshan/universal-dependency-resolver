@@ -9,12 +9,14 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   linux:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -146,6 +148,8 @@ jobs:
             arch: x64
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -273,6 +277,8 @@ jobs:
             arch: arm64
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4

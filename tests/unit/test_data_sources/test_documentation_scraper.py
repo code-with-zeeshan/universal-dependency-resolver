@@ -914,7 +914,7 @@ class TestDocumentationScraper:
             mock_exists.return_value = True
             result = await scraper._get_github_documentation_url("numpy")
             assert result is not None
-            assert "github.com" in result
+            assert result.startswith("https://github.com/")
 
     @pytest.mark.asyncio
     async def test_get_github_documentation_url_all_fail(self, scraper):

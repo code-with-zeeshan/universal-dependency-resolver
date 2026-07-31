@@ -15,12 +15,19 @@ describe('Electron render test', { skip: !xvfbAvailable && !process.env.DISPLAY 
     const testScript = path.join(__dirname, 'render-test.js')
 
     let cmd, args
+    const electronArgs = [
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-dev-shm-usage',
+      testScript,
+    ]
     if (xvfbAvailable && !process.env.DISPLAY) {
       cmd = 'xvfb-run'
-      args = ['--auto-servernum', electronBin, '--no-sandbox', testScript]
+      args = ['--auto-servernum', electronBin, ...electronArgs]
     } else {
       cmd = electronBin
-      args = ['--no-sandbox', testScript]
+      args = electronArgs
     }
 
     const result = spawnSync(cmd, args, {

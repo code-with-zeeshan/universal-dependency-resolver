@@ -144,12 +144,12 @@ def _parse_package_spec(
             logger.warning("Unknown ecosystem '%s' in '%s'", eco, spec)
             return spec, default_ecosystem, None
     constraint_match = re.match(
-        r"^([a-zA-Z0-9][a-zA-Z0-9._\-]*)([><=!]+.*)$",
+        r"^([a-zA-Z0-9][a-zA-Z0-9._\-]*)((?:[><=!]+(?:[0-9a-zA-Z.][^\s]*)?)?)$",
         name_part,
     )
     if constraint_match:
         name_part = constraint_match.group(1)
-        constraint = constraint_match.group(2).strip()
+        constraint = (constraint_match.group(2) or "").strip() or None
     return name_part, eco, constraint
 
 

@@ -691,11 +691,13 @@ class TestMavenClient:
 
     # === New test: __init__ attributes
     def test_init_attributes(self):
+        from urllib.parse import urlparse
+
         client = MavenClient()
         assert client.ecosystem == "maven"
-        assert "search.maven.org" in client.base_url
+        assert urlparse(client.base_url).hostname == "search.maven.org"
         assert client.artifact_url == "https://search.maven.org/artifact"
-        assert "repo1.maven.org" in client.maven_repo_url
+        assert urlparse(client.maven_repo_url).hostname == "repo1.maven.org"
         assert client.additional_repos == []
         assert client._cache_ttl > 0
         assert client.max_retries > 0

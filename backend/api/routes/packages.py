@@ -49,6 +49,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_SENSITIVE_RESOLUTION_KEYS = ("traceback", "stack", "exception_chain", "original_error")
+
+
+def _sanitize_resolution_data(data: Any) -> Any:
+    """Strip internal error details (tracebacks, exception chains) from resolver output."""
+
+    def _sanitize(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                k: _sanitize(v) for k, v in value.items() if k not in _SENSITIVE_RESOLUTION_KEYS
+            }
+        if isinstance(value, list):
+            return [_sanitize(v) for v in value]
+        if isinstance(value, tuple):
+            return tuple(_sanitize(v) for v in value)
+        return value
+
+    return _sanitize(data)
+
 
 class PackageSearchRequest(BaseModel):
     """Package Search Request functionality."""
@@ -98,7 +117,7 @@ async def resolve_dependencies(
             packages_info, system_info, resolve_request.prefer_compatibility
         )
 
-        return {"status": "success", "data": resolved}
+        return {"status": "success", "data": _sanitize_resolution_data(resolved)}
     except ValueError as e:
         logger.error(f"Invalid resolve data: {e}")
         raise HTTPException(status_code=400, detail=str(e))

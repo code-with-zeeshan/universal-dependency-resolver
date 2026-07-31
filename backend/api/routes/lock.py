@@ -30,6 +30,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _safe_manifest_path(base: Path, filename: str) -> Path:
+    """Resolve a user-supplied manifest filename without escaping the base dir."""
+    candidate = (base / filename).resolve()
+    if base.resolve() != candidate and base.resolve() not in candidate.parents:
+        raise HTTPException(status_code=400, detail=f"Invalid manifest path: {filename}")
+    return candidate
+
+
 class VerifyRequest(BaseModel):
     """Verify Request functionality."""
 
@@ -379,7 +387,7 @@ async def _run_lock_pipeline(
     tmp = Path(tempfile.mkdtemp(prefix="udr_lock_"))
     try:
         for filename, content in manifest_contents.items():
-            fp = tmp / filename
+            fp = _safe_manifest_path(tmp, filename)
             fp.parent.mkdir(parents=True, exist_ok=True)
             fp.write_text(content)
 

@@ -7,6 +7,7 @@ import logging
 import shutil
 import socket
 import tempfile
+from dataclasses import dataclass
 from ipaddress import ip_address, ip_network
 from pathlib import Path
 from urllib.parse import urlparse
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _PRIVATE_NETWORKS = [
+    ip_network("127.0.0.1/32"),
     ip_network("127.0.0.0/8"),
     ip_network("10.0.0.0/8"),
     ip_network("172.16.0.0/12"),
@@ -38,25 +40,53 @@ _PRIVATE_NETWORKS = [
     ip_network("::1/128"),
     ip_network("fc00::/7"),
     ip_network("fe80::/10"),
+    ip_network("0.0.0.0/8"),
+    ip_network("100.64.0.0/10"),
+    ip_network("192.0.0.0/24"),
+    ip_network("198.18.0.0/15"),
 ]
 
 
-def _validate_external_url(url: str) -> str:
+@dataclass(frozen=True)
+class _ValidatedTarget:
+    """A URL whose hostname has been resolved and pinned to a safe IP."""
+
+    url: str
+    hostname: str
+    ip: str
+
+
+def _resolve_and_validate(url: str) -> _ValidatedTarget:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="URL must use http:// or https://")
     if not parsed.netloc:
         raise HTTPException(status_code=400, detail="URL must have a valid hostname")
-    hostname = parsed.hostname
+    hostname = parsed.hostname or ""
     try:
-        addr = socket.getaddrinfo(hostname, 80, family=socket.AF_INET)[0][4][0]
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except (socket.gaierror, OSError):
         raise HTTPException(status_code=400, detail="Could not resolve hostname")
-    ip = ip_address(addr)
-    for net in _PRIVATE_NETWORKS:
-        if ip in net:
-            raise HTTPException(status_code=400, detail="Private/internal URLs are not allowed")
-    return url
+    # Validate every resolved address (guards DNS rebinding across A/AAAA records).
+    addresses = {info[4][0] for info in infos}
+    for addr in addresses:
+        try:
+            ip = ip_address(addr)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid IP address")
+        for net in _PRIVATE_NETWORKS:
+            if ip in net:
+                raise HTTPException(status_code=400, detail="Private/internal URLs are not allowed")
+    # Pin the request to a single validated public address.
+    pinned_ip = addresses.pop() or ""
+    if not pinned_ip:
+        raise HTTPException(status_code=400, detail="Could not resolve hostname")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    pinned_url = f"{parsed.scheme}://{pinned_ip}:{port}{path}"
+    return _ValidatedTarget(url=pinned_url, hostname=hostname, ip=pinned_ip)
 
 
 class IndexPullRequest(BaseModel):
@@ -104,19 +134,21 @@ async def pull_index(
 
     Mirrors ``udr index pull <url>``.
     """
-    url = _validate_external_url(req.url)
+    target = _resolve_and_validate(req.url)
 
     tmp = Path(tempfile.mkdtemp(prefix="udr_index_pull_"))
     try:
         dest = tmp / "index.db"
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(
+                target.url, headers={"Host": target.hostname}, follow_redirects=False
+            )
             resp.raise_for_status()
             dest.write_bytes(resp.content)
 
         eco = req.ecosystem
         if not eco:
-            stem = Path(url).stem
+            stem = Path(target.url).stem
             if stem.endswith(".db"):
                 stem = stem[:-3]
             eco = stem.replace("_", "-")

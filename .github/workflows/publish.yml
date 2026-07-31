@@ -5,6 +5,9 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     if: github.event_name == 'workflow_dispatch' || (startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'desktop-v'))

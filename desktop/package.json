@@ -150,10 +150,14 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.0.0"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^43.1.1",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.9",
+    "minimatch": "^10.0.1"
   }
 }

@@ -122,6 +122,7 @@ class TestCLICommands:
         assert "numpy" in output
         assert "pypi" in output
 
+    @pytest.mark.slow
     def test_resolve_cross_ecosystem(self, test_dir):
         output = run_cli(
             "resolve",
