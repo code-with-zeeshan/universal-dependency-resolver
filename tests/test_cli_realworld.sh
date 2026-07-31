@@ -47,9 +47,9 @@ fi
 
 # ─── Scenario 3: Mixed ecosystems ───
 echo "─── [3/10] Cross-ecosystem resolve ───"
-OUT=$(cmd udr resolve numpy@pypi express@npm)
+OUT=$(cmd udr resolve numpy@pypi lodash@npm)
 RC=$?
-if [ $RC -eq 0 ] && echo "$OUT" | grep -q "numpy" && echo "$OUT" | grep -qi "express"; then
+if [ $RC -eq 0 ] && echo "$OUT" | grep -q "numpy" && echo "$OUT" | grep -qi "lodash"; then
     pass
 else
     fail "exit=$RC"
