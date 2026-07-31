@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           pip install pyinstaller
-          pip install -e ".[system]"
+          pip install -e ".[system,z3]"
           Z3_LIB=$(python3 << 'PYEOF'
           import z3, os, sys, glob
           ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
@@ -201,7 +201,7 @@ jobs:
         shell: bash
         run: |
           pip install pyinstaller
-          pip install -e ".[system]"
+          pip install -e ".[system,z3]"
           Z3_LIB=$(python3 << 'PYEOF'
           import z3, os, sys, glob
           ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
@@ -330,7 +330,7 @@ jobs:
         shell: bash
         run: |
           pip install pyinstaller
-          pip install -e ".[system]"
+          pip install -e ".[system,z3]"
           Z3_LIB=$(python3 << 'PYEOF'
           import z3, os, sys, glob
           ext_map = {'win32': '.dll', 'cygwin': '.dll', 'darwin': '.dylib'}
