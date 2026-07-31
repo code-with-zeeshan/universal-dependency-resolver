@@ -147,6 +147,7 @@ Your request ──► Fetch metadata from registry APIs
 ## Links
 
 - [GitHub](https://github.com/code-with-zeeshan/universal-dependency-resolver) — source, issues, releases
+- [Documentation](https://code-with-zeeshan.github.io/universal-dependency-resolver/) — hosted docs site (User Guide, CLI, API, Architecture)
 - [CLI Reference](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/docs/CLI.md)
 - [Architecture](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/docs/ARCHITECTURE.md)
 - [API Docs](https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/docs/API.md)
