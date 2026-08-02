@@ -43,35 +43,107 @@ _MARKER_VAR_MAP: dict[str, str] = {
 _CMP_OPS = {"===", "==", "!=", ">=", "<=", ">", "<", "in", "not in"}
 
 
+def _normalize_sys_platform(os_value: str) -> str:
+    """Map an OS value to its PEP 508 ``sys_platform`` form (lowercase).
+
+    The scanner reports ``platform.system`` capitalized (``Linux``,
+    ``Windows``) but PEP 508 ``sys_platform`` uses lowercase values
+    (``linux``, ``win32``, ``darwin``).  Cross-compilation targets use
+    lowercase (``windows``, ``darwin``, ``linux``).
+    """
+    os_lower = (os_value or "").strip().lower()
+    if os_lower.startswith("win"):
+        return "win32"
+    if os_lower.startswith("darwin"):
+        return "darwin"
+    if os_lower.startswith("linux"):
+        return "linux"
+    if os_lower == "cygwin":
+        return "cygwin"
+    return os_lower
+
+
+def _normalize_platform_system(os_value: str) -> str:
+    """Map an OS value to its PEP 508 ``platform_system`` form (capitalized)."""
+    os_lower = (os_value or "").strip().lower()
+    if os_lower.startswith("win"):
+        return "Windows"
+    if os_lower.startswith("darwin"):
+        return "Darwin"
+    if os_lower.startswith("linux"):
+        return "Linux"
+    return os_value or ""
+
+
+def _normalize_os_name(os_value: str) -> str:
+    """Map an OS value to its PEP 508 ``os_name`` form (``posix``/``nt``)."""
+    return "nt" if (os_value or "").strip().lower().startswith("win") else "posix"
+
+
+def _lookup(system_info: dict | None, dotted_path: str) -> str:
+    """Resolve a dotted path in *system_info* to a string value (or ``""``)."""
+    if not system_info:
+        return ""
+    parts = dotted_path.split(".")
+    val: Any = system_info
+    try:
+        for p in parts:
+            if isinstance(val, dict):
+                val = val.get(p, "")
+            elif hasattr(val, p):
+                val = getattr(val, p, "")
+            else:
+                val = ""
+                break
+        return str(val) if val else ""
+    except Exception:
+        logger.debug("Failed to resolve marker path %s", dotted_path, exc_info=True)
+        return ""
+
+
 def _get_value(var_name: str, system_info: dict | None) -> str:
-    """Look up a PEP 508 marker variable in *system_info* (or fall back to live env)."""
+    """Look up a PEP 508 marker variable in *system_info* (or fall back to live env).
+
+    Cross-compilation targets (``system_info["target"]`` with ``os`` and
+    ``architecture`` keys) override host values for the platform markers,
+    and OS values are normalized to their canonical PEP 508 forms so that
+    ``sys_platform == "linux"`` and ``os_name == "posix"`` evaluate
+    correctly on real hosts.
+    """
+    target = (system_info or {}).get("target") or {}
+    target_os = target.get("os")
+    target_arch = target.get("architecture")
+
+    if var_name == "sys_platform":
+        os_val = target_os or _lookup(system_info, "platform.system")
+        return _normalize_sys_platform(os_val or _platform.system())
+    if var_name == "platform_system":
+        os_val = target_os or _lookup(system_info, "platform.system")
+        return _normalize_platform_system(os_val or _platform.system())
+    if var_name == "platform_machine":
+        return target_arch or _lookup(system_info, "platform.machine") or _platform.machine()
+    if var_name == "os_name":
+        os_val = target_os
+        if not os_val:
+            os_val = _lookup(system_info, "platform.os_type") or _lookup(
+                system_info, "platform.system"
+            )
+        if os_val:
+            return _normalize_os_name(os_val)
+        return os.name
+
     path = _MARKER_VAR_MAP.get(var_name)
     if path and system_info:
-        parts = path.split(".")
-        val: Any = system_info
-        try:
-            for p in parts:
-                if isinstance(val, dict):
-                    val = val.get(p, "")
-                elif hasattr(val, p):
-                    val = getattr(val, p, "")
-                else:
-                    val = ""
-                    break
-            return str(val) if val else ""
-        except Exception:
-            logger.debug("Failed to resolve marker variable", exc_info=True)
+        val = _lookup(system_info, path)
+        if val:
+            return val
     # Fallback: read from live environment
     fallbacks: dict[str, str] = {
-        "sys_platform": _platform.system().lower(),
-        "platform_system": _platform.system().lower(),
-        "platform_machine": _platform.machine(),
         "platform_release": _platform.release(),
         "platform_version": _platform.version(),
         "python_version": ".".join(_platform.python_version_tuple()[:2]),
         "python_full_version": _platform.python_version(),
         "implementation_name": _platform.python_implementation().lower(),
-        "os_name": os.name,
     }
     return fallbacks.get(var_name, "")
 

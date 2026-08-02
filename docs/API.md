@@ -215,7 +215,7 @@ Root endpoint — returns API metadata and links.
 ```json
 {
   "name": "Universal Dependency Resolver API",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "documentation": {
     "openapi": "/api/v1/docs",
     "redoc": "/api/v1/redoc"
@@ -255,7 +255,7 @@ Health check — verifies database connection and optional Redis connectivity.
 {
   "status": "healthy",
   "timestamp": "2026-06-28T12:00:00",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "checks": {
     "database": {"status": "healthy"},
     "redis": {"status": "healthy"}

@@ -2,7 +2,13 @@
 
 import pytest
 
-from backend.core.pubgrub_solver import PubGrubSolver, _normalize_constraint
+from backend.core.pubgrub_solver import (
+    PubGrubSolver,
+    _constraint_allows_prerelease,
+    _has_prerelease_suffix,
+    _normalize_constraint,
+    _sanitize_version,
+)
 
 try:
     from pubgrub_py import ResolutionError, Resolver  # noqa: F401
@@ -238,6 +244,71 @@ class TestPubGrubSolver:
         ver = result["resolved_packages"]["lib"]["version"]
         parsed = tuple(int(x) for x in ver.split("."))
         assert parsed >= (1, 0, 0)
+
+
+class TestPrereleaseHandling:
+    """Pre-release versions must not be selected over stable releases unless
+    the constraint explicitly asks for a pre-release (BUG 1 regression tests)."""
+
+    def test_sanitize_preserves_prerelease_identity(self):
+        assert _sanitize_version("6.1rc1") == "6.1.0-rc1"
+        assert _sanitize_version("2.14.0a1") == "2.14.0-a1"
+        assert _sanitize_version("1.0.dev1") == "1.0.0-dev1"
+        assert _sanitize_version("1.0.0b1") == "1.0.0-b1"
+        # Stable versions are unchanged apart from padding/normalizing
+        assert _sanitize_version("1.2.3") == "1.2.3"
+        assert _sanitize_version("1.0") == "1.0.0"
+        assert _sanitize_version("0.12.01") == "0.12.1"
+
+    def test_prerelease_suffix_detection(self):
+        assert _has_prerelease_suffix("6.1rc1") is True
+        assert _has_prerelease_suffix("2.14.0a1") is True
+        assert _has_prerelease_suffix("1.0.dev1") is True
+        assert _has_prerelease_suffix("1.0.0-rc1") is True
+        # Post releases are NOT pre-releases
+        assert _has_prerelease_suffix("1.0.0.post1") is False
+        assert _has_prerelease_suffix("1.2.3") is False
+
+    def test_normalize_prerelease_constraint(self):
+        assert _normalize_constraint(">=6.1rc1", "pypi") == ">=6.1.0-rc1"
+        assert _normalize_constraint("==6.1rc1", "pypi") == "==6.1.0-rc1"
+        assert _normalize_constraint(">=2.14.0a1", "pypi") == ">=2.14.0-a1"
+
+    def test_constraint_allows_prerelease(self):
+        assert _constraint_allows_prerelease(">=5.0.0") is False
+        assert _constraint_allows_prerelease(">=0.0.0") is False
+        assert _constraint_allows_prerelease(">=6.1.0-rc1") is True
+        assert _constraint_allows_prerelease("==6.1.0-rc1") is True
+
+    def test_resolve_excludes_prerelease_by_default(self):
+        packages = [
+            {
+                "name": "django",
+                "ecosystem": "pypi",
+                "version_constraint": ">=5.0",
+                "available_versions": ["5.0.0", "5.2.0", "6.0.0", "6.1rc1", "6.1.0"],
+                "dependencies": {},
+            }
+        ]
+        solver = PubGrubSolver()
+        result = solver.resolve_dependencies(packages)
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["django"]["version"] == "6.1.0"
+
+    def test_resolve_keeps_prerelease_when_only_match(self):
+        packages = [
+            {
+                "name": "django",
+                "ecosystem": "pypi",
+                "version_constraint": ">=6.1rc1",
+                "available_versions": ["5.2.0", "6.0.0", "6.1rc1"],
+                "dependencies": {},
+            }
+        ]
+        solver = PubGrubSolver()
+        result = solver.resolve_dependencies(packages)
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["django"]["version"] == "6.1rc1"
 
 
 class TestPurePythonFallback:

@@ -9,7 +9,7 @@
 | ForkingResolver | Cross-solver validator — on failure, runs the alternate solver (Z3 ↔ PubGrub) and confirms conflicts |
 | CLI commands | 24 |
 | Lock file | `udr.lock` v2.1 with workspace, cross-eco, target sections |
-| Tests | **4243** (3681 unit + 96 integration + 383 e2e + 83 others); 3,674 verified passing |
+| Tests | **4263** (3701 unit + 96 integration + 383 e2e + 83 others); 3,694 verified passing |
 | Coverage threshold | **57%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **0** in `backend/` |
@@ -268,6 +268,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
 | v1.4 | AutoSolver, cross-solver validation, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | ✅ Released | 2026-07-23 |
+| v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output | ✅ Released | 2026-08-02 |
 | v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
 | v2.0 | Source repo URL + commit hash enrichment, desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 

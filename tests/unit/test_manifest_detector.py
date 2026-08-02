@@ -673,6 +673,126 @@ class TestNormalize:
         assert result[0]["ecosystem"] == "unknown"
 
 
+class TestMergeDuplicateEntries:
+    """Duplicate package declarations from the same hand-written manifest must
+    have their constraints AND-combined instead of silently dropped
+    (BUG 2 regression tests)."""
+
+    def test_conflicting_constraints_merged(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "Django",
+                "version": ">=5.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+            {
+                "name": "Django",
+                "version": "<4.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert len(result) == 1
+        assert result[0]["constraint"] == ">=5.0,<4.0"
+
+    def test_merge_order_independent(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "Django",
+                "version": "<4.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+            {
+                "name": "Django",
+                "version": ">=5.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert result[0]["constraint"] == "<4.0,>=5.0"
+
+    def test_star_constraint_is_identity(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "requests",
+                "version": "*",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+            {
+                "name": "requests",
+                "version": ">=2.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert result[0]["constraint"] == ">=2.0"
+
+    def test_extras_are_unioned(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "requests",
+                "version": ">=2.0",
+                "extras": ["security"],
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+            {
+                "name": "requests",
+                "version": ">=2.0",
+                "extras": ["socks"],
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert result[0]["extras"] == ["security", "socks"]
+
+    def test_lock_source_duplicates_not_merged(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "chalk",
+                "version": "==4.0.0",
+                "_ecosystem": "npm",
+                "_manifest": "package-lock.json",
+            },
+            {
+                "name": "chalk",
+                "version": "==2.4.2",
+                "_ecosystem": "npm",
+                "_manifest": "package-lock.json",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert len(result) == 2
+
+    def test_distinct_sources_not_merged(self):
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "django",
+                "version": ">=5.0",
+                "_ecosystem": "pypi",
+                "_manifest": "requirements.txt",
+            },
+            {"name": "django", "version": "==5.2.0", "_ecosystem": "pypi", "_manifest": "go.sum"},
+        ]
+        result = d.normalize(pkgs)
+        assert len(result) == 2
+        assert result[0]["constraint"] == ">=5.0"
+        assert result[1]["constraint"] == "==5.2.0"
+
+
 # ---------------------------------------------------------------------------
 # parse() — BOM encoding
 # ---------------------------------------------------------------------------

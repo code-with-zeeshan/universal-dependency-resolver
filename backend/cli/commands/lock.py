@@ -383,9 +383,11 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
         manifests = detector.detect(include_dev=args.include_dev)
 
     if not manifests:
-        console.print(f"[red]No dependency manifests found in {directory}[/red]")
-        console.print("Checked for: requirements.txt, package.json, Cargo.toml, pyproject.toml,")
-        console.print("             Pipfile, environment.yml, Gemfile, go.mod, composer.json")
+        err_console.print(f"[red]No dependency manifests found in {directory}[/red]")
+        err_console.print(
+            "Checked for: requirements.txt, package.json, Cargo.toml, pyproject.toml,"
+        )
+        err_console.print("             Pipfile, environment.yml, Gemfile, go.mod, composer.json")
         return [], []
 
     if args.manifest:
@@ -396,7 +398,7 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
             if m["filename"] == target or m["path"].replace("\\", "/").endswith("/" + target)
         ]
         if not manifests:
-            console.print(f"[red]Manifest '{args.manifest}' not found in {directory}[/red]")
+            err_console.print(f"[red]Manifest '{args.manifest}' not found in {directory}[/red]")
             return [], []
 
     if args.interactive:
@@ -415,7 +417,7 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
 
     packages = detector.normalize(detector.parse_all(manifests))
     if not packages:
-        console.print("[red]No packages found in manifests[/red]")
+        err_console.print("[red]No packages found in manifests[/red]")
         return [], []
 
     # Sort: go.mod entries before go.sum entries so API-call deps take priority
@@ -660,6 +662,7 @@ def _build_lock_data(
         "version": "2.1",
         "generated_at": __import__("datetime").datetime.now().isoformat(),
         "resolver": resolved.get("solver", "sat"),
+        "status": resolved.get("status", "satisfiable"),
         "system": {
             "os": f"{plat.get('system', '?')} {plat.get('release', '?')}",
             "python": system_info.get("runtime_versions", {}).get("python", {}).get("version", "?"),
@@ -671,6 +674,8 @@ def _build_lock_data(
         "packages": {},
         "warnings": resolved.get("warnings", []),
     }
+    if resolved.get("resolution_error"):
+        lock_data["resolution_error"] = resolved["resolution_error"]
     if system_info.get("target"):
         lock_data["target"] = system_info["target"]
     if workspace:
@@ -1081,6 +1086,8 @@ def cmd_lock(args: argparse.Namespace):
 
         manifests, packages = _detect_and_parse_manifests(detector, args)
         if not manifests or not packages:
+            if args.json:
+                _output_json({"status": "no_packages", "packages": []}, args)
             return 1
 
         resolver_inputs, package_details = await _fetch_package_data(
@@ -1089,6 +1096,8 @@ def cmd_lock(args: argparse.Namespace):
             args,
         )
         if not resolver_inputs:
+            if args.json:
+                _output_json({"status": "error", "error": "No package data could be fetched"}, args)
             console.print("[red]No package data could be fetched[/red]")
             return 1
 

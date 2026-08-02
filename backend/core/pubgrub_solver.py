@@ -215,11 +215,14 @@ class PubGrubSolver:
             norm_constraint = _normalize_constraint(constraint, eco)
             requirements[name] = norm_constraint
 
+            allow_prerelease = _constraint_allows_prerelease(norm_constraint)
             ver_python_reqs = pkg.get("version_requires_python", {})
             versions = _cluster_versions(pkg.get("available_versions", []))
             ver_map: dict[str, list[str]] = {}
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
+                if not allow_prerelease and _has_prerelease_suffix(ver_str):
+                    continue
                 if norm_constraint != ">=0.0.0" and not is_compatible_version(
                     ver_str, norm_constraint
                 ):
@@ -400,14 +403,37 @@ def _to_semver(v: str) -> str:
 def _sanitize_version(version: str) -> str:
     """Sanitize a version string for pubgrub-py compatibility.
 
-    pubgrub-py's version parser rejects suffixes like ``.dev1``, ``.post1``,
-    or ``.alpha1`` that appear after a full three-part version, and also
-    rejects leading zeros in numeric parts (e.g. ``0.12.01``) and
-    two-part versions (``1.0`` needs to be ``1.0.0``).
-    This function strips non-numeric suffixes, normalizes leading zeros,
-    and pads to three numeric parts.
+    pubgrub-py's version parser rejects PEP 440 suffixes attached to a
+    numeric part (``6.1rc1``, ``2.14.0a1``), rejects leading zeros in
+    numeric parts (``0.12.01``), and requires three numeric parts
+    (``1.0`` needs to be ``1.0.0``).
+
+    This function normalizes to a semver-style form that *preserves*
+    pre-release identity using a ``-`` suffix (``6.1.0-rc1``,
+    ``2.14.0-a1``, ``1.0.0-dev1``) which pubgrub-py accepts and orders
+    correctly relative to stable releases.
     """
     version = version.strip().lstrip("vV~^><=! ")  # strip npm constraint prefixes
+    try:
+        from packaging.version import Version as _Version
+
+        pv = _Version(version)
+        release = list(pv.release)
+        while len(release) < 3:
+            release.append(0)
+        base = ".".join(str(p) for p in release[:3])
+        if pv.pre:
+            tag, num = pv.pre
+            return f"{base}-{tag}{num if num is not None else ''}"
+        if pv.dev is not None:
+            return f"{base}-dev{pv.dev}"
+        if pv.post is not None:
+            return base
+        return base
+    except Exception:
+        logger.debug(
+            "packaging could not parse %r; using fallback sanitizer", version, exc_info=True
+        )
     parts = version.split(".")
     clean_parts: list[str] = []
     for p in parts:
@@ -425,9 +451,40 @@ def _sanitize_version(version: str) -> str:
 
 
 def _has_prerelease_suffix(v: str) -> bool:
-    """Check if a version string has a pre-release suffix stripped by _sanitize_version."""
-    parts = v.split(".")
-    return any(p and not p[0].isdigit() for p in parts)
+    """Check if a version string is a pre-release (PEP 440 or semver).
+
+    Uses ``packaging.version`` so PEP 440 suffixes like ``6.1rc1`` and
+    ``2.14.0a1`` are correctly flagged (post-releases like ``1.0.0.post1``
+    are NOT pre-releases).  Falls back to a ``-suffix`` check for semver.
+    """
+    try:
+        from packaging.version import Version as _Version
+
+        return _Version(v).is_prerelease
+    except Exception:
+        logger.debug("packaging could not parse %r for prerelease check", v, exc_info=True)
+    if "-" in v:
+        suffix = v.split("-", 1)[1]
+        return bool(suffix)
+    return False
+
+
+def _constraint_allows_prerelease(constraint: str) -> bool:
+    """Return ``True`` when a normalized constraint explicitly permits pre-releases.
+
+    Standard package-manager behavior: pre-release candidates are only
+    considered when the constraint itself mentions a pre-release
+    (e.g. ``>=6.1.0-rc1``, ``==2.14.0-a1``).  A plain ``>=5.0.0`` excludes
+    them even when a newer pre-release exists.
+    """
+    if not constraint or constraint == "*":
+        return False
+    try:
+        from packaging.specifiers import SpecifierSet as _Spec
+
+        return bool(_Spec(constraint).prereleases)
+    except Exception:
+        return False
 
 
 def _pick_best_original(candidates: list[str], sanitized: str) -> str:
@@ -571,6 +628,9 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
             if xm:
                 return f"{op}{_to_semver(xm.group(1))}"
         if ver[0].isdigit():
+            # Preserve pre-release identity: >=6.1rc1 -> >=6.1.0-rc1
+            if _has_prerelease_suffix(ver):
+                return f"{op}{_sanitize_version(ver)}"
             # Truncate or pad to 3-part semver
             parts = ver.split(".")
             if len(parts) > 3:
@@ -578,6 +638,9 @@ def _normalize_single_constraint(c: str, ecosystem: str) -> str:
             if len(parts) < 3:
                 return f"{op}{_pad_version_in_constraint(ver)}"
         return c
-    if c[0].isdigit() and all(ch.isdigit() or ch == "." for ch in c):
-        return f"=={_to_semver(c)}"
+    if c[0].isdigit():
+        if _has_prerelease_suffix(c):
+            return f"=={_sanitize_version(c)}"
+        if all(ch.isdigit() or ch == "." for ch in c):
+            return f"=={_to_semver(c)}"
     return c

@@ -131,6 +131,24 @@ except ImportError:
 # parser key (e.g. "package_lock" → "npm").
 PARSER_TO_ECOSYSTEM: dict[str, str] = {parser: eco for _, eco, parser in MANIFEST_PATTERNS}
 
+# Sources that are authoritative lock files. Lock files may legitimately
+# list the same package at multiple versions (the exact resolved tree), so
+# duplicate entries from these sources must NOT be AND-merged.
+_LOCK_SOURCE_NAMES: tuple[str, ...] = (
+    "go.sum",
+    "Package.resolved",
+    "Packages.resolved",
+)
+
+
+def _is_lock_source(source: str) -> bool:
+    """Return ``True`` when *source* is a lock file (not a hand-written manifest)."""
+    source = (source or "").lower()
+    if "lock" in source:
+        return True
+    return source in _LOCK_SOURCE_NAMES
+
+
 # Glob patterns for filenames that *might* be dependency manifests.
 # Content-sniffing only applies to files matching at least one of these,
 # preventing random JSON/XML files from being misdetected as manifests.
@@ -637,7 +655,61 @@ class ManifestDetector:
             if pkg.get("optional"):
                 entry["optional"] = True
             normalized.append(entry)
-        return normalized
+
+        return self._merge_duplicate_entries(normalized)
+
+    @staticmethod
+    def _combine_constraints(a: str, b: str) -> str:
+        """AND-combine two version constraints (``*`` acts as the identity)."""
+        a = (a or "*").strip()
+        b = (b or "*").strip()
+        if not a or a == "*":
+            return b
+        if not b or b == "*":
+            return a
+        if a == b:
+            return a
+        return f"{a},{b}"
+
+    def _merge_duplicate_entries(self, entries: list[dict]) -> list[dict]:
+        """Merge duplicate ``(name, ecosystem, source)`` entries from hand-written
+        manifests by AND-combining their constraints.
+
+        Duplicate declarations like ``django>=5.0`` and ``django<4.0`` in one
+        requirements.txt previously had their constraints silently dropped by
+        last-write-wins deduplication downstream.  Merging makes such conflicts
+        surface as an unsatisfiable resolution instead.  Lock-file sources are
+        left untouched — they may legitimately pin the same package to several
+        versions.
+        """
+        result: list[dict] = []
+        index: dict[tuple[str, str, str], int] = {}
+        for entry in entries:
+            if _is_lock_source(entry["source"]):
+                # Lock files may legitimately pin the same package to several
+                # versions; pass them through untouched (downstream dedup
+                # handles first-wins) rather than AND-merging.
+                result.append(dict(entry))
+                continue
+            key = (entry["name"], entry["ecosystem"], entry["source"])
+            pos = index.get(key)
+            if pos is None:
+                index[key] = len(result)
+                result.append(dict(entry))
+                continue
+            existing = result[pos]
+            existing["constraint"] = self._combine_constraints(
+                existing.get("constraint", "*"), entry.get("constraint", "*")
+            )
+            if entry.get("extras"):
+                combined_extras = set(existing.get("extras", []))
+                combined_extras.update(entry["extras"])
+                existing["extras"] = sorted(combined_extras)
+            if entry.get("optional"):
+                existing["optional"] = True
+            if existing.get("_workspace_resolved") is None and entry.get("_workspace_resolved"):
+                existing["_workspace_resolved"] = entry["_workspace_resolved"]
+        return result
 
     # --- Private parsers ---
 

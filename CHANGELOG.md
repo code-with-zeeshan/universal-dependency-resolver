@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-02
+
+### Fixed
+
+- **PubGrub prerelease selection (BUG 1)**: `_sanitize_version()` collapsed PEP 440 suffixes (`6.1rc1` → `6.1.0`), so prereleases looked identical to released versions and were picked even under a plain `>=5.0` constraint. Now preserves prerelease identity as semver (`6.1rc1` → `6.1.0-rc1`, `2.14.0a1` → `2.14.0-a1`) and excludes prerelease candidates unless the constraint explicitly mentions one (`SpecifierSet.prereleases`). Post-releases correctly treated as released. Applies to both the Rust-backed and pure-Python PubGrub paths. Fix in `backend/core/pubgrub_solver.py`.
+- **Conflicting duplicate constraints silently dropped (BUG 2)**: `normalize()` kept only the first constraint when a hand-written manifest listed the same `(name, ecosystem, source)` twice (e.g. `django>=5.0` and `django<4.0` in separate lines), so conflicting requirements resolved to whichever appeared first. Duplicate entries are now AND-combined (`>=5.0,<4.0` → correctly unsatisfiable), order-independent, with extras unioned. Lock files (e.g. `package-lock.json`, `go.sum`) pass through untouched since they legitimately pin a package to multiple versions. Fix in `backend/manifest_detector.py`.
+- **`--target` ignored in marker evaluation (BUG 3)**: platform markers were evaluated against the live host environment only, so `udr lock --target windows` still resolved linux-only dependency sets and `sys_platform == "linux"` / `os_name == "posix"` evaluated False on the host due to case-sensitive OS strings (`platform.system()` returns "Linux"). Markers now honor `system_info["target"]` (`os` → `sys_platform`/`platform_system`/`os_name`, `architecture` → `platform_machine`) and OS values are normalized to canonical PEP 508 forms (`Linux` → `linux`/`win32`). Fix in `backend/core/markers.py`.
+- **Silent lock failure on unsat (Minor 1)**: `udr lock --json` emitted an empty dict when resolution failed. Lock data now carries `status` and `resolution_error`; `--json` reports `"status": "unsatisfiable"` with the conflict message. Fix in `backend/cli/commands/lock.py`.
+- **Silent empty-manifest lock (Minor 2)**: `udr lock --json` on an empty manifest / no-fetchable-data now emits `{"status": "no_packages", "packages": []}` (or `{"status": "error", ...}`), with human text routed to stderr so stdout stays clean JSON. Fix in `backend/cli/commands/lock.py`.
+
+### Changed
+
+- **20 new regression tests** across `test_pubgrub_solver.py`, `test_manifest_detector.py`, `test_marker_fuzz.py`, `test_cli_commands_lock.py`. Full unit suite: 3701 collected (3694 passing, 5 skipped, 2 xfailed) — up from 3681, zero regressions.
+
 ## [1.4.0] - 2026-07-31
 
 ### Fixed
@@ -548,6 +562,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uploads `.whl` to release assets on publish
 - Loosened version pins (fastapi, uvicorn, packaging) to avoid Colab conflicts
 
+[1.4.1]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.3.1...v1.3.2

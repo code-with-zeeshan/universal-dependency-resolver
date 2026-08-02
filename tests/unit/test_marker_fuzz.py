@@ -212,6 +212,48 @@ class TestMarkerFuzz:
         result = evaluate_marker_string('"linux" in sys_platform')
         assert isinstance(result, bool)
 
+
+class TestTargetOverrideAndNormalization:
+    """Cross-compilation targets and OS-case normalization (BUG 3 regression tests)."""
+
+    def test_sys_platform_lowercase_host(self):
+        # Scanner reports capitalized "Linux"; PEP 508 expects "linux".
+        si = {"platform": {"system": "Linux"}}
+        assert evaluate_marker_string('sys_platform == "linux"', si) is True
+        assert evaluate_marker_string('sys_platform == "win32"', si) is False
+
+    def test_os_name_posix_host(self):
+        si = {"platform": {"system": "Linux", "os_type": "Linux"}}
+        assert evaluate_marker_string('os_name == "posix"', si) is True
+        assert evaluate_marker_string('os_name == "nt"', si) is False
+
+    def test_platform_system_capitalized_host(self):
+        si = {"platform": {"system": "Linux"}}
+        assert evaluate_marker_string('platform_system == "Linux"', si) is True
+
+    def test_target_windows_overrides_host(self):
+        si = {
+            "platform": {"system": "Linux"},
+            "target": {"os": "windows", "architecture": "x86_64"},
+        }
+        assert evaluate_marker_string('sys_platform == "win32"', si) is True
+        assert evaluate_marker_string('sys_platform == "linux"', si) is False
+        assert evaluate_marker_string('os_name == "nt"', si) is True
+        assert evaluate_marker_string('platform_system == "Windows"', si) is True
+
+    def test_target_darwin_overrides_machine(self):
+        si = {
+            "platform": {"system": "Linux", "machine": "x86_64"},
+            "target": {"os": "darwin", "architecture": "arm64"},
+        }
+        assert evaluate_marker_string('sys_platform == "darwin"', si) is True
+        assert evaluate_marker_string('platform_machine == "arm64"', si) is True
+
+    def test_target_linux_normalizes(self):
+        si = {"platform": {"system": "Linux"}, "target": {"os": "linux", "architecture": "aarch64"}}
+        assert evaluate_marker_string('sys_platform == "linux"', si) is True
+        assert evaluate_marker_string('platform_machine == "aarch64"', si) is True
+
     @settings(max_examples=20)
     @given(_simple_value)
     def test_self_equality(self, val: str):
