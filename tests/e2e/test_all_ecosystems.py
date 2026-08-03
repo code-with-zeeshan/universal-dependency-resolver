@@ -83,7 +83,7 @@ QUERY_PROBES: dict[str, tuple[str, str]] = {
 # Per-resolvable-ecosystem manifest content for lock resolution
 MANIFEST_CONTENTS: dict[str, list[str]] = {
     "pypi": ["requirements.txt", "requests>=2.28\nflask>=2.0\n"],
-    "npm": ["package.json", '{"dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}}\n'],
+    "npm": ["package.json", '{"dependencies": {"connect": "^3.6.5"}}\n'],
     "crates": [
         "Cargo.toml",
         '[package]\nname = "test"\nversion = "0.1.0"\n[dependencies]\nserde = "1"\n',
@@ -531,8 +531,12 @@ class TestEdgeCases:
             proj.mkdir()
             (proj / "requirements.txt").write_text("")
             result = _run("lock", "-d", str(proj), "--dry-run", "--json", timeout=60)
-            # Empty manifest is expected to fail gracefully
-            assert "No packages found" in result.stdout, f"unexpected output: {result.stdout[:200]}"
+            # Empty manifest fails gracefully: stdout stays clean JSON with a
+            # no_packages status; the human message is routed to stderr.
+            data = json.loads(result.stdout)
+            assert data["status"] == "no_packages"
+            assert data["packages"] == []
+            assert "No packages found" in result.stderr, f"unexpected stderr: {result.stderr[:200]}"
 
     def test_nonexistent_package_search(self):
         """Search for a package that should not exist."""

@@ -15,6 +15,7 @@ jobs:
   linux:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -148,6 +149,7 @@ jobs:
             arch: x64
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -194,8 +196,9 @@ jobs:
       - name: Install UPX compressor
         shell: bash
         run: |
-          scoop install upx 2>/dev/null || choco install upx -y 2>/dev/null || echo "UPX not available via scoop/choco"
-          which upx && upx --version | head -1 || echo "UPX not available"
+          # UPX 5.x is incompatible with PyInstaller and can hang the build.
+          # PyInstaller runs fine without UPX, so skip installing it on Windows.
+          echo "Skipping UPX on Windows (UPX 5.x hangs PyInstaller)"
 
       - name: Build backend binary + Electron app
         shell: bash
@@ -214,7 +217,7 @@ jobs:
           PYEOF
           )
           UPX_FLAG=""
-          which upx >/dev/null 2>&1 && UPX_FLAG="--upx-dir $(dirname $(which upx))"
+          # UPX disabled on Windows — UPX 5.x hangs PyInstaller. Build without compression.
           pyinstaller --onedir --noconsole --noconfirm \
             --name udr-backend \
             $UPX_FLAG \
@@ -277,6 +280,7 @@ jobs:
             arch: arm64
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: write
 
