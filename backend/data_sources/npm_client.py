@@ -159,8 +159,10 @@ class NPMClient(BaseDataSourceClient):
         include_extended: bool = True,
     ) -> dict[str, Any] | None:
         """Get package info."""
-        # npm package names are case-insensitive but dots are literal separators
-        package_name = package_name.lower().replace("_", "-")
+        # npm package names are case-insensitive, but `_` and `-` are distinct
+        # literal characters (e.g. `@types/babel__core`, `string_decoder`) — never
+        # translate underscores to dashes or the registry URL will 404.
+        package_name = package_name.lower()
         encoded_name = quote(package_name, safe="@/")
         url = f"{self.registry_url}/{encoded_name}"
 

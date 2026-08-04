@@ -605,7 +605,10 @@ class ManifestDetector:
             # All others preserve original case and separators
             if raw_eco in ("pypi", "pip", "npm", "node", "crates", "cargo", "rust"):
                 if raw_eco in ("npm", "node"):
-                    name = raw_name.lower().replace("_", "-")
+                    # npm package names are case-insensitive but `_` and `-` are
+                    # distinct literal characters (`@types/babel__core`,
+                    # `string_decoder`) — never translate underscores to dashes.
+                    name = raw_name.lower()
                 else:
                     name = (
                         normalize_package_name(raw_name)
