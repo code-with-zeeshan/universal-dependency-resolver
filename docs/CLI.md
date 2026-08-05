@@ -502,7 +502,7 @@ udr lock --export Dockerfile                 # also export resolved deps
 | `--dry-run` | `False` | Run resolution and show results but don't write any files |
 | `-i, --interactive` | `False` | Select manifests manually + resolve conflicts interactively |
 | `--cuda` | `None` | Target CUDA version (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when the registry publishes them |
-| `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
+| `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm`. Note: `--device cpu` requests a CPU-only graph — but PyPI `torch` (2.x+) ships a single combined wheel whose metadata hard-requires `nvidia-*-cuXX` deps, so those still appear unless a CPU-only index is configured (e.g. `download.pytorch.org/whl/cpu`) |
 | `--json` | `False` | Output lock data as JSON to stdout instead of writing file |
 | `-r, --report` | `False` | Write readable report file (`udr.report.txt`) alongside lock file |
 | `--include-dev` | `False` | Include manifests from examples, test, docs directories |
