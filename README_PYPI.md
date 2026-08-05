@@ -51,7 +51,7 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 | **25 ecosystems** (18 resolvable + 7 query-only) | **Resolvable:** PyPI, Conda, npm, Crates.io, Maven, Go Modules, APT, APK, CocoaPods, Homebrew, NuGet, Packagist, RubyGems, Pub, Gradle, Swift, Hex, Haskell — **Query-only** (version info, manifest parsing, no SAT traversal): Nix, GNU Guix, Docker, Helm, Terraform, Vcpkg, Conan — **Internal:** Docs DB, Custom DB |
 | **SAT-solver resolution** | AutoSolver (default, profiles graph → Z3/PubGrub/Hybrid per workload) with per-ecosystem isolation, CUDA-aware conflict detection. |
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment. |
-| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal. |
+| **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal. For PyPI `torch`, consults the [pytorch wheel index](https://download.pytorch.org/whl/) and caps + rewrites to the matching `+cu<ver>` build (e.g. `--cuda 12.1` → `torch 2.5.1+cu121`). |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
 | **24 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools |
 | **59 REST API endpoints** | Full programmatic API with auto-generated Swagger docs. |
@@ -65,7 +65,7 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 
 - **Cross-ecosystem resolution**: A Python package that transitively depends on an npm package gets solved in one pass, not two.
 - **SAT-solver engine**: Real Z3/PubGrub CDCL solver, not greedy backtracking. Finds valid solutions dependency graph heuristics miss.
-- **System-aware**: GPU type + CUDA version are resolution constraints — `torch 2.1.2+cu121` selected automatically when NVIDIA GPU detected.
+- **System-aware**: GPU type + CUDA version are resolution constraints — `torch 2.1.2+cu121` selected automatically when NVIDIA GPU detected; for PyPI `torch` the pytorch wheel index is consulted to cap and rewrite to the matching `+cu<ver>` build (e.g. `--cuda 12.1` → `torch 2.5.1+cu121`).
 - **Supply chain built-in**: CVE scanning, license compliance, deprecation checks, lock-file signing (Ed25519), SBOM export (SPDX/CycloneDX), policy engine.
 - **3 solver backends**: AutoSolver profiles your graph and selects Z3, PubGrub, or Hybrid — with fallback chain if the first choice fails.
 

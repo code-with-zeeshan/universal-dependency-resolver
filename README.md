@@ -8,7 +8,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue?logo=visualstudiocode&label=%F0%9F%93%98%20VS%20Code)](https://github.com/code-with-zeeshan/universal-dependency-resolver/tree/main/vscode-extension)
-[![Tests](https://img.shields.io/badge/3701%20unit+96%20integration+77%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/3739%20unit+96%20integration+383%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Coverage](https://img.shields.io/badge/coverage-58%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
@@ -22,7 +22,7 @@
 | You... | The problem | What UDR does |
 |---|---|---|
 | 🏗️ **Run a multi-language monorepo** | pip + npm + cargo + go — each its own lock file, each its own audit tool, each its own version scheme. The same dep pinned to different versions across ecosystems? No tool catches it. | One `udr.lock` across all ecosystems. `udr lock --check` in CI catches cross-ecosystem version drift before prod. |
-| 🧠 **Deploy ML models with GPU deps** | torch + CUDA toolkit + nvidia-* wheels — wrong variant means silent CPU fallback or crash. Every ML team wastes days on this. | Auto-detects CUDA version, selects correct `torch+cu121` variant. CUDA 11-vs-12 conflict rules prevent incompatible pairs. |
+| 🧠 **Deploy ML models with GPU deps** | torch + CUDA toolkit + nvidia-* wheels — wrong variant means silent CPU fallback or crash. Every ML team wastes days on this. | Auto-detects CUDA version, selects correct `torch+cu121` variant. CUDA 11-vs-12 conflict rules prevent incompatible pairs. For PyPI `torch` (no `+cu` labels on PyPI), consults the pytorch wheel index and caps + rewrites to the matching `+cu<ver>` build (e.g. `--cuda 12.1` → `torch 2.5.1+cu121`). |
 | 🔒 **Own supply chain compliance** | Quarterly audits = run `pip-audit` + `npm audit` + `cargo audit` + `go list -m` + `bundler-audit` separately. | `udr check --cve` against OSV across **18 ecosystems** at once. `udr sbom` for SPDX/CycloneDX. Done. |
 
 ```bash
@@ -220,7 +220,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **25** (18 resolvable + 7 query-only) |
-| 🧪 Unit tests passing | **3701** (+ 96 integration + 77 e2e + 10 wheel + 94 cross-eco) |
+| 🧪 Unit tests passing | **3739** (+ 96 integration + 383 e2e + 10 wheel + 94 cross-eco) |
 | 🎛️ CLI commands | **24** |
 | 🌐 API endpoints | **59** |
 | 📤 Export formats | **15** |

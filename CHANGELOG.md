@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **CUDA-index-aware resolution for PyPI `torch`** (`backend/core/cuda_index.py`): `--cuda` is now genuinely functional for pytorch-family packages (`torch`, `torchvision`, `torchaudio`, `torchtext`, `torchdata`, `torchrec`, `triton`, `pytorch-triton`, `xformers`, etc.), which publish no `+cu` variants on PyPI. The resolver now queries the `download.pytorch.org` PEP 503 simple index for the requested tag (via `normalize_cuda_tag()` → `12.1`→`cu121`), **caps** the package to the highest base version that ships a wheel for that tag (`cu121` carries `torch` only up to `2.5.1`, `cu128` up to `2.11.0`), and **rewrites** the resolved version to its `+cu<ver>` local form (e.g. `--cuda 12.1` → `torch 2.5.1+cu121`). Index windows are cached in-memory for 1 hour, degrade to `{}` on network/parse failure, and are applied in both the aggregator input path and `_resolve_transitive` (async prefetch). Non-pytorch-family packages are unaffected.
+- **`setup.py` / `setup.cfg` dependency parser** (`backend/manifest_detector.py`): adds `setup.py` and `setup.cfg` to `MANIFEST_PATTERNS` as pypi manifests. Resolves `_deps=[...]` tables, `deps={"name": spec}` maps, `deps["key"]` lookups, and `deps_list("a","b")` helper calls in `install_requires`, extras, and setup.cfg sections. Balanced `[...]`/`{...}` matchers (`_match_bracketed`/`_match_braced`) prevent premature match termination. Verified against the real diffusers `setup.py` (9 required deps resolve with correct constraints).
+
+### Fixed
+
+- **npm underscore mangling broke `udr verify` drift** (`npm_client.py`, `manifest_detector.py`): npm package names treat `_` as a literal character (`@types/babel__core`, `string_decoder`), but two code sites mangled `_`→`-`, producing nonexistent names that 404 on the registry. Both `get_package_info` normalization and the manifest `normalize` function now preserve `_`; regenerated locks store correct names and `udr verify` reports 0 issues.
+- **6 stale e2e edge-case tests** (`tests/e2e/test_edge_cases.py`): `express` manifests (inherently UNSAT under the single-version-per-package model) replaced with `connect`; tests updated for the post-2026-07-28 solver architecture (clean `unsatisfiable` status, correct report filename `udr.report.txt`, package-count assertions).
+- **npm e2e lock manifest / empty-manifest / Windows CI** (`tests/e2e/test_all_ecosystems.py`, `.github/workflows/build-desktop.yml`): npm smoke manifest switched from `express` to `connect`; empty-manifest test updated for clean-JSON stdout routing; Windows CI job got `timeout-minutes` and UPX disabled (UPX 5.x is incompatible with PyInstaller, causing 6h hangs).
+
+### Security
+
+- **5 Dependabot alerts fixed** (`desktop/package-lock.json`): `undici` bumped 7.28.0→7.29.0 (GHSA-8xcm/4cwx/jr45/v3r7/m8rv — desync, info-disclosure, cookie-injection, CRLF), `fast-uri` 3.1.5. `npm audit` now reports 0 vulnerabilities.
+
+### Changed
+
+- **`--cuda` caveat documented** (`cli/shared.py`, `docs/CLI.md`): `_emit_cuda_notifications` warns when `--cuda` is requested but no `+cu` variant was applied, explaining that PyPI `torch` encodes CUDA in `nvidia-*-cu<ver>` dependency names rather than publishing variants. Docs describe the index-aware cap+rewrite behavior and the `--device cpu` caveat (PyPI `torch` 2.x combined wheels still hard-require `nvidia-*-cuXX` deps; a CPU-only wheel requires the separate `download.pytorch.org/whl/cpu` index).
+- **Test suite**: 3739 collected (was 3701) — 33 new `test_cuda_index.py` tests + 3 extended `TestApplyCudaVariants` CLI tests + 3 `TestParseSetupPy` tests, zero regressions.
+
 ## [1.4.1] - 2026-08-02
 
 ### Fixed

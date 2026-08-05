@@ -405,7 +405,7 @@ python -m pytest tests/unit/ -x --ignore=tests/e2e
 # Run all tests
 python -m pytest
 
-# Unit tests (3701)
+# Unit tests (3739)
 python -m pytest tests/unit
 
 # Integration tests (96)

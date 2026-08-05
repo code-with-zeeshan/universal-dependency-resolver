@@ -56,7 +56,7 @@ Auto-reloads on Python file changes (dev only).
 python -m pytest
 
 # By category
-python -m pytest tests/unit          # 3701 tests
+python -m pytest tests/unit          # 3739 tests
 python -m pytest tests/integration   # 96 tests
 python -m pytest tests/e2e           # 383 tests
 
@@ -73,7 +73,7 @@ python -m pytest -x
 python -m pytest -n auto
 ```
 
-**Current totals:** 4263 tests (3701 unit + 96 integration + 383 e2e + others)
+**Current totals:** 4301 tests (3739 unit + 96 integration + 383 e2e + others)
 
 ---
 
@@ -178,7 +178,7 @@ universal-dependency-resolver/
 │   └── test/
 │       └── extension.test.ts # 23 lines — 3 smoke tests
 ├── tests/
-│   ├── unit/                 # 3701 unit tests
+│   ├── unit/                 # 3739 unit tests
 │   ├── integration/          # 96 integration tests
 │   └── e2e/                  # 383 end-to-end tests
 ├── docs/                     # Documentation

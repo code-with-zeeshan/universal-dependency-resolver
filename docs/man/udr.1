@@ -220,8 +220,11 @@ list-ecosystems, why.
 .TP
 .B \-\-cuda=\fI<version>\fR
 Target CUDA version (e.g.\& 12.1). Overrides auto-detection for GPU-
-aware package resolution (e.g.\& PyTorch CUDA variants). Supported by
-lock, check, resolve, graph, update, install, scan.
+aware package resolution (e.g.\& PyTorch CUDA variants). For PyPI
+pytorch-family packages the pytorch wheel index is consulted: the
+package is capped to the base versions shipped on the matching tag
+(e.g.\& cu121 \(-> torch \(<= 2.5.1) and rewritten to its +cu<ver> form.
+Supported by lock, check, resolve, graph, update, install, scan.
 .TP
 .B \-\-device=\fI<device>\fR
 Target compute device: \fBcpu\fR, \fBcuda\fR, \fBmps\fR (Apple Silicon),

@@ -584,6 +584,8 @@ udr lock --export Dockerfile                 # also export resolved deps
 | `requirements.txt`, `requirements.in`, `*-requirements.txt` | pypi | Manifest |
 | `Pipfile` | pypi | Manifest |
 | `pyproject.toml` | pypi | Manifest |
+| `setup.py` | pypi | Manifest |
+| `setup.cfg` | pypi | Manifest |
 | `Pipfile.lock` | pypi | Lock |
 | `poetry.lock` | pypi | Lock |
 | `uv.lock` | pypi | Lock |

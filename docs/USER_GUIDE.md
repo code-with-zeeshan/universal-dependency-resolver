@@ -58,7 +58,7 @@ flowchart LR
 
 ### The resolution pipeline
 
-1. **Manifest detection** — Recognizes 46+ file patterns (package.json, pyproject.toml, Cargo.toml, go.mod, Gemfile, etc.). Scans directory tree efficiently with a single `rglob("*")` pass.
+1. **Manifest detection** — Recognizes 90+ file patterns (package.json, pyproject.toml, setup.py, Cargo.toml, go.mod, Gemfile, etc.). Scans directory tree efficiently with a single `rglob("*")` pass.
 2. **Metadata fetch** — Fetches versions and dependencies from registries (PyPI, npmjs.org, crates.io, etc.) using async HTTP with connection pooling. Cached locally (DictCache TTL 1h, ContentAddressedCache by SHA256).
 3. **System scan** — Detects OS/kernel, CPU model/cores, GPU model/VRAM, CUDA version, runtimes (Python, Node.js, Java, GCC), accelerators (TPU, NPU, Apple Neural Engine).
 4. **BFS graph building** — Builds the full transitive dependency graph across all ecosystems. Cross-ecosystem edges are tracked and resolved in a unified SAT model.

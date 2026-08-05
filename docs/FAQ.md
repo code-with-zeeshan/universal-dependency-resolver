@@ -64,9 +64,11 @@ Yes. For PyPI packages with CUDA-tagged variants (e.g. `torch 2.1.2+cu121`), UDR
 1. Auto-detects the system CUDA version via `nvidia-smi`, `nvcc`, or `pynvml`
 2. Selects the best-matching CUDA variant (exact match preferred, closest lower as fallback)
 3. On CPU-only machines, use `--cuda 12.1` to force GPU-aware resolution
-4. Stores CUVA variant info in the lock file for portability
+4. Stores CUDA variant info in the lock file for portability
 
-Also supports `--device` flag for explicit selection: `cpu`, `cuda`, `mps` (Apple Silicon), or `rocm` (AMD).
+For **pytorch-family packages** (`torch`, `torchvision`, `torchaudio`, `triton`, `xformers`, etc.) the PyPI release publishes no `+cu` labels — its CUDA build is baked into `nvidia-*-cu<ver>` dependency names. UDR consults the [pytorch wheel index](https://download.pytorch.org/whl/) for the requested tag (e.g. `cu121`), **caps** the package to the highest base version that ships a wheel for that tag (e.g. `--cuda 12.1` → `torch ≤ 2.5.1`, `--cuda 12.8` → `torch ≤ 2.11.0`), and **rewrites** the resolved version to its `+cu<ver>` local form (e.g. `torch 2.5.1+cu121`).
+
+Also supports `--device` flag for explicit selection: `cpu`, `cuda`, `mps` (Apple Silicon), or `rocm` (AMD). Note that `--device cpu` on PyPI `torch` 2.x still resolves `nvidia-*-cuXX` deps because torch's combined PyPI wheel hard-requires them; a CPU-only wheel needs the separate `download.pytorch.org/whl/cpu` index.
 
 ## 8. Can I use UDR in CI/CD?
 
