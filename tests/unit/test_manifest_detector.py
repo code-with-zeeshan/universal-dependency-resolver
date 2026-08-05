@@ -220,6 +220,68 @@ class TestParsePyproject:
         assert result == []
 
 
+class TestParseSetupPy:
+    def test_literal_install_requires(self, tmp_path):
+        p = tmp_path / "setup.py"
+        p.write_text(
+            "from setuptools import setup\nsetup(\n"
+            '    name="foo",\n'
+            '    install_requires=["requests>=2.25", "numpy==1.24.0"],\n'
+            ")\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "setup_py"})
+        names = {r["name"]: r["version"] for r in result}
+        assert names.get("requests") == ">=2.25"
+        assert names.get("numpy") == "==1.24.0"
+
+    def test_computed_deps_dict_lookup(self, tmp_path):
+        """diffusers-style: _deps list -> deps dict -> deps['x'] in install_requires."""
+        p = tmp_path / "setup.py"
+        p.write_text(
+            "_deps = [\n"
+            '    "filelock",\n'
+            '    "httpx<1.0.0",\n'
+            '    "huggingface-hub>=1.23.0,<2.0",\n'
+            '    "safetensors>=0.8.0",\n'
+            "]\n"
+            'deps = {"filelock": "filelock", "httpx": "httpx<1.0.0", '
+            '"huggingface-hub": "huggingface-hub>=1.23.0,<2.0", '
+            '"safetensors": "safetensors>=0.8.0"}\n'
+            "install_requires = [\n"
+            '    deps["filelock"],\n'
+            '    deps["httpx"],\n'
+            '    deps["huggingface-hub"],\n'
+            '    deps["safetensors"],\n'
+            "]\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "setup_py"})
+        names = {r["name"]: r["version"] for r in result}
+        assert names.get("filelock") == "*"
+        assert names.get("httpx") == "<1.0.0"
+        assert set(names.get("huggingface-hub", "").split(",")) == {">=1.23.0", "<2.0"}
+        assert names.get("safetensors") == ">=0.8.0"
+
+    def test_extras_deps_list_optional(self, tmp_path):
+        p = tmp_path / "setup.py"
+        p.write_text(
+            '_deps = ["Pillow", "accelerate>=0.31.0"]\n'
+            'deps = {"Pillow": "Pillow", "accelerate": "accelerate>=0.31.0"}\n'
+            'install_requires = [deps["Pillow"]]\n'
+            "extras = {}\n"
+            'extras["training"] = deps_list("accelerate")\n'
+            "def deps_list(*pkgs):\n"
+            "    return [deps[p] for p in pkgs]\n"
+        )
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "setup_py"})
+        by_name = {r["name"]: r for r in result}
+        assert by_name["Pillow"]["optional"] is False
+        assert by_name["accelerate"]["version"] == ">=0.31.0"
+        assert by_name["accelerate"]["optional"] is True
+
+
 class TestParsePackageJson:
     def test_basic(self, tmp_path):
         p = tmp_path / "package.json"

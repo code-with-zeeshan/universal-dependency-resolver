@@ -299,7 +299,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--report",
         "-r",
         action="store_true",
-        help="Write readable report file (udr-lock-report.txt) alongside lock file",
+        help="Write readable report file (udr.report.txt) alongside lock file",
     )
     lock_p.add_argument(
         "--include-dev",

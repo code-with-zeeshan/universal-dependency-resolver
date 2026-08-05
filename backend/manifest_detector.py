@@ -33,6 +33,91 @@ def _strip_inline_comment(line: str) -> str:
     return line
 
 
+def _split_setup_cfg_deps(dep_text: str) -> list[str]:
+    """Split a setup.cfg dependency block into individual requirement strings.
+
+    Handles newline and ``#`` comment separation within the multiline value.
+    """
+    out: list[str] = []
+    for line in _strip_inline_comment(dep_text).splitlines():
+        for piece in line.split(","):
+            piece = _strip_inline_comment(piece).strip()
+            if piece and not piece.startswith("#"):
+                out.append(piece)
+    return out
+
+
+def _match_bracketed(content: str, assign: str) -> str | None:
+    """Return the balanced-bracket body of ``<assign> = [ ... ]``.
+
+    Naive ``[...]`` regex capture stops at the first ``]``, which breaks when
+    entries contain ``deps["key"]`` lookups (the ``]`` inside terminates the
+    match early). This scans char-by-char once the RHS ``[`` is found and tracks
+    bracket depth so the returned string covers the full list body.
+    """
+    m = re.search(rf"\b{re.escape(assign)}\s*=\s*\[", content)
+    if not m:
+        return None
+    start = m.end() - 1  # position of the opening `[`
+    depth = 0
+    for i in range(start, len(content)):
+        ch = content[i]
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return content[start + 1 : i]
+    return content[start + 1 :]
+
+
+def _match_braced(content: str, open_pos: int) -> str | None:
+    r"""Return the balanced-brace body starting at the ``{`` at ``open_pos``.
+
+    Unlike a naive ``\{...\}`` regex (which can overshoot when the block is
+    ``{}`` on one line and ``\s*(?:,|$)`` pushes it to a later ``}``), this
+    scans char-by-char tracking brace depth, so the returned body always stops
+    at the matching closing brace.
+    """
+    if open_pos >= len(content) or content[open_pos] != "{":
+        return None
+    depth = 0
+    in_str: str | None = None
+    for i in range(open_pos, len(content)):
+        ch = content[i]
+        if in_str:
+            if ch == "\\":
+                continue
+            if ch == in_str:
+                in_str = None
+            continue
+        if ch in ("'", '"'):
+            in_str = ch
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return content[open_pos + 1 : i]
+    return content[open_pos + 1 :]
+
+
+def _dep_from_spec(spec: str, optional: bool = False) -> dict:
+    """Convert a requirement string into a manifest dep dict."""
+    try:
+        from packaging.requirements import Requirement
+
+        req = Requirement(spec)
+        return {
+            "name": req.name,
+            "version": str(req.specifier) if req.specifier else "*",
+            "optional": optional,
+        }
+    except Exception:
+        name = re.split(r"[!=<>~;]", spec, maxsplit=1)[0].strip().lstrip(".").strip("[]")
+        return {"name": name or spec.strip(), "version": "*", "optional": optional}
+
+
 # Precompiled regex for detecting glob wildcards in pattern strings
 glob_chars_re = re.compile(r"[*?\[\]]")
 
@@ -70,6 +155,8 @@ MANIFEST_PATTERNS: list[tuple[str, str, str]] = [
     ("Pipfile", "pypi", "pipfile"),
     ("Pipfile.lock", "pypi", "pipfile_lock"),
     ("pyproject.toml", "pypi", "pyproject"),
+    ("setup.py", "pypi", "setup_py"),
+    ("setup.cfg", "pypi", "setup_cfg"),
     ("package.json", "npm", "package_json"),
     ("package-lock.json", "npm", "package_lock"),
     ("yarn.lock", "npm", "yarn_lock"),
@@ -723,6 +810,8 @@ class ManifestDetector:
             "pipfile": self._parse_pipfile,
             "pipfile_lock": self._parse_pipfile_lock,
             "pyproject": self._parse_pyproject,
+            "setup_py": self._parse_setup_py,
+            "setup_cfg": self._parse_setup_cfg,
             "package_json": self._parse_package_json,
             "package_lock": self._parse_package_lock,
             "yarn_lock": self._parse_yarn_lock,
@@ -1227,6 +1316,123 @@ class ManifestDetector:
                 except Exception:
                     logger.warning("Failed to parse build-system requires", exc_info=True)
 
+        return packages
+
+    def _parse_setup_py(self, content: str) -> list[dict]:
+        """Parse a legacy ``setup.py`` build file.
+
+        Handles the common computed-dependency patterns used by real projects
+        (e.g. diffusers, transformers): a ``_deps = [...]`` source list that is
+        converted into a ``deps = {...}`` lookup table, whose entries are then
+        referenced inside ``install_requires`` / ``extras`` via ``deps[...]``.
+        These statically-executable patterns cannot be evaluated generically, so
+        we resolve the pieces we can parse and fall back to literal strings.
+        """
+        packages: list[dict] = []
+        deps_map: dict[str, str] = {}
+
+        # 1. Parse a `_deps = [...]` source list (bare `name` or `name>=x` strings).
+        _deps_match = _match_bracketed(content, "_deps")
+        if _deps_match:
+            for dep in re.findall(r"['\"]([^'\"]+)['\"]", _deps_match):
+                dep = dep.strip()
+                if not dep or dep.startswith("#"):
+                    continue
+                name = re.split(r"[!=<>~;]", dep, maxsplit=1)[0].strip()
+                if name:
+                    deps_map[name] = dep
+
+        # 2. Parse a literal `deps = { "k": "v", ... }` dict (some projects inline it).
+        _deps_dict = re.search(r"deps\s*=\s*\{(.*?)\}", content, re.S)
+        if _deps_dict:
+            for k, v in re.findall(
+                r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]+)['\"]", _deps_dict.group(1)
+            ):
+                deps_map[k] = v
+
+        # 3. Collect all dependency-bearing sources.
+        source_blocks: list[str] = []
+
+        # 4a. install_requires = [ ... ]
+        inst_match = _match_bracketed(content, "install_requires")
+        if inst_match:
+            source_blocks.append(inst_match)
+
+        # 4b. extras_require / extras = { ... } — match a balanced brace block so
+        # `extras = {}` doesn't swallow the rest of the file.
+        for block in re.finditer(r"(?:extras_require|extras)\s*=\s*\{", content):
+            body = _match_braced(content, block.end() - 1)
+            if body is not None:
+                source_blocks.append(body)
+        # 4c. deps_list("a", "b") helper calls — args are bare names resolved via
+        # the deps_map. Rewrite them as `deps["name"]` lookup tokens so the shared
+        # loop below picks up the version from the _deps table.
+        for dl in re.finditer(r"deps_list\s*\(\s*([^)]*)\)", content, re.S):
+            pre = content[: dl.start()]
+            from_extras = "extras" in pre[-200:].lower() or "extras_require" in pre[-200:].lower()
+            args = re.findall(r"['\"]([^'\"]+)['\"]", dl.group(1))
+            deps_list_block = ",".join(f'deps["{a}"]' for a in args) + (
+                " (extras)" if from_extras else ""
+            )
+            source_blocks.append(deps_list_block)
+
+        seen: set[str] = set()
+        for block_text in source_blocks:
+            # Match both literal strings AND `deps["key"]` lookups (preserve the
+            # lookup wrapper so _resolve can consult the deps_map for the version).
+            for match in re.finditer(
+                r"deps\[[\"']([^\"']+)[\"']\]|['\"]([^'\"]+)['\"]", block_text
+            ):
+                lookup_key = match.group(1)
+                item = lookup_key if lookup_key is not None else match.group(2)
+                name_resolved = deps_map.get(item) if lookup_key is not None else item
+                if not name_resolved:
+                    continue
+                literal_name = lookup_key if lookup_key is not None else item
+                if not name_resolved or not literal_name:
+                    continue
+                if lookup_key is not None:
+                    pkg_name = literal_name
+                else:
+                    pkg_name = re.split(r"[!=<>~;]", literal_name, maxsplit=1)[0].strip()
+                pkg_name = pkg_name.split("[", 1)[0].strip()
+                resolved = name_resolved
+                try:
+                    from packaging.requirements import Requirement
+
+                    req = Requirement(resolved)
+                    spec = str(req.specifier) if req.specifier else "*"
+                except Exception:
+                    spec = "*"
+                optional = "extras" in block_text.lower()
+                if pkg_name and pkg_name not in seen:
+                    seen.add(pkg_name)
+                    packages.append({"name": pkg_name, "version": spec, "optional": optional})
+
+        return packages
+
+    def _parse_setup_cfg(self, content: str) -> list[dict]:
+        """Parse a ``setup.cfg`` declarative config (``install_requires`` etc.)."""
+        packages: list[dict] = []
+        try:
+            from configparser import ConfigParser
+
+            config = ConfigParser()
+            config.read_string(content)
+        except Exception:
+            logger.warning("setup.cfg parse error", exc_info=True)
+            return packages
+
+        for section in config.sections():
+            if not section.startswith("options"):
+                continue
+            if section == "options.extras_require":
+                for _, dep in config.items(section):
+                    for item in _split_setup_cfg_deps(dep):
+                        packages.append(_dep_from_spec(item, optional=True))
+            elif section == "options" and config.has_option(section, "install_requires"):
+                for item in _split_setup_cfg_deps(config.get(section, "install_requires")):
+                    packages.append(_dep_from_spec(item))
         return packages
 
     def _parse_package_json(self, content: str) -> list[dict]:

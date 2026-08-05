@@ -249,6 +249,17 @@ def _emit_cuda_notifications(
             "  [yellow]⚠ CUDA variants exist but were not selected — resolution is CPU-only[/yellow]"
         )
 
+    if system_cuda and not has_cuda_variants:
+        err_console.print(
+            f"  [yellow]⚠ --cuda {system_cuda} requested but no {pkg_name!r}+cu<ver> "
+            f"variants available — resolution is CPU-only[/yellow]"
+        )
+        err_console.print(
+            "     Variant selection applies to packages that publish +cu<ver> "
+            "versions (e.g. pytorch's own index); PyPI torch encodes CUDA in "
+            "nvidia-*-cu<ver> deps instead."
+        )
+
     for pkg_name, pkg_info in resolved_pkgs.items():
         if pkg_info.get("ecosystem") != "pypi":
             continue

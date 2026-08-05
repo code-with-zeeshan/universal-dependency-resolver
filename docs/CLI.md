@@ -163,7 +163,7 @@ udr check --policy                     # check policy compliance (udr-policy.yam
 | `-v, --verbose` | `False` | Show CPU architecture, runtime versions table |
 | `--deps` | `False` | Show project core dependencies (from `pyproject.toml`) |
 | `--json` | `False` | Output as JSON to stdout, then exit |
-| `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`) |
+| `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when available; otherwise the request is informational (CUDA encoded in nvidia dep names) |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 | `--cve` | `False` | Check lock file packages against OSV vulnerability database |
 | `--license` | `False` | Check lock file for license compliance |
@@ -285,7 +285,7 @@ Display a dependency tree for one or more packages, showing direct and transitiv
 udr graph flask django                        # PyPI packages
 udr graph numpy@pypi serde@crates             # mixed ecosystems
 udr graph react -e npm                        # npm packages
-udr graph torch --cuda 12.1                   # with CUDA variant selection
+udr graph torch --cuda 12.1                   # with CUDA variant selection (if published)
 udr graph torch --json                        # JSON output
 ```
 
@@ -294,7 +294,7 @@ udr graph torch --json                        # JSON output
 | `packages` | (required) | One or more package names with optional `@ecosystem` suffix |
 | `-e, --ecosystem` | `pypi` | Default ecosystem for packages without `@ecosystem` suffix |
 | `--json` | `False` | Output as JSON |
-| `--cuda` | `None` | Target CUDA version (e.g. `12.1`) — auto-detected if omitted |
+| `--cuda` | `None` | Target CUDA version (e.g. `12.1`) — auto-detected if omitted. Selects a `+cu<ver>` variant only when the package publishes one (e.g. pytorch's own index). PyPI's `torch` encodes CUDA in `nvidia-*-cu<ver>` deps, so no variant exists to select there |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 
 **Exit codes:** 0 on success, 1 on resolution failure.
@@ -482,7 +482,7 @@ udr lock -y                                  # skip confirmation prompts
 udr lock -i                                  # interactive manifest selection
 udr lock --json                              # output lock data as JSON to stdout
 udr lock -r                                  # write readable report file
-udr lock --cuda 12.1                         # override CUDA detection
+udr lock --cuda 12.1                         # target CUDA 12.1 (variant-aware)
 udr lock --target linux --platform x86_64    # cross-compilation for linux/amd64
 udr lock --sign                              # sign lock file with Ed25519 key
 udr lock --provenance                        # add SLSA provenance section
@@ -501,10 +501,10 @@ udr lock --export Dockerfile                 # also export resolved deps
 | `-y, --yes` | `False` | Update manifests in-place without prompting |
 | `--dry-run` | `False` | Run resolution and show results but don't write any files |
 | `-i, --interactive` | `False` | Select manifests manually + resolve conflicts interactively |
-| `--cuda` | `None` | Target CUDA version (e.g. `12.1`, `11.8`) |
+| `--cuda` | `None` | Target CUDA version (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when the registry publishes them |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 | `--json` | `False` | Output lock data as JSON to stdout instead of writing file |
-| `-r, --report` | `False` | Write readable report file (`udr-lock-report.txt`) alongside lock file |
+| `-r, --report` | `False` | Write readable report file (`udr.report.txt`) alongside lock file |
 | `--include-dev` | `False` | Include manifests from examples, test, docs directories |
 | `--timeout` | `None` | Resolution timeout in seconds (default: 120 from `SOLVER_TIMEOUT`) |
 | `--extras` | `None` | Comma-separated extras groups to activate (e.g. `dotenv,speedups`) |
