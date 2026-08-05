@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] - Unreleased
 
 ### Added
 
@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PubGrub prerelease selection (BUG 1)**: `_sanitize_version()` collapsed PEP 440 suffixes (`6.1rc1` → `6.1.0`), so prereleases looked identical to released versions and were picked even under a plain `>=5.0` constraint. Now preserves prerelease identity as semver (`6.1rc1` → `6.1.0-rc1`, `2.14.0a1` → `2.14.0-a1`) and excludes prerelease candidates unless the constraint explicitly mentions one (`SpecifierSet.prereleases`). Post-releases correctly treated as released. Applies to both the Rust-backed and pure-Python PubGrub paths. Fix in `backend/core/pubgrub_solver.py`.
+- **Conflicting duplicate constraints silently dropped (BUG 2)**: `normalize()` kept only the first constraint when a hand-written manifest listed the same `(name, ecosystem, source)` twice (e.g. `django>=5.0` and `django<4.0` in separate lines), so conflicting requirements resolved to whichever appeared first. Duplicate entries are now AND-combined (`>=5.0,<4.0` → correctly unsatisfiable), order-independent, with extras unioned. Lock files (e.g. `package-lock.json`, `go.sum`) pass through untouched since they legitimately pin a package to multiple versions. Fix in `backend/manifest_detector.py`.
+- **`--target` ignored in marker evaluation (BUG 3)**: platform markers were evaluated against the live host environment only, so `udr lock --target windows` still resolved linux-only dependency sets and `sys_platform == "linux"` / `os_name == "posix"` evaluated False on the host due to case-sensitive OS strings (`platform.system()` returns "Linux"). Markers now honor `system_info["target"]` (`os` → `sys_platform`/`platform_system`/`os_name`, `architecture` → `platform_machine`) and OS values are normalized to canonical PEP 508 forms (`Linux` → `linux`/`win32`). Fix in `backend/core/markers.py`.
+- **Silent lock failure on unsat (Minor 1)**: `udr lock --json` emitted an empty dict when resolution failed. Lock data now carries `status` and `resolution_error`; `--json` reports `"status": "unsatisfiable"` with the conflict message. Fix in `backend/cli/commands/lock.py`.
+- **Silent empty-manifest lock (Minor 2)**: `udr lock --json` on an empty manifest / no-fetchable-data now emits `{"status": "no_packages", "packages": []}` (or `{"status": "error", ...}`), with human text routed to stderr so stdout stays clean JSON. Fix in `backend/cli/commands/lock.py`.
 - **npm underscore mangling broke `udr verify` drift** (`npm_client.py`, `manifest_detector.py`): npm package names treat `_` as a literal character (`@types/babel__core`, `string_decoder`), but two code sites mangled `_`→`-`, producing nonexistent names that 404 on the registry. Both `get_package_info` normalization and the manifest `normalize` function now preserve `_`; regenerated locks store correct names and `udr verify` reports 0 issues.
 - **6 stale e2e edge-case tests** (`tests/e2e/test_edge_cases.py`): `express` manifests (inherently UNSAT under the single-version-per-package model) replaced with `connect`; tests updated for the post-2026-07-28 solver architecture (clean `unsatisfiable` status, correct report filename `udr.report.txt`, package-count assertions).
 - **npm e2e lock manifest / empty-manifest / Windows CI** (`tests/e2e/test_all_ecosystems.py`, `.github/workflows/build-desktop.yml`): npm smoke manifest switched from `express` to `connect`; empty-manifest test updated for clean-JSON stdout routing; Windows CI job got `timeout-minutes` and UPX disabled (UPX 5.x is incompatible with PyInstaller, causing 6h hangs).
@@ -25,21 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **`--cuda` caveat documented** (`cli/shared.py`, `docs/CLI.md`): `_emit_cuda_notifications` warns when `--cuda` is requested but no `+cu` variant was applied, explaining that PyPI `torch` encodes CUDA in `nvidia-*-cu<ver>` dependency names rather than publishing variants. Docs describe the index-aware cap+rewrite behavior and the `--device cpu` caveat (PyPI `torch` 2.x combined wheels still hard-require `nvidia-*-cuXX` deps; a CPU-only wheel requires the separate `download.pytorch.org/whl/cpu` index).
-- **Test suite**: 3739 collected (was 3701) — 33 new `test_cuda_index.py` tests + 3 extended `TestApplyCudaVariants` CLI tests + 3 `TestParseSetupPy` tests, zero regressions.
-
-## [1.4.1] - 2026-08-02
-
-### Fixed
-
-- **PubGrub prerelease selection (BUG 1)**: `_sanitize_version()` collapsed PEP 440 suffixes (`6.1rc1` → `6.1.0`), so prereleases looked identical to released versions and were picked even under a plain `>=5.0` constraint. Now preserves prerelease identity as semver (`6.1rc1` → `6.1.0-rc1`, `2.14.0a1` → `2.14.0-a1`) and excludes prerelease candidates unless the constraint explicitly mentions one (`SpecifierSet.prereleases`). Post-releases correctly treated as released. Applies to both the Rust-backed and pure-Python PubGrub paths. Fix in `backend/core/pubgrub_solver.py`.
-- **Conflicting duplicate constraints silently dropped (BUG 2)**: `normalize()` kept only the first constraint when a hand-written manifest listed the same `(name, ecosystem, source)` twice (e.g. `django>=5.0` and `django<4.0` in separate lines), so conflicting requirements resolved to whichever appeared first. Duplicate entries are now AND-combined (`>=5.0,<4.0` → correctly unsatisfiable), order-independent, with extras unioned. Lock files (e.g. `package-lock.json`, `go.sum`) pass through untouched since they legitimately pin a package to multiple versions. Fix in `backend/manifest_detector.py`.
-- **`--target` ignored in marker evaluation (BUG 3)**: platform markers were evaluated against the live host environment only, so `udr lock --target windows` still resolved linux-only dependency sets and `sys_platform == "linux"` / `os_name == "posix"` evaluated False on the host due to case-sensitive OS strings (`platform.system()` returns "Linux"). Markers now honor `system_info["target"]` (`os` → `sys_platform`/`platform_system`/`os_name`, `architecture` → `platform_machine`) and OS values are normalized to canonical PEP 508 forms (`Linux` → `linux`/`win32`). Fix in `backend/core/markers.py`.
-- **Silent lock failure on unsat (Minor 1)**: `udr lock --json` emitted an empty dict when resolution failed. Lock data now carries `status` and `resolution_error`; `--json` reports `"status": "unsatisfiable"` with the conflict message. Fix in `backend/cli/commands/lock.py`.
-- **Silent empty-manifest lock (Minor 2)**: `udr lock --json` on an empty manifest / no-fetchable-data now emits `{"status": "no_packages", "packages": []}` (or `{"status": "error", ...}`), with human text routed to stderr so stdout stays clean JSON. Fix in `backend/cli/commands/lock.py`.
-
-### Changed
-
-- **20 new regression tests** across `test_pubgrub_solver.py`, `test_manifest_detector.py`, `test_marker_fuzz.py`, `test_cli_commands_lock.py`. Full unit suite: 3701 collected (3694 passing, 5 skipped, 2 xfailed) — up from 3681, zero regressions.
+- **Test suite**: 3739 collected (3732 passing, 5 skipped, 2 xfailed) — up from 3681 at v1.4.0. New coverage: 20 regression tests for the BUG/Minor fixes above, 33 `test_cuda_index.py` tests, 3 extended `TestApplyCudaVariants` CLI tests, 3 `TestParseSetupPy` tests. Zero regressions.
 
 ## [1.4.0] - 2026-07-31
 

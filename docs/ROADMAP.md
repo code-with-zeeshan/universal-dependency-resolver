@@ -268,8 +268,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
 | v1.4 | AutoSolver, cross-solver validation, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | ✅ Released | 2026-07-23 |
-| v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output | ✅ Released | 2026-08-02 |
-| v1.4.x | CUDA-index-aware resolution for PyPI `torch` (index cap + `+cu<ver>` rewrite), `setup.py`/`setup.cfg` parser, npm underscore mangling fix, 6 stale e2e tests fixed, Windows CI hang fix, undici security bump | ✅ Released (post-1.4.1 commits) | 2026-08-05 |
+| v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output, CUDA-index-aware resolution for PyPI `torch`, `setup.py`/`setup.cfg` parser, npm underscore mangling fix, e2e + Windows CI fixes, undici security bump | 🔜 Ready to release (source version 1.4.1, not yet tagged) | — |
 | v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
 | v2.0 | Source repo URL + commit hash enrichment, desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 
