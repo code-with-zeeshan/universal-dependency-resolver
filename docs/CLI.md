@@ -163,7 +163,7 @@ udr check --policy                     # check policy compliance (udr-policy.yam
 | `-v, --verbose` | `False` | Show CPU architecture, runtime versions table |
 | `--deps` | `False` | Show project core dependencies (from `pyproject.toml`) |
 | `--json` | `False` | Output as JSON to stdout, then exit |
-| `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when available; otherwise the request is informational (CUDA encoded in nvidia dep names) |
+| `--cuda` | `None` | Target CUDA version string (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when available, and restricts pytorch-family packages to base versions shipped on the matching pytorch index tag (e.g. cu121 → torch ≤ 2.5.1); otherwise the request is informational (CUDA encoded in nvidia dep names) |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 | `--cve` | `False` | Check lock file packages against OSV vulnerability database |
 | `--license` | `False` | Check lock file for license compliance |
@@ -294,7 +294,7 @@ udr graph torch --json                        # JSON output
 | `packages` | (required) | One or more package names with optional `@ecosystem` suffix |
 | `-e, --ecosystem` | `pypi` | Default ecosystem for packages without `@ecosystem` suffix |
 | `--json` | `False` | Output as JSON |
-| `--cuda` | `None` | Target CUDA version (e.g. `12.1`) — auto-detected if omitted. Selects a `+cu<ver>` variant only when the package publishes one (e.g. pytorch's own index). PyPI's `torch` encodes CUDA in `nvidia-*-cu<ver>` deps, so no variant exists to select there |
+| `--cuda` | `None` | Target CUDA version (e.g. `12.1`) — auto-detected if omitted. Selects a `+cu<ver>` variant when the package publishes one (e.g. pytorch's own index). For PyPI `torch`, the CUDA build is chosen by consulting the pytorch wheel index: the resolver caps torch to the version ceiling of the requested tag and rewrites it to its `+cu<ver>` local version (e.g. `--cuda 12.1` → `2.5.1+cu121`) |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 
 **Exit codes:** 0 on success, 1 on resolution failure.
@@ -501,7 +501,7 @@ udr lock --export Dockerfile                 # also export resolved deps
 | `-y, --yes` | `False` | Update manifests in-place without prompting |
 | `--dry-run` | `False` | Run resolution and show results but don't write any files |
 | `-i, --interactive` | `False` | Select manifests manually + resolve conflicts interactively |
-| `--cuda` | `None` | Target CUDA version (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when the registry publishes them |
+| `--cuda` | `None` | Target CUDA version (e.g. `12.1`, `11.8`) — selects `+cu<ver>` package variants when the registry publishes them, and caps pytorch-family packages (torch/torchvision/torchaudio/triton) to the base versions shipped on the matching pytorch index tag |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm`. Note: `--device cpu` requests a CPU-only graph — but PyPI `torch` (2.x+) ships a single combined wheel whose metadata hard-requires `nvidia-*-cuXX` deps, so those still appear unless a CPU-only index is configured (e.g. `download.pytorch.org/whl/cpu`) |
 | `--json` | `False` | Output lock data as JSON to stdout instead of writing file |
 | `-r, --report` | `False` | Write readable report file (`udr.report.txt`) alongside lock file |
@@ -982,6 +982,12 @@ The `@` delimiter splits on the **last** `@` so scoped npm packages (`@angular/c
 
 The resolver is GPU-aware for PyPI packages. When a package has CUDA-tagged variants (e.g. `torch 2.1.2+cu121`), the tool selects the best match based on the system's CUDA version.
 
+For **pytorch-family packages** (`torch`, `torchvision`, `torchaudio`, `triton`, etc.) the PyPI release has no `+cu` labels — its CUDA is baked into `nvidia-*-cu<ver>` dependency names. The actual per-CUDA builds live on the [pytorch wheel index](https://download.pytorch.org/whl/). When a CUDA version is requested, the resolver consults that index for the matching tag (e.g. `cu121`) and:
+1. **Caps** the package to the highest base version that ships a wheel for that tag (the `cu121` tag carries `torch` only up to `2.5.1`, while `cu128` goes to `2.11.0`), and
+2. **Rewrites** the resolved version to its `+cu<ver>` form (e.g. `2.5.1+cu121`).
+
+This is what makes `--cuda 12.1` produce a genuinely CUDA-12.1 torch rather than the newest PyPI build.
+
 ### Auto-detection
 
 The system scanner detects CUDA via:
@@ -995,7 +1001,7 @@ If none work, CUDA is reported as unavailable.
 
 | System CUDA | Behavior |
 |---|---|
-| Detected (e.g. `12.1`) | Best-matching CUDA variant selected (exact match preferred, closest lower version as fallback) |
+| Detected (e.g. `12.1`) | Best-matching CUDA variant selected (exact match preferred, closest lower version as fallback); pytorch-family packages capped + rewritten to the matching pytorch index tag |
 | Detected but no variants available | CPU-only version used |
 | **Not detected** | CPU-only versions used. No CUDA variants selected. |
 | `--cuda` flag provided | Overrides auto-detection — forces CUDA-aware resolution |

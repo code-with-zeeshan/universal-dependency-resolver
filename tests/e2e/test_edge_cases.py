@@ -87,17 +87,20 @@ class TestCUDA:
     """CUDA and device flag resolution."""
 
     def test_01_cuda_12_selection(self):
-        """CUDA 12.1 → torch should select CUDA variant."""
+        """CUDA 12.1 → torch selects the cu121 CUDA variant (CUDA-index aware)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             (d / "requirements.txt").write_text("torch>=2.0\n")
             data = _lock(d, cuda="12.1", timeout=300)
             pkgs = data.get("packages", {})
             torch_ver = pkgs.get("torch", {}).get("resolved_version", "")
-            pkgs.get("torch", {}).get("cuda_variant", False)
+            torch_variant = pkgs.get("torch", {}).get("cuda_variant", False)
             assert torch_ver, "torch not resolved"
-            # CUDA variant should be selected (torch resolves to a +cu variant)
-            # But even if not, nvidia deps are still present on Linux
+            # With CUDA-index-aware resolution, torch is capped to the cu121 tag
+            # and rewritten to its +cu121 local version.
+            assert torch_variant is True, f"Expected +cu variant for CUDA 12.1, got {torch_ver}"
+            assert torch_ver.endswith("+cu121"), f"Expected +cu121, got {torch_ver}"
+            # Even if the variant rewrite fails, nvidia deps are still present on Linux
             nvidia_pkgs = [n for n in pkgs if "nvidia" in n.lower() or "cuda" in n.lower()]
             assert len(nvidia_pkgs) >= 1, f"Expected nvidia pkgs with CUDA 12.1, got {nvidia_pkgs}"
 

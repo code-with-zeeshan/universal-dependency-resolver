@@ -255,9 +255,10 @@ def _emit_cuda_notifications(
             f"variants available — resolution is CPU-only[/yellow]"
         )
         err_console.print(
-            "     Variant selection applies to packages that publish +cu<ver> "
-            "versions (e.g. pytorch's own index); PyPI torch encodes CUDA in "
-            "nvidia-*-cu<ver> deps instead."
+            "     Variant selection applies to packages that publish +cu<ver> versions; "
+            "pytorch-family packages (torch/torchvision/...) are matched against the "
+            "download.pytorch.org wheel index for the requested tag.  Other PyPI "
+            "packages encode CUDA in nvidia-*-cu<ver> deps instead."
         )
 
     for pkg_name, pkg_info in resolved_pkgs.items():

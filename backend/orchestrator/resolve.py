@@ -12,6 +12,15 @@ from typing import Any
 from packaging import version as _pkg_version
 
 from backend.core.constraint_normalizer import normalize_constraint, normalize_version
+from backend.core.cuda_index import (
+    fetch_index_versions,
+    fetch_index_versions_async,
+    is_pytorch_family,
+    restrict_to_index_versions,
+)
+from backend.core.cuda_index import (
+    normalize_cuda_tag as _cuda_index_tag,
+)
 from backend.core.data_aggregator import Dependency, Ecosystem
 from backend.core.markers import evaluate_marker_string
 from backend.core.utils import is_compatible_version
@@ -214,6 +223,16 @@ def _aggregator_to_resolver_input(
                     version_platforms[ver] = (
                         list(platforms) if isinstance(platforms, (list, set)) else []
                     )
+    # When the user requests a specific CUDA version, restrict torch-family
+    # packages to base versions that actually ship a wheel on the matching
+    # pytorch index tag (e.g. cu121 carries torch only up to 2.5.1).  This makes
+    # the solver pick the CUDA-accurate version instead of the newest PyPI one.
+    if system_info and system_info.get("gpu", {}).get("cuda"):
+        cuda_tag = _normalize_cuda_tag(system_info["gpu"]["cuda"])
+        if cuda_tag:
+            available_versions = restrict_to_index_versions(
+                available_versions, agg_data.get("name", ""), cuda_tag
+            )
     deps = {}
     norm_constraint = normalize_constraint(constraint or "*", ecosystem)
     # Prefer per-version deps from ecosystem raw data over merged "all" set.
@@ -790,6 +809,46 @@ async def _resolve_transitive(
     if not incremental or not INCREMENTAL_RESOLUTION:
         lock_data = None
 
+    # When a CUDA version is requested, cap torch-family root packages to base
+    # versions that ship a wheel on the matching pytorch index tag.  Transitive
+    # packages get this via _aggregator_to_resolver_input (system_info-aware),
+    # but root resolver_inputs were built without system_info — restrict here.
+    if system_info and system_info.get("gpu", {}).get("cuda"):
+        cuda_tag = _normalize_cuda_tag(system_info["gpu"]["cuda"])
+        if cuda_tag:
+            # Prefetch the pytorch index windows for distinct torch-family roots
+            # off the event loop, so the sync restriction + transitive lookups
+            # below hit the module cache rather than blocking the BFS.
+            torch_roots = {
+                p.get("name", "")
+                for p in packages
+                if p.get("ecosystem") == "pypi" and is_pytorch_family(p.get("name", ""))
+            }
+            if torch_roots:
+                await asyncio.gather(
+                    *[fetch_index_versions_async(name, cuda_tag) for name in torch_roots],
+                    return_exceptions=True,
+                )
+            for pkg in packages:
+                if pkg.get("ecosystem") != "pypi":
+                    continue
+                name = pkg.get("name", "")
+                if not is_pytorch_family(name):
+                    continue
+                avail = pkg.get("available_versions") or []
+                restricted = restrict_to_index_versions(avail, name, cuda_tag)
+                if restricted != avail:
+                    pkg["available_versions"] = restricted
+                    if restricted:
+                        pkg["all_versions"] = restricted
+                    else:
+                        logger.warning(
+                            "No versions of %s available on %s index; keeping unfiltered set",
+                            name,
+                            cuda_tag,
+                        )
+                        pkg["available_versions"] = avail
+
     # Build a lookup: (name, ecosystem) -> {version, dependencies} from lock_tree_data
     lock_tree_lookup: dict[tuple[str, str], dict] = {}
     if lock_tree_data:
@@ -1317,6 +1376,11 @@ def _normalize_cuda(cuda_str: str) -> int:
         return 0
 
 
+def _normalize_cuda_tag(cuda_str: str) -> str:
+    """Map a user CUDA string (``12.1``/``cu121``) to a pytorch index tag."""
+    return _cuda_index_tag(cuda_str or "")
+
+
 def _select_best_cuda_variant(
     variants: list[dict],
     system_cuda: str | None,
@@ -1352,6 +1416,21 @@ def _apply_cuda_variants(
         base_version = pkg_info.get("version", "")
         if not base_version:
             continue
+        # PyPI torch-family packages publish no +cu versions on PyPI itself —
+        # their CUDA builds live on the pytorch index.  When a CUDA version was
+        # requested, rewrite the resolved base version to its +cuXXX form there.
+        if system_cuda and is_pytorch_family(pkg_name):
+            cuda_tag = _normalize_cuda_tag(system_cuda)
+            if cuda_tag:
+                index_windows = fetch_index_versions(pkg_name, cuda_tag)
+                if base_version in index_windows:
+                    cu_full = index_windows[base_version]
+                    if cu_full and cu_full != base_version:
+                        resolved_pkgs[pkg_name]["version"] = cu_full
+                        resolved_pkgs[pkg_name]["cuda_variant"] = True
+                        resolved_pkgs[pkg_name]["cuda_version"] = cuda_tag.lstrip("cu")
+                        has_cuda_variants = True
+                        continue
         details = package_details.get(pkg_name, {})
         versions_data = details.get("versions", {})
         if isinstance(versions_data, list):

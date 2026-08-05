@@ -419,8 +419,39 @@ class TestApplyCudaVariants:
         resolved = {"resolved_packages": {"torch": {"version": "2.1.0", "ecosystem": "pypi"}}}
         details = {"torch": {"versions": {"pypi": [{"version": "2.1.0"}]}}}
         system = {"gpu": {"cuda": "12.1"}}
-        result = _apply_cuda_variants(resolved, details, system)
+        with (
+            patch("backend.orchestrator.resolve.fetch_index_versions", return_value={}),
+            patch("backend.orchestrator.resolve.is_pytorch_family", return_value=False),
+        ):
+            result = _apply_cuda_variants(resolved, details, system)
         assert result["resolved_packages"]["torch"]["version"] == "2.1.0"
+
+    def test_pytorch_family_rewritten_via_index(self):
+        resolved = {"resolved_packages": {"torch": {"version": "2.5.1", "ecosystem": "pypi"}}}
+        details = {"torch": {"versions": {"pypi": [{"version": "2.5.1"}]}}}
+        system = {"gpu": {"cuda": "12.1"}}
+        with patch(
+            "backend.orchestrator.resolve.fetch_index_versions",
+            return_value={"2.5.1": "2.5.1+cu121", "2.1.0": "2.1.0+cu121"},
+        ):
+            result = _apply_cuda_variants(resolved, details, system)
+        pkg = result["resolved_packages"]["torch"]
+        assert pkg["version"] == "2.5.1+cu121"
+        assert pkg["cuda_variant"] is True
+        assert pkg["cuda_version"] == "121"
+
+    def test_pytorch_family_no_index_window_unchanged(self):
+        resolved = {"resolved_packages": {"torch": {"version": "2.9.1", "ecosystem": "pypi"}}}
+        details = {"torch": {"versions": {"pypi": [{"version": "2.9.1"}]}}}
+        system = {"gpu": {"cuda": "12.1"}}
+        with patch(
+            "backend.orchestrator.resolve.fetch_index_versions",
+            return_value={"2.5.1": "2.5.1+cu121"},
+        ):
+            result = _apply_cuda_variants(resolved, details, system)
+        pkg = result["resolved_packages"]["torch"]
+        assert pkg["version"] == "2.9.1"
+        assert pkg.get("cuda_variant") is not True
 
     def test_selects_cuda_variant(self):
         resolved = {"resolved_packages": {"torch": {"version": "2.1.0", "ecosystem": "pypi"}}}
