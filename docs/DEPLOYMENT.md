@@ -28,6 +28,9 @@ flowchart TD
     style WORKERS fill:#004d40,color:#fff
     style DB fill:#e65100,color:#fff
     style REDIS fill:#c62828,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class W1,W2,WN box
 ```
 
 ---

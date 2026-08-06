@@ -1,8 +1,8 @@
 {#-
   Custom override of Material's source.html: keeps the stock repo link in the
-  header and adds live repo stats (stars, forks, PyPI version and download
-  count) as shields.io badges to the right of it. The badges are static images
-  served by the shields.io API, so they stay accurate without client-side JS.
+  header. Material itself renders the "version / stars / forks" text facts via
+  the GitHub API; source-downloads.js adds a matching "downloads" fact for the
+  PyPI download count (same style, no duplicate badges).
 -#}
 <a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
@@ -13,18 +13,3 @@
     {{ config.repo_name }}
   </div>
 </a>
-<div class="md-header__udr-badges">
-  {% set repo = "code-with-zeeshan/universal-dependency-resolver" %}
-  <a href="{{ config.repo_url }}/stargazers">
-    <img alt="GitHub stars"
-         src="https://img.shields.io/github/stars/{{ repo }}"></a>
-  <a href="{{ config.repo_url }}/network">
-    <img alt="GitHub forks"
-         src="https://img.shields.io/github/forks/{{ repo }}"></a>
-  <a href="https://pypi.org/project/ud-resolver/">
-    <img alt="PyPI version"
-         src="https://img.shields.io/pypi/v/ud-resolver"></a>
-  <a href="https://pypi.org/project/ud-resolver/">
-    <img alt="PyPI downloads"
-         src="https://img.shields.io/pypi/dm/ud-resolver"></a>
-</div>

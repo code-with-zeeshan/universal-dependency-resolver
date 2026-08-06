@@ -1,34 +1,13 @@
 /* UDR docs site custom styles */
 
-/* Repo stats badges in the header (top right). Native shields.io SVGs use
-   fixed colors and stay legible in both light and dark (slate) schemes. */
-.md-header__udr-badges {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-left: 0.6rem;
+/* Header repo-link "downloads" fact. Matches Material's own
+   md-source__fact--version/stars/forks styling: a small mask icon
+   (currentcolor) plus short text, populated by source-downloads.js. */
+:root {
+  --md-source-downloads-icon: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.44l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 1 1 1.06-1.06l1.72 1.72Z"/></svg>');
 }
 
-.md-header__udr-badges img {
-  height: 20px;
-  display: block;
-}
-
-@media screen and (max-width: 76.1875em) {
-  /* Hide the long download-count badge on small screens; keep star/fork. */
-  .md-header__udr-badges a:nth-of-type(3),
-  .md-header__udr-badges a:nth-of-type(4) {
-    display: none;
-  }
-  .md-header__udr-badges img {
-    height: 18px;
-  }
-}
-
-@media screen and (max-width: 44.9375em) {
-  /* On phones hide all badges; the footer social links still reference
-     GitHub / PyPI. */
-  .md-header__udr-badges {
-    display: none;
-  }
+.md-source__fact--udr-downloads:before {
+  -webkit-mask-image: var(--md-source-downloads-icon);
+  mask-image: var(--md-source-downloads-icon);
 }

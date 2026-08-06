@@ -117,6 +117,9 @@ flowchart TD
     style MIDDLEWARE fill:#004d40,color:#fff
     style ROUTING fill:#e65100,color:#fff
     style HANDLER fill:#4a148c,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class REQ,SLOWAPI,MAINT,SEC,SIZE,COMP,CACHE,METRICS,PERF,LOG,AUDIT,CSRF,CORR,CORS,APIKEY,ROUTER,DI,HAND,ORCH,RESULT box
 ```
 
 ---

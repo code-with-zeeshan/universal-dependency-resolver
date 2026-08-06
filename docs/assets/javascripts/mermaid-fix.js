@@ -224,12 +224,24 @@
     var src = shadow.querySelector("svg");
     if (!src) return;
     var clone = src.cloneNode(true);
-    clone.setAttribute("width", "auto");
-    clone.setAttribute("height", "auto");
-    clone.style.width = "auto";
-    clone.style.height = "auto";
-    clone.style.maxWidth = "100%";
-    clone.style.maxHeight = "100%";
+    // An SVG whose width/height are "auto" computes to 0x0 (no intrinsic
+    // size), which collapsed the lightbox to a small empty panel. Size the
+    // clone explicitly from its viewBox aspect ratio, capped to the viewport.
+    clone.removeAttribute("width");
+    clone.removeAttribute("height");
+    var vb = (clone.getAttribute("viewBox") || "").split(/\s+/);
+    var ar = vb.length === 4 && +vb[2] > 0 && +vb[3] > 0 ? +vb[2] / +vb[3] : null;
+    if (ar) {
+      var maxW = Math.max(320, window.innerWidth - 64);
+      var maxH = Math.max(240, window.innerHeight - 64);
+      var w = Math.min(maxW, maxH * ar);
+      clone.setAttribute("width", String(Math.round(w)));
+      clone.setAttribute("height", String(Math.round(w / ar)));
+    } else {
+      clone.setAttribute("width", "100%");
+      clone.setAttribute("height", "auto");
+    }
+    clone.style.cssText = "max-width:100%;max-height:100%;";
 
     var overlay = document.createElement("div");
     overlay.setAttribute("role", "dialog");

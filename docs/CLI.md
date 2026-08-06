@@ -54,6 +54,9 @@ flowchart LR
     style DISPATCH fill:#004d40,color:#fff
     style HANDLER fill:#e65100,color:#fff
     style ORCH fill:#4a148c,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class ARGS,PARSER,MAIN,DT,HAND,CORO,RUN,ORCH_LAYER,AGG,SOLVER,SS,EXPORT box
 ```
 
 ---

@@ -34,6 +34,9 @@ flowchart TD
     style PYTHON_BACKEND fill:#1a237e,color:#fff
     style FRONTENDS fill:#004d40,color:#fff
     style CORE fill:#4a148c,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class CLI,LIB,API,WEB,VSC,DESKTOP,ORCH,SOLVERS,AGG box
 ```
 
 ---

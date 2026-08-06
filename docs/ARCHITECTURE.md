@@ -70,6 +70,9 @@ flowchart TD
     style CORE_LAYER fill:#4a148c,color:#fff
     style DS fill:#01579b,color:#fff
     style PERSISTENCE fill:#33691e,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class FE,VSC,CLI,DESKTOP,API,ROUTES,MW,RESOLVE,SCANNER,INSTALL,SHARED,AGGR,Z3,PG,HS,AS,SS,FR,CACHE,EXPORT,MARKERS,LICENSE,CLIENTS,PLUGINS,SQLDB,OFF,ORCH box
 ```
 
 ---
@@ -189,6 +192,9 @@ flowchart TD
     style SOLVE fill:#c62828,color:#fff
     style OUTCOME fill:#283593,color:#fff
     style POST fill:#00695c,color:#fff
+
+    classDef box fill:#1a237e,color:#fff
+    class INPUT,AGG,BATCH,DEPS,SYNC,TARGET,GRP,ECO,CROSS,CS,AUTO,Z3P,PGP,HYBRID,WRAP,SC,VC,PV,CUDA,DEP,MARKER,SAT,UNSAT,CV,UPGRADE,MERGE,CVD,LOCK,SYSTEM,GROUP,FAIL box
 ```
 
 ---
