@@ -8,6 +8,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   palette:
@@ -77,6 +78,9 @@ plugins:
 extra_javascript:
   - assets/javascripts/mermaid-fix.js
 
+extra_css:
+  - assets/stylesheets/custom.css
+
 nav:
   - Home: index.md
   - User Guide:
@@ -99,4 +103,4 @@ nav:
     - Project Roadmap: ROADMAP.md
     - SDK Roadmap: SDK_ROADMAP.md
 
-copyright: Copyright &copy; 2024 Mohammad Zeeshan
+copyright: Copyright &copy; 2026 Mohammad Zeeshan

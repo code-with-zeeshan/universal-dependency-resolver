@@ -103,7 +103,72 @@ server {
 
 The desktop app starts an embedded backend server on `127.0.0.1:8000`.
 
-### 5. CI/CD
+### 5. Web Frontend
+
+The web frontend (`frontend/`) is a **static, no-build vanilla JS SPA** — pure HTML/CSS/JS, no npm step, no CDN dependencies. It talks to the backend REST API.
+
+Serve it with any static file server and point its API base URL at a running backend:
+
+```bash
+# Start the backend API first
+python run.py                      # or: udr serve --port 8199
+
+# Serve the frontend (any static server works)
+cd frontend
+python -m http.server 3000
+# or: npx serve .
+```
+
+The frontend reads the backend origin from the `ApiClient` base URL in `frontend/js/api.js` (default `http://localhost:8199`). For production, serve the static files with the same nginx host as the API so both share an origin (no CORS needed):
+
+```nginx
+server {
+    listen 80;
+    server_name udr.example.com;
+
+    root /var/www/udr-frontend;                # frontend/ directory
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxied on the same origin -> same-origin fetch, no CORS
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /healthz {
+        proxy_pass http://127.0.0.1:8000;
+    }
+}
+```
+
+### 6. VS Code Extension
+
+The VS Code extension (`vscode-extension/`) is TypeScript and targets VS Code `^1.85.0`. Install from the packaged VSIX, or run it in the Extension Development Host:
+
+```bash
+cd vscode-extension
+npm install
+npm run compile          # tsc -> out/extension.js
+code --install-extension ./out/udr-vscode.vsix   # packaged file
+```
+
+For development / testing the extension live:
+
+```bash
+cd vscode-extension
+npm run watch             # tsc --watch
+# then run "Extension Development Host" from VS Code (F5)
+```
+
+The extension integrates the `udr` CLI (lock file viewer, CVE diagnostics, manifest editing) — the CLI must be on `PATH` and `udr` installed:
+
+```bash
+pip install ud-resolver[z3]
+```
+
+### 7. CI/CD
 
 ```yaml
 # GitHub Actions — install and check

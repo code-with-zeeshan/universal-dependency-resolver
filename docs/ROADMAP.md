@@ -115,7 +115,10 @@
 ### Phase 3 — Q1-Q43 (191 findings, all fixed, 2026-07-17)
 
 **Key bug fixes across all 43 questions**:
+
+- **Q1**: `is_compatible_version` logs instead of silently failing on non-PEP-440 versions (utils.py)
 - **Q2**: Per-ecosystem isolation `break`→`continue` (resolve.py:903)
+- **Q3**: Hardened repository regression tests (39 tests: Semaphore, Go v-strip, SpecifierSet wrap, 6 repo smoke tests)
 - **Q4**: Lock file ecosystem-qualified package keys
 - **Q5**: Content-sniffing with PEP 508 validation
 - **Q6**: Chart.lock and flake.lock reacheable; import-order plugin fix; Podfile.lock parser

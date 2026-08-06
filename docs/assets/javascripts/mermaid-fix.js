@@ -67,6 +67,24 @@
 
   function fixSvg(svg) {
     var result = svg;
+    // Material-for-MkDocs themeCSS ships a rule that targets the visible <p>
+    // inside every label directly:
+    //     #__mermaid_0 .nodeLabel p { color: var(--md-mermaid-label-fg-color); }
+    // In the LIGHT color scheme that variable resolves to a dark color
+    // (#36464e), so it overrides the white text the diagram author requested
+    // (baked onto the surrounding <span class="nodeLabel"> spanning the whole
+    // diagram). Result: white-on-dark labels render dark-on-dark in light mode.
+    // Force the <p> to inherit its color from the .nodeLabel span so the
+    // author/theme resolution performed below actually reaches the visible
+    // text in BOTH color schemes.
+    var idMatch = result.match(/id="(__mermaid_\d+)"/);
+    if (idMatch) {
+      result = result.replace(
+        "</svg>",
+        "<style>#" + idMatch[1] +
+          " .nodeLabel p{color:inherit!important}</style></svg>"
+      );
+    }
     var open = result.indexOf('<g class="cluster"');
     while (open !== -1) {
       var end = result.indexOf('</g>', open);

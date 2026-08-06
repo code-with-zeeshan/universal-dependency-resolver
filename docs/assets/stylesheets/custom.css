@@ -1,0 +1,34 @@
+/* UDR docs site custom styles */
+
+/* Repo stats badges in the header (top right). Native shields.io SVGs use
+   fixed colors and stay legible in both light and dark (slate) schemes. */
+.md-header__udr-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.6rem;
+}
+
+.md-header__udr-badges img {
+  height: 20px;
+  display: block;
+}
+
+@media screen and (max-width: 76.1875em) {
+  /* Hide the long download-count badge on small screens; keep star/fork. */
+  .md-header__udr-badges a:nth-of-type(3),
+  .md-header__udr-badges a:nth-of-type(4) {
+    display: none;
+  }
+  .md-header__udr-badges img {
+    height: 18px;
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  /* On phones hide all badges; the footer social links still reference
+     GitHub / PyPI. */
+  .md-header__udr-badges {
+    display: none;
+  }
+}
