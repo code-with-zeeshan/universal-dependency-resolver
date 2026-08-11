@@ -50,11 +50,11 @@ def _build_resolved_table(
     return table
 
 
-def _output_json(data: Any, args) -> None:
+def _output_json(data: Any, args, ok: bool = True) -> None:
     """Output JSON."""
     json.dump(data, sys.stdout, indent=2, default=str)
     print()
-    sys.exit(0)
+    sys.exit(0 if ok else 1)
 
 
 def _generate_install_command(

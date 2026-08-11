@@ -175,7 +175,7 @@ See [SDK Roadmap](SDK_ROADMAP.md) for upcoming Python SDK features (vulnerabilit
 
 | Resource | What it covers |
 |---|---|
-| [CLI Reference](CLI.md) | All 24 commands with flags, examples, and exit codes |
+| [CLI Reference](CLI.md) | All 26 commands with flags, examples, and exit codes |
 | [API Reference](API.md) | 59 REST endpoints with request/response schemas |
 | [Architecture](ARCHITECTURE.md) | Codebase structure, layers, design decisions |
 | [Components](COMPONENTS.md) | CLI vs Desktop vs Library comparison |

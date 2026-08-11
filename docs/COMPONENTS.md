@@ -7,7 +7,7 @@ The Universal Dependency Resolver ships in four forms: a Python backend (CLI/lib
 ```mermaid
 flowchart TD
     subgraph PYTHON_BACKEND["Python Backend (pip install ud-resolver)"]
-        CLI["CLI<br/>argparse · 24 commands<br/>asyncio event loop"]
+        CLI["CLI<br/>argparse · 26 commands<br/>asyncio event loop"]
         LIB["Python Library<br/>importable backend.*"]
         API["API Server<br/>FastAPI · 59 endpoints<br/>uvicorn"]
     end
@@ -47,12 +47,13 @@ The core Python package installed via `pip install ud-resolver`.
 
 ### CLI
 
-24 commands accessible via the `udr` console script:
+26 commands accessible via the `udr` console script:
 
 ```
 auth         Manage API keys and signing keys
 check        System compatibility + CVE/license/deprecated/policy checks
 completion   Generate shell completion scripts
+dependencies Show a package's dependencies and their constraints
 details      Show package details from registries
 diff         Compare two lock files
 export       Export lock file to requirements.txt / Dockerfile etc.
@@ -73,6 +74,7 @@ system-info  Show detailed system information
 tools        Manage plugins and extensions
 update       Re-resolve a package and update lock file
 verify       Validate a lock file
+versions     List available versions of a package
 why          Explain why a package version was selected
 ```
 

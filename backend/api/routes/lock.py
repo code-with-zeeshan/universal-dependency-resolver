@@ -75,6 +75,9 @@ class GenerateLockRequest(BaseModel):
     resolution: dict[str, Any] | None = None
     manifest_contents: dict[str, str] | None = None
     manifest_filter: str | None = None
+    block: list[str] | None = None
+    pin: list[str] | None = None
+    pin_mode: str | None = None
 
     @field_validator("manifest_contents")
     @classmethod
@@ -379,6 +382,9 @@ async def _run_lock_pipeline(
     manifest_contents: dict[str, str],
     manifest_filter: str | None = None,
     system_override: dict[str, Any] | None = None,
+    block: list[str] | None = None,
+    pin: list[str] | None = None,
+    pin_mode: str | None = None,
 ) -> dict:
     """Full pipeline: write manifests to temp dir, detect, parse, fetch, resolve, build lock data.
 
@@ -444,6 +450,16 @@ async def _run_lock_pipeline(
         else:
             system_info = await scanner.scan_all()
 
+        if pin or block or pin_mode:
+            from backend.core.pinning import PinningPolicy, apply_pinning_policy
+
+            pp = PinningPolicy(
+                pinned=dict(p.split("==", 1) for p in (pin or []) if "==" in p),
+                blocked=list(block or []),
+                pin_mode=pin_mode or "none",
+            )
+            resolver_inputs = apply_pinning_policy(resolver_inputs, pp)
+
         try:
             bfs_budget = max(5, int(SOLVER_API_TIMEOUT * 0.5))
             solver_ms = max(10000, int((SOLVER_API_TIMEOUT - bfs_budget) * 1000))
@@ -456,6 +472,7 @@ async def _run_lock_pipeline(
                     solver_timeout=solver_ms,
                     bfs_timeout=bfs_budget,
                     cross_deps=None,
+                    blocked_packages=list(block or []),
                 ),
                 timeout=SOLVER_API_TIMEOUT,
             )
@@ -638,6 +655,9 @@ async def generate_lock(
             req.manifest_contents,
             manifest_filter=req.manifest_filter,
             system_override=req.system,
+            block=req.block,
+            pin=req.pin,
+            pin_mode=req.pin_mode,
         )
         if result["status"] != "success":
             raise HTTPException(

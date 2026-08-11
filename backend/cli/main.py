@@ -3,6 +3,9 @@
 import argparse
 import logging
 import os
+import sys
+
+logger = logging.getLogger(__name__)
 
 from backend.core.shutdown import ShutdownFlag, register_signal_handlers
 from backend.settings import ECOSYSTEMS
@@ -14,6 +17,7 @@ SHUTDOWN_FLAG = ShutdownFlag()
 from .commands.auth import cmd_auth
 from .commands.check import cmd_check
 from .commands.completion import cmd_completion
+from .commands.dependencies import cmd_dependencies
 from .commands.details import cmd_details
 from .commands.diff import cmd_diff
 from .commands.export import cmd_export
@@ -34,6 +38,7 @@ from .commands.system_info import cmd_system_info
 from .commands.tools import cmd_tools
 from .commands.update import cmd_update
 from .commands.verify import cmd_verify
+from .commands.versions import cmd_versions
 from .commands.why import cmd_why
 from .shared import VERSION
 
@@ -840,6 +845,34 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     details_p.add_argument("--json", action="store_true", help="Output as JSON")
 
+    versions_p = sub.add_parser(
+        "versions",
+        help="List available versions of a package",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr versions numpy
+  udr versions express --ecosystem npm --json
+""",
+    )
+    versions_p.add_argument("package", help="Package name")
+    versions_p.add_argument(
+        "--ecosystem", "-e", default="pypi", choices=_eco_choices, help="Ecosystem"
+    )
+    versions_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    deps_p = sub.add_parser(
+        "dependencies",
+        help="Show a package's dependencies and their constraints",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  udr dependencies flask
+  udr dependencies express --ecosystem npm --json
+""",
+    )
+    deps_p.add_argument("package", help="Package name")
+    deps_p.add_argument("--ecosystem", "-e", default="pypi", choices=_eco_choices, help="Ecosystem")
+    deps_p.add_argument("--json", action="store_true", help="Output as JSON")
+
     sysinfo_p = sub.add_parser(
         "system-info",
         help="Show detailed system information — OS, CPU, GPU, Python, runtimes",
@@ -991,6 +1024,8 @@ def main():
         "sbom": cmd_sbom,
         "export": cmd_export,
         "details": cmd_details,
+        "versions": cmd_versions,
+        "dependencies": cmd_dependencies,
         "system-info": cmd_system_info,
         "auth": cmd_auth,
         "index": cmd_index,

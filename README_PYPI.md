@@ -53,7 +53,7 @@ The base install resolves dependencies, detects GPU/OS/CPU, and handles GPU vari
 | **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node.js, GCC, Java — resolution adapts to your environment. |
 | **GPU-aware** | Automatically selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal. For PyPI `torch`, consults the [pytorch wheel index](https://download.pytorch.org/whl/) and caps + rewrites to the matching `+cu<ver>` build (e.g. `--cuda 12.1` → `torch 2.5.1+cu121`). |
 | **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| **24 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools |
+| **26 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools, versions, dependencies |
 | **59 REST API endpoints** | Full programmatic API with auto-generated Swagger docs. |
 | **Desktop GUI** | Standalone Electron app — no Python or Node.js needed. |
 | **Zero config** | SQLite by default, in-memory cache, no Docker required. |

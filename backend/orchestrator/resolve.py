@@ -784,6 +784,7 @@ async def _resolve_transitive(
     incremental: bool = True,
     cross_deps: list[dict] | None = None,
     include_optional: bool = False,
+    blocked_packages: list[str] | None = None,
 ) -> dict:
     """Resolve packages with optional incremental resolution from existing lock data.
 
@@ -955,6 +956,8 @@ async def _resolve_transitive(
                 if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
                     continue
                 dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, pkg_eco)
+                if blocked and dep.name in blocked:
+                    continue
                 key = (dep.name, dep_ecosystem_val)
                 if key in visited or key in all_packages or key in pre_resolved:
                     continue
@@ -966,6 +969,8 @@ async def _resolve_transitive(
     visited: set = set()
     all_packages: dict = {}
     skipped_packages: list[dict] = []
+    fetched_details: dict[str, dict] = {}
+    blocked: set[str] = set(blocked_packages or [])
 
     async def _fetch_one(item: tuple) -> tuple:
         name, eco = item[0], item[1]
@@ -994,6 +999,8 @@ async def _resolve_transitive(
         info = await _fetch_dep_info(
             aggregator, name, eco, include_extended=False, skipped_packages=skipped_packages
         )
+        if info:
+            fetched_details[f"{name}@{eco}"] = info
         return (name, eco, info)
 
     async def _batch_fetch(
@@ -1057,6 +1064,8 @@ async def _resolve_transitive(
                     if PEER_DEP_MODE == "advisory" and getattr(dep, "peer", False):
                         continue
                     dep_ecosystem_val = _determine_dep_ecosystem(dep, dep_eco, eco)
+                    if blocked and dep.name in blocked:
+                        continue
                     dep_key = (dep.name, dep_ecosystem_val)
                     if dep_ecosystem_val != eco:
                         _add_cross_eco_edge(
@@ -1335,6 +1344,14 @@ async def _resolve_transitive(
                 }
 
     result["skipped_packages"] = skipped_packages
+    result["package_details"] = fetched_details
+    if blocked:
+        result["resolved_packages"] = {
+            k: v for k, v in result.get("resolved_packages", {}).items() if k not in blocked
+        }
+        result["dependency_tree"] = {
+            k: v for k, v in result.get("dependency_tree", {}).items() if k not in blocked
+        }
     return result
 
 

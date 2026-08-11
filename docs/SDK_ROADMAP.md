@@ -4,7 +4,7 @@
 
 | SDK | Status | Package | Notes |
 |---|---|---|---|
-| **CLI** | ✅ Complete | `ud-resolver` on PyPI | 24 commands, full resolution pipeline |
+| **CLI** | ✅ Complete | `ud-resolver` on PyPI | 26 commands, full resolution pipeline |
 | **Python Library** | ✅ Complete | `backend.core`, `backend.orchestrator` | Fully importable as a library |
 | **REST API** | ✅ Complete | Bundled in `udr serve` | 59 endpoints, OpenAPI docs at `/api/v1/docs` |
 | **Desktop App** | ✅ Complete | Electron + PyInstaller | Cross-platform standalone binary |

@@ -108,6 +108,14 @@ _BASH_COMPLETION = """_{prog}_completion() {{
             local details_flags="--ecosystem --json"
             COMPREPLY=( $(compgen -W "${{details_flags}}" -- "${{cur}}") )
             ;;
+        versions)
+            local versions_flags="--ecosystem --json"
+            COMPREPLY=( $(compgen -W "${{versions_flags}}" -- "${{cur}}") )
+            ;;
+        dependencies)
+            local deps_flags="--ecosystem --json"
+            COMPREPLY=( $(compgen -W "${{deps_flags}}" -- "${{cur}}") )
+            ;;
         auth)
             local auth_actions="create revoke list gen-key show-key"
             local auth_flags="--name --role --description"
@@ -309,6 +317,16 @@ _{prog}() {{
                         "--ecosystem=[Ecosystem]" \
                         "--json[JSON output]"
                     ;;
+                versions)
+                    _arguments \
+                        "--ecosystem=[Ecosystem]" \
+                        "--json[JSON output]"
+                    ;;
+                dependencies)
+                    _arguments \
+                        "--ecosystem=[Ecosystem]" \
+                        "--json[JSON output]"
+                    ;;
                 auth)
                     _arguments \
                         "1: :(create revoke list gen-key show-key)" \
@@ -447,6 +465,10 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from search" -l json -d 'JSON output'
     complete -c {prog} -n "__fish_seen_subcommand_from details" -l ecosystem -d 'Ecosystem'
     complete -c {prog} -n "__fish_seen_subcommand_from details" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from versions" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from versions" -l json -d 'JSON output'
+    complete -c {prog} -n "__fish_seen_subcommand_from dependencies" -l ecosystem -d 'Ecosystem'
+    complete -c {prog} -n "__fish_seen_subcommand_from dependencies" -l json -d 'JSON output'
     complete -c {prog} -n "__fish_seen_subcommand_from auth" -xa 'create revoke list gen-key show-key'
     complete -c {prog} -n "__fish_seen_subcommand_from auth" -l name -d 'Key name'
     complete -c {prog} -n "__fish_seen_subcommand_from auth" -l role -xa 'read-only read-write admin'

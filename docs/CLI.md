@@ -177,7 +177,9 @@ udr check --policy                     # check policy compliance (udr-policy.yam
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-l, --lock-file` | `None` | Explicit lock file path (overrides directory/workspace) |
 
-**Exit codes:** 0 on success, 1 on failure or policy violation.
+**Exit codes:**
+- 0 — all selected checks passed (system report; CVE findings are informational and do not fail the exit code)
+- 1 — any selected check reported a **violation** (denied license, yanked package, `error`-severity policy violation), lock file missing, or fetch failure — also in `--json` mode
 
 ---
 
@@ -233,6 +235,44 @@ udr details serde -e crates --json      # JSON output
 
 ---
 
+## `versions`
+
+List all available versions of a package, newest first.
+
+```
+udr versions numpy                      # PyPI (default ecosystem)
+udr versions express -e npm --json      # JSON output
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `package` | (required) | Package name |
+| `-e, --ecosystem` | `pypi` | Ecosystem identifier |
+| `--json` | `False` | Output as JSON `{"package", "ecosystem", "versions": [...]}` |
+
+**Exit codes:** 0 on success, 1 on package not found (`{"error": "No versions found"}` in JSON mode).
+
+---
+
+## `dependencies`
+
+Show a package's dependencies and their constraints.
+
+```
+udr dependencies flask                  # PyPI (default ecosystem)
+udr dependencies express -e npm --json  # JSON output
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `package` | (required) | Package name |
+| `-e, --ecosystem` | `pypi` | Ecosystem identifier |
+| `--json` | `False` | Output as JSON `{"package", "ecosystem", "dependencies": {name: constraint}}` |
+
+**Exit codes:** 0 on success, 1 on fetch failure. A package with no dependencies is a valid success.
+
+---
+
 ## `diff`
 
 Compare two lock files and show version differences (added, removed, changed, unchanged).
@@ -251,7 +291,7 @@ udr diff --workspace backend           # compare udr.lock vs udr-backend.lock
 | `-d, --directory` | `.` | Project directory containing lock files |
 | `--workspace` | `None` | Compare base lock vs `udr-{workspace}.lock` |
 
-**Exit codes:** 0 on success, 1 on read error.
+**Exit codes:** 0 on success, 1 on read error or missing arguments. In `--json` mode errors are emitted as `{"error": "..."}` on stdout (exit 1) so JSON consumers always parse a valid document.
 
 ---
 
@@ -525,7 +565,7 @@ udr lock --export Dockerfile                 # also export resolved deps
 | `--provenance` | `False` | Add SLSA provenance section to lock file |
 | `--check`, `-c` | `False` | CI mode: run resolution and diff against existing lock; exit 1 on drift |
 | `--with-dev` | `False` | Include dev/optional dependency manifests |
-| `--without-optional` | `False` | Exclude optional dependencies |
+| `--without-optional` | `False` | Exclude optional dependencies (default: optional deps excluded, use `--with-dev`) |
 
 **Pipeline steps:**
 
@@ -709,7 +749,7 @@ udr resolve numpy@pypi express@npm               # mixed ecosystems
 | `--platform` | `None` | Target CPU architecture: `x86_64`, `aarch64`, `arm64`, `i386`, `amd64` |
 | `--auto-sync` | `False` | Auto-sync stale local indexes before resolution |
 | `--with-dev` | `False` | Include dev/optional dependency manifests |
-| `--without-optional` | `False` | Exclude optional dependencies |
+| `--without-optional` | `False` | Exclude optional dependencies (default: optional deps excluded, use `--with-dev`) |
 
 **Exit codes:** 0 on success, 1 on resolution failure, 130 on user cancel.
 
@@ -910,7 +950,7 @@ udr update flask --fix-cve              # auto-fix specific vulnerable package
 | `--timeout` | `None` | Resolution timeout in seconds |
 | `--fix-cve` | `False` | Update vulnerable packages to versions that fix known CVEs |
 | `--with-dev` | `False` | Include dev/optional dependency manifests |
-| `--without-optional` | `False` | Exclude optional dependencies |
+| `--without-optional` | `False` | Exclude optional dependencies (default: optional deps excluded, use `--with-dev`) |
 
 **Exit codes:** 0 on success, 1 on package not found or resolution failure, 130 on user cancel.
 

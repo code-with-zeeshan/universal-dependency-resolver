@@ -86,7 +86,7 @@ Plus 2 internal registries (Docs DB, Custom DB) for system compatibility enrichm
 | 🖥️ **System-aware** | Detects OS, CPU, GPU, CUDA, Python, Node, GCC, Java — resolution adapts to your environment. |
 | 🎮 **GPU-aware** | Auto-selects CUDA variants (e.g. `torch 2.1.2+cu121`) when NVIDIA GPU detected. Supports CUDA, ROCm, Intel GPU, and Metal backends. |
 | 📤 **15 export formats** | requirements.txt, package.json, Dockerfile, docker-compose.yml, pyproject.toml, environment.yml, Cargo.toml, build.gradle, pom.xml, CMakeLists.txt, install.sh, install.bat, Gemfile, composer.json, go.mod |
-| 🎛️ **24 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, system-info, auth, index, tools |
+| 🎛️ **26 CLI commands** | serve, check, resolve, lock, graph, verify, list-ecosystems, update, install, init, migrate, completion, scan, why, outdated, diff, search, sbom, export, details, versions, dependencies, system-info, auth, index, tools |
 | 🌐 **59 REST API endpoints** | Full programmatic API with auto-generated Swagger docs. |
 | 🖥️ **Desktop GUI** | Standalone Electron app — no Python or Node.js required. |
 | 🌍 **Web UI** | Browser-based single-page app — lock viewer, CVE browser, dependency graph. |
@@ -221,7 +221,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 |---|---|
 | ✅ Supported ecosystems | **25** (18 resolvable + 7 query-only) |
 | 🧪 Unit tests passing | **3739** (+ 96 integration + 383 e2e + 10 wheel + 94 cross-eco) |
-| 🎛️ CLI commands | **24** |
+| 🎛️ CLI commands | **26** |
 | 🌐 API endpoints | **59** |
 | 📤 Export formats | **15** |
 | 📦 PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
@@ -234,7 +234,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 
 | Component | What it is | How to get | Best for |
 |---|---|---|---|
-| 🖥️ **CLI** | Terminal tool with 24 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
+| 🖥️ **CLI** | Terminal tool with 26 commands | `pip install ud-resolver` | CI/CD, scripts, ad-hoc |
 | 📚 **Python Library** | Importable `backend.*` modules | `pip install ud-resolver` | Embedding in tools |
 | 🌐 **API Server** | FastAPI REST server + Swagger UI | `udr serve` | Programmatic access |
 | 🖥️ **Desktop App** | Standalone Electron GUI | [GitHub Releases](https://github.com/code-with-zeeshan/universal-dependency-resolver/releases) | GUI users, no terminal |
@@ -277,7 +277,7 @@ cd desktop && node --test tests/
 | Guide | Description |
 |---|---|
 | 📖 [User Guide](docs/USER_GUIDE.md) | Everything in one place — prerequisites to production |
-| 🎮 [CLI Reference](docs/CLI.md) | All 24 commands, flags, examples, exit codes |
+| 🎮 [CLI Reference](docs/CLI.md) | All 26 commands, flags, examples, exit codes |
 | 🌐 [API Reference](docs/API.md) | 59 REST endpoints, request/response schemas |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md) | Codebase structure, layers, key decisions |
 | 🛠️ [Development](docs/DEVELOPMENT.md) | Setup, running, testing, project structure |

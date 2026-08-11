@@ -8,7 +8,7 @@ flowchart TD
         direction LR
         FE["Web Frontend<br/>Vanilla JS SPA<br/>8 pages, served at /"]
         VSC["VS Code Extension<br/>13 commands<br/>lock tree, CVE diag"]
-        CLI["CLI<br/>argparse, 24 commands<br/>asyncio, Rich tables"]
+        CLI["CLI<br/>argparse, 26 commands<br/>asyncio, Rich tables"]
         DESKTOP["Desktop<br/>Electron + PyInstaller<br/>standalone binary"]
     end
 

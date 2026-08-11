@@ -8,22 +8,38 @@ from pathlib import Path
 from rich import box
 from rich.table import Table
 
-from ..shared import _resolve_lock_path, console
+from ..shared import _resolve_lock_path, console, err_console
 
 
-def _read_lock(path: str) -> dict:
+def _fatal(args: argparse.Namespace, message: str) -> None:
+    """Print an error — JSON on stdout when --json, otherwise rich stderr."""
+    if getattr(args, "json", False):
+        json.dump({"error": message}, sys.stdout, indent=2)
+        print()
+    else:
+        err_console.print(f"[red]{message}[/red]")
+    sys.exit(1)
+
+
+def _read_lock(path: str, args: argparse.Namespace | None = None) -> dict:
     """Read and validate a lock file."""
     p = Path(path)
     if not p.is_file():
+        if args is not None:
+            _fatal(args, f"Lock file not found: {p}")
         console.print(f"[red]Lock file not found:[/red] {p}")
         sys.exit(1)
     try:
         data = json.loads(p.read_text())
     except json.JSONDecodeError as e:
+        if args is not None:
+            _fatal(args, f"Invalid lock file {path}: {e}")
         console.print(f"[red]Invalid lock file {path}:[/red] {e}")
         sys.exit(1)
     ver = data.get("version", "0.0")
     if ver not in ("1.0", "2.0", "2.1"):
+        if args is not None:
+            _fatal(args, f"Unsupported lock file version: {ver} in {path}")
         console.print(f"[red]Unsupported lock file version: {ver} in {path}[/red]")
         sys.exit(1)
     return data
@@ -42,13 +58,13 @@ def cmd_diff(args: argparse.Namespace):
         path_a = args.lock_file_a
         path_b = args.lock_file_b
     else:
-        console.print(
-            "[red]Specify two lock file paths, or use --workspace for a diff with the base lock file.[/red]"
+        _fatal(
+            args,
+            "Specify two lock file paths, or use --workspace for a diff with the base lock file.",
         )
-        sys.exit(1)
 
-    data_a = _read_lock(path_a)
-    data_b = _read_lock(path_b)
+    data_a = _read_lock(path_a, args)
+    data_b = _read_lock(path_b, args)
 
     pkgs_a = data_a.get("packages", {})
     pkgs_b = data_b.get("packages", {})

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +35,52 @@ def cmd_check(args: argparse.Namespace) -> None:
     async def _check() -> bool:
         if args.policy is not None:
             return await _check_policy(args)
-        if args.cve:
-            return await _check_cve(args)
-        if args.license:
-            return await _check_license(args)
-        if args.deprecated:
-            return await _check_deprecated(args)
-        if args.peer:
-            return await _check_peer(args)
+
+        checks: list[tuple[str, Any]] = []
+        for name, flag, fn in (
+            ("cve", args.cve, _check_cve),
+            ("license", args.license, _check_license),
+            ("deprecated", args.deprecated, _check_deprecated),
+            ("peer", args.peer, _check_peer),
+        ):
+            if flag:
+                checks.append((name, fn))
+
+        if not checks:
+            return await _system_check()
+
+        if len(checks) == 1:
+            result = await checks[0][1](args)
+            if isinstance(result, tuple):
+                ok, json_payload = result
+            else:
+                ok, json_payload = result, {}
+            if args.json:
+                _output_json(json_payload, args, ok=ok)
+            return ok
+
+        combined: dict[str, Any] = {"ok": True}
+        ok = True
+        quiet = bool(args.json)
+        if quiet:
+            console.quiet = True
+        try:
+            for name, fn in checks:
+                result = await fn(args)
+                if isinstance(result, tuple):
+                    sub_ok, json_payload = result
+                else:
+                    sub_ok, json_payload = result, {}
+                ok = bool(ok and sub_ok)
+                if quiet and json_payload:
+                    combined[name] = json_payload
+        finally:
+            console.quiet = False
+        if quiet:
+            _output_json({**combined, "ok": ok}, args, ok=ok)
+        return ok
+
+    async def _system_check() -> bool:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -167,8 +206,10 @@ def cmd_check(args: argparse.Namespace) -> None:
         return True
 
     try:
-        asyncio.run(_check())
-        sys.exit(0)
+        ok = asyncio.run(_check())
+        sys.exit(0 if ok else 1)
+    except SystemExit:
+        raise
     except Exception as e:
         console.print(Panel(f"[red]Check failed:[/red] {e}", title="Error"))
         sys.exit(1)
@@ -193,7 +234,7 @@ async def _check_cve(args: argparse.Namespace) -> bool:
     packages = lock_data.get("packages", {})
     if not packages:
         console.print("[yellow]Lock file has no packages to check.[/yellow]")
-        return True
+        return True, {}
 
     aggregator = DataAggregator()
     vuln_results: list[tuple[str, str, dict]] = []
@@ -230,13 +271,14 @@ async def _check_cve(args: argparse.Namespace) -> bool:
 
     if not vuln_results:
         if args.json:
-            _output_json({"vulnerabilities": [], "summary": {"total": 0, "critical_high": 0}}, args)
+            return True, {"vulnerabilities": [], "summary": {"total": 0, "critical_high": 0}}
         console.print("[green]✅ No known vulnerabilities found in lock file.[/green]")
-        return True
+        return True, {}
 
     critical_high = [v for v in vuln_results if _extract_severity(v[2]) in ("CRITICAL", "HIGH")]
     others = len(vuln_results) - len(critical_high)
 
+    json_payload: dict = {}
     if args.json:
         vuln_list = [
             {
@@ -248,48 +290,47 @@ async def _check_cve(args: argparse.Namespace) -> bool:
             }
             for p, v, c in vuln_results
         ]
-        _output_json(
-            {
-                "vulnerabilities": vuln_list,
-                "summary": {
-                    "total": len(vuln_results),
-                    "critical_high": len(critical_high),
-                },
+        json_payload = {
+            "vulnerabilities": vuln_list,
+            "summary": {
+                "total": len(vuln_results),
+                "critical_high": len(critical_high),
             },
-            args,
-        )
+        }
+    else:
+        title = f"[red]{len(vuln_results)} known vulnerabilities"
+        if critical_high:
+            title += f" ({len(critical_high)} critical/high)"
+        title += "[/red]"
 
-    title = f"[red]{len(vuln_results)} known vulnerabilities"
-    if critical_high:
-        title += f" ({len(critical_high)} critical/high)"
-    title += "[/red]"
+        vuln_table = Table(title=title, box=box.ROUNDED)
+        vuln_table.add_column("Package", style="cyan")
+        vuln_table.add_column("Version", style="dim")
+        vuln_table.add_column("CVE ID", style="yellow")
+        vuln_table.add_column("Severity")
+        vuln_table.add_column("Summary")
 
-    vuln_table = Table(title=title, box=box.ROUNDED)
-    vuln_table.add_column("Package", style="cyan")
-    vuln_table.add_column("Version", style="dim")
-    vuln_table.add_column("CVE ID", style="yellow")
-    vuln_table.add_column("Severity")
-    vuln_table.add_column("Summary")
+        for pkg_name, pkg_ver, v in vuln_results:
+            cve_id = v.get("id", "?")
+            sev = _extract_severity(v)
+            summary = v.get("summary", "")[:80]
+            sev_style = {
+                "CRITICAL": "bold red",
+                "HIGH": "red",
+                "MEDIUM": "yellow",
+                "LOW": "dim",
+                "UNKNOWN": "dim",
+            }.get(sev, "dim")
+            vuln_table.add_row(
+                pkg_name, pkg_ver, cve_id, f"[{sev_style}]{sev}[/{sev_style}]", summary
+            )
 
-    for pkg_name, pkg_ver, v in vuln_results:
-        cve_id = v.get("id", "?")
-        sev = _extract_severity(v)
-        summary = v.get("summary", "")[:80]
-        sev_style = {
-            "CRITICAL": "bold red",
-            "HIGH": "red",
-            "MEDIUM": "yellow",
-            "LOW": "dim",
-            "UNKNOWN": "dim",
-        }.get(sev, "dim")
-        vuln_table.add_row(pkg_name, pkg_ver, cve_id, f"[{sev_style}]{sev}[/{sev_style}]", summary)
+        console.print(vuln_table)
 
-    console.print(vuln_table)
+        if others > 0:
+            console.print(f"[dim]... and {others} lower-severity vulnerabilities.[/dim]")
 
-    if others > 0:
-        console.print(f"[dim]... and {others} lower-severity vulnerabilities.[/dim]")
-
-    return True
+    return True, json_payload
 
 
 async def _check_license(args: argparse.Namespace) -> bool:
@@ -311,7 +352,7 @@ async def _check_license(args: argparse.Namespace) -> bool:
     packages = lock_data.get("packages", {})
     if not packages:
         console.print("[yellow]Lock file has no packages to check.[/yellow]")
-        return True
+        return True, {}
 
     package_licenses: dict[str, str | list[str]] = {}
     missing_licenses: list[tuple[str, str]] = []
@@ -333,7 +374,11 @@ async def _check_license(args: argparse.Namespace) -> bool:
                     pname, ecosystem=eco, include_dependencies=False, include_versions=False
                 )
                 if data:
-                    lic = data.get("license") or data.get("info", {}).get("license", "")
+                    lic = (
+                        data.get("unified_data", {}).get("license")
+                        or data.get("license")
+                        or data.get("info", {}).get("license", "")
+                    )
                     if lic:
                         package_licenses[pname] = lic
             except Exception:
@@ -342,28 +387,25 @@ async def _check_license(args: argparse.Namespace) -> bool:
 
     if not package_licenses:
         if args.json:
-            _output_json({"status": "ok", "total_checked": 0, "results": {}}, args)
+            return True, {"status": "ok", "total_checked": 0, "results": {}}
         console.print("[yellow]No license information found in lock file or registries.[/yellow]")
         console.print(
             "Some registries (e.g., PyPI) include license data; others may require manual entry."
         )
-        return True
+        return True, {}
 
     results = check_license_compatibility(package_licenses)
 
     if args.json:
         denied = {n for n, r in results.items() if r["status"] == "denied"}
         warnings = {n for n, r in results.items() if r["status"] == "warning"}
-        _output_json(
-            {
-                "status": "violation" if denied else ("warning" if warnings else "ok"),
-                "total_checked": len(results),
-                "denied": sorted(denied),
-                "warnings": sorted(warnings),
-                "results": results,
-            },
-            args,
-        )
+        return not denied, {
+            "status": "violation" if denied else ("warning" if warnings else "ok"),
+            "total_checked": len(results),
+            "denied": sorted(denied),
+            "warnings": sorted(warnings),
+            "results": results,
+        }
 
     denied = {n for n, r in results.items() if r["status"] == "denied"}
     warnings = {n for n, r in results.items() if r["status"] == "warning"}
@@ -418,13 +460,13 @@ async def _check_license(args: argparse.Namespace) -> bool:
         console.print(
             "  Review licenses or adjust policy via `check_license_compatibility(policy=...)`."
         )
-        return False
+        return False, {}
 
     if warnings or unknowns:
         console.print("\n[yellow]⚠ Review warnings before production use.[/yellow]")
 
     console.print("\n[green]✅ All packages meet the license policy.[/green]")
-    return True
+    return True, {}
 
 
 async def _check_deprecated(args: argparse.Namespace) -> bool:
@@ -444,7 +486,7 @@ async def _check_deprecated(args: argparse.Namespace) -> bool:
     packages = lock_data.get("packages", {})
     if not packages:
         console.print("[yellow]Lock file has no packages to check.[/yellow]")
-        return True
+        return True, {}
 
     deprecated: list[tuple[str, str, str]] = []  # name, version, label (deprecated/yanked)
 
@@ -457,19 +499,17 @@ async def _check_deprecated(args: argparse.Namespace) -> bool:
 
     if not deprecated:
         if args.json:
-            _output_json({"status": "ok", "total_deprecated": 0, "results": []}, args)
+            return True, {"status": "ok", "total_deprecated": 0, "results": []}
         console.print("[green]✅ No deprecated or yanked packages found.[/green]")
-        return True
+        return True, {}
 
     if args.json:
-        _output_json(
-            {
-                "status": "issues_found",
-                "total_deprecated": len(deprecated),
-                "results": [{"package": p, "version": v, "status": s} for p, v, s in deprecated],
-            },
-            args,
-        )
+        has_yanked = any(label == "yanked" for _, _, label in deprecated)
+        return not has_yanked, {
+            "status": "issues_found",
+            "total_deprecated": len(deprecated),
+            "results": [{"package": p, "version": v, "status": s} for p, v, s in deprecated],
+        }
 
     table = Table(
         title=f"[yellow]{len(deprecated)} deprecated/yanked package(s)[/yellow]",
@@ -487,10 +527,10 @@ async def _check_deprecated(args: argparse.Namespace) -> bool:
 
     if any(label == "yanked" for _, _, label in deprecated):
         console.print("\n[red]✗ Some packages are yanked — they may be unsafe to use.[/red]")
-        return False
+        return False, {}
 
     console.print("\n[yellow]⚠ Some packages are deprecated — consider upgrading.[/yellow]")
-    return True
+    return True, {}
 
 
 async def _check_peer(args: argparse.Namespace) -> bool:
@@ -512,7 +552,7 @@ async def _check_peer(args: argparse.Namespace) -> bool:
     packages = lock_data.get("packages", {})
     if not packages:
         console.print("[yellow]Lock file has no packages to check.[/yellow]")
-        return True
+        return True, {}
 
     issues = []
     for pkg_name, pinfo in packages.items():
@@ -536,7 +576,7 @@ async def _check_peer(args: argparse.Namespace) -> bool:
 
     if not issues:
         console.print("[green]✅ All peer dependency checks passed.[/green]")
-        return True
+        return True, {}
 
     table = Table(
         title=f"[yellow]{len(issues)} peer dependency issue(s)[/yellow]",
@@ -594,16 +634,16 @@ async def _check_policy(args: argparse.Namespace) -> bool:
 
     lock_data = _read_lock_file(lock_path)
     violations = check_policy(lock_data, policy)
+    has_error = any(v.get("severity") == "error" for v in violations)
 
     if args.json:
-        _output_json({"policy": str(policy_path), "violations": violations}, args)
+        _output_json({"policy": str(policy_path), "violations": violations}, args, ok=not has_error)
 
     if not violations:
         console.print("[green]✅ All policy checks passed.[/green]")
         return True
 
     title = f"[red]{len(violations)} policy violation(s)[/red]"
-    has_error = any(v.get("severity") == "error" for v in violations)
 
     table = Table(title=title, box=box.ROUNDED)
     table.add_column("Rule", style="cyan")

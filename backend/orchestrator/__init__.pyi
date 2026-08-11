@@ -40,6 +40,7 @@ async def _resolve_transitive(
     incremental: bool = True,
     cross_deps: list[dict] | None = None,
     include_optional: bool = False,
+    blocked_packages: list[str] | None = None,
 ) -> dict: ...
 def _select_best_cuda_variant(
     variants: list[dict],

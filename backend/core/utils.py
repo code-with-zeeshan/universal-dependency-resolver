@@ -19,6 +19,7 @@ CLI_COMMANDS = (
     "auth",
     "check",
     "completion",
+    "dependencies",
     "details",
     "diff",
     "export",
@@ -39,6 +40,7 @@ CLI_COMMANDS = (
     "tools",
     "update",
     "verify",
+    "versions",
     "why",
 )
 

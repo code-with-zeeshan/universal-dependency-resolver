@@ -1224,9 +1224,21 @@ Generate a `udr.lock` structure from project manifests or pre-parsed package dat
 {
   "manifest_contents": {
     "requirements.txt": "numpy>=1.20\nflask>=2.0\n"
-  }
+  },
+  "block": ["jinja2", "markupsafe"],
+  "pin": ["flask==3.1.3"],
+  "pin_mode": "none"
 }
 ```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `manifest_contents` | dict | — | Filename → content map of manifests to resolve |
+| `manifest_filter` | string | `null` | Restrict to a single manifest file |
+| `system` | dict | `null` | Override auto-detected system info |
+| `block` | list[string] | `[]` | Exclude packages from resolution (roots and transitives) — mirrors `udr lock --block` |
+| `pin` | list[string] | `[]` | Pin packages to exact versions, e.g. `"flask==3.1.3"` — mirrors `udr lock --pin` |
+| `pin_mode` | string | `"none"` | Pin policy mode: `none`, `major`, `minor`, `patch` |
 
 **Response:**
 
@@ -1962,4 +1974,4 @@ Generate shell completion scripts for bash, zsh, or fish.
 
 See the [CLI Reference](CLI.md#cli-api-mapping) for the complete mapping table.
 
-**Quick summary:** All 24 CLI commands are available through the API. 7 CLI-only features require local filesystem access or a terminal. 9 API-only endpoints expose additional functionality (health checks, auth, per-version queries, compatibility data).
+**Quick summary:** All 26 CLI commands are available through the API. 7 CLI-only features require local filesystem access or a terminal. 9 API-only endpoints expose additional functionality (health checks, auth, per-version queries, compatibility data).

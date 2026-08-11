@@ -134,6 +134,7 @@ async def _run_resolution(
     if pinning_policy and pinning_policy.freeze and lock_data:
         resolver_inputs = freeze_from_lock(resolver_inputs, lock_data)
     resolver_inputs = apply_pinning_policy(resolver_inputs, pinning_policy)
+    blocked_packages = list(pinning_policy.blocked) if pinning_policy else None
 
     if timeout is None:
         from backend.settings import SOLVER_TIMEOUT
@@ -155,6 +156,7 @@ async def _run_resolution(
                 incremental=incremental,
                 cross_deps=cross_deps,
                 include_optional=include_optional,
+                blocked_packages=blocked_packages,
             ),
             timeout=timeout,
         )

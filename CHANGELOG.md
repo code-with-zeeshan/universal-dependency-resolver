@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`versions` CLI command** (`backend/cli/commands/versions.py`): list all available versions of a package newest-first (`udr versions numpy --json`). Closes the CLI↔API parity gap — previously API-only. Supports `--ecosystem` and `--json` (JSON: `{"package", "ecosystem", "versions": [...]}`; exit 1 with `{"error": "No versions found"}` for unknown packages).
+- **`dependencies` CLI command** (`backend/cli/commands/dependencies.py`): show a package's dependencies and constraints, flattened from category structure to `{name: constraint}` (`udr dependencies flask --json`). Previously API-only.
+- **Pinning policy at resolution time in the API** (`backend/api/routes/lock.py`): `POST /generate-lock` now accepts `block`, `pin`, and `pin_mode` fields (mirroring `udr lock --block/--pin/--pin-mode`). Blocked packages are excluded during BFS discovery (not just filtered post-hoc), and pins set exact version constraints before solving. Previously pinning was only available post-hoc via `/lock/apply-pinning`.
+
+### Fixed
+
+- **`udr lock --block` did not block transitive dependencies** (`backend/orchestrator/resolve.py`, `backend/cli/shared.py`): `--block`/`PinningPolicy.blocked` only filtered root package inputs, so blocked packages pulled in transitively (e.g. `--block jinja2` with flask) still resolved. Blocked package names are now excluded at every BFS discovery point (root deps, transitive deps, pre-resolved path) and filtered from `resolved_packages`/`dependency_tree` output. Verified: `flask` lock with `--block jinja2 --block markupsafe` → 10 packages, both absent.
+- **`udr check` exit codes discarded — always exited 0** (`backend/cli/commands/check.py`, `backend/cli/_display.py`): `cmd_check` ran the check coroutine but never used its boolean result, so denied licenses, yanked packages, and error-severity policy violations all exited 0 (breaking CI use). `ok` is now honored in all modes; `_output_json` gained an `ok` parameter controlling exit code. CVE findings remain informational (exit 0). JSON mode now reports violations with exit 1.
+- **`--json` license/deprecated checks always reported `ok: true`**: `_check_license` returned `True` even with denied licenses in JSON mode, and `_check_deprecated` returned `True` even with yanked packages — while their non-JSON table paths correctly reported failure. Both now return `not denied` / `not yanked` so `--json` exit codes match table mode.
+- **`udr diff --json` emitted empty stdout on errors** (`backend/cli/commands/diff.py`): missing arguments or unreadable lock files printed only to stderr and exited 1, so JSON consumers got a parse error. Errors are now emitted as `{"error": "..."}` on stdout (exit 1) in `--json` mode.
+
 ## [1.4.1] - 2026-08-06
 
 ### Added
