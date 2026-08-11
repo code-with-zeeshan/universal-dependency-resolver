@@ -41,6 +41,13 @@ manifest is self-unsatisfiable under the single-version-per-package model
 (express family, nested npm aliases), the fixture resolves the checked-in
 lock file instead — the guard documents that decision.
 
+**Python-version binding**: the name-set is resolved by `udr lock`, whose
+PEP 508 marker evaluation uses the host interpreter. Fixtures are frozen
+under Python 3.13 (e.g. the superset graph gains `typing-extensions` on
+py<3.13 because of conditional markers). The `golden-tests` CI job must run
+**3.13** — running a different interpreter produces false graph drift and
+requires regenerating `expected.json`.
+
 ## Network handling
 
 Same policy as the other e2e suites: unreachable registries → `pytest.skip`

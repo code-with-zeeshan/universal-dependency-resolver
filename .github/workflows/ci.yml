@@ -197,21 +197,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      # Must match the interpreter the golden fixtures were frozen under:
+      # on 3.12, marker evaluation adds `typing-extensions` to the superset
+      # graph (conditional dep for py<3.13), causing false graph drift.
+      - name: Set up Python 3.13
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,system,postgres,z3]"
 
+      # Keyed on fixture content, not run_id: a run_id key can never hit its
+      # own cache, so every run silently restored the previous run's registry
+      # snapshot (stale package versions) instead of a deterministic one.
       - name: Cache UDR registry data
         uses: actions/cache@v4
         with:
           path: ~/.cache/udr
-          key: udr-cache-${{ github.run_id }}
+          key: udr-cache-${{ hashFiles('tests/e2e/golden/**', 'pyproject.toml') }}
           restore-keys: |
             udr-cache-
 
