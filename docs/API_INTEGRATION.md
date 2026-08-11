@@ -184,6 +184,25 @@ lock_data = r.json()["lock_data"]
 export_content = r.json().get("export_content")
 ```
 
+### Generate Lock with Block/Pin Policy
+
+Mirror `udr lock --block jinja2 --pin 'flask==3.1.3'` at resolution time:
+
+```python
+r = httpx.post(
+    f"{BASE}/api/v1/generate-lock",
+    json={
+        "manifest_contents": {"requirements.txt": "flask>=2.0\n"},
+        "block": ["jinja2", "markupsafe"],
+        "pin": ["flask==3.1.3"],
+        "pin_mode": "none",
+    },
+    headers={"X-API-Key": API_KEY},
+)
+```
+
+Blocked packages are excluded during BFS discovery (transitives too); pins set exact version constraints before solving.
+
 ### CVE + License + Deprecated Check
 
 Combined check in one call:

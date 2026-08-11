@@ -16,7 +16,7 @@ All commands support `--help` for inline usage and common flags `--version`, `--
 flowchart LR
     subgraph INVOCATION["Invocation"]
         ARGS["udr &lt;command&gt; [args]"]
-        PARSER["_build_parser()<br/>argparse with 24 subparsers"]
+        PARSER["_build_parser()<br/>argparse with 26 subparsers"]
     end
 
     subgraph DISPATCH["Dispatch"]
@@ -159,7 +159,10 @@ udr check --license                    # check lock file for license compliance
 udr check --deprecated                 # check lock file for deprecated/yanked packages
 udr check --peer                       # check lock file for peer dependency issues
 udr check --policy                     # check policy compliance (udr-policy.yaml)
+udr check --cve --license --deprecated # run multiple checks in one invocation
 ```
+
+Check flags are combinable — each selected check runs, its verdict is AND-ed into the exit code, and in `--json` mode each check's payload is grouped under its name (`{"ok": true, "cve": {...}, "license": {...}}`).
 
 | Flag | Default | Description |
 |---|---|---|
@@ -322,7 +325,7 @@ udr export -l /path/to/lock.json                    # explicit lock file
 
 ## `graph`
 
-Display a dependency tree for one or more packages, showing direct and transitive dependencies.
+Display a dependency tree for one or more packages, showing direct and transitive dependencies. With no package arguments (or with `--from-lock`), renders nested trees from an existing `udr.lock` — fully offline.
 
 ```
 udr graph flask django                        # PyPI packages
@@ -330,17 +333,24 @@ udr graph numpy@pypi serde@crates             # mixed ecosystems
 udr graph react -e npm                        # npm packages
 udr graph torch --cuda 12.1                   # with CUDA variant selection (if published)
 udr graph torch --json                        # JSON output
+udr graph                                     # nested trees from udr.lock in cwd (no network)
+udr graph --from-lock -d /path/to/project     # trees from a specific project's lock file
+udr graph --from-lock --json                  # JSON trees
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `packages` | (required) | One or more package names with optional `@ecosystem` suffix |
+| `packages` | (optional) | One or more package names with optional `@ecosystem` suffix. Omitted → tree from existing lock file |
+| `--from-lock` | `False` | Build nested dependency trees from an existing lock file (no registry access). Roots are packages with `direct: true`; falls back to all packages when the lock predates that field |
+| `-d, --directory` | `.` | Project directory with lock file (used with `--from-lock`) |
+| `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
+| `-l, --lock-file` | `None` | Explicit lock file path |
 | `-e, --ecosystem` | `pypi` | Default ecosystem for packages without `@ecosystem` suffix |
-| `--json` | `False` | Output as JSON |
+| `--json` | `False` | Output as JSON. Live resolution: flat `resolved_packages` map. From lock: `{"status": "success", "source": "<lock path>", "trees": [{name, version, ecosystem, children}]}` |
 | `--cuda` | `None` | Target CUDA version (e.g. `12.1`) — auto-detected if omitted. Selects a `+cu<ver>` variant when the package publishes one (e.g. pytorch's own index). For PyPI `torch`, the CUDA build is chosen by consulting the pytorch wheel index: the resolver caps torch to the version ceiling of the requested tag and rewrites it to its `+cu<ver>` local version (e.g. `--cuda 12.1` → `2.5.1+cu121`) |
 | `--device` | `None` | Target compute device: `cpu`, `cuda`, `mps`, `rocm` |
 
-**Exit codes:** 0 on success, 1 on resolution failure.
+**Exit codes:** 0 on success, 1 on resolution failure or lock file error (missing/invalid lock, empty `packages`).
 
 ---
 
@@ -721,12 +731,12 @@ udr outdated -l /path/to/lock.json     # explicit lock file
 | Flag | Default | Description |
 |---|---|---|
 | `-d, --directory` | `.` | Project directory with lock file |
-| `--json` | `False` | Output as JSON |
+| `--json` | `False` | Output as JSON: `{"status": "success", "outdated_count": N, "packages": [{name, ecosystem, current, latest, type}]}` — same shape as `POST /outdated` |
 | `-e, --ecosystem` | `None` | Only check packages from this ecosystem; all ecosystems if omitted |
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-l, --lock-file` | `None` | Explicit lock file path |
 
-**Exit codes:** 0 on success, 1 on error.
+**Exit codes:** 0 when all packages are up to date, 1 when outdated packages were found (both table and `--json` modes) or on error.
 
 ---
 
@@ -944,13 +954,16 @@ udr update torch --cuda 12.1            # update with CUDA override
 udr update flask --dry-run              # preview changes without writing
 udr update flask --workspace backend    # update in udr-backend.lock
 udr update flask -l /path/to/lock.json  # update in explicit lock file
+udr update --all                        # bulk-update every direct package
+udr update --all --dry-run              # preview bulk-update without writing
 udr update --fix-cve                    # auto-fix all vulnerable packages
 udr update flask --fix-cve              # auto-fix specific vulnerable package
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `package` | `None` | Package name to re-resolve (optional with `--fix-cve`) |
+| `package` | `None` | Package name to re-resolve (optional with `--all`/`--fix-cve`) |
+| `--all` | `False` | Bulk-update every direct package in the lock file to the newest version within its constraints. Recomputes each package's resolution hash. Conflicts with a package name. Transitive deps update implicitly when their parents change |
 | `-d, --directory` | `.` | Project directory with lock file |
 | `--workspace` | `None` | Workspace name — lock file becomes `udr-{workspace}.lock` |
 | `-l, --lock-file` | `None` | Explicit lock file path |
@@ -1107,6 +1120,8 @@ Every non-interactive CLI operation has a corresponding REST API endpoint when `
 | `udr diff` | `/api/v1/diff` | POST |
 | `udr search` | `/api/v1/packages/search` | GET |
 | `udr details` | `/api/v1/packages/{eco}/{name}/details` | GET |
+| `udr versions` | `/api/v1/packages/{eco}/{name}/versions` | GET |
+| `udr dependencies` | `/api/v1/packages/{eco}/{name}/dependencies` | GET |
 | `udr sbom` | `/api/v1/sbom` | POST |
 | `udr completion {shell}` | `/api/v1/completion/{shell}` | GET |
 | `udr scan --github <url>` | `/api/v1/scan/github` | POST |
@@ -1119,7 +1134,7 @@ Every non-interactive CLI operation has a corresponding REST API endpoint when `
 | `udr lock --check` | `/api/v1/lock/check` | POST |
 | `udr lock --sign` | `/api/v1/lock/sign` | POST |
 | `udr lock --report` | `/api/v1/lock/report` | POST |
-| `udr lock --pin/--block/--freeze` | `/api/v1/lock/apply-pinning` | POST |
+| `udr lock --pin/--block/--freeze` | `/api/v1/lock/apply-pinning` | POST | Post-hoc pinning; `block`/`pin`/`pin_mode` are also accepted at resolution time by `POST /api/v1/generate-lock` |
 | `udr update --fix-cve` | `/api/v1/lock/update-with-fix` | POST |
 | `udr auth gen-key` | `/api/v1/auth/gen-key` | POST |
 | `udr auth show-key` | `/api/v1/auth/signing-key` | GET |
@@ -1154,6 +1169,8 @@ Every non-interactive CLI operation has a corresponding REST API endpoint when `
 | `udr lock -y/--yes` | Manifest overwrite confirmation |
 | `udr install` (execution) | Runs pip/npm/cargo — requires local package manager |
 | `udr verify --signature` | Verifies against local files |
+| `udr graph --from-lock` | Reads local lock file — no registry access |
+| `udr update --all` | Bulk re-resolution of the local lock file — no single API call |
 
 ### API-only (no CLI equivalent)
 
@@ -1161,8 +1178,6 @@ Every non-interactive CLI operation has a corresponding REST API endpoint when `
 |---|---|---|
 | `GET /api/v1/health` | GET | Health check (DB + Redis connectivity) |
 | `POST /api/v1/system/check-compatibility` | POST | Structured system-requirement evaluation |
-| `GET /api/v1/packages/{eco}/{name}/versions` | GET | List all versions with filtering |
-| `GET /api/v1/packages/{eco}/{name}/dependencies` | GET | Get dependency tree (recursive, depth configurable) |
 | `GET /api/v1/packages/{eco}/{name}/compatibility` | GET | Compatibility matrix from community reports |
 | `GET /api/v1/packages/export-formats` | GET | List available export formats |
 | `POST /api/v1/lock/update-manifests` | POST | Suggest version bumps from lock data (analysis only) |

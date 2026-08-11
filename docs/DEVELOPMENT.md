@@ -56,9 +56,10 @@ Auto-reloads on Python file changes (dev only).
 python -m pytest
 
 # By category
-python -m pytest tests/unit          # 3739 tests
+python -m pytest tests/unit          # 3803 tests
 python -m pytest tests/integration   # 96 tests
-python -m pytest tests/e2e           # 383 tests
+python -m pytest tests/e2e           # 392 tests
+python -m pytest tests/e2e/test_golden_matrix.py  # golden regression matrix (real registries)
 
 # With coverage
 python -m pytest --cov=backend --cov-report=term-missing --cov-fail-under=57
@@ -73,7 +74,7 @@ python -m pytest -x
 python -m pytest -n auto
 ```
 
-**Current totals:** 4301 tests (3739 unit + 96 integration + 383 e2e + others)
+**Current totals:** 4374 tests (3803 unit + 96 integration + 392 e2e + others)
 
 ---
 
@@ -120,10 +121,10 @@ universal-dependency-resolver/
 │   │       ├── scan.py       # GitHub, local, upload scanning
 │   │       └── system.py     # System info, compatibility check
 │   ├── cli/                  # Command-line interface
-│   │   ├── main.py           # Argparse entry point (24 subparsers)
+│   │   ├── main.py           # Argparse entry point (26 subparsers)
 │   │   ├── shared.py         # Shared helpers (lock path, manifest updaters)
 │   │   ├── completion.py     # Shell completion (bash/zsh/fish)
-│   │   └── commands/         # 24 command modules
+│   │   └── commands/         # 26 command modules
 │   │       ├── auth.py install.py lock.py scan.py serve.py ...
 │   ├── core/                 # Core business logic
 │   │   ├── conflict_resolver.py  # Z3 SAT solver
@@ -178,9 +179,9 @@ universal-dependency-resolver/
 │   └── test/
 │       └── extension.test.ts # 23 lines — 3 smoke tests
 ├── tests/
-│   ├── unit/                 # 3739 unit tests
+│   ├── unit/                 # 3803 unit tests
 │   ├── integration/          # 96 integration tests
-│   └── e2e/                  # 383 end-to-end tests
+│   └── e2e/                  # 392 end-to-end tests
 ├── docs/                     # Documentation
 ├── alembic/                  # Database migrations
 ├── pyproject.toml

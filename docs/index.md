@@ -9,7 +9,7 @@
   <a href="https://pypi.org/project/ud-resolver/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/ud-resolver?color=important&label=%F0%9F%90%8D%20Python"></a>
   <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/code-with-zeeshan/universal-dependency-resolver?color=success&label=%F0%9F%93%9C%20License"></a>
   <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI"></a>
-  <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions"><img alt="Tests" src="https://img.shields.io/badge/3739%20unit+96%20integration+383%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests"></a>
+  <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions"><img alt="Tests" src="https://img.shields.io/badge/3803%20unit+96%20integration+392%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests"></a>
   <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions"><img alt="Coverage" src="https://img.shields.io/badge/coverage-58%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage"></a>
   <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions"><img alt="mypy" src="https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked"></a>
   <a href="https://github.com/code-with-zeeshan/universal-dependency-resolver/actions"><img alt="Ruff" src="https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint"></a>
@@ -53,7 +53,7 @@
 
     [:octicons-arrow-right-24: How it works](ARCHITECTURE.md)
 
--   :fontawesome-solid-terminal:{ .lg .middle } **24 CLI Commands**
+-   :fontawesome-solid-terminal:{ .lg .middle } **26 CLI Commands**
 
     ---
 
@@ -102,8 +102,8 @@ udr serve --port 8000
 | Metric | Value |
 |---|---|
 | :white_check_mark: Supported ecosystems | **25** (18 resolvable + 7 query-only) |
-| :microscope: Tests passing | **3739 unit + 96 integration + 383 e2e** |
-| :control_knobs: CLI commands | **24** |
+| :microscope: Tests passing | **3803 unit + 96 integration + 392 e2e** |
+| :control_knobs: CLI commands | **26** |
 | :globe_with_meridians: API endpoints | **59** |
 | :outbox_tray: Export formats | **15** |
 | :package: PyPI downloads | [![Downloads](https://pepy.tech/badge/ud-resolver)](https://pepy.tech/project/ud-resolver) |
@@ -131,7 +131,7 @@ flowchart LR
 
 | Component | What it is | Best for |
 |---|---|---|
-| :desktop: **CLI** | Terminal tool with 24 commands | CI/CD, scripts, ad-hoc |
+| :desktop: **CLI** | Terminal tool with 26 commands | CI/CD, scripts, ad-hoc |
 | :books: **Python Library** | Importable `backend.*` modules | Embedding in tools |
 | :globe_with_meridians: **API Server** | FastAPI REST server + Swagger UI | Programmatic access |
 | :desktop: **Desktop App** | Standalone Electron GUI | GUI users, no terminal |

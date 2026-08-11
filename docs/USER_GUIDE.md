@@ -105,8 +105,14 @@ udr check --cve
 # Update a package
 udr update flask
 
+# Bulk-update every direct package to its newest compatible version
+udr update --all
+
 # See why a specific version was chosen
 udr why flask
+
+# Render the dependency tree from the lock file (offline)
+udr graph --from-lock
 ```
 
 ### CI/CD

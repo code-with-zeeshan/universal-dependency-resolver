@@ -7,9 +7,9 @@
 | Resolution ecosystems | **27 total** (18 resolvable + 7 query-only + 2 internal; 25 active) |
 | Solver | AutoSolver (default) — profiles the graph and picks Z3 / PubGrub / Hybrid per workload; per-ecosystem isolation |
 | ForkingResolver | Cross-solver validator — on failure, runs the alternate solver (Z3 ↔ PubGrub) and confirms conflicts |
-| CLI commands | 24 |
+| CLI commands | 26 |
 | Lock file | `udr.lock` v2.1 with workspace, cross-eco, target sections |
-| Tests | **4301** (3739 unit + 96 integration + 383 e2e + 83 others); 3,694 verified passing |
+| Tests | **4374** (3803 unit + 96 integration + 392 e2e + 83 others); 3,796 unit passing verified |
 | Coverage threshold | **57%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **0** in `backend/` |
@@ -241,7 +241,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 | **Concurrent version support (Cargo-style)** | 4-8 week architectural rework across SAT encoding, PubGrub API, BFS dedup, lock file format | Only 1/20 ecosystems (Cargo) needs it. Cargo's existing resolution already works. |
 | **Virtual package/Provides resolution** | Solver changes for 2/20 ecosystems | APT/APK parse `provides` data but APT/APK are flat-resolved (no cross-eco). Rare even in Debian. |
 | **Single lighter-weight SAT backend (PySAT/resolvo)** | Evaluate + integrate + maintain | Z3 works. PubGrub is the strategic path. ForkingResolver already wraps both. Adding a third backend increases maintenance burden. |
-| **CLI consolidation (24→9 commands)** | Breaking change, doc rewrite, deprecation cycle | Users learn 3-5 commands anyway. Breaking muscle memory hurts more than 24 commands. |
+| **CLI consolidation (26→9 commands)** | Breaking change, doc rewrite, deprecation cycle | Users learn 3-5 commands anyway. Breaking muscle memory hurts more than 26 commands. |
 | **Plugin marketplace** | Infrastructure, registry, discovery | Zero community plugins exist. Build the API first, marketplace follows. |
 | **WASM frontend (browser-side resolver)** | Compile entire resolver to WASM | No clear user need. Current web frontend works via REST API. |
 | **Desktop Tauri rewrite** | Full rewrite of Electron app | Electron works (43 tests pass). Desktop adoption is niche. |

@@ -31,7 +31,7 @@ The project is ready for production use. Current focus:
 
 | Area | Status |
 |---|---|
-| CLI (24 commands) | ✅ Complete |
+| CLI (26 commands) | ✅ Complete |
 | REST API (59 endpoints) | ✅ Complete |
 | SAT Solver (Z3 + PubGrub) | ✅ Complete |
 | 25 ecosystems supported | ✅ Complete |

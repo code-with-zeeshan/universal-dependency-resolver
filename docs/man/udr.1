@@ -43,10 +43,10 @@ conflict resolution, pinning, blocking, freezing, extras, and CUDA/device/
 cross-compilation overrides.
 .TP
 .B update
-Re-resolve a specific package (or all vulnerable packages with
-\fB\-\-fix-cve\fR) and update the existing lock file. Supports interactive
-mode, dry-run, CUDA/device overrides, cross-compilation, and workspace
-monorepo support.
+Re-resolve a specific package (bulk-update every direct package with
+\fB\-\-all\fR, or all vulnerable packages with \fB\-\-fix-cve\fR) and
+update the existing lock file. Supports interactive mode, dry-run,
+CUDA/device overrides, cross-compilation, and workspace monorepo support.
 .TP
 .B install
 Install packages from a udr.lock file using each ecosystem's native
@@ -61,7 +61,9 @@ Use \fB\-\-cve\fR to scan for known vulnerabilities, \fB\-\-license\fR for
 license compliance (SPDX), \fB\-\-deprecated\fR for deprecated/yanked
 packages, \fB\-\-policy\fR for YAML policy enforcement, \fB\-\-deps\fR for
 project dependency listing, and \fB\-\-device\fR/\fB\-\-cuda\fR for
-simulated system checks.
+simulated system checks. Check flags are combinable (\fB\-\-cve
+\-\-license\fR runs both); the exit code is 0 only when all selected
+checks pass.
 .TP
 .B verify
 Validate a lock file: check that all pinned versions still exist in their
@@ -85,7 +87,10 @@ udr.lock vs udr-backend.lock).
 .TP
 .B graph
 Print a dependency tree or DOT-format graph for one or more packages.
-Supports CUDA/device overrides and JSON output.
+Supports CUDA/device overrides and JSON output. With no package
+arguments, or with \fB\-\-from-lock\fR, renders nested dependency trees
+from an existing lock file without any registry access (roots are
+\fIdirect: true\fR packages).
 .SS Search and discovery
 .TP
 .B search
@@ -95,6 +100,14 @@ ecosystem and limiting results per ecosystem.
 .B details
 Display detailed information about a specific package: available versions,
 dependencies, metadata, and deprecation status.
+.TP
+.B versions
+List all available versions of a package, newest first. Supports
+\fB\-\-ecosystem\fR and \fB\-\-json\fR.
+.TP
+.B dependencies
+Show a package's dependencies and their version constraints, flattened to
+\fI{name: constraint}\fR. Supports \fB\-\-ecosystem\fR and \fB\-\-json\fR.
 .TP
 .B list-ecosystems
 List all supported ecosystems with their display names, identifiers, and
@@ -132,7 +145,8 @@ Subcommands:
 .B pull
 \fI<url>\fR \(em download pre-built indexes.
 .B build
-\(em build indexes from resolved packages in udr.lock.
+\(em build indexes from resolved packages in udr.lock. Also writes an
+\fIindex.json\fR hosting manifest listing the available ecosystems.
 .B status
 \(em show local offline index status.
 .B sync
@@ -200,23 +214,28 @@ These flags are available on multiple commands:
 .TP
 .B \-\-directory=\fI<dir>\fR, \-d \fI<dir>\fR
 Project directory to operate in (default: current directory). Supported by
-check, lock, verify, update, install, why, outdated, diff, sbom.
+check, lock, verify, update, install, why, outdated, diff, sbom, graph.
 .TP
 .B \-\-workspace=\fI<name>\fR
 Workspace name for monorepo support. The lock file is resolved as
 \fIudr-{workspace}.lock\fR instead of the default \fIudr.lock\fR.
 Supported by lock, check, update, install, verify, diff, why, outdated,
-sbom, resolve.
+sbom, resolve, graph.
 .TP
 .B \-\-lock-file=\fI<path>\fR, \-l \fI<path>\fR
 Explicit lock file path. Overrides \fB\-\-directory\fR and
 \fB\-\-workspace\fR resolution. Supported by check, update, install, why,
-outdated, sbom.
+outdated, sbom, graph.
 .TP
 .B \-\-json
 Output results as JSON for machine parsing. Supported by lock, check,
-resolve, graph, verify, outdated, diff, search, details,
-list-ecosystems, why.
+resolve, graph, verify, outdated, diff, search, details, versions,
+dependencies, list-ecosystems, why.
+.TP
+.B \-\-all
+Bulk-update every direct package in the lock file to the newest version
+within its constraints; recomputes each package's resolution hash.
+Supported by update.
 .TP
 .B \-\-cuda=\fI<version>\fR
 Target CUDA version (e.g.\& 12.1). Overrides auto-detection for GPU-
@@ -324,6 +343,12 @@ CI drift check (exit 1 if lock file is stale)
 .TP
 Update manifests automatically after resolution
 .B udr lock --yes
+.TP
+Bulk-update every direct package to its newest compatible version
+.B udr update --all
+.TP
+Render the dependency tree from the existing lock file (offline)
+.B udr graph --from-lock
 .TP
 Check for CVEs in the lock file
 .B udr check --cve
