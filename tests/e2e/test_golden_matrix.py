@@ -190,7 +190,11 @@ GOLDENS = _discover()
         for name, fixture_dir, expected in GOLDENS
     ],
 )
+@pytest.mark.timeout(900)
 def test_repo_golden(golden_tuple: tuple[str, Path, Path]) -> None:
+    # pytest.ini sets a global timeout=120, but the lock subprocess itself is
+    # allowed up to GOLDEN_TIMEOUT (600s) — cold caches (e.g. cilium's 321
+    # gomodules, ~2s/proxy call) exceed 120s, so override per-test.
     repo_name, fixture_dir, expected_json = golden_tuple
     expected = json.loads(expected_json.read_text(encoding="utf-8"))
     _run_golden(repo_name, fixture_dir, expected)
