@@ -734,6 +734,57 @@ class TestNormalize:
         result = d.normalize(pkgs)
         assert result[0]["ecosystem"] == "unknown"
 
+    def test_npm_underscore_preserved(self):
+        """npm `_` is a literal character — string_decoder must NOT become
+        string-decoder and @types/babel__core must keep double underscore
+        (e32b591 regression)."""
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "string_decoder",
+                "version": "1.1.1",
+                "_ecosystem": "npm",
+                "_manifest": "package.json",
+            },
+            {
+                "name": "@types/babel__core",
+                "version": "7.20.0",
+                "_ecosystem": "npm",
+                "_manifest": "package.json",
+            },
+        ]
+        result = d.normalize(pkgs)
+        names = {p["name"] for p in result}
+        assert "string_decoder" in names
+        assert "string-decoder" not in names
+        assert "@types/babel__core" in names
+        assert "@types/babel--core" not in names
+
+    def test_pypi_underscore_still_normalized(self):
+        """PyPI names DO normalize underscores to dashes (PEP 503)."""
+        d = ManifestDetector(".")
+        pkgs = [
+            {"name": "My_Package", "version": "1.0", "_ecosystem": "pypi", "_manifest": "req.txt"},
+        ]
+        result = d.normalize(pkgs)
+        assert result[0]["name"] == "my-package"
+        assert result[0]["constraint"] == "1.0"
+
+    def test_crates_underscore_canonicalized(self):
+        """crates.io canonicalizes _ and - to the same crate (unlike npm) —
+        serde_json is served by the registry at both spellings."""
+        d = ManifestDetector(".")
+        pkgs = [
+            {
+                "name": "serde_json",
+                "version": "1.0",
+                "_ecosystem": "crates",
+                "_manifest": "Cargo.toml",
+            },
+        ]
+        result = d.normalize(pkgs)
+        assert result[0]["name"] == "serde-json"
+
 
 class TestMergeDuplicateEntries:
     """Duplicate package declarations from the same hand-written manifest must
@@ -966,6 +1017,13 @@ class TestParseHex:
         d = ManifestDetector(str(tmp_path))
         result = d.parse({"path": str(p), "parser": "hex"})
         assert result == []
+
+    def test_inline_single_line_list(self, tmp_path):
+        p = tmp_path / "mix.exs"
+        p.write_text('defp deps do\n    [{:jason, "~> 1.4"}]\nend\n')
+        d = ManifestDetector(str(tmp_path))
+        result = d.parse({"path": str(p), "parser": "hex"})
+        assert {"name": "jason", "version": "~> 1.4"} in result
 
 
 class TestParseMaven:

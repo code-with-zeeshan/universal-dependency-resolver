@@ -295,6 +295,63 @@ class TestNPMClient:
         assert "@scope/test-package" in cache_key
 
     @pytest.mark.asyncio
+    async def test_get_package_info_underscore_preserved_in_url(
+        self, client, sample_package_response
+    ):
+        """npm `_` is a literal character — string_decoder must NOT become string-decoder (e32b591)."""
+        with (
+            patch.object(
+                client,
+                "cached_get",
+                new_callable=AsyncMock,
+                return_value=sample_package_response,
+            ) as mock_cached,
+            patch.object(
+                client,
+                "_check_typescript_support",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await client.get_package_info("string_decoder")
+        assert result is not None
+        args, _ = mock_cached.call_args
+        cache_key, url = args[0], args[1]
+        assert "string_decoder" in cache_key
+        assert "string_decoder" in url
+        assert "string-decoder" not in url
+
+    @pytest.mark.asyncio
+    async def test_get_package_info_scoped_underscore_preserved(
+        self, client, sample_package_response
+    ):
+        """@types/babel__core must keep double underscore in URL and cache key."""
+        with (
+            patch.object(
+                client,
+                "cached_get",
+                new_callable=AsyncMock,
+                return_value=sample_package_response,
+            ) as mock_cached,
+            patch.object(
+                client,
+                "_check_typescript_support",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(client, "_get_download_stats", new_callable=AsyncMock, return_value={}),
+        ):
+            result = await client.get_package_info("@types/babel__core")
+        assert result is not None
+        args, _ = mock_cached.call_args
+        cache_key, url = args[0], args[1]
+        assert "babel__core" in cache_key
+        assert "babel__core" in url
+        assert "babel--core" not in url
+        assert "babel-core" not in url
+
+    @pytest.mark.asyncio
     async def test_get_package_info_no_latest_tag(self, client, sample_package_response):
         no_tag = dict(sample_package_response)
         no_tag["dist-tags"] = {}

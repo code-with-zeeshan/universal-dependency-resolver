@@ -83,7 +83,23 @@ class AutoSolver:
             _fmt_profile(profile),
         )
 
-        result = solver.resolve_dependencies(packages, system_info, **kwargs)
+        try:
+            result = solver.resolve_dependencies(packages, system_info, **kwargs)
+        except Exception as exc:
+            # A crashing backend (e.g. pubgrub-py ValueError on unparseable
+            # constraints) must NOT kill the whole resolution — fall through
+            # to the next solver in the chain.
+            logger.warning(
+                "AutoSolver: '%s' crashed (%s: %s); trying next solver",
+                name,
+                type(exc).__name__,
+                exc,
+            )
+            result = {
+                "status": "unsatisfiable",
+                "resolution_error": f"{name} solver crashed: {type(exc).__name__}: {exc}",
+                "resolved_packages": {},
+            }
         result["solver"] = name
 
         if result.get("status") == "satisfiable":
@@ -96,7 +112,16 @@ class AutoSolver:
         fallback_solvers = self._fallback_chain(profile)
         for fb_name, fb_solver in fallback_solvers:
             logger.info("AutoSolver fallback: trying '%s'", fb_name)
-            fb_result = fb_solver.resolve_dependencies(packages, system_info, **kwargs)
+            try:
+                fb_result = fb_solver.resolve_dependencies(packages, system_info, **kwargs)
+            except Exception as exc:
+                logger.warning(
+                    "AutoSolver fallback: '%s' crashed (%s: %s); trying next",
+                    fb_name,
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
             fb_result["solver"] = fb_name
             if fb_result.get("status") == "satisfiable":
                 return fb_result

@@ -1,6 +1,7 @@
-import pytest
+import argparse
 
-from backend.cli.commands.lock import _extract_integrity
+from backend.cli.commands.lock import _detect_and_parse_manifests, _extract_integrity
+from backend.manifest_detector import ManifestDetector
 
 
 class TestExtractIntegrity:
@@ -134,3 +135,60 @@ class TestBuildLockDataStatus:
         )
         assert lock_data["status"] == "satisfiable"
         assert "resolution_error" not in lock_data
+
+
+class TestDetectAndParseManifestsOptional:
+    """--with-dev / --without-optional filtering of optional manifest deps."""
+
+    def _make_args(self, **overrides) -> argparse.Namespace:
+        defaults = {
+            "directory": None,
+            "include_dev": False,
+            "manifest": None,
+            "interactive": False,
+            "json": True,
+            "with_dev": None,
+            "without_optional": None,
+        }
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _write_pyproject(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            """\
+[project]
+name = "demo"
+version = "1.0.0"
+
+[project.dependencies]
+requests = ">=2.28.0"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "black"]
+training = ["protobuf>=3.20.3,<4"]
+""",
+            encoding="utf-8",
+        )
+
+    def _packages(self, tmp_path, args):
+        detector = ManifestDetector(str(tmp_path))
+        _, packages = _detect_and_parse_manifests(detector, args)
+        return sorted(p["name"] for p in packages)
+
+    def test_default_excludes_optional(self, tmp_path):
+        self._write_pyproject(tmp_path)
+        names = self._packages(tmp_path, self._make_args(directory=str(tmp_path)))
+        assert names == ["requests"]
+
+    def test_with_dev_includes_optional(self, tmp_path):
+        self._write_pyproject(tmp_path)
+        names = self._packages(tmp_path, self._make_args(directory=str(tmp_path), with_dev=True))
+        assert names == ["black", "protobuf", "pytest", "requests"]
+
+    def test_without_optional_excludes_even_with_dev(self, tmp_path):
+        self._write_pyproject(tmp_path)
+        names = self._packages(
+            tmp_path,
+            self._make_args(directory=str(tmp_path), with_dev=True, without_optional=True),
+        )
+        assert names == ["requests"]

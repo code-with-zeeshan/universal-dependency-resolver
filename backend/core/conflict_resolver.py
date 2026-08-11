@@ -2291,15 +2291,20 @@ class ConflictResolver:
                     return False
             return True
 
-        # Build current assignment
+        # Build current assignment. Keys are display names (possibly original
+        # case, e.g. "A"), while _candidate_lists is keyed by normalized names
+        # (e.g. "a") — map back so mixed-case packages are not skipped.
+        name_map = getattr(self, "_name_map", {})
+        display_to_norm = {v: k for k, v in name_map.items()}
         current = {n: info.get("version", "") for n, info in pkgs.items()}
+        current_norm = {display_to_norm.get(n, n): v for n, v in current.items()}
 
         # Try upgrading each package (iterate in sorted order for determinism)
         for pkg_name in sorted(self._candidate_lists, key=lambda n: (pkg_eco.get(n, ""), n)):
             candidates = self._candidate_lists[pkg_name]
-            if pkg_name not in current or not candidates:
+            if pkg_name not in current_norm or not candidates:
                 continue
-            current_ver = current[pkg_name]
+            current_ver = current_norm[pkg_name]
             # Find best (newest) candidate that is newer than current
             best = current_ver
             for c in candidates:
@@ -2366,15 +2371,19 @@ class ConflictResolver:
                         if meta.get("yanked") or bool(meta.get("deprecated")):
                             continue
                 # Try this version
-                old = current[pkg_name]
-                current[pkg_name] = c
-                if _check_assignment(current):
+                old = current_norm[pkg_name]
+                current_norm[pkg_name] = c
+                if _check_assignment(current_norm):
+                    # candidates are sorted newest-first — the first passing
+                    # candidate is the newest feasible; stop here instead of
+                    # overwriting best with progressively older versions.
                     best = c
-                else:
-                    current[pkg_name] = old
+                    break
+                current_norm[pkg_name] = old
             if best != current_ver:
-                current[pkg_name] = best
-                pkgs[pkg_name] = {
+                current_norm[pkg_name] = best
+                display_name = name_map.get(pkg_name, pkg_name)
+                pkgs[display_name] = {
                     "version": best,
                     "ecosystem": pkg_eco.get(pkg_name, "?"),
                 }

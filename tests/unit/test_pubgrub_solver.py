@@ -5,6 +5,7 @@ import pytest
 from backend.core.pubgrub_solver import (
     PubGrubSolver,
     _constraint_allows_prerelease,
+    _expand_wildcard_exclusions,
     _has_prerelease_suffix,
     _normalize_constraint,
     _sanitize_version,
@@ -18,7 +19,56 @@ except ImportError:
     HAS_PUBGRUB = False
 
 # Pure-Python fallback — always available
-from backend.core.pubgrub_core import PubGrubCoreSolver as _PureCoreSolver  # noqa: E402
+from backend.core.pubgrub_core import PubGrubCoreSolver as _PureCoreSolver
+
+
+class TestExpandWildcardExclusions:
+    def test_no_wildcard_unchanged(self):
+        assert _expand_wildcard_exclusions(">=5.3.0", ["8.3.0"]) == ">=5.3.0"
+
+    def test_bare_star_unchanged(self):
+        assert _expand_wildcard_exclusions("*", ["8.3.0"]) == "*"
+
+    def test_ne_wildcard_expanded(self):
+        result = _expand_wildcard_exclusions(
+            "!=8.3.*,>=5.3.0", ["8.3.0", "8.3.1", "9.0.0", "8.2.0"]
+        )
+        assert result == "!=8.3.0,!=8.3.1,>=5.3.0"
+
+    def test_ne_wildcard_empty_available_drops_clause(self):
+        assert _expand_wildcard_exclusions("!=8.3.*,>=5.3.0", ["9.0.0"]) == ">=5.3.0"
+
+    def test_ne_wildcard_no_matching_versions_drops_clause(self):
+        assert _expand_wildcard_exclusions("!=8.3.*,>=5.3.0", ["8.2.0", "9.0.0"]) == ">=5.3.0"
+
+    def test_ne_major_wildcard_excludes_whole_major(self):
+        result = _expand_wildcard_exclusions("!=8.*,>=5.0.0", ["8.0.0", "8.3.1", "9.0.0"])
+        assert result == "!=8.0.0,!=8.3.1,>=5.0.0"
+
+    def test_ne_wildcard_all_clauses_empty_returns_default(self):
+        assert _expand_wildcard_exclusions("!=8.3.*", ["9.0.0"]) == ">=0.0.0"
+
+    def test_eq_wildcard_becomes_range(self):
+        assert _expand_wildcard_exclusions("==1.2.*", ["1.2.1"]) == ">=1.2.0,<1.3.0"
+
+    def test_eq_wildcard_major_only(self):
+        assert _expand_wildcard_exclusions("==1.*", ["1.5.0"]) == ">=1.0.0,<2.0.0"
+
+    def test_space_after_operator(self):
+        result = _expand_wildcard_exclusions("!= 8.3.*,>=5.3.0", ["8.3.0", "9.0.0"])
+        assert result == "!=8.3.0,>=5.3.0"
+
+    def test_x_suffix_wildcard(self):
+        result = _expand_wildcard_exclusions("!=8.3.x,>=5.3.0", ["8.3.0", "9.0.0"])
+        assert result == "!=8.3.0,>=5.3.0"
+
+    @pytest.mark.skipif(not HAS_PUBGRUB, reason="pubgrub-py not installed")
+    def test_expanded_constraint_accepted_by_pubgrub_py(self):
+        solver = Resolver()
+        solver.add_package("pillow", "9.0.0", {})
+        solver.add_package("torchvision", "0.28.0", {"pillow": "!=8.3.0,>=5.3.0"})
+        result = solver.resolve({"pillow": ">=0.0.0", "torchvision": ">=0.0.0"})
+        assert result["pillow"] == "9.0.0"
 
 
 class TestNormalizeConstraint:
@@ -33,6 +83,37 @@ class TestNormalizeConstraint:
 
     def test_exact_version(self):
         assert _normalize_constraint("==1.2.3", "pypi") == "==1.2.3"
+
+    def test_git_url_becomes_any(self):
+        url = "https://codeload.github.com/getsentry/fastify-otel/tar.gz/ae3088d65e"
+        assert _normalize_constraint(url, "npm") == ">=0.0.0"
+
+    def test_github_shorthand_becomes_any(self):
+        assert _normalize_constraint(
+            "github:mrmlnc/readdir-enhanced#ISSUE-11_monkey_fix", "npm"
+        ) == (">=0.0.0")
+
+    def test_git_ssh_becomes_any(self):
+        assert _normalize_constraint("git+https://github.com/u/r.git#v1.2.3", "npm") == ">=0.0.0"
+
+    def test_workspace_spec_becomes_any(self):
+        assert _normalize_constraint("workspace:*", "npm") == ">=0.0.0"
+        assert _normalize_constraint("workspace:^1.2.3", "npm") == ">=0.0.0"
+
+    def test_catalog_spec_becomes_any(self):
+        assert _normalize_constraint("catalog:", "npm") == ">=0.0.0"
+
+    def test_file_link_specs_become_any(self):
+        assert _normalize_constraint("file:../lib", "npm") == ">=0.0.0"
+        assert _normalize_constraint("link:../lib", "npm") == ">=0.0.0"
+
+    def test_dist_tag_becomes_any(self):
+        assert _normalize_constraint("latest", "npm") == ">=0.0.0"
+        assert _normalize_constraint("next", "npm") == ">=0.0.0"
+
+    def test_normal_semver_untouched(self):
+        assert _normalize_constraint("^1.2.3", "npm") == ">=1.2.0,<2.0.0"
+        assert _normalize_constraint(">=1.0.0", "npm") == ">=1.0.0"
 
     def test_caret_with_major_minor(self):
         # pubgrub-py requires 3-part semver
@@ -129,6 +210,121 @@ class TestPubGrubSolver:
         assert result["status"] == "satisfiable"
         assert "app" in result["resolved_packages"]
         assert "lib" in result["resolved_packages"]
+
+    @pytest.mark.skipif(not HAS_PUBGRUB, reason="pubgrub-py not installed")
+    def test_wildcard_exclusion_dep_resolves(self):
+        packages = [
+            {
+                "name": "app",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["1.0.0"],
+                "dependencies": {
+                    "pypi": {
+                        "all": [
+                            type(
+                                "_Dep",
+                                (),
+                                {
+                                    "name": "torchvision",
+                                    "version_spec": ">=0.0.0",
+                                    "ecosystem": None,
+                                },
+                            )()
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "torchvision",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["0.28.0"],
+                "dependencies": {
+                    "pypi": {
+                        "all": [
+                            type(
+                                "_Dep",
+                                (),
+                                {
+                                    "name": "pillow",
+                                    "version_spec": "!=8.3.*,>=5.3.0",
+                                    "ecosystem": None,
+                                },
+                            )()
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "pillow",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["8.2.0", "8.3.0", "8.3.1", "9.0.0"],
+                "dependencies": {"pypi": {"all": []}},
+            },
+        ]
+        solver = PubGrubSolver()
+        result = solver.resolve_dependencies(packages)
+        assert result["status"] == "satisfiable"
+        assert result["resolved_packages"]["pillow"]["version"] == "9.0.0"
+
+    @pytest.mark.skipif(not HAS_PUBGRUB, reason="pubgrub-py not installed")
+    def test_wildcard_exclusion_dep_unsat_when_only_excluded(self):
+        packages = [
+            {
+                "name": "app",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["1.0.0"],
+                "dependencies": {
+                    "pypi": {
+                        "all": [
+                            type(
+                                "_Dep",
+                                (),
+                                {
+                                    "name": "torchvision",
+                                    "version_spec": ">=0.0.0",
+                                    "ecosystem": None,
+                                },
+                            )()
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "torchvision",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["0.28.0"],
+                "dependencies": {
+                    "pypi": {
+                        "all": [
+                            type(
+                                "_Dep",
+                                (),
+                                {
+                                    "name": "pillow",
+                                    "version_spec": "!=8.3.*,>=5.3.0",
+                                    "ecosystem": None,
+                                },
+                            )()
+                        ]
+                    }
+                },
+            },
+            {
+                "name": "pillow",
+                "ecosystem": "pypi",
+                "version_constraint": ">=0.0.0",
+                "available_versions": ["8.3.0", "8.3.1"],
+                "dependencies": {"pypi": {"all": []}},
+            },
+        ]
+        solver = PubGrubSolver()
+        result = solver.resolve_dependencies(packages)
+        assert result["status"] == "unsatisfiable"
 
     @pytest.mark.skipif(not HAS_PUBGRUB, reason="pubgrub-py not installed")
     def test_no_packages_returns_empty(self):

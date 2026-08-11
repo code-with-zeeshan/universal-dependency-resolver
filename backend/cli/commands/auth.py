@@ -13,8 +13,9 @@ _SIGNING_DIR = Path.home() / ".config" / "udr"
 
 
 def _get_db():
-    from backend.database.models import db_session
+    from backend.database.models import db_session, init_db
 
+    init_db()
     return db_session()
 
 
@@ -122,10 +123,22 @@ def cmd_auth(args):
         )
 
         with _get_db() as session:
+            from backend.database.models import User
+
+            user = session.query(User).filter(User.username == "cli").first()
+            if user is None:
+                user = User(
+                    username="cli",
+                    email="cli@local.udr",
+                    hashed_password=secrets.token_urlsafe(32),
+                )
+                session.add(user)
+                session.commit()
             db_key = APIKey(
                 key=key_str,
                 name=name,
                 description=args.description or "",
+                user_id=user.id,
                 scopes=scopes,
                 is_active=True,
             )

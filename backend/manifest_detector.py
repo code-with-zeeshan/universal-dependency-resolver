@@ -707,19 +707,24 @@ class ManifestDetector:
             constraint = pkg.get("version", "*") or "*"
 
             # Resolve catalog: or catalog:<name> from pnpm-workspace.yaml catalog
-            if constraint.startswith("catalog:") and getattr(self, "_workspace_found", False):
-                catalog_name = constraint[len("catalog:") :].strip()
-                if catalog_name and catalog_name in self._catalog_versions:
-                    named = self._catalog_versions.get(catalog_name, {})
-                    catalog_ver = named.get(name) if isinstance(named, dict) else None
+            if constraint.startswith("catalog:"):
+                if getattr(self, "_workspace_found", False):
+                    catalog_name = constraint[len("catalog:") :].strip()
+                    if catalog_name and catalog_name in self._catalog_versions:
+                        named = self._catalog_versions.get(catalog_name, {})
+                        catalog_ver = named.get(name) if isinstance(named, dict) else None
+                    else:
+                        default = self._catalog_versions.get("_default", {})
+                        catalog_ver = (
+                            default.get(catalog_name or name) if isinstance(default, dict) else None
+                        )
+                    if catalog_ver:
+                        pkg["_workspace_resolved"] = False
+                        constraint = catalog_ver
+                    else:
+                        constraint = "*"
                 else:
-                    default = self._catalog_versions.get("_default", {})
-                    catalog_ver = (
-                        default.get(catalog_name or name) if isinstance(default, dict) else None
-                    )
-                if catalog_ver:
-                    pkg["_workspace_resolved"] = False
-                    constraint = catalog_ver
+                    constraint = "*"
 
             # Resolve workspace: protocols (workspace:*, workspace:^, workspace:~, etc.)
             # to exact version from workspace package.json
@@ -1014,23 +1019,19 @@ class ManifestDetector:
         packages = []
         for line in content.split("\n"):
             line = line.strip()
-            # {:dep_name, "~> 1.0"}
-            m = re.match(r'\{\s*:(\w+)\s*,\s*["\']([^"\']+)["\']', line)
-            if m:
+            # {:dep_name, "~> 1.0"} — possibly inline in a list: [{:dep_name, "1.0"}]
+            for m in re.finditer(r'\{\s*:(\w+)\s*,\s*["\']([^"\']+)["\']', line):
                 packages.append({"name": m.group(1), "version": m.group(2)})
-                continue
             # {:dep_name, git: "url", tag: "1.0"} or {:dep_name, github: "u/r", tag: "1.0"}
-            m = re.match(r'\{\s*:(\w+)\s*,\s*(?:git|github):\s*["\'][^"\']+["\']', line)
-            if m:
+            for m in re.finditer(r'\{\s*:(\w+)\s*,\s*(?:git|github):\s*["\'][^"\']+["\']', line):
                 tag_m = re.search(r'tag:\s*["\']([^"\']+)["\']', line)
                 version = tag_m.group(1) if tag_m else "*"
                 packages.append({"name": m.group(1), "version": version})
                 continue
             # {:dep_name, path: "../local"} — no version, mark as "*"
-            m = re.match(r'\{\s*:(\w+)\s*,\s*path:\s*["\'][^"\']+["\']', line)
+            m = re.search(r'\{\s*:(\w+)\s*,\s*path:\s*["\'][^"\']+["\']', line)
             if m:
                 packages.append({"name": m.group(1), "version": "*"})
-                continue
         return packages
 
     def _parse_maven(self, content: str) -> list[dict]:
@@ -1357,6 +1358,16 @@ class ManifestDetector:
         inst_match = _match_bracketed(content, "install_requires")
         if inst_match:
             source_blocks.append(inst_match)
+        # 4a'. install_requires via a variable indirection, e.g. sanic:
+        #   requirements = [ ... ]; setup_kwargs["install_requires"] = requirements
+        elif var_ref := re.search(
+            r"(?:setup_kwargs\[\s*[\"']install_requires[\"']\s*\]|install_requires)\s*=\s*"
+            r"([A-Za-z_][A-Za-z0-9_]*)",
+            content,
+        ):
+            req_block = _match_bracketed(content, var_ref.group(1))
+            if req_block is not None:
+                source_blocks.append(req_block)
 
         # 4b. extras_require / extras = { ... } — match a balanced brace block so
         # `extras = {}` doesn't swallow the rest of the file.

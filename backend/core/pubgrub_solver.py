@@ -206,6 +206,14 @@ class PubGrubSolver:
         requirements: dict[str, str] = {}
         sanitized_to_original: dict[str, dict[str, list[str]]] = {}
 
+        # Pre-index available versions per package so PEP 440 wildcard
+        # constraints (e.g. torchvision -> pillow "!=8.3.*,>=5.3.0") can be
+        # expanded to explicit exclusions pubgrub-py can parse.
+        pkg_available_versions: dict[str, list[str]] = {
+            pkg["name"]: _cluster_versions(pkg.get("available_versions", []) or [])
+            for pkg in packages
+        }
+
         for pkg in packages:
             name = pkg["name"]
             eco = pkg.get("ecosystem", "pypi")
@@ -213,11 +221,14 @@ class PubGrubSolver:
             if not constraint or constraint == "*":
                 constraint = ">=0.0.0"
             norm_constraint = _normalize_constraint(constraint, eco)
+            norm_constraint = _expand_wildcard_exclusions(
+                norm_constraint, pkg_available_versions[name]
+            )
             requirements[name] = norm_constraint
 
             allow_prerelease = _constraint_allows_prerelease(norm_constraint)
             ver_python_reqs = pkg.get("version_requires_python", {})
-            versions = _cluster_versions(pkg.get("available_versions", []))
+            versions = pkg_available_versions[name]
             ver_map: dict[str, list[str]] = {}
             deps_map: dict[str, dict[str, str]] = {}
             for ver_str in versions:
@@ -248,7 +259,10 @@ class PubGrubSolver:
                 if ver_deps:
                     for dep_eco, dep_info in ver_deps.items():
                         for d_name, d_spec in dep_info.items():
-                            dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                            dep_specs[d_name] = _expand_wildcard_exclusions(
+                                _normalize_constraint(d_spec, dep_eco),
+                                pkg_available_versions.get(d_name, []),
+                            )
                 else:
                     all_deps = pkg.get("dependencies", {})
                     for dep_eco, dep_info in all_deps.items():
@@ -258,7 +272,10 @@ class PubGrubSolver:
                             and all(isinstance(v, str) for v in dep_info.values())
                         ):
                             for d_name, d_spec in dep_info.items():
-                                dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                                dep_specs[d_name] = _expand_wildcard_exclusions(
+                                    _normalize_constraint(d_spec, dep_eco),
+                                    pkg_available_versions.get(d_name, []),
+                                )
                             continue
                         dep_list = (
                             dep_info if isinstance(dep_info, list) else dep_info.get("all", [])
@@ -275,7 +292,10 @@ class PubGrubSolver:
                                     dep, "version", "*"
                                 )
                             if d_name:
-                                dep_specs[d_name] = _normalize_constraint(d_spec, dep_eco)
+                                dep_specs[d_name] = _expand_wildcard_exclusions(
+                                    _normalize_constraint(d_spec, dep_eco),
+                                    pkg_available_versions.get(d_name, []),
+                                )
                 deps_map.setdefault(name, {})[safe_ver] = dep_specs
                 sanitized_to_original[name] = ver_map
 
@@ -521,6 +541,16 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
     if c == "*":
         return ">=0.0.0"
 
+    # Non-registry specs carry no resolvable version constraint: git URLs,
+    # workspace:/catalog:/file:/link: aliases, "latest"/"next" dist-tags.
+    # Treating them as "*" keeps resolution alive instead of crashing
+    # pubgrub-py on an unparsable "version".
+    if not re.match(r"^[<>!=~^]?\d", c) and re.search(
+        r"(https?://|git\+|git@|github:|gitlab:|bitbucket:|workspace:|catalog:|file:|link:|\.tar\.gz|\.git[/#]|^latest$|^next$)",
+        c,
+    ):
+        return ">=0.0.0"
+
     # Split multi-part constraints early — handles comma, &&, ||,
     # and space-separated ranges (e.g. npm ">=2.1.2 <3.0.0").
     parts = _split_multi_constraint(c)
@@ -529,6 +559,54 @@ def _normalize_constraint(constraint: str, ecosystem: str) -> str:
         normalised = [p for p in normalised if p.strip()]
         return ",".join(normalised) if normalised else c
     return _normalize_single_constraint(c, ecosystem)
+
+
+_WILDCARD_SPEC_RE = re.compile(r"(?P<op>==|!=)\s*(?P<ver>\d+(?:\.\d+)*)\.[*xX]")
+"""PEP 440 wildcard specifier: ``!=8.3.*``, ``==1.2.*`` (also ``8.3.x``)."""
+
+
+def _expand_wildcard_exclusions(constraint: str, available_versions: list[str]) -> str:
+    """Expand PEP 440 wildcard specifiers into pubgrub-py-parsable form.
+
+    ``pubgrub-py`` rejects PEP 440 wildcards like ``!=8.3.*`` with
+    ``ValueError: Invalid version '8.3.*'`` even though ``packaging``
+    treats them as valid.  This rewrites each wildcard clause against the
+    versions the solver will actually be told about:
+
+    - ``!=8.3.*`` → ``!=8.3.0,!=8.3.1,...`` (explicit exclusions of every
+      matching available version; dropped entirely when nothing matches).
+    - ``==1.2.*`` → ``>=1.2.0,<1.3.0`` (range of the wildcard prefix).
+
+    Constraints without wildcards are returned unchanged.
+    """
+    if not constraint or ("*" not in constraint and "x" not in constraint.lower()):
+        return constraint
+
+    def _replace(match: re.Match) -> str:
+        op = match.group("op")
+        prefix = match.group("ver")
+        parts = prefix.split(".")
+        if op == "==":
+            # ==X.Y.* → >=X.Y.0,<X.Y.(Y+1).0 ;  ==X.* → >=X.0.0,<X+1.0.0
+            low = _to_semver(prefix)
+            if len(parts) >= 2:
+                high = f"{parts[0]}.{int(parts[1]) + 1}.0"
+            else:
+                high = f"{int(parts[0]) + 1}.0.0"
+            return f">={low},<{high}"
+        # !=X.Y.* → explicit exclusion list against known versions
+        excluded = sorted(
+            {
+                _sanitize_version(v)
+                for v in available_versions
+                if v == prefix or v.startswith(prefix + ".")
+            }
+        )
+        return ",".join(f"!={v}" for v in excluded) if excluded else ""
+
+    expanded = _WILDCARD_SPEC_RE.sub(_replace, constraint)
+    parts = [p for p in (c.strip() for c in expanded.split(",")) if p]
+    return ",".join(parts) if parts else ">=0.0.0"
 
 
 def _normalize_single_constraint(c: str, ecosystem: str) -> str:

@@ -218,7 +218,11 @@ class PyPIClient(BaseDataSourceClient):
             "author_email": info.get("author_email"),
             "maintainer": info.get("maintainer"),
             "maintainer_email": info.get("maintainer_email"),
-            "license": info.get("license"),
+            "license": (
+                info.get("license")
+                or info.get("license_expression")
+                or self._extract_license_from_classifiers(info.get("classifiers") or [])
+            ),
             "keywords": self._parse_keywords(info.get("keywords") or ""),
             "classifiers": info.get("classifiers") or [],
             "dependencies": dependencies,
@@ -679,6 +683,15 @@ class PyPIClient(BaseDataSourceClient):
         for classifier in classifiers:
             if classifier.startswith("Development Status ::"):
                 return classifier.split("::")[1].strip()
+        return None
+
+    def _extract_license_from_classifiers(self, classifiers: list[str]) -> str | None:
+        """Derive SPDX license from classifier list (e.g. 'License :: OSI Approved :: MIT License')."""
+        for classifier in classifiers:
+            if classifier.startswith("License ::"):
+                parts = [p.strip() for p in classifier.split("::")]
+                if len(parts) >= 3:
+                    return parts[-1]
         return None
 
     def _extract_download_stats(self, info: dict[str, Any]) -> dict[str, Any]:

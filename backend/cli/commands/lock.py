@@ -420,6 +420,16 @@ def _detect_and_parse_manifests(detector, args: argparse.Namespace):
         err_console.print("[red]No packages found in manifests[/red]")
         return [], []
 
+    # Optional dependency groups (pyproject optional-dependencies, setup.py
+    # extras, npm optionalDependencies, ...) are excluded by default so
+    # out-of-the-box parses match pip's base-install semantics.  Opt in with
+    # --with-dev; force exclusion with --without-optional.
+    include_optional = bool(args.with_dev) if args.with_dev is not None else False
+    if getattr(args, "without_optional", False):
+        include_optional = False
+    if not include_optional:
+        packages = [pkg for pkg in packages if not pkg.get("optional")]
+
     # Sort: go.mod entries before go.sum entries so API-call deps take priority
     packages.sort(key=lambda p: (p.get("source", "") == "go.sum", p.get("name", "")))
 
@@ -698,11 +708,11 @@ def _build_lock_data(
     for pkg_name, rp in resolved_pkgs.items():
         manifest_info = manifest_pkg_info.get(pkg_name, {})
         is_direct = pkg_name in manifest_pkg_info
-        pkg_detail = package_details.get(pkg_name, {})
-        vulns = pkg_detail.get("security", {}).get("vulnerabilities", [])
-        dep_info = pkg_detail.get("_version_metadata", {}).get(rp.get("version", ""), {})
         eco = rp.get("ecosystem", "?")
         ver = rp.get("version", "")
+        pkg_detail = package_details.get(pkg_name) or package_details.get(f"{pkg_name}@{eco}", {})
+        vulns = pkg_detail.get("security", {}).get("vulnerabilities", [])
+        dep_info = pkg_detail.get("_version_metadata", {}).get(rp.get("version", ""), {})
         integrity_val = _extract_integrity(pkg_detail, ver, eco)
         lock_data["packages"][pkg_name] = {
             "name": pkg_name,
@@ -1156,6 +1166,8 @@ def cmd_lock(args: argparse.Namespace):
             sat_pkgs = resolved.get("resolved_packages", {})
             res_status = resolved.get("status", "satisfiable")
             res_error = resolved.get("resolution_error", "")
+            for fname, finfo in resolved.get("package_details", {}).items():
+                package_details.setdefault(fname, {}).update(finfo)
             if res_status == "unsatisfiable":
                 err_console.print(
                     "[red]Resolution failed: the dependency graph is unsatisfiable[/red]"
