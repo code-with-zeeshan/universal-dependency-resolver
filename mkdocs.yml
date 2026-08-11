@@ -103,5 +103,6 @@ nav:
   - Roadmap:
     - Project Roadmap: ROADMAP.md
     - SDK Roadmap: SDK_ROADMAP.md
+    - Golden Regression Matrix: GOLDEN_MATRIX.md
 
 copyright: Copyright &copy; 2026 Mohammad Zeeshan
