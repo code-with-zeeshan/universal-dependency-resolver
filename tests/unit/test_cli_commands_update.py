@@ -71,3 +71,37 @@ class TestExtractFixedVersion:
             ]
         }
         assert _extract_fixed_version(vuln) == "1.1.0"
+
+
+class TestUpdateAllGuard:
+    def test_all_conflicts_with_package_exits_1(self):
+        from unittest.mock import MagicMock, patch
+
+        args = MagicMock()
+        args.fix_cve = False
+        args.all = True
+        args.package = "flask"
+        with pytest.raises(SystemExit) as excinfo:
+            with patch("backend.cli.commands.update.asyncio.run") as mock_run:
+                from backend.cli.commands.update import cmd_update
+
+                cmd_update(args)
+        assert excinfo.value.code == 1
+        mock_run.assert_not_called()
+
+    def test_all_dispatches_update_all(self):
+        from unittest.mock import MagicMock, patch
+
+        args = MagicMock()
+        args.fix_cve = False
+        args.all = True
+        args.package = None
+        with patch("backend.cli.commands.update._update_all", return_value=MagicMock()) as mock_all:
+            mock_all.return_value = 0
+            with patch("backend.cli.commands.update.asyncio.run", return_value=0) as mock_run:
+                with pytest.raises(SystemExit) as excinfo:
+                    from backend.cli.commands.update import cmd_update
+
+                    cmd_update(args)
+        assert excinfo.value.code == 0
+        mock_run.assert_called_once()

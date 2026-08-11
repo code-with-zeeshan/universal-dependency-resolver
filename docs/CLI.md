@@ -406,6 +406,19 @@ udr index sync -e pypi                      # sync single ecosystem
 | `-e, --ecosystem` | `None` | Ecosystem to sync |
 | `-a, --all` | `False` | Sync all supported ecosystems |
 
+### Hosting your own pre-built index
+
+`index pull` downloads `{url}/index.json` (manifest) plus `{url}/{ecosystem}.db` files. Both are produced by `udr index build`, so hosting is a two-step workflow:
+
+1. **Build**: `udr index build -d /path/to/project` writes `~/.cache/udr/indexes/{ecosystem}.db` plus an `index.json` manifest (`{"ecosystems": [...]}`).
+2. **Serve**: copy the `.db` files + `index.json` to any static host (nginx, S3, GitHub Pages, `python3 -m http.server`). The manifest format is:
+
+```json
+{"ecosystems": ["pypi", "npm", "crates"], "format": "udr-sqlite-index", "version": 1}
+```
+
+Consumers then run `udr index pull https://your-host/indexes` (all ecosystems listed in the manifest) or `udr index pull https://your-host/indexes -e pypi` (single ecosystem). The `format`/`version` fields are metadata for the manifest; the puller only uses the `ecosystems` list.
+
 **Exit codes:** 0 on success, 1 on failure.
 
 ---

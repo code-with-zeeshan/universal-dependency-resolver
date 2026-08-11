@@ -44,6 +44,11 @@ def cmd_update(args: argparse.Namespace):
     """Cmd update."""
     if args.fix_cve:
         sys.exit(asyncio.run(_fix_cve(args)))
+    if getattr(args, "all", False) and args.package:
+        console.print("[red]Cannot combine --all with a specific package name[/red]")
+        sys.exit(1)
+    if getattr(args, "all", False):
+        sys.exit(asyncio.run(_update_all(args)))
 
     async def _update():
         """Update."""
@@ -65,7 +70,7 @@ def cmd_update(args: argparse.Namespace):
         package_name = args.package
         if not package_name:
             console.print(
-                "[red]No package specified. Use --fix-cve to auto-fix vulnerable packages, or provide a package name.[/red]"
+                "[red]No package specified. Use --all to bulk-update, --fix-cve to auto-fix vulnerable packages, or provide a package name.[/red]"
             )
             await aggregator.close()
             return 1
@@ -234,6 +239,204 @@ def cmd_update(args: argparse.Namespace):
     except Exception as e:
         console.print(Panel(f"[red]{e}[/red]", title="Update Error"))
         sys.exit(1)
+
+
+async def _update_all(args: argparse.Namespace):
+    """Bulk-update every direct package to the newest version within its constraints."""
+    from backend.core import DataAggregator, SystemScanner
+    from backend.core.conflict_resolver import ConflictResolver
+    from backend.orchestrator.resolve import create_solver
+
+    directory = Path(args.directory).resolve()
+    lock_path = _resolve_lock_path(
+        directory,
+        workspace=args.workspace,
+        lock_file=args.lock_file,
+    ).resolve()
+    lock_data = _read_lock_file(lock_path)
+    aggregator = DataAggregator()
+    resolver = create_solver()
+    scanner = SystemScanner()
+
+    packages = lock_data.get("packages", {})
+    if not packages:
+        console.print("[yellow]Lock file has no packages to check.[/yellow]")
+        await aggregator.close()
+        return 0
+
+    target_packages = {name: info for name, info in packages.items() if info.get("direct", False)}
+    if not target_packages:
+        target_packages = packages
+    console.print(
+        f"[dim]Updating {len(target_packages)} package(s) to newest versions within constraints...[/dim]"
+    )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("Scanning system..."),
+        transient=True,
+        console=err_console,
+    ) as p:
+        p.add_task("system", total=None)
+        system_info = await scanner.scan_all()
+
+    if args.cuda is not None:
+        if "gpu" not in system_info:
+            system_info["gpu"] = {}
+        system_info["gpu"]["available"] = True
+        system_info["gpu"]["cuda"] = args.cuda
+    if args.device is not None:
+        if args.device == "cpu":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = False
+            system_info["gpu"]["cuda"] = ""
+        elif args.device == "mps":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "mps"
+            system_info["gpu"]["cuda"] = ""
+            system_info["gpu"]["metal"] = "3.0"
+        elif args.device == "rocm":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "rocm"
+            system_info["gpu"]["cuda"] = ""
+            system_info["gpu"]["rocm"] = "6.0.0"
+        elif args.device == "cuda":
+            if "gpu" not in system_info:
+                system_info["gpu"] = {"available": True, "type": "cuda"}
+            system_info["gpu"]["available"] = True
+            system_info["gpu"]["type"] = "cuda"
+    target_info = _build_target_system_info(args, system_info)
+    if target_info:
+        system_info["target"] = target_info
+
+    specs: list[tuple[str, str, str | None]] = []
+    constraint_map: dict[str, str] = {}
+    for name, info in target_packages.items():
+        eco = info.get("ecosystem", "pypi")
+        constraint = info.get("original_constraint") or f">={info.get('resolved_version', '0.0.0')}"
+        specs.append((name, eco, constraint))
+        constraint_map[name] = constraint
+
+    include_optional = bool(args.with_dev) if args.with_dev is not None else False
+    resolver_inputs, package_details = await _fetch_package_data_async(
+        aggregator, specs, include_optional=include_optional
+    )
+
+    if not resolver_inputs:
+        console.print("[red]Could not fetch metadata for packages[/red]")
+        await aggregator.close()
+        return 1
+
+    err_console.print("[dim]Running SAT resolution...[/dim]")
+    resolved = await _run_resolution(
+        aggregator,
+        resolver,
+        resolver_inputs,
+        system_info,
+        package_details,
+        interactive=args.interactive,
+        lock_data=lock_data,
+        timeout=args.timeout or SOLVER_TIMEOUT,
+        include_optional=include_optional,
+        incremental=False,
+    )
+
+    rp = resolved.get("resolved_packages", {})
+    if not rp:
+        console.print("[red]Resolution failed — could not resolve updates[/red]")
+        await aggregator.close()
+        return 1
+
+    table = Table(title="Bulk Update Results", box=box.ROUNDED)
+    table.add_column("Package", style="cyan")
+    table.add_column("Ecosystem")
+    table.add_column("Old Version")
+    table.add_column("New Version", style="bold green")
+    table.add_column("Status")
+
+    updated_count = 0
+    unchanged_count = 0
+    failed_count = 0
+    all_new_transitive: dict[str, dict] = {}
+
+    for name in sorted(target_packages):
+        info = target_packages[name]
+        eco = info.get("ecosystem", "pypi")
+        old_ver = info.get("resolved_version", "")
+        new_version = rp.get(name, {}).get("version")
+        if not new_version:
+            table.add_row(name, eco, old_ver, "", "[red]failed[/red]")
+            failed_count += 1
+            continue
+
+        if new_version == old_ver:
+            table.add_row(name, eco, old_ver, new_version, "[yellow]unchanged[/yellow]")
+            unchanged_count += 1
+            continue
+
+        lock_data["packages"][name]["resolved_version"] = new_version
+        lock_data["packages"][name]["original_constraint"] = constraint_map[name]
+        lock_data["packages"][name]["cuda_variant"] = rp.get(name, {}).get("cuda_variant", False)
+        lock_data["packages"][name]["cuda_version"] = rp.get(name, {}).get("cuda_version")
+        for rinput in resolver_inputs:
+            if rinput["name"] == name:
+                lock_data["packages"][name]["resolution_hash"] = (
+                    ConflictResolver.compute_resolution_hash(
+                        rinput["name"],
+                        rinput["ecosystem"],
+                        rinput.get("version_constraint", "*"),
+                        rinput.get("dependencies", {}),
+                        system_info,
+                    )
+                )
+        table.add_row(name, eco, old_ver, new_version, "[green]updated[/green]")
+        updated_count += 1
+
+        for pname, pinfo in rp.items():
+            if pname == name:
+                continue
+            if pname not in all_new_transitive:
+                all_new_transitive[pname] = pinfo
+
+    for pname, pinfo in all_new_transitive.items():
+        if pname not in lock_data["packages"]:
+            lock_data["packages"][pname] = {
+                "name": pname,
+                "ecosystem": pinfo.get("ecosystem", "pypi"),
+                "direct": False,
+            }
+        lock_data["packages"][pname]["resolved_version"] = pinfo.get("version")
+        lock_data["packages"][pname]["cuda_variant"] = pinfo.get("cuda_variant", False)
+        lock_data["packages"][pname]["cuda_version"] = pinfo.get("cuda_version")
+
+    lock_data["generated_at"] = datetime.now().isoformat()
+
+    if args.dry_run:
+        console.print("[yellow]── dry run — lock file not modified ──[/yellow]")
+    else:
+        lock_path.write_text(json.dumps(lock_data, indent=2, default=str))
+
+    if updated_count or failed_count:
+        console.print(table)
+    parts = []
+    if updated_count:
+        parts.append(f"[green]{updated_count} updated[/green]")
+    if unchanged_count:
+        parts.append(f"[yellow]{unchanged_count} unchanged[/yellow]")
+    if failed_count:
+        parts.append(f"[red]{failed_count} failed[/red]")
+    console.print(" — ".join(parts))
+
+    if not args.dry_run and updated_count > 0:
+        console.print(f"\n[green]Updated lock file:[/green] {lock_path}")
+
+    await aggregator.close()
+    return 0 if failed_count == 0 else 1
 
 
 async def _fix_cve(args: argparse.Namespace):

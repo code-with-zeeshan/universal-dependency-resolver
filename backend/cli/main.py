@@ -405,19 +405,32 @@ def _build_parser() -> argparse.ArgumentParser:
 
     graph_p = sub.add_parser(
         "graph",
-        help="Show dependency tree for one or more packages",
+        help="Show dependency tree for one or more packages (or from a lock file)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   udr graph              # dependency graph for all packages
   udr graph --json       # JSON output
   udr graph --ecosystem pypi
+  udr graph --from-lock  # nested trees from existing udr.lock (no network)
 """,
     )
     graph_p.add_argument(
         "packages",
-        nargs="+",
+        nargs="*",
         help="Package names (use pkg@ecosystem syntax)",
     )
+    graph_p.add_argument(
+        "--from-lock",
+        action="store_true",
+        help="Build nested dependency trees from an existing lock file (no network)",
+    )
+    graph_p.add_argument("-d", "--directory", default=".", help="Project directory with lock file")
+    graph_p.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace name — lock file becomes udr-{workspace}.lock",
+    )
+    graph_p.add_argument("-l", "--lock-file", default=None, help="Explicit lock file path")
     graph_p.add_argument(
         "--ecosystem",
         "-e",
@@ -484,6 +497,7 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   udr update requests      # update a single package
+  udr update --all         # bulk-update every direct package
   udr update --fix-cve     # fix all vulnerable packages
   udr update --dry-run     # preview changes
 """,
@@ -492,7 +506,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "package",
         nargs="?",
         default=None,
-        help="Package name to re-resolve (optional with --fix-cve)",
+        help="Package name to re-resolve (optional with --all/--fix-cve)",
+    )
+    update_p.add_argument(
+        "--all",
+        action="store_true",
+        help="Bulk-update every direct package to the newest version within its constraints",
     )
     update_p.add_argument("--directory", "-d", default=".", help="Project directory with lock file")
     update_p.add_argument(

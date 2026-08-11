@@ -57,7 +57,7 @@ _BASH_COMPLETION = """_{prog}_completion() {{
             COMPREPLY=( $(compgen -W "${{check_flags}}" -- "${{cur}}") )
             ;;
         update)
-            local update_flags="--directory --workspace --lock-file --interactive --dry-run --cuda --device --target --platform --fix-cve --with-dev --without-optional"
+            local update_flags="--all --directory --workspace --lock-file --interactive --dry-run --cuda --device --target --platform --fix-cve --with-dev --without-optional"
             COMPREPLY=( $(compgen -W "${{update_flags}}" -- "${{cur}}") )
             ;;
         verify)
@@ -248,6 +248,7 @@ _{prog}() {{
                     ;;
                 update)
                     _arguments \\
+                        "--all[Bulk-update every direct package]" \\
                         "--directory=[Project directory]" \\
                         "--workspace=[Workspace name]" \\
                         "--lock-file=[Explicit lock file path]" \\
@@ -430,6 +431,7 @@ _FISH_COMPLETION = """function _{prog}_completion
     complete -c {prog} -n "__fish_seen_subcommand_from update" -l target -xa 'linux windows darwin'
     complete -c {prog} -n "__fish_seen_subcommand_from update" -l platform -xa 'x86_64 aarch64 arm64 i386 amd64'
     complete -c {prog} -n "__fish_seen_subcommand_from update" -l fix-cve -d 'Fix vulnerable packages'
+    complete -c {prog} -n "__fish_seen_subcommand_from update" -l all -d 'Bulk-update every direct package'
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l directory -d 'Project directory'
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l workspace -d 'Workspace name'
     complete -c {prog} -n "__fish_seen_subcommand_from sbom" -l lock-file -d 'Explicit lock file path'

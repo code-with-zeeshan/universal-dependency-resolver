@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from rich.tree import Tree
 
 
@@ -130,16 +131,55 @@ class TestBuildRecursiveTree:
 
 class TestCmdGraph:
     def test_no_packages_shows_message(self):
+        import tempfile
+        from pathlib import Path
+
         args = MagicMock()
         args.packages = []
         args.ecosystem = None
         args.json = False
         args.cuda = None
         args.device = None
+        args.from_lock = False
+        args.workspace = None
+        args.lock_file = None
 
-        with patch("backend.cli.commands.graph.console.print") as mock_print:
-            from backend.cli.commands.graph import cmd_graph
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args.directory = tmpdir
 
-            cmd_graph(args)
+            with patch("backend.cli.commands.graph.console.print") as mock_print:
+                from backend.cli.commands.graph import cmd_graph
 
-            mock_print.assert_any_call("[red]No packages could be resolved[/red]")
+                with pytest.raises(SystemExit) as exc:
+                    cmd_graph(args)
+
+                assert exc.value.code == 1
+                mock_print.assert_any_call("[red]No lock file found at udr.lock[/red]")
+
+    def test_from_lock_empty_lock_no_packages(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        args = MagicMock()
+        args.packages = []
+        args.ecosystem = None
+        args.json = True
+        args.cuda = None
+        args.device = None
+        args.from_lock = True
+        args.workspace = None
+        args.lock_file = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args.directory = tmpdir
+            Path(tmpdir, "udr.lock").write_text(json.dumps({"packages": {}}))
+
+            with patch("backend.cli.commands.graph.console.print") as mock_print:
+                from backend.cli.commands.graph import cmd_graph
+
+                with pytest.raises(SystemExit) as exc:
+                    cmd_graph(args)
+
+                assert exc.value.code == 1
+                mock_print.assert_any_call("[yellow]Lock file has no packages.[/yellow]")

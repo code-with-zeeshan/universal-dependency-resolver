@@ -34,6 +34,25 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _write_index_manifest() -> list[str]:
+    """Write index.json manifest listing available indexes (for hosting)."""
+    from backend.core.offline_index import INDEX_DIR, list_indexes
+
+    try:
+        ecosystems = sorted(list_indexes())
+        manifest = {
+            "ecosystems": ecosystems,
+            "format": "udr-sqlite-index",
+            "version": 1,
+        }
+        INDEX_DIR.mkdir(parents=True, exist_ok=True)
+        (INDEX_DIR / "index.json").write_text(json.dumps(manifest, indent=2))
+        return ecosystems
+    except Exception as e:
+        logger.warning("Failed to write index manifest: %s", e, exc_info=True)
+        return []
+
+
 async def _pull_index_async(url: str, ecosystem: str | None = None) -> int:
     """Download a pre-built SQLite index from *url*."""
     import aiohttp
@@ -211,9 +230,14 @@ async def _build_from_lock_async(args: argparse.Namespace) -> int:
 
     await aggregator.close()
 
+    ecosystems = _write_index_manifest()
     console.print(
         f"\n[green]Done:[/green] {inserted} packages indexed, [dim]{errors} fetch errors[/dim]"
     )
+    if ecosystems:
+        console.print(
+            f"  Manifest written: ~/.cache/udr/indexes/index.json ({len(ecosystems)} ecosystem(s))"
+        )
     return 0
 
 
@@ -258,6 +282,11 @@ async def _build_from_names_async(args: argparse.Namespace) -> int:
     console.print(
         f"\n[green]Done:[/green] {inserted} packages indexed, [dim]{errors} fetch errors[/dim]"
     )
+    ecosystems = _write_index_manifest()
+    if ecosystems:
+        console.print(
+            f"  Manifest written: ~/.cache/udr/indexes/index.json ({len(ecosystems)} ecosystem(s))"
+        )
     return 0
 
 

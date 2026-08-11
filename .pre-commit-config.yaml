@@ -9,6 +9,7 @@ repos:
         args: [--unsafe]
       - id: check-added-large-files
         args: [--maxkb=500]
+        exclude: ^tests/e2e/golden/
       - id: check-json
       - id: check-toml
       - id: detect-private-key

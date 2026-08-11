@@ -104,7 +104,16 @@ async def _cmd_outdated_async(args: argparse.Namespace) -> int:
     outdated_list.sort(key=lambda x: x["name"])
 
     if args.json:
-        json.dump(outdated_list, sys.stdout, indent=2, default=str)
+        json.dump(
+            {
+                "status": "success",
+                "outdated_count": len(outdated_list),
+                "packages": outdated_list,
+            },
+            sys.stdout,
+            indent=2,
+            default=str,
+        )
         print()
         return 0 if not outdated_list else 1
 

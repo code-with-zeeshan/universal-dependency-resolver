@@ -1,0 +1,49 @@
+{
+  "repo": "superset",
+  "manifests": [
+    "requirements.in"
+  ],
+  "guards": [
+    "renamed from requirements/base.in to match MANIFEST_PATTERNS"
+  ],
+  "expected": {
+    "status": "satisfiable",
+    "install_requires": [],
+    "resolved_packages": [
+      "MarkupSafe",
+      "SQLAlchemy",
+      "apispec",
+      "async-timeout",
+      "brotli",
+      "certifi",
+      "cffi",
+      "charset_normalizer",
+      "cryptography",
+      "filelock",
+      "google-auth",
+      "idna",
+      "jsonschema",
+      "jsonschema-specifications",
+      "mako",
+      "markupsafe",
+      "marshmallow",
+      "marshmallow-sqlalchemy",
+      "numexpr",
+      "numpy",
+      "openapi-schema-validator",
+      "packaging",
+      "pyarrow",
+      "pyasn1-modules",
+      "pydantic",
+      "pydantic-settings",
+      "pyopenssl",
+      "referencing",
+      "requests",
+      "rfc3339-validator",
+      "setuptools",
+      "urllib3",
+      "werkzeug"
+    ]
+  },
+  "anchors": {}
+}

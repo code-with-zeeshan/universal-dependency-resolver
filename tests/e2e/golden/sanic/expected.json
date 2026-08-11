@@ -1,0 +1,36 @@
+{
+  "repo": "sanic",
+  "manifests": [
+    "setup.py"
+  ],
+  "guards": [
+    "sanic setup.py declares install_requires via setup_kwargs indirection \u2014 parser handles it"
+  ],
+  "expected": {
+    "status": "satisfiable",
+    "install_requires": [],
+    "resolved_packages": [
+      "aiofiles",
+      "aioquic",
+      "certifi",
+      "cryptography",
+      "ext",
+      "html5tagger",
+      "http3",
+      "httptools",
+      "multidict",
+      "pylsqpack",
+      "pyopenssl",
+      "pyyaml",
+      "sanic",
+      "sanic-ext",
+      "sanic-routing",
+      "service-identity",
+      "setuptools",
+      "tracerite",
+      "typing-extensions",
+      "websockets"
+    ]
+  },
+  "anchors": {}
+}

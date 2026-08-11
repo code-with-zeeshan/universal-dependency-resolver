@@ -1,0 +1,29 @@
+{
+  "repo": "flask-example",
+  "manifests": ["requirements.txt"],
+  "guards": [
+    "baseline PyPI-only repo (flask + requests graph) — guards generic manifest parsing, BFS transitive closure and basic satisfiability"
+  ],
+  "expected": {
+    "status": "satisfiable",
+    "install_requires": [
+      "flask",
+      "requests"
+    ],
+    "resolved_packages": [
+      "blinker",
+      "certifi",
+      "charset_normalizer",
+      "click",
+      "flask",
+      "idna",
+      "itsdangerous",
+      "jinja2",
+      "markupsafe",
+      "requests",
+      "urllib3",
+      "werkzeug"
+    ]
+  },
+  "anchors": {}
+}

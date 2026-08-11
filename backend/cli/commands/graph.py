@@ -12,10 +12,115 @@ from rich.tree import Tree
 from ..shared import (
     _fetch_package_data_async,
     _parse_package_spec,
+    _resolve_lock_path,
     _resolve_transitive,
     console,
     err_console,
 )
+
+
+def _build_tree_from_lock(
+    name: str,
+    info: dict,
+    lock_pkgs: dict,
+    max_depth: int = 10,
+    _depth: int = 0,
+) -> dict:
+    """Build nested tree from lock file data (depends_on edges)."""
+    eco = info.get("ecosystem", "?")
+    ver = info.get("resolved_version", "?")
+    children: list[dict] = []
+    if _depth < max_depth:
+        deps = info.get("depends_on", {})
+        if isinstance(deps, dict):
+            for dep_name, dep_val in deps.items():
+                dep_entry = lock_pkgs.get(dep_name)
+                if dep_entry:
+                    children.append(
+                        _build_tree_from_lock(dep_name, dep_entry, lock_pkgs, max_depth, _depth + 1)
+                    )
+                else:
+                    if isinstance(dep_val, dict):
+                        dep_ver = dep_val.get("constraint") or "?"
+                        dep_eco = dep_val.get("ecosystem") or eco
+                    else:
+                        dep_ver = dep_val if isinstance(dep_val, str) else "?"
+                        dep_eco = eco
+                    children.append(
+                        {
+                            "name": dep_name,
+                            "version": dep_ver,
+                            "ecosystem": dep_eco,
+                            "children": [],
+                        }
+                    )
+    return {"name": name, "version": ver, "ecosystem": eco, "children": children}
+
+
+def _graph_from_lock(args: argparse.Namespace) -> int:
+    """Render nested dependency trees from an existing lock file (no network)."""
+    import json
+
+    lock_path = _resolve_lock_path(
+        Path(args.directory).resolve(),
+        workspace=args.workspace,
+        lock_file=args.lock_file,
+    )
+    if not lock_path.is_file():
+        console.print(f"[red]No lock file found at {lock_path.name}[/red]")
+        console.print("Run [bold]udr lock[/bold] first to generate one.")
+        return 1
+
+    try:
+        lock_data = json.loads(lock_path.read_text())
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid lock file {lock_path}:[/red] {e}")
+        return 1
+
+    lock_pkgs = lock_data.get("packages", {})
+    if not isinstance(lock_pkgs, dict) or not lock_pkgs:
+        console.print("[yellow]Lock file has no packages.[/yellow]")
+        return 1
+
+    roots = [n for n, i in lock_pkgs.items() if i.get("direct")]
+    if not roots:
+        roots = sorted(lock_pkgs.keys())
+
+    trees = [_build_tree_from_lock(name, lock_pkgs[name], lock_pkgs) for name in sorted(roots)]
+
+    if args.json:
+        json.dump(
+            {"status": "success", "source": str(lock_path), "trees": trees},
+            sys.stdout,
+            indent=2,
+            default=str,
+        )
+        print()
+        return 0
+
+    tree = Tree("[bold]Dependency Tree (from lock file)[/bold]")
+    for root in trees:
+        sub = Tree(
+            f"[cyan]{root['name']}[/cyan] [yellow]{root['version']}[/yellow] ({root['ecosystem']})"
+        )
+
+        def _populate(node: Tree, data: dict) -> None:
+            for child in data.get("children", []):
+                label = (
+                    f"[cyan]{child['name']}[/cyan] "
+                    f"[yellow]{child['version']}[/yellow] ({child['ecosystem']})"
+                )
+                if child.get("children"):
+                    subnode = Tree(label)
+                    _populate(subnode, child)
+                    node.add(subnode)
+                else:
+                    node.add(label)
+
+        _populate(sub, root)
+        tree.add(sub)
+    console.print(tree)
+    return 0
 
 
 def _build_recursive_tree(
@@ -58,6 +163,9 @@ def _build_recursive_tree(
 
 def cmd_graph(args: argparse.Namespace):
     """Cmd graph."""
+    if getattr(args, "from_lock", False) or not args.packages:
+        sys.exit(_graph_from_lock(args))
+
     from backend.core import DataAggregator
     from backend.orchestrator.resolve import create_solver
 
