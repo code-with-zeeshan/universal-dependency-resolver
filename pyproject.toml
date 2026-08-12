@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ud-resolver"
-version = "1.4.1"
+version = "1.4.2"
 # Versioning: Minor bump for new features, patch for bugfixes.
 # The 1.x line is stabilizing; expect fewer but larger releases going forward.
 description = "Cross-ecosystem dependency resolver — PyPI, npm, Cargo, Conda, Maven, Go, and more"

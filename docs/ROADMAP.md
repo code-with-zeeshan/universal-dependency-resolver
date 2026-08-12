@@ -271,7 +271,8 @@ These items were evaluated and deliberately skipped because the effort does not 
 |---------|-------|--------|--------|
 | v1.3 | Core resolution, 25 ecosystems, CLI+API, desktop app | ✅ Released | Q3 2026 |
 | v1.4 | AutoSolver, cross-solver validation, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | ✅ Released | 2026-07-23 |
-| v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output, CUDA-index-aware resolution for PyPI `torch`, `setup.py`/`setup.cfg` parser, npm underscore mangling fix, e2e + Windows CI fixes, undici security bump | 🔜 Ready to release (source version 1.4.1, not yet tagged) | — |
+| v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output, CUDA-index-aware resolution for PyPI `torch`, `setup.py`/`setup.cfg` parser, npm underscore mangling fix, e2e + Windows CI fixes, undici security bump | ✅ Released | 2026-08-06 |
+| v1.4.2 | `versions`/`dependencies` CLI commands, check exit codes, combinable checks, API pinning (`block`/`pin`/`pin_mode`), `graph --from-lock`, `update --all`, `index build` hosting manifest, optional-dep groups excluded by default, AutoSolver crash isolation, PEP 440 wildcard exclusions, golden regression matrix, `/scan/local` manifest-content mode, docs refresh | 🚀 Released | 2026-08-12 |
 | v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
 | v2.0 | Source repo URL + commit hash enrichment, desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 

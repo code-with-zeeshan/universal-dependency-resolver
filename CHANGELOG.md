@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.2] - 2026-08-12
 
 ### Added
 
@@ -20,8 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PEP 440 wildcard exclusion expansion in PubGrub** (`backend/core/pubgrub_solver.py`, `backend/manifest_detector.py`): wildcard specifiers like `!=8.3.*` / `==1.2.x` are expanded to explicit version lists from the available versions, and non-registry specs (git URLs, `workspace:`/`file:`/`link:` aliases, `latest`/`next` dist-tags) are treated as `>=0.0.0` instead of crashing pubgrub-py.
 - **Golden regression matrix** (`tests/e2e/golden/`, `tests/e2e/test_golden_matrix.py`, `tests/unit/test_auto_solver.py`, `docs/GOLDEN_MATRIX.md`): frozen real-repo fixtures (flask-example, gpu-diffusers, browserless-chrome, n8n, cilium, superset, localstack, sanic) with expected resolutions — every resolver fix must pass all fixtures, so progress is monotonic. New `golden-tests` CI job (`.github/workflows/ci.yml`) runs the matrix e2e suite; the fixtures are excluded from the `check-added-large-files` pre-commit hook (`.pre-commit-config.yaml`) since `n8n/pnpm-lock.yaml` exceeds 500 KB.
 
+- **`/api/v1/scan/local` manifest-content mode** (`backend/api/routes/scan.py`): the endpoint now accepts `manifest_contents` (`{filename: content}`, same shape as `/generate-lock`) alongside `directory_path` (rejects both-or-neither), so projects can be scanned without server filesystem access. Previously it was the only scan endpoint without a content mode.
+
 ### Fixed
 
+- **`golden-tests` CI job had never passed** (`.github/workflows/ci.yml`, `tests/e2e/test_golden_matrix.py`): (a) the global `pytest.ini` `timeout=120` killed `test_repo_golden[cilium]` before its 600s subprocess limit — fixed with `@pytest.mark.timeout(900)` on `test_repo_golden`; (b) superset graph drift `unexpected: ['typing-extensions']` — fixtures were frozen under Python 3.13 but the job ran 3.12 (marker evaluation adds `typing-extensions` for py<3.13); the job now runs 3.13 and the interpreter binding is documented in `docs/GOLDEN_MATRIX.md`; (c) the registry cache key used `github.run_id`, which can never hit its own key, so every run silently restored the previous run's stale snapshot — now keyed on `hashFiles('tests/e2e/golden/**', 'pyproject.toml')`.
+- **SBOM e2e tests could not detect empty output** (`tests/e2e/test_api_all_ecosystems.py`): only asserted `isinstance(dict)`; now assert CycloneDX `components` and SPDX `packages` counts equal the input lock's package count (the July-lauded 0-package CycloneDX bug was already fixed by the `backend/core/sbom.py` unification, but was unguarded).
 - **`udr lock --block` did not block transitive dependencies** (`backend/orchestrator/resolve.py`, `backend/cli/shared.py`): `--block`/`PinningPolicy.blocked` only filtered root package inputs, so blocked packages pulled in transitively (e.g. `--block jinja2` with flask) still resolved. Blocked package names are now excluded at every BFS discovery point (root deps, transitive deps, pre-resolved path) and filtered from `resolved_packages`/`dependency_tree` output. Verified: `flask` lock with `--block jinja2 --block markupsafe` → 10 packages, both absent.
 - **`udr check` exit codes discarded — always exited 0** (`backend/cli/commands/check.py`, `backend/cli/_display.py`): `cmd_check` ran the check coroutine but never used its boolean result, so denied licenses, yanked packages, and error-severity policy violations all exited 0 (breaking CI use). `ok` is now honored in all modes; `_output_json` gained an `ok` parameter controlling exit code. CVE findings remain informational (exit 0). JSON mode now reports violations with exit 1.
 - **`udr check` check flags are now combinable** (`backend/cli/commands/check.py`): previously `--cve --license --deprecated` only ran the first matching flag (cve). Multiple checks now run together, their verdicts AND-ed into the exit code, and in `--json` mode each check's payload is grouped under its name (`{"ok": true, "cve": {...}, "license": {...}}`).
