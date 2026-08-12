@@ -38,7 +38,8 @@ class GitHubScanRequest(BaseModel):
 class LocalScanRequest(BaseModel):
     """Local Scan Request functionality."""
 
-    directory_path: str
+    directory_path: str | None = None
+    manifest_contents: dict[str, str] | None = None
 
 
 from backend.orchestrator import _download_github_repo, create_solver
@@ -256,7 +257,35 @@ async def scan_local(
     ),
     current_user=Depends(get_current_user),
 ):
-    """Scan a local directory path (only works when backend runs on same machine)."""
+    """Scan a local project: either a server-side directory (`directory_path`)
+    or in-memory `manifest_contents` (same shape as /generate-lock)."""
+    if req.manifest_contents:
+        if req.directory_path:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide either 'manifest_contents' or 'directory_path', not both",
+            )
+        tmp = Path(tempfile.mkdtemp(prefix="udr_scan_local_"))
+        try:
+            for filename, content in req.manifest_contents.items():
+                fp = (tmp / filename).resolve()
+                if not str(fp).startswith(str(tmp.resolve())):
+                    raise HTTPException(status_code=400, detail="Illegal manifest path")
+                fp.parent.mkdir(parents=True, exist_ok=True)
+                fp.write_text(content)
+            result = await _run_resolution_pipeline(tmp, export_format=export)
+            result["source"] = "local"
+            result["manifest_contents"] = True
+            return result
+        finally:
+            import shutil
+
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    if not req.directory_path:
+        raise HTTPException(
+            status_code=400, detail="Provide either 'manifest_contents' or 'directory_path'"
+        )
     project_dir = Path(req.directory_path).resolve()
     if not project_dir.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {req.directory_path}")

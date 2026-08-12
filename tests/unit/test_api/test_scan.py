@@ -87,6 +87,36 @@ class TestScanLocal:
         data = response.json()
         assert "not found" in data["error"]["message"].lower()
 
+    def test_scan_local_missing_arguments(self, client):
+        response = client.post("/api/v1/scan/local", json={})
+        assert response.status_code == 400
+        assert "manifest_contents" in response.json()["error"]["message"]
+
+    def test_scan_local_both_arguments_rejected(self, client, tmp_path):
+        project = tmp_path / "proj"
+        project.mkdir()
+        response = client.post(
+            "/api/v1/scan/local",
+            json={
+                "directory_path": str(project),
+                "manifest_contents": {"requirements.txt": "requests>=2"},
+            },
+        )
+        assert response.status_code == 400
+
+    def test_scan_local_manifest_contents(
+        self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
+    ):
+        response = client.post(
+            "/api/v1/scan/local",
+            json={"manifest_contents": {"requirements.txt": "requests>=2.28.0\n"}},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["source"] == "local"
+        assert "requests" in str(data["packages"])
+
     def test_scan_local_success(
         self, client, tmp_path, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
     ):

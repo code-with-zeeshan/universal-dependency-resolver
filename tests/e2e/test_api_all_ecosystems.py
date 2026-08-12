@@ -4,8 +4,6 @@ Hits real registries through the FastAPI TestClient.
 Auth endpoints tested separately — ENABLE_AUTH=false for core tests.
 """
 
-import asyncio
-import json
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -95,8 +93,9 @@ PYPI_LOCK = {
 @pytest.fixture(scope="session")
 def setup_db():
     """Create database tables once per session."""
-    from backend.database.models import Base
     from sqlalchemy import create_engine
+
+    from backend.database.models import Base
 
     eng = create_engine("sqlite://", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=eng)
@@ -109,8 +108,8 @@ def test_client(setup_db):
 
     Manually constructs the app to avoid lifespan shutdown side effects.
     """
-    from backend.database import models as db_models
     from backend.api.main import app
+    from backend.database import models as db_models
 
     mock = MagicMock()
     mock.username = "testuser"
@@ -430,6 +429,8 @@ class TestApiCheckEndpoints:
         skip_unless_200(resp, "sbom-spdx")
         data = resp.json()
         assert isinstance(data, dict)
+        sbom = data.get("sbom", {})
+        assert len(sbom.get("packages", [])) == len(PYPI_LOCK["packages"])
 
     def test_sbom_cyclonedx(self, test_client):
         resp = test_client.post(
@@ -442,6 +443,9 @@ class TestApiCheckEndpoints:
         skip_unless_200(resp, "sbom-cyclonedx")
         data = resp.json()
         assert isinstance(data, dict)
+        sbom = data.get("sbom", {})
+        assert sbom.get("bomFormat") == "CycloneDX"
+        assert len(sbom.get("components", [])) == len(PYPI_LOCK["packages"])
 
 
 # ============================================================

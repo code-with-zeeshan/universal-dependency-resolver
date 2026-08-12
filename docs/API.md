@@ -1159,7 +1159,7 @@ Upload a ZIP archive of a project. Extracts, detects manifests, resolves depende
 
 ### `POST /api/v1/scan/local`
 
-Scan a local directory path. Works when backend runs on the same machine.
+Scan a local project two ways: a server-side directory path, or in-memory `manifest_contents` (same shape as `/generate-lock`) when the backend runs elsewhere. Works when backend runs on the same machine for `directory_path`.
 
 **Auth:** JWT Bearer or API key
 
@@ -1169,7 +1169,7 @@ Scan a local directory path. Works when backend runs on the same machine.
 |---|---|---|---|
 | `export` | string | `null` | Export format |
 
-**Request body:**
+**Request body (directory mode):**
 
 ```json
 {
@@ -1177,12 +1177,25 @@ Scan a local directory path. Works when backend runs on the same machine.
 }
 ```
 
-**Response:** Same structure as `/scan/github`, with `source: "local"` and `directory_path`.
+**Request body (manifest-content mode):**
+
+```json
+{
+  "manifest_contents": {
+    "requirements.txt": "flask>=2.0\n",
+    "package.json": "{\"dependencies\": {\"express\": \"^4.18.0\"}}"
+  }
+}
+```
+
+Provide exactly one of `directory_path` or `manifest_contents`.
+
+**Response:** Same structure as `/scan/github`, with `source: "local"` (and `directory_path` in directory mode).
 
 | Code | Condition |
 |---|---|
 | `200` | Scan complete |
-| `400` | Directory does not exist |
+| `400` | Directory does not exist, no arguments, or both arguments provided |
 
 ---
 
