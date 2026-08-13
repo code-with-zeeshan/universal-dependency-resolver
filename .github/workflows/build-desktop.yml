@@ -282,8 +282,16 @@ jobs:
           # UPX disabled on Windows — UPX 5.x hangs PyInstaller. Build without compression.
           # --log-level DEBUG: if the Windows build hangs again during binary analysis,
           # the workflow log will show exactly which DLL pefile is stuck on.
+          # --exclude-module magic: python-magic 0.4.27's Windows DLL search
+          # (ctypes.util.find_library over PATH) blocks forever on the windows-latest
+          # runner image (probe: `import magic` hung >45 s on 2026-08-13), which hangs
+          # PyInstaller's package-import subprocess at "Looking for dynamic libraries".
+          # The wheel ships no libmagic DLL, so `magic` never worked in the Windows
+          # bundle; content_detector.sniff_content() degrades to byte-signature
+          # sniffing on ImportError.
           pyinstaller --onedir --noconsole --noconfirm --log-level DEBUG \
             --name udr-backend \
+            --exclude-module magic \
             $UPX_FLAG \
             --add-binary "$Z3_LIB:z3/lib/" \
             --distpath backend/dist \
