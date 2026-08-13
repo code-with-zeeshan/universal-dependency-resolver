@@ -231,7 +231,7 @@ async def scan_upload(
             # Extract per-entry to avoid TOCTOU race between check and extractall
             z.extract(entry, path=str(tmp))
             dest = (tmp / entry.filename).resolve()
-            if not str(dest).startswith(str(tmp_resolved)):
+            if not dest.is_relative_to(tmp_resolved):
                 shutil.rmtree(str(tmp), ignore_errors=True)
                 raise HTTPException(status_code=400, detail="Illegal path in zip archive")
         # Try to find project root (handle single top-level dir)
@@ -266,10 +266,14 @@ async def scan_local(
                 detail="Provide either 'manifest_contents' or 'directory_path', not both",
             )
         tmp = Path(tempfile.mkdtemp(prefix="udr_scan_local_"))
+        tmp_resolved = tmp.resolve()
         try:
             for filename, content in req.manifest_contents.items():
-                fp = (tmp / filename).resolve()
-                if not str(fp).startswith(str(tmp.resolve())):
+                filename_path = Path(filename)
+                if filename_path.is_absolute() or ".." in filename_path.parts:
+                    raise HTTPException(status_code=400, detail="Illegal manifest path")
+                fp = (tmp / filename_path).resolve()
+                if not fp.is_relative_to(tmp_resolved):
                     raise HTTPException(status_code=400, detail="Illegal manifest path")
                 fp.parent.mkdir(parents=True, exist_ok=True)
                 fp.write_text(content)

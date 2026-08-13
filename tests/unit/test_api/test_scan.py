@@ -117,6 +117,33 @@ class TestScanLocal:
         assert data["source"] == "local"
         assert "requests" in str(data["packages"])
 
+    @pytest.mark.parametrize(
+        "bad_filename",
+        [
+            "../escape.txt",
+            "a/../../escape.txt",
+            "/etc/escape.txt",
+            "subdir/../escape.txt",
+        ],
+    )
+    def test_scan_local_rejects_path_traversal(self, client, bad_filename):
+        response = client.post(
+            "/api/v1/scan/local",
+            json={"manifest_contents": {bad_filename: "requests>=2.28.0\n"}},
+        )
+        assert response.status_code == 400
+        assert "Illegal manifest path" in response.json()["error"]["message"]
+
+    def test_scan_local_allows_nested_safe_paths(
+        self, client, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
+    ):
+        response = client.post(
+            "/api/v1/scan/local",
+            json={"manifest_contents": {"sub/requirements.txt": "requests>=2.28.0\n"}},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+
     def test_scan_local_success(
         self, client, tmp_path, mock_manifest_detector, mock_aggregator, mock_resolver, mock_scanner
     ):
