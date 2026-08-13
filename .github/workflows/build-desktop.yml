@@ -203,6 +203,62 @@ jobs:
           # PyInstaller runs fine without UPX, so skip installing it on Windows.
           echo "Skipping UPX on Windows (UPX 5.x hangs PyInstaller)"
 
+      - name: Probe package imports (PyInstaller hang diagnostics)
+        shell: bash
+        run: |
+          pip install pyinstaller==6.21.0
+          pip install -e ".[system,z3]"
+          # PyInstaller hangs at "Looking for dynamic libraries" (43 min, twice):
+          # its isolated subprocess imports every collected package one-by-one and
+          # one of them blocks forever on this runner. Replicate that phase with
+          # per-module timeouts so the culprit is named in ~2 min instead of a 45-min
+          # timeout. Also sweep site-packages DLLs with pefile to rule out a
+          # binary-analysis hang.
+          python - <<'PYEOF'
+          import subprocess, sys, time, pkgutil, os, glob
+          TIMEOUT = 45
+          print(f"[probe] python={sys.executable}", flush=True)
+          mods = sorted({m.name for m in pkgutil.iter_modules() if '.' not in m.name})
+          print(f"[probe] testing {len(mods)} top-level modules (subprocess each, {TIMEOUT}s timeout)", flush=True)
+          culprit = None
+          slow = []
+          for m in mods:
+              t0 = time.time()
+              try:
+                  r = subprocess.run([sys.executable, "-c", f"import {m}"], timeout=TIMEOUT, capture_output=True)
+                  dt = time.time() - t0
+                  if r.returncode != 0:
+                      print(f"[probe] ERR({r.returncode}) {m}: {r.stderr.decode(errors='replace')[:120]!r}", flush=True)
+                  elif dt > 5:
+                      slow.append((m, round(dt, 1)))
+                      print(f"[probe] SLOW {m} ({dt:.1f}s)", flush=True)
+              except subprocess.TimeoutExpired:
+                  culprit = m
+                  print(f"[probe] HANG {m}  <-- culprit", flush=True)
+                  break
+          if culprit:
+              print(f"[probe] CULPRIT: {culprit} blocks on import (PyInstaller hang root cause)", flush=True)
+              sys.exit(1)
+          print(f"[probe] all {len(mods)} imports OK; slow: {slow}", flush=True)
+          try:
+              import pefile, concurrent.futures
+              sp = os.path.join(sys.base_prefix, 'Lib', 'site-packages')
+              dlls = glob.glob(os.path.join(sp, '**', '*.dll'), recursive=True) + glob.glob(os.path.join(sp, '**', '*.pyd'), recursive=True)
+              def check(path):
+                  t0 = time.time()
+                  try:
+                      pe = pefile.PE(path, fast_load=True); pe.close()
+                      return None if time.time() - t0 < 8 else ('SLOW', path, round(time.time() - t0, 1))
+                  except Exception as e:
+                      return ('ERR', path, str(e)[:100])
+              with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+                  bad = [r for r in ex.map(check, dlls) if r]
+              print(f"[probe] pefile sweep: {len(dlls)} binaries, {len(bad)} problematic: {bad}", flush=True)
+          except Exception as e:
+              print(f"[probe] pefile sweep skipped: {e}", flush=True)
+          print("[probe] diagnostics done", flush=True)
+          PYEOF
+
       - name: Build backend binary + Electron app
         shell: bash
         run: |
