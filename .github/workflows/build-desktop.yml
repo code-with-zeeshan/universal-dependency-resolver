@@ -219,7 +219,12 @@ jobs:
           TIMEOUT = 45
           print(f"[probe] python={sys.executable}", flush=True)
           mods = sorted({m.name for m in pkgutil.iter_modules() if '.' not in m.name})
-          print(f"[probe] testing {len(mods)} top-level modules (subprocess each, {TIMEOUT}s timeout)", flush=True)
+          # Mirror PyInstaller's --exclude-module list: excluded modules are never
+          # collected, so the build's import subprocess does not import them.
+          SKIP = {'magic'}
+          skipped = sorted(SKIP & set(mods))
+          mods = [m for m in mods if m not in SKIP]
+          print(f"[probe] testing {len(mods)} top-level modules (skipping excluded: {skipped}; {TIMEOUT}s timeout)", flush=True)
           culprit = None
           slow = []
           for m in mods:
