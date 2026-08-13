@@ -4,6 +4,7 @@
 import asyncio
 import io
 import logging
+import os
 import tempfile
 import zipfile
 from pathlib import Path
@@ -266,15 +267,14 @@ async def scan_local(
                 detail="Provide either 'manifest_contents' or 'directory_path', not both",
             )
         tmp = Path(tempfile.mkdtemp(prefix="udr_scan_local_"))
-        tmp_resolved = tmp.resolve()
+        tmp_resolved = str(tmp.resolve())
+        tmp_prefix = tmp_resolved + os.sep
         try:
             for filename, content in req.manifest_contents.items():
-                filename_path = Path(filename)
-                if filename_path.is_absolute() or ".." in filename_path.parts:
+                target = os.path.realpath(os.path.join(tmp_resolved, filename))
+                if not target.startswith(tmp_prefix):
                     raise HTTPException(status_code=400, detail="Illegal manifest path")
-                fp = (tmp / filename_path).resolve()
-                if not fp.is_relative_to(tmp_resolved):
-                    raise HTTPException(status_code=400, detail="Illegal manifest path")
+                fp = Path(target)
                 fp.parent.mkdir(parents=True, exist_ok=True)
                 fp.write_text(content)
             result = await _run_resolution_pipeline(tmp, export_format=export)

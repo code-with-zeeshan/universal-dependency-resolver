@@ -122,8 +122,8 @@ class TestScanLocal:
         [
             "../escape.txt",
             "a/../../escape.txt",
+            "a/b/../../../../escape.txt",
             "/etc/escape.txt",
-            "subdir/../escape.txt",
         ],
     )
     def test_scan_local_rejects_path_traversal(self, client, bad_filename):
