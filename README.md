@@ -8,7 +8,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/ci.yml?color=blueviolet&label=%E2%9C%A8%20CI)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/ci.yml)
 [![Desktop](https://img.shields.io/github/actions/workflow/status/code-with-zeeshan/universal-dependency-resolver/build-desktop.yml?color=orange&label=%F0%9F%96%A5%20Desktop)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions/workflows/build-desktop.yml)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue?logo=visualstudiocode&label=%F0%9F%93%98%20VS%20Code)](https://github.com/code-with-zeeshan/universal-dependency-resolver/tree/main/vscode-extension)
-[![Tests](https://img.shields.io/badge/3803%20unit+96%20integration+392%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
+[![Tests](https://img.shields.io/badge/3811%20unit+96%20integration+392%20e2e-passing-success?logo=pytest&color=success&label=%F0%9F%A7%AA%20Tests)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Coverage](https://img.shields.io/badge/coverage-58%25-yellow?logo=codecov&label=%F0%9F%93%8A%20Coverage)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![mypy](https://img.shields.io/badge/mypy-0%20errors-brightgreen?label=%E2%9C%94%20Type%20checked)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
 [![Ruff](https://img.shields.io/badge/Ruff-0%20errors-brightgreen?logo=ruff&color=success&label=%F0%9F%90%8D%20Lint)](https://github.com/code-with-zeeshan/universal-dependency-resolver/actions)
@@ -220,7 +220,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full architecture deep-
 | Metric | Value |
 |---|---|
 | ✅ Supported ecosystems | **25** (18 resolvable + 7 query-only) |
-| 🧪 Unit tests passing | **3803** (+ 96 integration + 392 e2e + 83 others) |
+| 🧪 Unit tests passing | **3811** (+ 96 integration + 392 e2e + 83 others) |
 | 🎛️ CLI commands | **26** |
 | 🌐 API endpoints | **59** |
 | 📤 Export formats | **15** |

@@ -9,7 +9,7 @@
 | ForkingResolver | Cross-solver validator — on failure, runs the alternate solver (Z3 ↔ PubGrub) and confirms conflicts |
 | CLI commands | 26 |
 | Lock file | `udr.lock` v2.1 with workspace, cross-eco, target sections |
-| Tests | **4374** (3803 unit + 96 integration + 392 e2e + 83 others); 3,796 unit passing verified |
+| Tests | **4382** (3811 unit + 96 integration + 392 e2e + 83 others); 3804 unit passing, 5 skipped, 2 xfailed |
 | Coverage threshold | **57%** (enforced CI + pre-commit) |
 | Architecture violations | **0** (enforced CI + pre-commit) |
 | Ruff violations | **0** in `backend/` |
@@ -273,6 +273,7 @@ These items were evaluated and deliberately skipped because the effort does not 
 | v1.4 | AutoSolver, cross-solver validation, ContentAddressedCache, platform markers, P0-P4 gap closure, Q1-Q43 fixes, Phase 5-10 complete, doc rewrite, accuracy hardening | ✅ Released | 2026-07-23 |
 | v1.4.1 | PubGrub prerelease correctness, duplicate-constraint merging, `--target` marker overrides, JSON lock-failure output, CUDA-index-aware resolution for PyPI `torch`, `setup.py`/`setup.cfg` parser, npm underscore mangling fix, e2e + Windows CI fixes, undici security bump | ✅ Released | 2026-08-06 |
 | v1.4.2 | `versions`/`dependencies` CLI commands, check exit codes, combinable checks, API pinning (`block`/`pin`/`pin_mode`), `graph --from-lock`, `update --all`, `index build` hosting manifest, optional-dep groups excluded by default, AutoSolver crash isolation, PEP 440 wildcard exclusions, golden regression matrix, `/scan/local` manifest-content mode, docs refresh | 🚀 Released | 2026-08-12 |
+| v1.4.3 | Windows desktop build hang root-caused and fixed (python-magic import blocks PyInstaller on current runner images), CodeQL path-injection hardening for `/scan/local` + `/scan/upload`, `@hono/node-server` security bump in golden fixture, all dependabot + code-scanning alerts closed | 🚀 Released | 2026-08-13 |
 | v1.5 | Remaining deferred items, community plugin marketplace, benchmark regression suite | 🔮 Next | Q4 2026 |
 | v2.0 | Source repo URL + commit hash enrichment, desktop Tauri evaluation | 🔮 Planned | Q1 2027 |
 

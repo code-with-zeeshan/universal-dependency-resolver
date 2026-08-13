@@ -56,7 +56,7 @@ Auto-reloads on Python file changes (dev only).
 python -m pytest
 
 # By category
-python -m pytest tests/unit          # 3803 tests
+python -m pytest tests/unit          # 3811 tests
 python -m pytest tests/integration   # 96 tests
 python -m pytest tests/e2e           # 392 tests
 python -m pytest tests/e2e/test_golden_matrix.py  # golden regression matrix (real registries)
@@ -74,7 +74,7 @@ python -m pytest -x
 python -m pytest -n auto
 ```
 
-**Current totals:** 4374 tests (3803 unit + 96 integration + 392 e2e + others)
+**Current totals:** 4382 tests (3811 unit + 96 integration + 392 e2e + others)
 
 ---
 
@@ -179,7 +179,7 @@ universal-dependency-resolver/
 │   └── test/
 │       └── extension.test.ts # 23 lines — 3 smoke tests
 ├── tests/
-│   ├── unit/                 # 3803 unit tests
+│   ├── unit/                 # 3811 unit tests
 │   ├── integration/          # 96 integration tests
 │   └── e2e/                  # 392 end-to-end tests
 ├── docs/                     # Documentation

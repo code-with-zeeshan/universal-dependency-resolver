@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-08-13
+
+### Fixed
+
+- **Windows desktop build hung at PyInstaller "Looking for dynamic libraries"** (`.github/workflows/build-desktop.yml`, commits `7382821`, `0b01663`, `ee88bc2`, `06676b5`): `import magic` (python-magic 0.4.27) blocks forever on current `windows-latest` runner images — its Windows loader scans PATH via `ctypes.util.find_library` for libmagic DLLs the wheel does not ship, hanging PyInstaller's isolated pre-analysis subprocess that imports every collected package. Fixed by pinning `pyinstaller==6.21.0` (removes the 6.22.0 regression variable), adding `--exclude-module magic` to the Windows build (the app's `content_detector.sniff_content()` already degrades to byte-signature sniffing on `ImportError` — zero functionality loss), and a permanent per-module import-probe step that fails fast naming any future culprit. Windows job now completes in ~8 minutes instead of hitting the 45-minute timeout; all 3 OS jobs green.
+- **Path traversal hardening in `/api/v1/scan/local` and `/scan/upload`** (`backend/api/routes/scan.py`): CodeQL `py/path-injection` alerts (#66-#69) flagged the manifest-content writer. The stateful CodeQL model requires taint to pass a recognized normalization (`os.path.realpath`) followed by a `.startswith()` containment check on the normalized string (`pathlib.Path.resolve()` is not modeled as normalization — it is a sink). The guard now uses `os.path.realpath(os.path.join(tmp_resolved, filename))` + `startswith(tmp_resolved + os.sep)` (the separator prevents the sibling-directory string-prefix hole). Same pattern applied to zip entry validation in `/scan/upload`. 5 new traversal tests added (15 scan tests total).
+- **`@hono/node-server` vulnerable version in golden fixture** (`tests/e2e/golden/n8n/pnpm-lock.yaml`): bumped 1.19.13 → 1.19.15 in the frozen n8n fixture, closing dependabot alert #133 (GHSA-frvp-7c67-39w9, path traversal in `serve-static` on Windows via encoded `%5C`). Integrity hash verified against the npm registry; the golden matrix test assertions (status/name-set/anchors) are unaffected.
+
+### Security
+
+- **1 dependabot alert fixed** (#133, @hono/node-server) and **1 dismissed** (#134, extract-zip CVE-2026-56876 — `first_patched_version: null`, no upstream fix exists; only present in frozen test fixtures, never shipped). **0 open dependabot alerts.**
+- **3 CodeQL code-scanning alerts fixed** (#66-#68, py/path-injection); alerts #66-#69 all `state=fixed`. **0 open code scanning alerts.**
+
 ## [1.4.2] - 2026-08-12
 
 ### Added
@@ -608,6 +621,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uploads `.whl` to release assets on publish
 - Loosened version pins (fastapi, uvicorn, packaging) to avoid Colab conflicts
 
+[1.4.3]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.4.2...v1.4.3
+[1.4.2]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/code-with-zeeshan/universal-dependency-resolver/compare/v1.3.2...v1.3.3

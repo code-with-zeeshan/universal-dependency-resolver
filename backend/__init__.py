@@ -12,7 +12,7 @@ try:
 
     __version__ = _v("ud-resolver")
 except Exception:
-    __version__ = "1.4.2"
+    __version__ = "1.4.3"
 
 if typing.TYPE_CHECKING:
     from .core import ConflictResolver, DataAggregator, ExportGenerator, SystemScanner
